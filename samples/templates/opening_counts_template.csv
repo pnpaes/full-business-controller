@@ -1,0 +1,2 @@
+location,storage_area,item,unit,counted_qty,count_date,counter,blind,notes
+EXAMPLE Location 1,EXAMPLE Dry store,EXAMPLE FLOUR,kg,25.5,2026-09-30,EXAMPLE Counter,true,"EXAMPLE ROW - delete before use"

@@ -1,0 +1,104 @@
+# Proposed controlled values; Phase 0 must approve labels, meanings and localization.
+# Per-entity workflow states (receipt/production/transfer/count/import) take precedence over the
+# generic document_status, which is retained only for entities without a dedicated state machine.
+
+document_status: [draft, submitted, approved, rejected, retired]
+receipt_status: [draft, submitted, accepted, rejected, reversed]
+production_status: [planned, released, in_progress, completed, cancelled]
+transfer_status: [draft, requested, approved, dispatched, received, cancelled]
+count_status: [draft, counting, submitted, approved, cancelled]
+import_status: [uploaded, parsed, needs_review, validated, posted, partially_posted, failed, superseded]
+reconciliation_status: [pending, within_tolerance, exception, resolved, approved]
+task_status: [open, in_progress, blocked, resolved, dismissed]
+cost_behavior: [fixed, variable, mixed]
+item_type: [ingredient, packaging, cleaning_supply, consumable, intermediate, finished_good, non_stock_supply]
+inventory_policy: [stocked, non_stock, made_to_order]
+location_kind: [operating, central_production, virtual_transit]
+storage_area_kind: [kitchen, dry_store, refrigerator, freezer, front_counter, transit, other]
+channel_code: [dine_in, takeaway, wolt, direct_online, other]
+recipe_component_kind: [ingredient, packaging, sub_recipe]
+product_kind: [base, variant, add_on]
+cost_card_state: [draft, approved, superseded]
+stock_movement_type:
+  - receipt
+  - receipt_reversal
+  - production_consumption
+  - production_output
+  - sale_consumption
+  - transfer_dispatch
+  - transfer_receipt
+  - waste
+  - count_adjustment
+  - correction
+  - revaluation
+movement_source_type: [goods_receipt, production_batch, transfer, stock_count, sales_line, waste_event, adjustment, revaluation, correction]
+waste_stage:
+  - receiving
+  - storage_expiry
+  - preparation
+  - production
+  - display
+  - unsold_finished_goods
+  - customer_return
+  - count_discovered
+  - other
+approval_decision: [approved, rejected]
+forecast_grain: [day_location, day_location_category, day_location_product]
+
+# --- Added in Phase 0 close-out (assessment §2.4) ---
+tax_basis: [inclusive, exclusive]
+tax_treatment: [fixed, channel_overridable]
+tax_applies_to: [product, service, fee, cost]
+rounding_method: [HALF_UP, HALF_EVEN]
+rounding_boundary: [B0, B1, B2, B3, B4]
+valuation_method: [moving_weighted_average, fifo, standard_cost]
+cost_selection_policy: [latest_approved_price, moving_weighted_average, standard_cost]
+cost_source: [receipt, manual, excel]
+fee_kind: [commission_pct, processing_pct, fixed_per_order, delivery_subsidy, discount_funding]
+fee_basis: [gross_price, net_price, per_order]
+waste_value_method: [cost_selection, moving_average, latest_price, manual]
+operating_cost_recurrence: [one_off, daily, weekly, monthly, quarterly, annual]
+scope_type: [organization, location, storage, channel, company_wide]
+unit_dimension: [mass, volume, count, time, package]
+mapping_state: [unmapped, mapped, ignored, error]
+option_kind: [standalone, attached, included]
+import_posting_policy: [all_or_nothing, allow_partial]
+allocation_driver:
+  - direct_location_assignment
+  - occupied_area
+  - equipment_use
+  - production_hours
+  - production_minutes
+  - operating_hours
+  - transactions
+  - revenue
+  - recorded_time
+  - eligible_products
+  - equal_share
+adjustment_reason:
+  - count_variance
+  - spoilage
+  - breakage
+  - staff_meal
+  - supplier_credit
+  - data_correction
+  - revaluation
+  - transfer_discrepancy
+  - other
+period_close_status: [open, closing, locked, reopened]
+adjustment_period_status: [open, closed]
+cost_center_kind: [company_shared, location, kitchen, front_of_house, project]
+role_code: [owner, general_manager, location_manager, kitchen, front_of_house, purchasing, finance, admin, analyst, product_owner, technical_owner, data_owner]
+
+# --- Assignable ownership (FND-007 -- DEC-014 clarification) ---
+data_area: [products_recipes_allergens, supplier_items_costs, prices_channels_tax, inventory_waste, sales_mappings_settlements, labor_assumptions, competitor_observations, user_access_audit]
+
+# --- Workforce vocabularies (DEC-037, DEC-038) ---
+employment_type: [full_time, part_time, on_call, temporary, apprentice]
+shift_state: [open, published, assigned, cancelled, completed]
+shift_assignment_state: [self_assigned, pending_approval, approved, withdrawn, rejected]
+payroll_report_status: [draft, generated, exported, superseded]
+
+# --- Integrations and external publishing (DEC-015, ADR-0011) ---
+allowed_operation: [read, write_price, write_menu_product, write_stock, write_accounting]
+publish_status: [pending, running, succeeded, failed, rolled_back]

@@ -1,0 +1,83 @@
+openapi: 3.1.0
+info:
+  title: Aquarela Business Control API Outline
+  version: 0.1.0-scope
+  description: >-
+    Non-executable scope outline. Generate the complete contract from approved
+    implementation schemas. All mutations require server authorization and audit.
+servers:
+  - url: /api/v1
+tags:
+  - name: organization
+  - name: catalog
+  - name: procurement
+  - name: recipes
+  - name: costs
+  - name: pricing
+  - name: inventory
+  - name: production
+  - name: waste
+  - name: sales
+  - name: imports
+  - name: reconciliation
+  - name: insights
+  - name: planning
+  - name: workflow
+  - name: governance
+paths:
+  /items: {description: List/create scoped catalog items}
+  /supplier-items: {description: Supplier packs, conversions and terms}
+  /goods-receipts: {description: Draft/list receipt records}
+  /goods-receipts/{id}/accept: {description: Atomically accept and post stock}
+  /recipes: {description: Stable recipe identities}
+  /recipes/{id}/versions: {description: Draft/list effective recipe versions}
+  /recipe-versions/{id}/approve: {description: Validate graph and approve version}
+  /cost-cards: {description: Query/create reproducible product costing contexts}
+  /cost-cards/{id}/recalculate: {description: Create a new calculation snapshot}
+  /price-scenarios: {description: Price and margin scenario workspace}
+  /price-scenarios/{id}/approve: {description: Create approved effective price version}
+  /stock-balances: {description: Current/as-of projected balances}
+  /stock-movements: {description: Append-only movement query}
+  /stock-counts: {description: Draft/count/review sessions}
+  /stock-counts/{id}/approve: {description: Atomically post variance adjustments}
+  /transfers: {description: Request, dispatch and receive stock transfers}
+  /production-batches: {description: Plan/start/complete production batches}
+  /production-batches/{id}/complete: {description: Atomically post inputs/outputs/waste}
+  /waste-events: {description: Record/query operational waste}
+  /import-runs: {description: Upload/list staged imports}
+  /import-runs/{id}/validate: {description: Parse/map/validate without canonical posting}
+  /import-runs/{id}/post: {description: Idempotently post approved valid records}
+  /sales-transactions: {description: Query canonical sales and drill-down}
+  /reconciliations: {description: Review source, posted and settlement totals}
+  /period-closes: {description: Checklist, snapshot, approval and locking}
+  /metrics: {description: Scoped and fresh management metrics}
+  /menu-engineering: {description: Popularity/contribution/labor/waste analysis}
+  /forecasts: {description: Baseline forecast, override and accuracy}
+  /competitor-observations: {description: Reviewed dated market observations}
+  /tasks: {description: Actionable linked tasks and resolution}
+  /audit-events: {description: Authorized immutable audit query}
+components:
+  schemas:
+    Money:
+      type: object
+      required: [amount, currency, taxBasis]
+      properties:
+        amount: {type: string, pattern: '^-?[0-9]+(\.[0-9]+)?$'}
+        currency: {type: string, pattern: '^[A-Z]{3}$'}
+        taxBasis: {type: string, enum: [inclusive, exclusive]}
+    Quantity:
+      type: object
+      required: [value, unitId]
+      properties:
+        value: {type: string, pattern: '^-?[0-9]+(\.[0-9]+)?$'}
+        unitId: {type: string}
+    Error:
+      type: object
+      required: [code, message, correlationId]
+      properties:
+        code: {type: string}
+        message: {type: string}
+        correlationId: {type: string}
+        retryable: {type: boolean}
+        fields: {type: array, items: {type: object}}
+

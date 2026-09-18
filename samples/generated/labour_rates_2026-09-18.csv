@@ -1,0 +1,4 @@
+role,location,base_hourly_rate_nok,feriepenger_pct,arbeidsgiveravgift_pct,pensjon_pct,other_cost_nok,loaded_hourly_rate_nok,notes
+front_of_house,all,210,10.2,14.1,2,0,268.25,most employees; all staff under 60
+kitchen,all,240,10.2,14.1,2,0,306.57,other kitchen employee; all staff under 60
+owner,all,240,10.2,14.1,2,0,306.57,imputed for costing; unpaid (cash = 0)

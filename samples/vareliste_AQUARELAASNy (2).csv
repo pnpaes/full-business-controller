@@ -1,0 +1,74 @@
+﻿varenummer;navn;text1;text2;innkjoepspris;lagerbeholdning;deaktivert;mva_kode;varegruppe;leverandoer;mva_prosent;pris_eks_mva;pris_inkl_mva
+1;"Wolt item";;;0;0;1;3;Fallback;;25;0;0
+100000001;Classic;;;0;0;0;3;Açaí;;25;103,2;129
+100000002;"Strawberry Delight";;;0;0;0;3;Açaí;;25;103,2;129
+100000003;"Brazilian Crunch";;;0;0;0;3;Açaí;;25;103,2;129
+100000004;"Berry Fresh";;;0;0;0;3;Açaí;;25;103,2;129
+100000005;"Dulce Cream";;;0;0;0;3;Açaí;;25;103,2;129
+100000006;"Fruity S";;;0;0;0;3;Açaí;;25;103,2;129
+100000007;BYO;;;0;0;0;3;Açaí;;25;103,2;129
+100000008;"Medium Bowl";;;0;0;0;3;Açaí;;25;16;20
+100000009;"Large Bowl";;;0;0;0;3;Açaí;;25;32;40
+100000010;Granola;;;0;0;0;3;"Açaí Toppings";;25;8;10
+100000011;Banana;;;0;0;0;3;"Açaí Toppings";;25;8;10
+100000012;"Coconut flakes";;;0;0;0;3;"Açaí Toppings";;25;8;10
+100000013;"Peanut butter";;;0;0;0;3;"Açaí Toppings";;25;8;10
+100000014;"Hemp seeds";;;0;0;0;3;"Açaí Toppings";;25;8;10
+100000015;"Protein powder";;;0;0;0;3;"Açaí Toppings";;25;8;10
+100000016;"Milk powder";;;0;0;0;3;"Açaí Toppings";;25;8;10
+100000017;Paçoca;;;0;0;0;3;"Açaí Toppings";;25;8;10
+100000018;"Dulce de leche";;;0;0;0;3;"Açaí Toppings";;25;8;10
+100000019;"Cookie Crumbles";;;0;0;0;3;"Açaí Toppings";;25;8;10
+100000020;"Cocoa nibs";;;0;0;0;3;"Açaí Toppings";;25;12;15
+100000021;"Almond butter";;;0;0;0;3;"Açaí Toppings";;25;12;15
+100000022;"Frozen blueberries";;;0;0;0;3;"Açaí Toppings";;25;12;15
+100000023;"Fresh strawberries";;;0;0;0;3;"Açaí Toppings";;25;12;15
+100000024;"Goji berry";;;0;0;0;3;"Açaí Toppings";;25;12;15
+110000001;"Heave water";;;0;0;0;31;Beverages;;15;43,478260869565;50
+110000002;Limonata;;;0;0;0;3;Beverages;;25;40;50
+110000003;"Sparkling water";;;0;0;0;3;Beverages;;25;54,4;68
+110000004;Guarana;;;0;0;0;3;Beverages;;25;36;45
+120000001;Lysløypa;;;0;0;0;5;Books;;0;399;399
+130000001;"Cheese Cake";;;0;0;0;3;Cakes;;25;64;80
+130000002;"Tropical Caramel";;;0;0;0;3;Cakes;;25;79,2;99
+130000003;Prestige;;;0;0;0;3;Cakes;;25;79,2;99
+130000004;"Dulce Noir";;;0;0;0;3;Cakes;;25;79,2;99
+130000005;Cheesecake;;;0;0;0;3;Cakes;;25;64;80
+130000006;"Pistachio crush";;;0;0;0;3;Cakes;;25;79,2;99
+140000001;Cream;;;0;0;0;3;"Coffee AddOns";;25;4,8;6
+140000002;"Caramel Syrup";;;0;0;0;3;"Coffee AddOns";;25;4,8;6
+140000003;"Vanilla Syrup";;;0;0;0;3;"Coffee AddOns";;25;4,8;6
+140000004;"Oat Milk";;;0;0;0;3;"Coffee AddOns";;25;4,8;6
+140000005;Decaff;;;0;0;0;3;"Coffee AddOns";;25;0;0
+150000001;"Iced americano";;;0;0;0;3;Coffees;;25;39,2;49
+150000002;Espresso;;;0;0;0;3;Coffees;;25;36;45
+150000003;Cortado;;;0;0;0;3;Coffees;;25;40;50
+150000004;Latte;;;0;0;0;3;Coffees;;25;47,2;59
+150000005;"Oat milk";;;0;0;0;3;Coffees;;25;4,8;6
+150000006;Americano;;;0;0;0;3;Coffees;;25;36;45
+150000007;"Filter coffee";;;0;0;0;3;Coffees;;25;36;45
+150000008;Cappuccino;;;0;0;0;3;Coffees;;25;44;55
+150000009;"Pastel de Nata";;;0;0;0;3;Coffees;;25;44;55
+150000010;"Hot chocolate";;;0;0;0;3;Coffees;;25;47,2;59
+150000011;"Ice Mocca";;;0;0;0;3;Coffees;;25;41,6;52
+150000012;Mocca;;;0;0;0;3;Coffees;;25;47,2;59
+150000013;"Ice Latte Dulce de leche";;;0;0;0;3;Coffees;;25;59,2;74
+150000014;"Ice Latte Brigadeiro";;;0;0;0;3;Coffees;;25;59,2;74
+150000015;"Ice Latte Dulce de Leche + Coconut";;;0;0;0;3;Coffees;;25;59,2;74
+150000016;"Ice Latte";;;0;0;0;3;Coffees;;25;50,4;63
+150000017;Tea;;;0;0;0;3;Coffees;;25;36;45
+150000018;"Latte Dulce de Leche";;;0;0;0;3;Coffees;;25;53,6;67
+150000019;"Latte Dulce de Leche + Coconut";;;0;0;0;3;Coffees;;25;53,6;67
+150000020;"Latte Brigadeiro";;;0;0;0;3;Coffees;;25;53,6;67
+160000001;Minas;;;0;0;0;31;Meals;;15;129,5652173913;148,99999999999
+160000002;Naples;;;0;0;0;31;Meals;;15;112,17391304348;129
+160000003;Quiche;;;0;0;0;3;Meals;;25;71,2;89
+160000004;"Side Salad";;;0;0;0;3;Meals;;25;20;25
+160000005;"Chicken pie";;;0;0;0;3;Meals;;25;103,2;129
+170000001;"Raízes Café";;;0;0;0;31;"Packaged Foods";;15;120;138
+170000002;"Essencia Café";;;0;0;0;31;"Packaged Foods";;15;120;138
+180000001;"Cheese bun";;;0;0;0;3;"Savoury Snacks";;25;28;35
+180000002;"Chicken croquette";;;0;0;0;3;"Savoury Snacks";;25;28;35
+190000001;Cookie;;;0;0;0;3;Sweets;;25;40;50
+190000002;Brigadeiro;;;0;0;0;3;Sweets;;25;20;25
+140000006;"Double Shot";;;0;0;0;3;"Coffee AddOns";;25;4,8;6

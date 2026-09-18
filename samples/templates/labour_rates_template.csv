@@ -1,0 +1,2 @@
+role,location,base_hourly_rate_nok,holiday_pay_pct,employer_tax_pct,pension_pct,insurance_nok,other_cost_nok,loaded_hourly_rate,productive_hours_pct,notes
+EXAMPLE Barista,EXAMPLE Oslo,210.00,12.0,14.1,2.0,0,0,,85,"EXAMPLE ROW - delete before use; Norwegian defaults: arbeidsgiveravgift ~14.1% Oslo, feriepenger ~12.0%, OTP 2%"

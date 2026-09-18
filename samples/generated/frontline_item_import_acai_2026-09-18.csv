@@ -1,0 +1,15 @@
+﻿varenummer;navn;text1;text2;innkjoepspris;lagerbeholdning;deaktivert;mva_kode;varegruppe;leverandoer;mva_prosent;pris_eks_mva;pris_inkl_mva
+100000025;"Classic - Medium";;;0;0;0;3;Açaí;;25;143,2;179
+100000026;"Strawberry Delight - Medium";;;0;0;0;3;Açaí;;25;147,2;184
+100000027;"Brazilian Crunch - Medium";;;0;0;0;3;Açaí;;25;143,2;179
+100000028;"Berry Fresh - Medium";;;0;0;0;3;Açaí;;25;151,2;189
+100000029;"Dulce Dream - Medium";;;0;0;0;3;Açaí;;25;143,2;179
+100000030;"Fruity - Medium";;;0;0;0;3;Açaí;;25;151,2;189
+100000031;"BYO - Medium";;;0;0;0;3;Açaí;;25;119,2;149
+100000032;"Classic - Large";;;0;0;0;3;Açaí;;25;159,2;199
+100000033;"Strawberry Delight - Large";;;0;0;0;3;Açaí;;25;163,2;204
+100000034;"Brazilian Crunch - Large";;;0;0;0;3;Açaí;;25;159,2;199
+100000035;"Berry Fresh - Large";;;0;0;0;3;Açaí;;25;167,2;209
+100000036;"Dulce Dream - Large";;;0;0;0;3;Açaí;;25;159,2;199
+100000037;"Fruity - Large";;;0;0;0;3;Açaí;;25;167,2;209
+100000038;"BYO - Large";;;0;0;0;3;Açaí;;25;135,2;169

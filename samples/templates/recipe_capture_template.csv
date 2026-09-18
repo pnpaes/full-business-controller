@@ -1,0 +1,11 @@
+product,output_qty,output_unit,component_kind,component,qty,unit,loss_pct,prep_minutes,portion_size,notes
+Coffee drink,1,each,ingredient,Coffee beans,18,g,0,0.35,1,"EXAMPLE row set - delete before use"
+Coffee drink,1,each,ingredient,Milk,150,ml,0,0,1,"EXAMPLE row set - delete before use"
+Coffee drink,1,each,ingredient,Syrup,10,ml,0,0,1,"EXAMPLE row set - delete before use"
+Coffee drink,1,each,packaging,Takeaway cup,1,piece,0,0,1,"EXAMPLE row set - delete before use"
+Coffee drink,1,each,labour,,0,,0,0.4,1,"EXAMPLE row set - delete before use"
+Cheese bun,,,,,,,,,,
+Açaí medium takeaway,,,,,,,,,,
+Cake slice,,,,,,,,,,
+Quiche slice,,,,,,,,,,
+Chicken pie,,,,,,,,,,

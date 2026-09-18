@@ -1,0 +1,21 @@
+{
+  "title": "Aquarela Business Control System — Technical Scope",
+  "version": "1.0",
+  "status": "Phase 0 input - build-ready for discovery; implementation not started",
+  "created": "2026-09-13",
+  "timezone": "Europe/Oslo",
+  "currency": "NOK",
+  "initial_locations": ["Kongens gate", "Tullinløkka"],
+  "recommended_mvp_phases": [0, 1, 2, 3],
+  "entrypoint": "00_README.md",
+  "agent_brief": "13_AGENT_BUILD_BRIEF.md",
+  "blocking_decisions": "12_OPEN_DECISIONS.md",
+  "requirements": "11_REQUIREMENTS_CATALOG.md",
+  "phase0_closeout_plan": "docs/phase0/PHASE0_CLOSEOUT_PLAN.md",
+  "calculation_contract": "docs/phase0/CALCULATION_CONTRACT.md",
+  "data_dictionary": "docs/phase0/DATA_DICTIONARY.md",
+  "golden_fixtures": "docs/phase0/GOLDEN_FIXTURES.md",
+  "adr_directory": "docs/adr/",
+  "schema_draft": "schemas/phase1_2_draft.sql"
+}
+

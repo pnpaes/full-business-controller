@@ -1,0 +1,3 @@
+store,item,pack_size,pack_unit,price_incl_vat,currency,observed_date,source,receipt_ref,notes
+EXAMPLE Rema 1000,EXAMPLE FLOUR,10,kg,250.00,NOK,2026-09-01,receipt,EXAMPLE-RECEIPT-001,"EXAMPLE ROW - delete before use"
+EXAMPLE Kiwi,EXAMPLE CHEESE,2,kg,240.00,NOK,2026-09-02,manual,,"EXAMPLE ROW - delete before use"

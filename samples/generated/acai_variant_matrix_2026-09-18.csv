@@ -1,0 +1,22 @@
+parent,varenavn,farge_flavour,storrelse,varenummer,navn,sku,artikkel_nr,pris_inkl_mva,pris_eks_mva,mva_kode,mva_prosent,alt_mva,alt_pris_inkl_mva,alt_pris_eks_mva,aktiv,notat
+Açaí,Açaí,Classic,Small,100000001,Classic,ACAI-CLASSIC-S,ACAI-CLASSIC-S,"159","127,2",3,25,15,"159","138,26",ja,"existing Small item"
+Açaí,Açaí,Classic,Medium,100000025,"Classic - Medium",ACAI-CLASSIC-M,ACAI-CLASSIC-M,"179","143,2",3,25,15,"179","155,65",ja,
+Açaí,Açaí,Classic,Large,100000032,"Classic - Large",ACAI-CLASSIC-L,ACAI-CLASSIC-L,"199","159,2",3,25,15,"199","173,04",ja,
+Açaí,Açaí,"Strawberry Delight",Small,100000002,"Strawberry Delight",ACAI-STRAWBERRY-DELIGHT-S,ACAI-STRAWBERRY-DELIGHT-S,"164","131,2",3,25,15,"164","142,61",ja,"existing Small item"
+Açaí,Açaí,"Strawberry Delight",Medium,100000026,"Strawberry Delight - Medium",ACAI-STRAWBERRY-DELIGHT-M,ACAI-STRAWBERRY-DELIGHT-M,"184","147,2",3,25,15,"184","160",ja,
+Açaí,Açaí,"Strawberry Delight",Large,100000033,"Strawberry Delight - Large",ACAI-STRAWBERRY-DELIGHT-L,ACAI-STRAWBERRY-DELIGHT-L,"204","163,2",3,25,15,"204","177,39",ja,
+Açaí,Açaí,"Brazilian Crunch",Small,100000003,"Brazilian Crunch",ACAI-BRAZILIAN-CRUNCH-S,ACAI-BRAZILIAN-CRUNCH-S,"159","127,2",3,25,15,"159","138,26",ja,"existing Small item"
+Açaí,Açaí,"Brazilian Crunch",Medium,100000027,"Brazilian Crunch - Medium",ACAI-BRAZILIAN-CRUNCH-M,ACAI-BRAZILIAN-CRUNCH-M,"179","143,2",3,25,15,"179","155,65",ja,
+Açaí,Açaí,"Brazilian Crunch",Large,100000034,"Brazilian Crunch - Large",ACAI-BRAZILIAN-CRUNCH-L,ACAI-BRAZILIAN-CRUNCH-L,"199","159,2",3,25,15,"199","173,04",ja,
+Açaí,Açaí,"Berry Fresh",Small,100000004,"Berry Fresh",ACAI-BERRY-FRESH-S,ACAI-BERRY-FRESH-S,"169","135,2",3,25,15,"169","146,96",ja,"existing Small item"
+Açaí,Açaí,"Berry Fresh",Medium,100000028,"Berry Fresh - Medium",ACAI-BERRY-FRESH-M,ACAI-BERRY-FRESH-M,"189","151,2",3,25,15,"189","164,35",ja,
+Açaí,Açaí,"Berry Fresh",Large,100000035,"Berry Fresh - Large",ACAI-BERRY-FRESH-L,ACAI-BERRY-FRESH-L,"209","167,2",3,25,15,"209","181,74",ja,
+Açaí,Açaí,"Dulce Dream",Small,100000005,"Dulce Dream",ACAI-DULCE-DREAM-S,ACAI-DULCE-DREAM-S,"159","127,2",3,25,15,"159","138,26",ja,"existing Small item"
+Açaí,Açaí,"Dulce Dream",Medium,100000029,"Dulce Dream - Medium",ACAI-DULCE-DREAM-M,ACAI-DULCE-DREAM-M,"179","143,2",3,25,15,"179","155,65",ja,
+Açaí,Açaí,"Dulce Dream",Large,100000036,"Dulce Dream - Large",ACAI-DULCE-DREAM-L,ACAI-DULCE-DREAM-L,"199","159,2",3,25,15,"199","173,04",ja,
+Açaí,Açaí,Fruity,Small,100000006,Fruity,ACAI-FRUITY-S,ACAI-FRUITY-S,"169","135,2",3,25,15,"169","146,96",ja,"existing Small item; flavour renamed"
+Açaí,Açaí,Fruity,Medium,100000030,"Fruity - Medium",ACAI-FRUITY-M,ACAI-FRUITY-M,"189","151,2",3,25,15,"189","164,35",ja,
+Açaí,Açaí,Fruity,Large,100000037,"Fruity - Large",ACAI-FRUITY-L,ACAI-FRUITY-L,"209","167,2",3,25,15,"209","181,74",ja,
+Açaí,Açaí,BYO,Small,100000007,BYO,ACAI-BYO-S,ACAI-BYO-S,"129","103,2",3,25,15,"129","112,17",ja,"existing Small item"
+Açaí,Açaí,BYO,Medium,100000031,"BYO - Medium",ACAI-BYO-M,ACAI-BYO-M,"149","119,2",3,25,15,"149","129,57",ja,
+Açaí,Açaí,BYO,Large,100000038,"BYO - Large",ACAI-BYO-L,ACAI-BYO-L,"169","135,2",3,25,15,"169","146,96",ja,
