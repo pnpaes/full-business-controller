@@ -10,9 +10,9 @@ database schema are implemented yet.
 
 ## Working practices
 
-This project keeps a living handoff and work log at `docs/HANDOFF.md` and follows
-the rules in `AGENTS.md`: session handoff and work log, reversibility of every
-change, and decisions-as-authority.
+This project follows the rules in `AGENTS.md` and keeps the living project
+context, status and next steps in `CONTEXT.md`: session handoff and work log,
+reversibility of every change, and decisions-as-authority.
 
 ## Requirements
 

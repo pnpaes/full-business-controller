@@ -6,17 +6,20 @@ reporting). Phase 0 is complete: the specification package (`00_README.md` …
 `13_AGENT_BUILD_BRIEF.md`), the 48 accepted decisions (`12_OPEN_DECISIONS.md`)
 and the Phase 0 artifacts/ADRs (`docs/phase0/`, `docs/adr/`) are the authority.
 Only the foundation scaffold is built — no business slices or schema yet. Start
-with `README.md`; the living handoff lives in `docs/HANDOFF.md`.
+with `README.md`; the living project context, status and next steps live in
+`CONTEXT.md`.
 
 ## Rule 1 — Session handoff and work log (mandatory)
 
-- **Start:** read `docs/HANDOFF.md` before doing anything else.
+- **Start:** read `CONTEXT.md` before doing anything else.
 - **End:** if the session changed anything (code, docs, decisions, data), update
-  `docs/HANDOFF.md` before finishing: current status + git HEAD, what changed
-  since the last update, in-progress items, prioritised next steps, open
+  `CONTEXT.md` before finishing: current status + git HEAD, what changed since
+  the last update, in-progress items, prioritised next steps, open
   decisions/inputs, and how to verify.
 - Append to the chronological work log and keep the **Next up** section accurate.
   This is how work continues across sessions.
+- Session handoffs and context live **in the repo** (`CONTEXT.md`). Never write
+  handoff files to a temp directory or any path outside the repository.
 
 ## Rule 2 — Make every task reversible (mandatory)
 
@@ -35,7 +38,7 @@ Changes must be revertible or carry a documented recovery path:
   are append-only (reversals, not edits).
 - For risky changes use a feature flag or keep the old path until the new one is
   verified.
-- Record the rollback approach in the commit body and in `docs/HANDOFF.md`.
+- Record the rollback approach in the commit body and in `CONTEXT.md`.
 
 ## Rule 3 — Decisions are the authority
 
