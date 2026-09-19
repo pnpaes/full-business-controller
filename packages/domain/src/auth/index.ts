@@ -14,6 +14,8 @@ export type { LockoutPolicy, LockoutThreshold } from "./lockout";
 
 export { generateRecoveryCodes, hashRecoveryCodes, verifyRecoveryCode } from "./recovery-codes";
 
+export { openSecret, parseSecretKey, sealSecret } from "./secret-box";
+
 export {
   OPAQUE_TOKEN_BYTES,
   SESSION_TOKEN_BYTES,

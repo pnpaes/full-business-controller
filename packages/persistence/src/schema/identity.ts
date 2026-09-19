@@ -118,17 +118,27 @@ export const userLocationScope = pgTable(
   (t) => [primaryKey({ columns: [t.userId, t.locationId] })],
 );
 
-export const userTotp = pgTable("user_totp", {
-  userId: uuid("user_id")
-    .primaryKey()
-    .references(() => appUser.id, { onDelete: "cascade" }),
-  secretEncrypted: text("secret_encrypted").notNull(),
-  confirmedAt: tstz("confirmed_at"),
-  recoveryCodesHash: text("recovery_codes_hash")
-    .array()
-    .notNull()
-    .default(sql`'{}'::text[]`),
-});
+export const userTotp = pgTable(
+  "user_totp",
+  {
+    userId: uuid("user_id")
+      .primaryKey()
+      .references(() => appUser.id, { onDelete: "cascade" }),
+    secretEncrypted: text("secret_encrypted").notNull(),
+    confirmedAt: tstz("confirmed_at"),
+    lastUsedCounter: integer("last_used_counter"),
+    recoveryCodesHash: text("recovery_codes_hash")
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
+  },
+  (t) => [
+    check(
+      "user_totp_last_used_counter_check",
+      sql`${t.lastUsedCounter} is null or ${t.lastUsedCounter} >= 0`,
+    ),
+  ],
+);
 
 export const authSession = pgTable(
   "auth_session",

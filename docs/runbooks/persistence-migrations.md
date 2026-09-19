@@ -108,7 +108,28 @@ Down migrations follow the naming convention `<index>_<name>_down.sql`,
 alongside the forward file in `packages/persistence/drizzle/` (or a documented
 equivalent if the convention changes). A rollback must be rehearsed against a
 production-like copy before release — "tested" means it has actually been run
-and verified to restore the prior state without data loss.
+and verified to restore the prior state without data loss. A `_down.sql` file is
+**never** added to `meta/_journal.json`; drizzle-kit applies journal entries
+only, so the down file is an explicit operator action, not an automatic one.
+
+- **0000–0002 are bootstrap-generated and have no down companion.** They create
+  the schema from nothing (`0000` extensions, `0001` generated core DDL, `0002`
+  hand-written invariants); their only rollback while the database is empty is
+  the destructive replay in "Recovery / rollback" below.
+- **0003 is the first expand/additive migration and follows the down
+  convention:** `DROP COLUMN "last_used_counter"` drops no other data, so it is
+  safe to run once 0003's feature is not in use. Apply it manually with
+  `psql "$DATABASE_URL" -f packages/persistence/drizzle/0003_user_totp_last_used_counter_down.sql`
+  (never `drizzle-kit`, and not via `db:migrate`).
+
+  **Re-applying after a manual down:** drizzle-kit tracks applied migrations in
+  `drizzle.__drizzle_migrations`, not by comparing the schema, so a plain
+  `npm run db:migrate` after the down file is a no-op — 0003 is still recorded.
+  To re-apply it, delete its ledger row and migrate again:
+  `DELETE FROM drizzle.__drizzle_migrations WHERE created_at = 1789847649193;`
+  then `npm run db:migrate` (verified 2026-09-19). This is safe while the
+  column's data is disposable; once real TOTP counters exist, prefer the
+  additive forward path over re-running 0003.
 
 ## Known follow-up obligations
 
@@ -179,6 +200,7 @@ session will not serialise against each other.
 | 0000 | `0000_enable_extensions.sql` | `create extension pgcrypto` (uuid defaults) and `btree_gist` (exclusion constraints) |
 | 0001 | `0001_phase1_core.sql` | Generated DDL for the 35 Phase 1–2 core tables, checks, uniques, FKs and indexes |
 | 0002 | `0002_invariants.sql` | `app_user` case-insensitive partial unique indexes; `channel_fee_rule`, `supplier_price`, `recipe_version`, `product_recipe_assignment` exclusion constraints; `cost_card.snapshot_id` ↔ `calculation_snapshot.cost_card_id` deferrable FKs; append-only trigger functions/triggers for `stock_movement`, `calculation_snapshot` and `audit_event` |
+| 0003 | `0003_user_totp_last_used_counter.sql` | Generated: adds nullable `user_totp.last_used_counter` (`integer`, check `null or >= 0`) for TOTP replay protection. Down companion: `0003_user_totp_last_used_counter_down.sql` (`ALTER TABLE "user_totp" DROP COLUMN "last_used_counter";`; the check drops with the column) |
 
 Order matters: extensions before DDL that calls `gen_random_uuid()`, and before
 the exclusion constraints. Verify with:
@@ -208,7 +230,7 @@ DATABASE_URL=postgres://aquarela:aquarela@localhost:5432/aquarela npm run db:mig
 `public` alone leaves the ledger intact, so `db:migrate` reports success while
 restoring nothing. `DROP SCHEMA drizzle CASCADE` clears the ledger so all
 migrations replay from 0000. Verified: after this sequence `db:migrate`
-re-applies 0000–0002 and the database has all 35 tables plus both extensions.
+re-applies 0000–0003 and the database has all 35 tables plus both extensions.
 
 Once real data exists, this path is no longer acceptable: use small atomic
 commits, expand → migrate → contract for schema changes, and a tested
@@ -229,6 +251,8 @@ After applying to an empty database the following were verified with `psql`:
 - `app_user`: case-insensitive duplicate `email` is rejected
   (`app_user_email_key` on `lower(btrim(email))`); whitespace variants
   (`'alice '` when `'alice'` exists) are also rejected.
+- `user_totp`: a negative `last_used_counter` is rejected by
+  `user_totp_last_used_counter_check` (null or `>= 0`).
 - Deferrable FKs: a `calculation_snapshot` and its `cost_card` can be inserted
   in the same transaction in either order and commit together.
 - `calculation_snapshot`: a plain `TRUNCATE` is blocked first by the FK from
