@@ -8,6 +8,8 @@
   },
   "types": "./src/index.ts",
   "dependencies": {
-    "@aquarela/domain": "*"
+    "@aquarela/config": "*",
+    "@aquarela/domain": "*",
+    "@aquarela/persistence": "*"
   }
 }

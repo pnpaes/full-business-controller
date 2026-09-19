@@ -1,0 +1,21 @@
+/**
+ * Audit action vocabulary for authentication (ADR-0003: "Audit every
+ * login/security change and every permission change"). The values are the
+ * `audit_event.action` strings; keeping them here stops handlers from drifting
+ * into near-duplicate names.
+ */
+export const AUTH_AUDIT_ACTIONS = {
+  loginSucceeded: "auth.login.succeeded",
+  loginFailed: "auth.login.failed",
+  loginLocked: "auth.login.locked",
+  loginDisabled: "auth.login.disabled",
+  loginUnknown: "auth.login.unknown",
+  loginMfaRequired: "auth.login.mfa_required",
+  mfaSucceeded: "auth.mfa.succeeded",
+  mfaFailed: "auth.mfa.failed",
+  mfaRecoveryUsed: "auth.mfa.recovery_used",
+  sessionRevoked: "auth.session.revoked",
+  sessionsRevokedAll: "auth.session.revoked_all",
+} as const;
+
+export type AuthAuditAction = (typeof AUTH_AUDIT_ACTIONS)[keyof typeof AUTH_AUDIT_ACTIONS];

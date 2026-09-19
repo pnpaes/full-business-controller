@@ -13,6 +13,7 @@ import {
   uniqueSuffix,
 } from "./test-support";
 import {
+  findUserById,
   findUserByIdentifier,
   recordLoginFailure,
   recordLoginSuccess,
@@ -48,6 +49,14 @@ describe.skipIf(!databaseUrl)("user repository", () => {
 
       const byUsername = await findUserByIdentifier(tx, orgId, `  ${user.username}  `);
       expect(byUsername?.id).toBe(user.id);
+    });
+  });
+
+  it("finds a user by id and returns undefined for an unknown id", async () => {
+    await inRollback(client.db, async (tx) => {
+      const user = await createTestUser(tx, orgId);
+      expect((await findUserById(tx, user.id))?.id).toBe(user.id);
+      expect(await findUserById(tx, randomUUID())).toBeUndefined();
     });
   });
 

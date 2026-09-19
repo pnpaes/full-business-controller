@@ -17,6 +17,11 @@ export const envSchema = z.object({
     .refine((value) => /^postgres(ql)?:\/\//.test(value), {
       message: "must be a postgres:// or postgresql:// connection string",
     }),
+  SESSION_TTL_MINUTES: z.coerce.number().int().positive().default(480),
+  PASSWORD_RESET_TTL_MINUTES: z.coerce.number().int().positive().default(30),
+  // Base64 32-byte key sealing TOTP secrets at rest. Optional here so worker and
+  // scheduler boot without it; auth MFA operations fail loudly when it is absent.
+  TOTP_SECRET_ENCRYPTION_KEY: z.string().min(1).optional(),
 });
 
 export type AppConfig = Readonly<z.infer<typeof envSchema>>;

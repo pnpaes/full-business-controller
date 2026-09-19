@@ -41,6 +41,11 @@ export async function findUserByIdentifier(
   return rows[0];
 }
 
+export async function findUserById(db: Database, userId: string): Promise<User | undefined> {
+  const rows = await db.select().from(appUser).where(eq(appUser.id, userId)).limit(1);
+  return rows[0];
+}
+
 export async function createUser(db: Database, input: NewUser): Promise<User> {
   const rows = await db.insert(appUser).values(input).returning();
   return rows[0]!;

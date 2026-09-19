@@ -10,65 +10,67 @@ duplicate their content.
 **Say "resume the work" and start here.** A fresh session must be able to continue
 from this section alone.
 
-**Next task:** **Auth slice 1b-ii — application flow**. Slice 1b-i (the persistence access
-layer) is done in the working tree (uncommitted); `docs/BUILD_ROADMAP.md` tracks the loop and
-gates. Build the application commands/queries on top of it: login, TOTP verification,
-session issue/verify/revoke, lockout accounting, password reset and audit. No API/UI yet
-(slice 1c).
+**Next task:** **Auth slice 1b-iii — password reset + access control**. Slices 1a (domain
+primitives), 1b-i (persistence layer) and 1b-ii (application sign-in/MFA/session flow) are
+done and committed; `docs/BUILD_ROADMAP.md` tracks the loop and gates. Complete the auth
+application surface: password reset, server-side role/location authorization, and the
+user/role administration operations that revoke sessions. No API/UI yet (slice 1c).
 
-**Objective:** a tested, server-side authentication flow — generic login errors, lockout,
-TOTP + recovery codes (with replay protection via the persisted `last_used_counter`),
-server-side session revocation, role/location-scope authorization — backed by
-`packages/persistence`, with no external writes.
+**Objective:** complete the server-side auth core so the HTTP slice can expose it — neutral
+password-reset flows, role/location scope enforcement, and admin operations that revoke
+sessions on role change / off-boarding — with no external writes.
 
 **Scope (do):**
 
 1. Read `docs/adr/0003-identity-and-role-model.md`, `DEC-013` in
-   `12_OPEN_DECISIONS.md`, `docs/BUILD_ROADMAP.md` (§2 loop, §3 gates),
-   `packages/domain/src/auth/` (`sealSecret`/`openSecret`/`parseSecretKey` added in 1b-i),
-   `packages/persistence/src/client.ts` and `packages/persistence/src/repositories/`
-   (the 1b-i API), and `packages/application/src/` conventions.
-2. Implement `packages/application/src/auth/` commands/queries: authenticate (always call
-   `verifyPasswordOrDummy`, return `AUTH_ERROR_GENERIC`, apply `computeLockout`/`isLocked`,
-   reset the counter on success, rehash when `needsRehash`), verify TOTP (open the sealed
-   secret with `openSecret`, persist the matched counter via `setLastUsedCounter`, consume a
-   recovery code), issue/verify/revoke sessions (store only `hashSessionToken`), revoke all
-   sessions on role change/off-boarding, password reset (single-use
-   `hashPasswordResetToken`), and `writeAuditEvent` for every security change.
-3. Enforce role + location scope server-side at the application boundary — never UI hiding.
-4. Tests: unit tests for the flow with an injected repository fake, plus integration tests
-   against local PostgreSQL 16 (skipped when `DATABASE_URL` is unset) covering the happy
-   path, wrong password, unknown user, lockout, replayed TOTP, session revocation and
-   role-change revocation.
+   `12_OPEN_DECISIONS.md`, `docs/BUILD_ROADMAP.md`, `packages/application/src/auth/`
+   (the 1b-ii API: `AuthStore`, `authenticate`, `verifyMfa`, sessions, `audit`, `AuthDeps`),
+   and `packages/persistence/src/repositories/password-reset.ts`.
+2. Add to `packages/application/src/auth/`: `beginPasswordReset` (neutral response for an
+   unknown identifier; store only `hashPasswordResetToken`, expiry from
+   `PASSWORD_RESET_TTL_MINUTES`; the plaintext token is returned only for out-of-band
+   delivery and must never be logged) and `completePasswordReset` (find the active token,
+   hash the new password, `updatePasswordHash`, consume the token, revoke all sessions,
+   audit; generic failure for an invalid, expired or used token).
+3. Add the authorization surface: `loadUserAccess` (roles via `user_role`, location scopes
+   via `user_location_scope`), `isAuthorizedFor(access, { role?, locationId? })` as a pure
+   helper, and admin operations (`assignRole`/`setLocationScopes`/`disableUser`) that revoke
+   sessions and audit in the same transaction. Authorization is enforced from server data,
+   never UI hiding.
+4. Extend the `AuthStore` port and `createPostgresAuthStore` adapter for the above; new
+   repository functions are acceptable where genuinely missing, with tests.
+5. Tests: unit tests with the in-memory fake plus conditional PostgreSQL integration tests,
+   covering the neutral reset for unknown identifiers, single-use and expiry, session
+   revocation after reset, role/scope allow and deny, and session revocation on role
+   change/disabling.
 
-**Scope (do not):** no API routes/cookies/UI (slice 1c); **no new migration** — 1b-i already
-added `user_totp.last_used_counter` (migration 0003) and the schema is migrated; no external
-writes; no secrets in code or logs; `ADR-0003` is **Accepted** (2026-09-19), with its
-access-matrix, Argon2id-parameter and admin-reset items still open and tracked in the
-roadmap.
+**Scope (do not):** no API routes/cookies/UI (slice 1c); no new migration unless genuinely
+required (the schema exists); no external writes; no secrets, reset tokens or hashes in logs;
+`ADR-0003` is **Accepted** (2026-09-19), with its access-matrix, Argon2id-parameter and
+admin-reset items still open and tracked in the roadmap.
 
-**Files/paths:** `packages/application/src/` (auth commands/queries + authorization);
-`packages/domain/src/auth/` and `packages/persistence/src/` only to fix a defect.
+**Files/paths:** `packages/application/src/auth/`; `packages/persistence/src/repositories/`
+only for a genuinely missing function or a defect fix.
 
 **Read first:** `docs/adr/0003-identity-and-role-model.md`, `DEC-013` and `DEC-049` in
-`12_OPEN_DECISIONS.md`, `docs/BUILD_ROADMAP.md`, `docs/runbooks/persistence-migrations.md`,
-`packages/domain/src/auth/`, `packages/persistence/src/repositories/`, `AGENTS.md`
-Rules 1–3.
+`12_OPEN_DECISIONS.md`, `docs/BUILD_ROADMAP.md`, `packages/application/src/auth/`,
+`packages/persistence/src/repositories/`, `docs/runbooks/persistence-migrations.md`,
+`AGENTS.md` Rules 1–3.
 
 **Acceptance / verification:** `npm run lint && npm run typecheck && npm run test &&
-npm run build && npm run format:check` all pass; the auth tests (unit plus conditional
-PostgreSQL integration) cover the cases in scope item 4; no secrets in code or logs; audit
-rows are written for login success/failure and security changes.
+npm run build && npm run format:check` all pass; the cases in scope item 5 are covered by
+unit and conditional PostgreSQL integration tests; no secrets, tokens or hashes in logs;
+audit rows for every security change.
 
 **Open decisions / inputs that shape it:** `ADR-0003` is **Accepted** (2026-09-19); its open
 items (final access matrix / shared-device login, Argon2id parameters against the ~250 ms
 target, admin-assisted reset) still shape the implementation and are tracked in the
-roadmap's owner-input register.
-The lockout thresholds in `DEFAULT_LOCKOUT_POLICY` are provisional and tunable. `DEC-049`
-requires new queries to keep identifiers/aliases **code-controlled**. Deployment/apply stays
-blocked on `ADR-0004` acceptance and the Graphile Worker vs pg-boss choice; multi-tenancy
-posture; component cost estimate; staging data-sanitization owner; real DO credentials plus a
-provisioned Spaces state bucket; and a single-runner apply.
+roadmap's owner-input register. The lockout thresholds in `DEFAULT_LOCKOUT_POLICY` are
+provisional and tunable. `DEC-049` requires new queries to keep identifiers/aliases
+**code-controlled**. Deployment/apply stays blocked on `ADR-0004` acceptance and the
+Graphile Worker vs pg-boss choice; multi-tenancy posture; component cost estimate; staging
+data-sanitization owner; real DO credentials plus a provisioned Spaces state bucket; and a
+single-runner apply.
 
 **After this task:** **Auth slice 1c** — `/api/v1/auth` routes, session cookies
 (`HttpOnly`/`Secure`/`SameSite`, rotated on privilege change), and the minimal login/2FA UI.
@@ -105,29 +107,30 @@ uncommitted). No business slices yet.
 
 ## Current status
 
-- **As of:** 2026-09-19 — branch `main`; HEAD `5365557` (Phase 0 → persistence core →
-  deployment foundation → build roadmap → auth domain primitives → ADR-0003 accepted), with the
-  **auth slice 1b-i persistence access layer uncommitted** in the working tree. **Nothing has
-  been applied to DigitalOcean.**
+- **As of:** 2026-09-19 — branch `main`; HEAD `9fc8ba0` (Phase 0 → persistence core →
+  deployment foundation → build roadmap → auth domain primitives → ADR-0003 accepted → auth
+  persistence layer), with **auth slice 1b-ii (application sign-in/MFA/session flow)
+  uncommitted** in the working tree. **Nothing has been applied to DigitalOcean.**
 - **Commits:** `536d63e` (Phase 0 package) → `bb464d6` (foundation scaffold) →
   `e55ea23` (handoff and reversibility rules) → `b223212` (context into repo) →
   `f4c5c8f` (persistence core) → `52bf85a` (deployment foundation) → `9f96c42` (build roadmap)
-  → `1f92791` (auth domain primitives) → `5365557` (ADR-0003 accepted).
+  → `1f92791` (auth domain primitives) → `5365557` (ADR-0003 accepted) → `9fc8ba0` (auth
+  persistence layer).
 - **Phase 0:** complete — the accepted decisions are DEC-001…DEC-049
   (`12_OPEN_DECISIONS.md`; DEC-049 added 2026-09-19).
-- **Persistence core built (uncommitted):** Drizzle schema for the Phase 1–2
+- **Persistence core built (committed `f4c5c8f`):** Drizzle schema for the Phase 1–2
   scope — 35 tables covering organization/identity, catalog, tax/fees/FX,
   supplier pricing, recipes, products, costing snapshots, inventory ledger and
   outbox/audit — with migrations `0000_enable_extensions` → `0001_phase1_core`
   → `0002_invariants` under `packages/persistence/drizzle/`.
   `@aquarela/persistence` added `pg` and `db:migrate`; ADR-0002 is accepted;
   controlled-vocabulary authority is `schemas/domain-enums.yaml`.
-- **Deployment runtime scaffolding (uncommitted):** `apps/worker` / `apps/scheduler`
+- **Deployment runtime scaffolding (committed `52bf85a`):** `apps/worker` / `apps/scheduler`
   boot stubs and the advisory-locked `packages/persistence/scripts/migrate.mjs`
   (`DATABASE_MIGRATIONS_URL ?? DATABASE_URL`, session advisory lock `8675309`);
   `drizzle-orm` moved to runtime deps;
   verified end to end against local Postgres 16.
-- **Deployment infrastructure scaffolded and validated (uncommitted, `infra/`):**
+- **Deployment infrastructure scaffolded and validated (committed `52bf85a`, `infra/`):**
   Terraform 1.16.3 (`.terraform-version`) per `docs/runbooks/deployment.md` — modules
   `project`/`networking`/`spaces`/`database`/`app-platform`/`monitoring`/`dns` and env
   roots `staging`/`production`, DO provider pinned `~> 2.101` (2.101.1,
@@ -150,7 +153,7 @@ uncommitted). No business slices yet.
   `AUTH_ERROR_GENERIC`; new runtime dependency `@node-rs/argon2` (verified loading on
   Alpine/musl). **71 tests** (11 files); `lint`/`typecheck`/`build`/`format:check` pass.
   ADR-0003 was accepted 2026-09-19.
-- **Auth slice 1b-i done (2026-09-19, uncommitted):** persistence access layer in
+- **Auth slice 1b-i done (2026-09-19, committed `9fc8ba0`):** persistence access layer in
   `packages/persistence/src/` — `client.ts` (`createDb`, `Database` type over
   `drizzle-orm/node-postgres` + `pg.Pool`) and `repositories/` for `app_user`,
   `auth_session`, `user_totp`, `password_reset_token` and `audit_event` (append-only),
@@ -167,12 +170,22 @@ uncommitted). No business slices yet.
   `DATABASE_URL` (17 files; +9 secret-box, +24 conditional PostgreSQL
   integration) and **80 passed / 24 skipped** without it; migration applies
   0000–0003 and a second run is a no-op; `lint`/`typecheck`/`build`/`format:check`
-  pass. Slice 1b-ii (application flow) is next.
+  pass.
+- **Auth slice 1b-ii done (2026-09-19, uncommitted):** application auth flow in
+  `packages/application/src/auth/` — an `AuthStore` port plus `createPostgresAuthStore`
+  adapter, `authenticate` (always-hash timing path, `AUTH_ERROR_GENERIC`, lockout via
+  `computeLockout`/`isLocked`, rehash on success), `verifyMfa` (sealed TOTP secret, replay
+  counter, single-use recovery codes), `verifySession`/`logout`/`logoutAll`, and an audit
+  action vocabulary. `packages/config` gains `SESSION_TTL_MINUTES`,
+  `PASSWORD_RESET_TTL_MINUTES` and an optional `TOTP_SECRET_ENCRYPTION_KEY`; the
+  persistence `findUserById` primitive was added. **117 tests** with `DATABASE_URL`
+  (18 files) and **92 passed / 25 skipped** without it. Password reset, role/location
+  authorization and the admin operations are slice 1b-iii.
 - **Security regression (DEC-049):** `npm audit --omit=dev` reports **1 high** —
   GHSA-gpj5-g38j-94v9 / CWE-89 in `drizzle-orm <0.45.2` (pinned 0.38.4), because `drizzle-orm`
   is now a runtime dependency. Not reachable today (identifiers are code-controlled); upgrade
   to `>=0.45.2` before user input can reach identifier/alias builders and before production.
-- **Deployment architecture decided (uncommitted, docs only):** separate DO App Platform components
+- **Deployment architecture decided (committed, docs only):** separate DO App Platform components
   (`web`/`api`/`worker`/`scheduler`), DO Managed PostgreSQL kept (DEC-014 unchanged), DO Spaces,
   Terraform; see `docs/adr/0012-deployment-topology-and-service-runtimes.md` and
   `docs/runbooks/deployment.md`. The `infra/` layout is scaffolded and validated offline
@@ -183,14 +196,14 @@ uncommitted). No business slices yet.
 
 ## Next up (prioritised)
 
-`docs/BUILD_ROADMAP.md` is the ordered execution tracker for these slices (slice 0 `done`;
-slice 1 is next). The list below is the short narrative form.
+`docs/BUILD_ROADMAP.md` is the ordered execution tracker for these slices (slice 0 done;
+slices 1a/1b-i/1b-ii done; **slice 1b-iii next**). The list below is the short narrative form.
 
 1. **Auth slice** — `DEC-013` / `docs/adr/0003-identity-and-role-model.md`:
    Argon2id, TOTP 2FA, server-side sessions. The identity tables (including
    `auth_session` and `user_totp`) already exist in the persistence core. See
    "Resume here".
-2. **Deployment foundation — scaffolded and validated offline (uncommitted); not applied.**
+2. **Deployment foundation — scaffolded and validated offline (committed); not applied.**
    `infra/` Terraform (project, database, spaces, networking, app-platform,
    monitoring, dns) + the App Platform app spec are done, and the
    `apps/worker` / `apps/scheduler` stubs exist. Before any `apply`: the owner
@@ -297,8 +310,9 @@ and Spaces credentials via `-backend-config` / `AWS_ACCESS_KEY_ID` +
 - The `infra/` scaffold, runtime stubs and persistence core are now committed; revert them
   with `git revert` if needed. **No cloud resource was created — only offline
   `fmt`/`validate`/`plan` ran, never `apply`; no Terraform state exists.**
-- **Auth slice 1b-i is uncommitted and additive:** discard the working-tree changes (or
-  `git revert` once committed). The new modules are imported by no runtime yet; migration 0003
+- **Auth slice 1b-ii is uncommitted and additive:** discard the working-tree changes (or
+  `git revert` once committed); slice 1b-i is already committed as `9fc8ba0`. The new modules
+  are imported by no runtime yet; migration 0003
   is additive (nullable column + check) with the documented down path
   `ALTER TABLE "user_totp" DROP COLUMN "last_used_counter";`, and the empty-DB replay
   (`DROP SCHEMA public CASCADE; DROP SCHEMA drizzle CASCADE; CREATE SCHEMA public;
@@ -315,6 +329,27 @@ CREATE SCHEMA public; npm run db:migrate` (see the runbook). Once data exists,
   (`DEC-015`).
 
 ## Work log (append-only, newest first)
+
+### 2026-09-19 — Auth slice 1b-ii: application sign-in / MFA / session flow
+
+Built `packages/application/src/auth/` on the 1b-i repositories: an `AuthStore` port with a
+`createPostgresAuthStore` adapter (transaction-friendly, `db.transaction((tx) => ...)`),
+`authenticate` (always runs one verification including the dummy path for an unknown account,
+returns the single `AUTH_ERROR_GENERIC`, applies `computeLockout`/`isLocked`, resets the
+counter and rehashes on success, requires MFA without issuing a session when `totpEnabled`),
+`verifyMfa` (opens the sealed secret, rejects a replayed counter, consumes a recovery code
+once), `verifySession`/`logout`/`logoutAll`, and an `AUTH_AUDIT_ACTIONS` vocabulary; every
+outcome writes an audit row. `packages/config` gained `SESSION_TTL_MINUTES` (480),
+`PASSWORD_RESET_TTL_MINUTES` (30) and an optional `TOTP_SECRET_ENCRYPTION_KEY`, and the
+persistence layer gained `findUserById`.
+
+Verified: **117 tests** (18 files) with `DATABASE_URL` against local PostgreSQL 16 and
+**92 passed / 25 skipped** without it; `lint`, `typecheck`, `build` and `format:check` pass.
+Password reset, role/location authorization and the admin operations are deferred to slice
+1b-iii, so this slice is scoped to the sign-in path only.
+
+Rollback: discard this uncommitted change (or `git revert` once committed); the module is
+additive and imported by no runtime yet.
 
 ### 2026-09-19 — Auth slice 1b-i: accepted review findings applied
 
