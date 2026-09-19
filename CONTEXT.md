@@ -88,6 +88,8 @@ uncommitted). No business slices yet.
   and `docs/phase0/CALCULATION_CONTRACT.md`.
 - `docs/adr/` — architecture decision records `0001`–`0012`.
 - `docs/runbooks/` — operator runbooks (`persistence-migrations.md`, `deployment.md`).
+- `docs/BUILD_ROADMAP.md` — the ordered slice backlog and per-slice execution loop (a
+  derived execution tracker; decisions and accepted ADRs stay the authority).
 - `schemas/` — draft DDL and domain enums (`schemas/phase1_2_draft.sql`,
   `schemas/domain-enums.yaml`).
 - `samples/` — real POS exports, screenshots and templates (reference data).
@@ -149,6 +151,9 @@ uncommitted). No business slices yet.
   counts/transfers, period close, platform job/file/approval).
 
 ## Next up (prioritised)
+
+`docs/BUILD_ROADMAP.md` is the ordered execution tracker for these slices (slice 0 `done`;
+slice 1 is next). The list below is the short narrative form.
 
 1. **Auth slice** — `DEC-013` / `docs/adr/0003-identity-and-role-model.md`:
    Argon2id, TOTP 2FA, server-side sessions. The identity tables (including
