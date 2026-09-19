@@ -54,6 +54,19 @@ describe("convertQuantity", () => {
     ).toBe("0.000000");
   });
 
+  it("rejects an over-precise factor (numeric(19,6))", () => {
+    expect(() => convertQuantity(Quantity.from("1", "g"), gram, kilogram, "0.0000005")).toThrow(
+      DomainError,
+    );
+  });
+
+  it("keeps full precision for a large quantity", () => {
+    // 9999999.999999 kg x 1000 = 9999999999.999 kg exactly.
+    expect(
+      convertQuantity(Quantity.from("9999999.999999", "kg"), kilogram, gram, "1000").toString(),
+    ).toBe("9999999999.999000");
+  });
+
   it("is a no-op for a factor of exactly one", () => {
     expect(convertQuantity(Quantity.from("2.5", "g"), gram, gram, "1").toString()).toBe("2.500000");
   });

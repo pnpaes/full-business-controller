@@ -23,11 +23,13 @@ export class SupplierPack {
   }
 
   static from(packUnit: Unit, baseUnit: Unit, packToBaseUnitFactor: string): SupplierPack {
-    // "dimension must match unless package↔base" (DATA_DICTIONARY §2, unit_conversion).
+    // "dimension must match unless package↔base" (DATA_DICTIONARY §2,
+    // unit_conversion): a cross-dimension pack must resolve to the *base* unit of
+    // the other dimension, so `pack → kg` is rejected (kg is not `is_base`; g is).
     const compatible =
       packUnit.dimension === baseUnit.dimension ||
-      packUnit.dimension === "package" ||
-      baseUnit.dimension === "package";
+      (packUnit.dimension === "package" && baseUnit.isBase) ||
+      (baseUnit.dimension === "package" && packUnit.isBase);
     if (!compatible) {
       throw new DomainError(
         `incompatible pack dimensions: ${packUnit.dimension} vs ${baseUnit.dimension}`,

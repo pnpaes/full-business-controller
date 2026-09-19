@@ -19,13 +19,18 @@ describe("SupplierPack", () => {
   });
 
   it("supports a fractional pack-to-base-unit factor", () => {
-    const rice = SupplierPack.from(pack, kilogram, "2.5");
+    const rice = SupplierPack.from(pack, gram, "2.5");
     expect(rice.baseUnitsReceived(Quantity.from("3", "pack")).toString()).toBe("7.500000");
   });
 
   it("allows a same-dimension pack (e.g. bottle to litre) and package to base", () => {
     expect(() => SupplierPack.from(pack, gram, "1000")).not.toThrow();
     expect(() => SupplierPack.from(kilogram, gram, "1000")).not.toThrow();
+  });
+
+  it("rejects a cross-dimension pack that does not resolve to the base unit", () => {
+    // `g` is the base mass unit, `kg` is not, so pack -> kg is not "package↔base".
+    expect(() => SupplierPack.from(pack, kilogram, "1000")).toThrow(DomainError);
   });
 
   it("rejects a non-positive or over-precise factor", () => {

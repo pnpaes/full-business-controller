@@ -9,6 +9,8 @@ export type UnitDimension = (typeof UNIT_DIMENSIONS)[number];
 
 /** Conversion factors are `numeric(19,6)` (`DATA_DICTIONARY` §2). */
 const FACTOR_SCALE = 6;
+/** Divisor that rescales the scale-12 product back to quantity scale. */
+const FACTOR_DIVISOR = 10n ** BigInt(FACTOR_SCALE);
 
 /**
  * A unit of measure (FND-003, PROC-001): its `code` (the schema's `unit.code`),
@@ -37,6 +39,7 @@ export class Unit {
     if (trimmed.length === 0) {
       throw new DomainError("unit code must not be empty");
     }
+    // Runtime guard for JS callers; typed callers cannot pass anything else.
     if (!UNIT_DIMENSIONS.includes(dimension)) {
       throw new DomainError(`"${dimension}" is not a known unit dimension`);
     }
@@ -87,6 +90,6 @@ export function convertQuantity(
 
   const units = parseDecimal(quantity.toString(), QUANTITY_SCALE);
   const scaled = units * ratio;
-  const converted = divideRoundHalfUp(scaled, parseDecimal("1", FACTOR_SCALE));
+  const converted = divideRoundHalfUp(scaled, FACTOR_DIVISOR);
   return Quantity.from(formatDecimal(converted, QUANTITY_SCALE), to.code);
 }
