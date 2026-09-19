@@ -101,6 +101,15 @@ export const FEE_BASIS = ["gross_price", "net_price", "per_order"] as const;
 
 export const UNIT_DIMENSION = ["mass", "volume", "count", "time", "package"] as const;
 
+// Values from `schemas/domain-enums.yaml` (`cost_center_kind`).
+export const COST_CENTER_KIND = [
+  "company_shared",
+  "location",
+  "kitchen",
+  "front_of_house",
+  "project",
+] as const;
+
 export const ROLE_CODE = [
   "owner",
   "general_manager",

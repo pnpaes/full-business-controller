@@ -2,7 +2,7 @@ import { sql } from "drizzle-orm";
 import { boolean, check, date, pgTable, text, unique, uuid } from "drizzle-orm/pg-core";
 
 import { currency, enumCheck, jsonObject, orgId, rangeCheck, tstz, uuidPk } from "./columns";
-import { LOCATION_KIND, STORAGE_AREA_KIND } from "./vocabularies";
+import { COST_CENTER_KIND, LOCATION_KIND, STORAGE_AREA_KIND } from "./vocabularies";
 
 export const organization = pgTable("organization", {
   id: uuidPk(),
@@ -63,4 +63,21 @@ export const channel = pgTable(
     isDelivery: boolean("is_delivery").notNull().default(false),
   },
   (t) => [unique("channel_organization_id_code_key").on(t.organizationId, t.code)],
+);
+
+/** `cost_center` (`DATA_DICTIONARY` §1): null `location_id` = company shared. */
+export const costCenter = pgTable(
+  "cost_center",
+  {
+    id: uuidPk(),
+    organizationId: orgId().references(() => organization.id),
+    locationId: uuid("location_id").references(() => location.id),
+    code: text("code").notNull(),
+    name: text("name").notNull(),
+    kind: text("kind").notNull(),
+  },
+  (t) => [
+    unique("cost_center_organization_id_code_key").on(t.organizationId, t.code),
+    check("cost_center_kind_check", enumCheck(t.kind, COST_CENTER_KIND)),
+  ],
 );

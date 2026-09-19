@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import type { Database, DatabaseTransaction, NodeDatabase } from "../client";
-import { location, organization, role } from "../schema";
+import { item, location, organization, role, unit } from "../schema";
 import { createUser, type NewUser, type User } from "./users";
 
 /**
@@ -82,6 +82,45 @@ export async function createTestRole(
       organizationId,
       code: "owner",
       name: "Owner",
+      ...overrides,
+    })
+    .returning();
+  return rows[0]!;
+}
+
+export async function createTestUnit(
+  db: Database,
+  organizationId: string,
+  overrides: Partial<typeof unit.$inferInsert> = {},
+): Promise<typeof unit.$inferSelect> {
+  const rows = await db
+    .insert(unit)
+    .values({
+      organizationId,
+      code: uniqueName("unit"),
+      dimension: "mass",
+      isBase: true,
+      ...overrides,
+    })
+    .returning();
+  return rows[0]!;
+}
+
+export async function createTestItem(
+  db: Database,
+  organizationId: string,
+  baseUnitId: string,
+  overrides: Partial<typeof item.$inferInsert> = {},
+): Promise<typeof item.$inferSelect> {
+  const rows = await db
+    .insert(item)
+    .values({
+      organizationId,
+      code: uniqueName("item"),
+      sku: uniqueName("sku"),
+      name: "Test Item",
+      itemType: "ingredient",
+      baseUnitId,
       ...overrides,
     })
     .returning();

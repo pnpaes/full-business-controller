@@ -11,7 +11,17 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 
-import { currency, enumCheck, money, orgId, quantity, rangeCheck, tstz, uuidPk } from "./columns";
+import {
+  currency,
+  effectiveRange,
+  enumCheck,
+  money,
+  orgId,
+  quantity,
+  rangeCheck,
+  tstz,
+  uuidPk,
+} from "./columns";
 import { organization } from "./organization";
 import { COST_SOURCE, INVENTORY_POLICY, ITEM_TYPE, UNIT_DIMENSION } from "./vocabularies";
 
@@ -94,5 +104,35 @@ export const costObservation = pgTable(
     check("cost_observation_pack_price_check", sql`${t.packPrice} is null or ${t.packPrice} >= 0`),
     check("cost_observation_source_check", enumCheck(t.source, COST_SOURCE)),
     index("cost_observation_item_idx").on(t.organizationId, t.itemId, t.observedAt),
+  ],
+);
+
+/**
+ * `unit_conversion` (`DATA_DICTIONARY` §2): the effective-dated, optionally
+ * item-scoped conversion graph (FND-003). `item_id` is null for a global factor
+ * and set for a pack/density-specific one; the draft deliberately leaves the
+ * item-vs-global precedence and the overlap rule unspecified, so no exclusion
+ * constraint is emitted here and the domain resolver rejects a conflicting
+ * pair as ambiguous instead of guessing a precedence.
+ */
+export const unitConversion = pgTable(
+  "unit_conversion",
+  {
+    id: uuidPk(),
+    organizationId: orgId().references(() => organization.id),
+    fromUnitId: uuid("from_unit_id")
+      .notNull()
+      .references(() => unit.id),
+    toUnitId: uuid("to_unit_id")
+      .notNull()
+      .references(() => unit.id),
+    factor: quantity("factor").notNull(),
+    itemId: uuid("item_id").references(() => item.id),
+    ...effectiveRange(),
+  },
+  (t) => [
+    check("unit_conversion_factor_check", sql`${t.factor} > 0`),
+    check("unit_conversion_effective_range_check", rangeCheck(t.effectiveFrom, t.effectiveTo)),
+    index("unit_conversion_lookup_idx").on(t.organizationId, t.fromUnitId, t.toUnitId),
   ],
 );

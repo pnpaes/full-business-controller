@@ -1,7 +1,7 @@
 import { formatDecimal, parseDecimal } from "./decimal";
 import { DomainError } from "./errors";
 import { QUANTITY_SCALE, Quantity } from "./quantity";
-import { Unit } from "./unit";
+import { areUnitsConvertible, Unit } from "./unit";
 
 /** `pack_to_base_unit_factor` is `numeric(19,6)`, like quantity (`DATA_DICTIONARY` §2). */
 const FACTOR_SCALE = 6;
@@ -26,11 +26,7 @@ export class SupplierPack {
     // "dimension must match unless package↔base" (DATA_DICTIONARY §2,
     // unit_conversion): a cross-dimension pack must resolve to the *base* unit of
     // the other dimension, so `pack → kg` is rejected (kg is not `is_base`; g is).
-    const compatible =
-      packUnit.dimension === baseUnit.dimension ||
-      (packUnit.dimension === "package" && baseUnit.isBase) ||
-      (baseUnit.dimension === "package" && packUnit.isBase);
-    if (!compatible) {
+    if (!areUnitsConvertible(packUnit, baseUnit)) {
       throw new DomainError(
         `incompatible pack dimensions: ${packUnit.dimension} vs ${baseUnit.dimension}`,
       );

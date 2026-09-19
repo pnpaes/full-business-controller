@@ -14,7 +14,9 @@ import * as schema from "./index";
 
 const tables = Object.values(schema).filter((value) => is(value, PgTable));
 
-/** The 35 in-scope Phase 1-2 tables, from `schemas/phase1_2_draft.sql`. */
+/** The 39 in-scope Phase 1-2 tables: the 35 core tables plus the slice-3
+ * master-data additions (`unit_conversion`, `supplier`, `supplier_item`,
+ * `cost_center`) from `schemas/phase1_2_draft.sql` / `DATA_DICTIONARY` §2. */
 const EXPECTED_TABLES = [
   "addon_applicability",
   "app_user",
@@ -24,6 +26,7 @@ const EXPECTED_TABLES = [
   "channel",
   "channel_fee_rule",
   "cost_card",
+  "cost_center",
   "cost_observation",
   "data_ownership",
   "exchange_rate",
@@ -45,9 +48,12 @@ const EXPECTED_TABLES = [
   "stock_lot",
   "stock_movement",
   "storage_area",
+  "supplier",
+  "supplier_item",
   "supplier_price",
   "tax_rule",
   "unit",
+  "unit_conversion",
   "user_location_scope",
   "user_role",
   "user_totp",

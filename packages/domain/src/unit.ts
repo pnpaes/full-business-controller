@@ -63,6 +63,20 @@ export class Unit {
 }
 
 /**
+ * Dimension rule shared by every conversion edge (`DATA_DICTIONARY` §2,
+ * `unit_conversion`; FND-003): dimensions must match, **unless** one side is a
+ * `package` unit and the other is the canonical base unit of another dimension
+ * (`pack → g` is allowed; `pack → kg` is not, because `kg` is not `is_base`).
+ */
+export function areUnitsConvertible(a: Unit, b: Unit): boolean {
+  return (
+    a.dimension === b.dimension ||
+    (a.dimension === "package" && b.isBase) ||
+    (b.dimension === "package" && a.isBase)
+  );
+}
+
+/**
  * Applies a resolved `from` → `to` conversion factor (the `unit_conversion.factor`,
  * `numeric(19,6)`) to a quantity, rounding once HALF_UP at quantity scale (6 dp;
  * DEC-024). The factor is supplied by the caller because it is resolved from the
