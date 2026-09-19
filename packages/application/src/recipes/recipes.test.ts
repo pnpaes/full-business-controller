@@ -609,4 +609,162 @@ describe("computeRecipeCost (§6)", () => {
       computeRecipeCost(store, { organizationId: "org-2", recipeVersionId: version, asOf: JUN }),
     ).rejects.toThrow(DomainError);
   });
+
+  it("rejects a non-approved version id (COST-002)", async () => {
+    const { store, g, pizza } = costedStore();
+    store.lines.push({
+      id: "line-draft",
+      recipeVersionId: "pizza-draft",
+      componentKind: "ingredient",
+      itemId: "item-flour",
+      subRecipeId: null,
+      quantity: "0.800000",
+      unitId: g,
+      lossFactor: "1.000000",
+      stage: null,
+      substitutionGroup: null,
+    });
+    const draft = makeVersion(store, "pizza-draft", pizza, { state: "draft" });
+    await expect(
+      computeRecipeCost(store, { organizationId: ORG, recipeVersionId: draft, asOf: JUN }),
+    ).rejects.toThrow(/must be approved to cost/);
+  });
+
+  it("normalises an observation pack unit through the conversion graph", async () => {
+    const store = new FakeRecipeStore();
+    const g = makeUnit(store, "g", "mass", true);
+    const kg = makeUnit(store, "kg", "mass", false);
+    addConversion(store, kg, g, "1000.000000");
+    makeItem(store, "item-pizza", g);
+    makeItem(store, "item-salt", g);
+    // A 1 kg pack at 100.0000 must become 0.1000 per gram, not per kilogram.
+    store.observations.set("item-salt", [
+      {
+        id: "o1",
+        packPrice: "100.0000",
+        packSize: "1.000000",
+        packUnitId: kg,
+        observedAt: "2025-06-01",
+      },
+    ]);
+    const pizza = makeRecipe(store, "recipe-pizza", "Pizza", "item-pizza");
+    const version = makeVersion(store, "pizza-v1", pizza);
+    store.lines.push({
+      id: "line-1",
+      recipeVersionId: version,
+      componentKind: "ingredient",
+      itemId: "item-salt",
+      subRecipeId: null,
+      quantity: "1.000000",
+      unitId: g,
+      lossFactor: "1.000000",
+      stage: null,
+      substitutionGroup: null,
+    });
+    const cost = await computeRecipeCost(store, {
+      organizationId: ORG,
+      recipeVersionId: version,
+      asOf: JUN,
+    });
+    expect(cost.components[0]).toMatchObject({
+      sourceType: "cost_observation",
+      unitCost: "0.1000",
+      lineCost: "0.1000",
+    });
+  });
+
+  it("converts a parent sub-recipe line from kg into the child's gram base unit", async () => {
+    const store = new FakeRecipeStore();
+    const g = makeUnit(store, "g", "mass", true);
+    const kg = makeUnit(store, "kg", "mass", false);
+    addConversion(store, kg, g, "1000.000000");
+    makeItem(store, "item-sauce", g);
+    makeItem(store, "item-tomato", g);
+    makeItem(store, "item-pizza", g);
+    store.supplierPrices.set("item-tomato", [
+      { cost: "0.1000", effectiveFrom: new Date("2025-01-01T00:00:00Z") },
+    ]);
+    const sauce = makeRecipe(store, "recipe-sauce", "Sauce", "item-sauce");
+    const sauceV1 = makeVersion(store, "sauce-v1", sauce, { approvedUsableOutput: "1.000000" });
+    store.lines.push({
+      id: "sauce-line-1",
+      recipeVersionId: sauceV1,
+      componentKind: "ingredient",
+      itemId: "item-tomato",
+      subRecipeId: null,
+      quantity: "0.500000",
+      unitId: g,
+      lossFactor: "1.000000",
+      stage: null,
+      substitutionGroup: null,
+    });
+    const pizza = makeRecipe(store, "recipe-pizza", "Pizza", "item-pizza");
+    const pizzaV1 = makeVersion(store, "pizza-v1", pizza, { approvedUsableOutput: "1.000000" });
+    // The parent line is in kg while the child's base unit is g.
+    store.lines.push({
+      id: "pizza-line-1",
+      recipeVersionId: pizzaV1,
+      componentKind: "sub_recipe",
+      itemId: null,
+      subRecipeId: sauce,
+      quantity: "0.003000", // 3 g
+      unitId: kg,
+      lossFactor: "1.000000",
+      stage: null,
+      substitutionGroup: null,
+    });
+
+    const cost = await computeRecipeCost(store, {
+      organizationId: ORG,
+      recipeVersionId: pizzaV1,
+      asOf: JUN,
+    });
+    // Sauce: 0.5 g × 0.1 = 0.0500 per 1 g; pizza: 3 g × 0.0500 = 0.1500.
+    expect(cost.components[0]).toMatchObject({
+      sourceType: "sub_recipe",
+      unitId: g,
+      requiredPurchaseQuantity: "3.000000",
+      lineCost: "0.1500",
+    });
+  });
+
+  it("rejects a cycle inserted into the store defensively (COST-002)", async () => {
+    const store = new FakeRecipeStore();
+    const g = makeUnit(store, "g", "mass", true);
+    makeItem(store, "item-a", g);
+    makeItem(store, "item-b", g);
+    const a = makeRecipe(store, "recipe-a", "A", "item-a");
+    const b = makeRecipe(store, "recipe-b", "B", "item-b");
+    const aV1 = makeVersion(store, "a-v1", a);
+    const bV1 = makeVersion(store, "b-v1", b);
+    // Registration would reject this; the store is seeded directly to prove
+    // costing refuses to recurse forever on bad data.
+    store.lines.push({
+      id: "a-line-1",
+      recipeVersionId: aV1,
+      componentKind: "sub_recipe",
+      itemId: null,
+      subRecipeId: b,
+      quantity: "1.000000",
+      unitId: g,
+      lossFactor: "1.000000",
+      stage: null,
+      substitutionGroup: null,
+    });
+    store.lines.push({
+      id: "b-line-1",
+      recipeVersionId: bV1,
+      componentKind: "sub_recipe",
+      itemId: null,
+      subRecipeId: a,
+      quantity: "1.000000",
+      unitId: g,
+      lossFactor: "1.000000",
+      stage: null,
+      substitutionGroup: null,
+    });
+    await expect(
+      computeRecipeCost(store, { organizationId: ORG, recipeVersionId: aV1, asOf: JUN }),
+    ).rejects.toThrow(/circular sub-recipes/);
+  });
 });

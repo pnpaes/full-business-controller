@@ -64,7 +64,10 @@ and its `NULLS NOT DISTINCT` `unit_conversion_version_key` live only in
 `0005_unit_conversion_invariants.sql`; the
 `goods_receipt_line_accept_qty_guard` trigger/function (an accepted receipt's
 line must have `accepted_pack_qty > 0`; a plain CHECK cannot read the parent
-status) lives only in `0007_goods_receipt_line_checks.sql`. This is the
+status) lives only in `0007_goods_receipt_line_checks.sql`; and the
+`recipe_version_no_overlap` exclusion constraint from `0002` is **replaced** by
+a state-gated version in `0010_recipe_version_draft_overlap.sql` (approved /
+submitted only, so drafts may overlap; `DEC-053`). This is the
 **hand-written invariants convention**: anything drizzle-kit cannot express
 (extensions, exclusion constraints, expression/partial indexes, deferrable FKs,
 triggers, `NULLS NOT DISTINCT` keys) goes in a hand-written `*_invariants.sql`
@@ -79,9 +82,11 @@ them manually is invisible to the tool.
 > diffs the live database against the TypeScript schema and, because the raw
 > objects are invisible to it, will silently drop the exclusion constraints, the
 > two deferrable FKs, the append-only triggers, the `unit_conversion`
-> constraints and the `goods_receipt_line` guard. Those objects live only in
-> `0002_invariants.sql`, `0005_unit_conversion_invariants.sql` and
-> `0007_goods_receipt_line_checks.sql`; use `generate` + `migrate` and the
+> constraints, the state-gated `recipe_version_no_overlap` and the
+> `goods_receipt_line` guard. Those objects live only in
+> `0002_invariants.sql`, `0005_unit_conversion_invariants.sql`,
+> `0007_goods_receipt_line_checks.sql` and
+> `0010_recipe_version_draft_overlap.sql`; use `generate` + `migrate` and the
 > guard below.
 
 **Guard:** before committing any future generated migration, diff the database
@@ -189,6 +194,19 @@ only, so the down file is an explicit operator action, not an automatic one.
   Only run it once no allergen declarations are needed: the drops are
   destructive and master records referenced by versions are retired, not
   deleted (AGENTS.md Rule 2).
+- **0010 gates `recipe_version_no_overlap` by state and follows the down
+  convention:** `0010_recipe_version_draft_overlap.sql` drops the ungated
+  constraint from `0002` and recreates it with `WHERE ("state" IN ('approved',
+  'submitted'))`, so two **draft** versions of one recipe may overlap in time
+  while approved/submitted versions still may not (`DEC-053`).
+  `0010_recipe_version_draft_overlap_down.sql` restores the original ungated
+  constraint inside one `BEGIN;`/`COMMIT;`. The down **re-add validates every
+  existing row**, so it fails (and rolls back, leaving 0010 in place) if
+  overlapping drafts exist — resolve or delete them first. Apply it manually
+  with
+  `psql "$DATABASE_URL" -f packages/persistence/drizzle/0010_recipe_version_draft_overlap_down.sql`.
+  It touches no table and no row, only the constraint, so it is safe once the
+  draft overlaps are resolved.
 
 **Re-applying after a manual down:** drizzle-kit tracks applied migrations in
 `drizzle.__drizzle_migrations`, not by comparing the schema, so a plain
@@ -198,11 +216,13 @@ row is identified by `created_at` (the `_journal.json` `when`):
 `DELETE FROM drizzle.__drizzle_migrations WHERE created_at = 1789847649193;`
 for 0003, `… = 1789850858806` for 0004, `… = 1789851925634` for 0005,
 `… = 1789853260355` for 0006, `… = 1789853887846` for 0007 and
-`… = 1789853918031` for 0008, `… = 1789854468899` for 0009, then
+`… = 1789853918031` for 0008, `… = 1789854468899` for 0009,
+`… = 1789855382064` for 0010, then
 `npm run db:migrate` (0003 verified 2026-09-19; 0005 rehearsed in the slice-3
 review follow-up; 0006 rehearsed with the slice-4 receiving work; 0007 and
 0008 rehearsed with the slice-4 review follow-up; 0009 rehearsed with the
-slice-5 recipe work). Re-applying is only safe
+slice-5 recipe work; 0010 rehearsed with the slice-5 review follow-up).
+Re-applying is only safe
 while the removed objects carry no data that must be preserved — once real
 master data, TOTP counters or conversions exist, prefer the additive forward
 path over re-running the down.
@@ -283,6 +303,7 @@ session will not serialise against each other.
 | 0007 | `0007_goods_receipt_line_checks.sql` | Hand-written: `goods_receipt_line_accept_qty_guard`, a BEFORE INSERT/UPDATE trigger that rejects `accepted_pack_qty <= 0` when the parent receipt is `accepted` (a CHECK cannot read the parent status). Down companion: `0007_goods_receipt_line_checks_down.sql` (drops the trigger and function) |
 | 0008 | `0008_supplier_price_effective_range.sql` | Generated: relaxes `supplier_price_effective_range_check` to `effective_to >= effective_from`, so the half-open `[)` history can represent a same-instant re-record as an empty window (non-overlapping under `supplier_price_no_overlap`). Down companion: `0008_supplier_price_effective_range_down.sql` (restores the strict `>`) |
 | 0009 | `0009_recipe_allergens.sql` | Generated: the two slice-5 allergen tables — `allergen` and `recipe_allergen` — with their checks, unique key, composite primary key, FKs and the `recipe_allergen_allergen_idx`. The recipe tables (`recipe`, `recipe_version`, `recipe_line`) already exist from the 0001 core (with `recipe_version_no_overlap` in 0002), so 0009 adds only the allergen declarations. Down companion: `0009_recipe_allergens_down.sql` (transactional `DROP TABLE IF EXISTS` in FK-safe order) |
+| 0010 | `0010_recipe_version_draft_overlap.sql` | Hand-written: drops the ungated `recipe_version_no_overlap` from `0002` and recreates it gated to `WHERE ("state" IN ('approved','submitted'))`, so two draft versions of one recipe may overlap while approved/submitted versions may not (`DEC-053`). Down companion: `0010_recipe_version_draft_overlap_down.sql` (restores the original ungated constraint; re-add validates existing rows) |
 
 Order matters: extensions before DDL that calls `gen_random_uuid()`, and before
 the exclusion constraints. Verify with:
@@ -312,11 +333,12 @@ DATABASE_URL=postgres://aquarela:aquarela@localhost:5432/aquarela npm run db:mig
 `public` alone leaves the ledger intact, so `db:migrate` reports success while
 restoring nothing. `DROP SCHEMA drizzle CASCADE` clears the ledger so all
 migrations replay from 0000. Verified: after this sequence `db:migrate`
-re-applies 0000–0009 and the database has all 43 tables plus both extensions
+re-applies 0000–0010 and the database has all 43 tables plus both extensions
 (0004 adds the four slice-3 master-data tables; 0006 adds the two slice-4
 receiving tables; 0007 adds the `goods_receipt_line` guard trigger — no table;
 0008 relaxes the `supplier_price` range check — no table; 0009 adds the two
-slice-5 allergen tables).
+slice-5 allergen tables; 0010 replaces the `recipe_version` exclusion
+constraint — no table).
 
 Once real data exists, this path is no longer acceptable: use small atomic
 commits, expand → migrate → contract for schema changes, and a tested
@@ -363,6 +385,11 @@ After applying to an empty database the following were verified with `psql`:
   `{derived, verified}` is rejected by `recipe_allergen_source_check`; a
   `verified` declaration without `verified_by` is rejected by
   `recipe_allergen_verified_check`.
+- `recipe_version` (0010): two overlapping **draft** versions of one recipe are
+  accepted, while two overlapping **approved** (or **submitted**) versions are
+  rejected by the state-gated `recipe_version_no_overlap`. A draft may overlap an
+  approved version; an approved overlapping another approved is the failure the
+  constraint exists to catch.
 - Deferrable FKs: a `calculation_snapshot` and its `cost_card` can be inserted
   in the same transaction in either order and commit together.
 - `calculation_snapshot`: a plain `TRUNCATE` is blocked first by the FK from

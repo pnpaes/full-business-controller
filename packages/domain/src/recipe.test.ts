@@ -34,6 +34,23 @@ describe("requiredPurchaseQuantity (B0)", () => {
     expect(requiredPurchaseQuantity("2.500000", "1.000000", "1.000000")).toBe("2.500000");
   });
 
+  it("rounds HALF_UP at B0 when the 5th decimal decides", () => {
+    // 1 / 0.999995 = 1.000005000025…; the 7th decimal is below the 6 dp half,
+    // so the half-up step lands on 1.000005 (not 1.000006).
+    expect(requiredPurchaseQuantity("1.000000", "0.999995", "1.000000")).toBe("1.000005");
+    // …and a candidate just past the half rounds up.
+    expect(requiredPurchaseQuantity("1.000006", "0.999995", "1.000000")).toBe("1.000011");
+  });
+
+  it("rejects a zero loss factor or yield rate (zero divisor)", () => {
+    expect(() => requiredPurchaseQuantity("1.000000", "0", "1.000000")).toThrow(
+      /lossFactor must be in/,
+    );
+    expect(() => requiredPurchaseQuantity("1.000000", "1.000000", "0")).toThrow(
+      /usable yield rate must be in/,
+    );
+  });
+
   it("rejects an out-of-range loss factor or yield rate and zero quantity", () => {
     expect(() => requiredPurchaseQuantity("1", "1.200000", "1.000000")).toThrow(
       /lossFactor must be in/,
@@ -55,6 +72,15 @@ describe("lineCost (B2)", () => {
   it("rounds HALF_UP at the 4 dp boundary", () => {
     // 0.5 × 0.0001 = 0.00005 → 0.0001 (HALF_UP, not HALF_EVEN).
     expect(lineCost("0.500000", "0.0001", "NOK")).toBe("0.0001");
+  });
+
+  it("rounds HALF_UP at B2 when the 5th decimal decides", () => {
+    // 1.000050 × 1.0000 = 1.000050 → 1.0001 (exact half rounds up).
+    expect(lineCost("1.000050", "1.0000", "NOK")).toBe("1.0001");
+    // 1.000049 × 1.0000 = 1.000049 → 1.0000 (just below the half).
+    expect(lineCost("1.000049", "1.0000", "NOK")).toBe("1.0000");
+    // 0.000051 × 1.0000 = 0.000051 → 0.0001 (just above the half).
+    expect(lineCost("0.000051", "1.0000", "NOK")).toBe("0.0001");
   });
 
   it("rejects a negative base-unit cost", () => {
@@ -96,6 +122,21 @@ describe("computeRecipeCost (B3)", () => {
     expect(() =>
       computeRecipeCost({ currency: "NOK", lines: [], approvedUsableOutput: "0" }),
     ).toThrow(/approvedUsableOutput must be positive/);
+  });
+
+  it("rounds HALF_UP at B3 when the 5th decimal decides", () => {
+    const perUnit = (lineCost: string) =>
+      computeRecipeCost({
+        currency: "NOK",
+        lines: [{ lineCost }],
+        approvedUsableOutput: "0.800000",
+      }).costPerUsableOutputUnit;
+    // 0.0002 / 0.8 = 0.00025 → 0.0003 (exact half rounds up).
+    expect(perUnit("0.0002")).toBe("0.0003");
+    // 0.0001 / 0.8 = 0.000125 → 0.0001 (just below the half).
+    expect(perUnit("0.0001")).toBe("0.0001");
+    // 0.0003 / 0.8 = 0.000375 → 0.0004 (just above the half).
+    expect(perUnit("0.0003")).toBe("0.0004");
   });
 });
 

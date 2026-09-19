@@ -24,8 +24,15 @@ export interface LoadedRecipeVersion {
 /**
  * Loads the recipe version effective at `asOf` (half-open window) with its lines
  * and allergen declarations. Overlapping windows or a missing version are
- * rejected rather than guessed. The version's `state` is returned as-is; callers
- * that need an approved version filter on it.
+ * rejected rather than guessed.
+ *
+ * This is a **read** and deliberately edition-agnostic: any state is returned,
+ * including `draft`, `submitted`, `rejected` and `retired`, because viewing a
+ * draft alongside its lines and allergens is a legitimate operation. It does not
+ * filter to `approved`; callers that require an approved version must filter on
+ * `version.state` themselves. Costing does not use this loader:
+ * `computeRecipeCost` reads the version directly and enforces its own
+ * approved-state guard.
  */
 export async function loadRecipeVersionAsOf(
   store: RecipeStore,

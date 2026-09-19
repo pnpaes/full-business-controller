@@ -1,5 +1,6 @@
 import {
   allergen,
+  createCostObservation,
   createDb,
   createSupplier,
   createSupplierItem,
@@ -121,6 +122,7 @@ describe.skipIf(!databaseUrl)("recipes against PostgreSQL", () => {
     tx: DatabaseTransaction,
     itemId: string,
     landedBaseUnitCost: string,
+    effectiveTo: Date | null = null,
   ): Promise<void> {
     const supplier = await createSupplier(tx, {
       organizationId: orgId,
@@ -145,6 +147,7 @@ describe.skipIf(!databaseUrl)("recipes against PostgreSQL", () => {
       landedBaseUnitCost,
       currency: "NOK",
       effectiveFrom: EARLY,
+      effectiveTo,
     });
   }
 
@@ -221,10 +224,12 @@ describe.skipIf(!databaseUrl)("recipes against PostgreSQL", () => {
         actorId: randomUUID(),
         recipeId,
         versionNo: 1,
+        state: "approved",
         plannedInputQty: "1.000000",
         plannedOutputQty: "1.000000",
         approvedUsableOutput: "0.800000",
         effectiveFrom: EARLY,
+        approvedBy: randomUUID(),
         lines: [{ componentKind: "ingredient", itemId: flour, quantity: "0.000800", unitId: kg }],
       });
       const cost = await computeRecipeCost(store, {
@@ -234,6 +239,57 @@ describe.skipIf(!databaseUrl)("recipes against PostgreSQL", () => {
       });
       expect(cost.components[0]!.requiredPurchaseQuantity).toBe("1.000000");
       expect(cost.components[0]!.lineCost).toBe("0.2000");
+    });
+  });
+
+  it("excludes expired supplier prices and future cost observations", async () => {
+    await inRollback(client.db, async (tx) => {
+      const { g } = await createFixture(tx);
+      const flour = await insertItem(tx, "flour", g, "7.0000");
+      const dough = await insertItem(tx, "dough", g);
+      // Expired before AS_OF …
+      await insertSupplierPrice(tx, flour, "0.2000", new Date("2025-06-01T00:00:00Z"));
+      // … and observed after AS_OF; both must be ignored, leaving current_cost.
+      await createCostObservation(tx, {
+        organizationId: orgId,
+        itemId: flour,
+        observedAt: "2026-07-01",
+        packSize: "1000.000000",
+        packUnitId: g,
+        packPrice: "500.0000",
+        currency: "NOK",
+        source: "manual",
+      });
+      const store = createPostgresRecipeStore(tx);
+      const { recipeId } = await registerRecipe(store, {
+        organizationId: orgId,
+        actorId: randomUUID(),
+        code: "DOUGH",
+        name: "Dough",
+        outputItemId: dough,
+      });
+      const { recipeVersionId } = await registerRecipeVersion(store, {
+        organizationId: orgId,
+        actorId: randomUUID(),
+        recipeId,
+        versionNo: 1,
+        state: "approved",
+        plannedInputQty: "1.000000",
+        plannedOutputQty: "1.000000",
+        approvedUsableOutput: "1.000000",
+        effectiveFrom: EARLY,
+        approvedBy: randomUUID(),
+        lines: [{ componentKind: "ingredient", itemId: flour, quantity: "1.000000", unitId: g }],
+      });
+      const cost = await computeRecipeCost(store, {
+        organizationId: orgId,
+        recipeVersionId,
+        asOf: AS_OF,
+      });
+      expect(cost.components[0]).toMatchObject({
+        sourceType: "current_cost",
+        unitCost: "7.0000",
+      });
     });
   });
 

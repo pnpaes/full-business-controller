@@ -71,6 +71,13 @@
       "when": 1789854468899,
       "tag": "0009_recipe_allergens",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1789855382064,
+      "tag": "0010_recipe_version_draft_overlap",
+      "breakpoints": true
     }
   ]
 }

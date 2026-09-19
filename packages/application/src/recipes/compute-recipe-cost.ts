@@ -309,11 +309,15 @@ async function costVersion(
  * base-unit cost (B2), sums bottom-up through sub-recipes, and divides by the
  * approved usable output (B3).
  *
- * Sub-recipe dependencies must have an approved version effective at `asOf`
- * (COST-002); a cycle is rejected defensively even though registration prevents
- * one. The version's stored `yield_rate` is **not** read: the rate is re-derived
- * from `approved_usable_output / planned_input` so the cost uses the same value
- * §6 defines.
+ * The top-level version must be `approved`: COST-002 forbids an approved recipe
+ * from depending on drafts, and registration enforces that on sub-recipes, but
+ * costing a bare draft version id would otherwise silently produce a cost, so it
+ * is re-verified here and rejected with a `DomainError`. Sub-recipe dependencies
+ * are likewise restricted to approved versions effective at `asOf`; a cycle is
+ * rejected defensively even though registration prevents one. The version's
+ * stored `yield_rate` is **not** read: the rate is re-derived from
+ * `approved_usable_output / planned_input` so the cost uses the same value §6
+ * defines.
  */
 export async function computeRecipeCost(
   store: RecipeStore,
@@ -339,6 +343,11 @@ export async function computeRecipeCost(
   const recipe = await store.findRecipe(version.recipeId);
   if (recipe === undefined || recipe.organizationId !== input.organizationId) {
     throw new DomainError("recipe not found in organization");
+  }
+  if (version.state !== "approved") {
+    throw new DomainError(
+      `recipe version must be approved to cost (state is "${version.state}"): COST-002`,
+    );
   }
 
   const result = await costVersion(ctx, version, new Set([recipe.id]), true);
