@@ -1,0 +1,14 @@
+{
+  "name": "@aquarela/scheduler",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/main.ts"
+  },
+  "dependencies": {
+    "@aquarela/config": "*",
+    "@aquarela/logger": "*",
+    "tsx": "^4.20.0"
+  }
+}

@@ -12,3 +12,13 @@ coverage/
 .idea/
 .vscode/
 *.log
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+override.tf
+override.tf.json
+.terraformrc
+terraform.rc

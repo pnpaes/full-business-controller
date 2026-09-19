@@ -8,10 +8,14 @@
   },
   "types": "./src/index.ts",
   "scripts": {
-    "db:generate": "drizzle-kit generate"
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "node scripts/migrate.mjs"
   },
   "devDependencies": {
-    "drizzle-kit": "^0.30.1",
-    "drizzle-orm": "^0.38.3"
+    "drizzle-kit": "0.30.6"
+  },
+  "dependencies": {
+    "drizzle-orm": "0.38.4",
+    "pg": "^8.23.0"
   }
 }

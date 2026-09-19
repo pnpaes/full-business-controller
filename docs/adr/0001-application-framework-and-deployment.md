@@ -1,9 +1,9 @@
 # ADR-0001 — Application framework and deployment platform
 
-- **Status:** Proposed (needs tech-lead acceptance)
-- This ADR is a proposal; implementation must not rely on it until status is `Accepted`.
+- **Status:** Accepted (2026-09-18)
+- Accepted on 2026-09-18 by the technical owner (Paulo Paes).
 - **Date:** 2026-09-13
-- **Deciders:** TECH (lead), BUS (owner)
+- **Deciders:** Technical owner (Paulo Paes)
 - **Related:** DEC-014 (hosting/RPO/RTO/owners), DEC-013
 - **Requirements:** FND-001, OPS-003, SEC-002, UX-001; NFR §7.6–7.7
 
@@ -16,17 +16,17 @@ personal data, managed backups with RPO ≤ 1 h / RTO ≤ 4 h (`07:55-62`), and 
 
 ## Decision
 
-Use **Next.js (App Router) with TypeScript strict** as the single deployable web application, with
-framework-independent domain/application packages (`13:48-68`). Deploy the application as
-**containers** to **DigitalOcean in the Amsterdam (AMS3) EU/EEA region** — the accepted hosting
+Use **Next.js (App Router) with TypeScript strict** as the application framework, with
+framework-independent domain/application packages (`13:48-68`). Application runtimes are deployed as
+**separate DigitalOcean App Platform components** (web, api, worker, scheduled jobs) per
+`docs/adr/0012-deployment-topology-and-service-runtimes.md` — this **supersedes the earlier
+"single deployable web application" wording** in this ADR; the repository remains a **modular
+monolith** (one repo, bounded-context packages), so this is independent runtimes, not microservices.
+Deployment target is **DigitalOcean in the Amsterdam (AMS3) EU/EEA region** — the accepted hosting
 platform under **DEC-014 (2026-09-14)**. The primary database is **DigitalOcean Managed PostgreSQL
 with point-in-time recovery (PITR)**, giving EU/EEA data residency in Amsterdam, and private file
 storage is **DigitalOcean Spaces (AMS3, S3-compatible)** (see ADR-0006). Fly.io Postgres is
-**rejected** because it does not provide managed PITR. Local/staging/production are containerized and
-use the same images.
-
-The hosting provider sub-decision is **decided by DEC-014 (2026-09-14)**; this ADR remains `Proposed`
-at file level only because the framework decision itself still needs tech-lead acceptance.
+**rejected** because it does not provide managed PITR.
 
 ## Alternatives considered
 
@@ -44,7 +44,9 @@ at file level only because the framework decision itself still needs tech-lead a
 
 ## Consequences
 
-- One deployable for UI + HTTP adapters; a separate `worker` process reuses the same packages.
+- Web/API and worker runtimes run as **separate App Platform components** decided
+  2026-09-18 (see `docs/adr/0012-deployment-topology-and-service-runtimes.md`); the split of `api`
+  out of `web` is a deliberate, reversible step described there.
 - Business logic must not leak into route handlers/UI (`02:16`, `13:91`).
 - Hosting choice fixes data residency, backup and secret-store mechanisms — now **decided by
   DEC-014 (2026-09-14): DigitalOcean AMS3**, with the named owners still pending. Pin exact versions
@@ -56,4 +58,6 @@ at file level only because the framework decision itself still needs tech-lead a
 
 - Confirm budget and the named product/technical/operational-data owners (I13, DEC-014); region is
   decided as DigitalOcean AMS3.
-- Confirm whether workers run as separate containers/size or shared process.
+- ~~Confirm whether workers run as separate containers/size or shared process.~~ Resolved
+  2026-09-18: `worker` (and scheduled jobs) run as their own App Platform components —
+  `docs/adr/0012-deployment-topology-and-service-runtimes.md`.

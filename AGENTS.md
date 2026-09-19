@@ -3,23 +3,39 @@
 This repo is a **documentation-first modular monolith** for Aquarela's business
 control system (products/SKUs, costs, inventory, sales, reconciliation and
 reporting). Phase 0 is complete: the specification package (`00_README.md` …
-`13_AGENT_BUILD_BRIEF.md`), the 48 accepted decisions (`12_OPEN_DECISIONS.md`)
+`13_AGENT_BUILD_BRIEF.md`), the 49 accepted decisions (`12_OPEN_DECISIONS.md`)
 and the Phase 0 artifacts/ADRs (`docs/phase0/`, `docs/adr/`) are the authority.
-Only the foundation scaffold is built — no business slices or schema yet. Start
-with `README.md`; the living project context, status and next steps live in
-`CONTEXT.md`.
+The foundation scaffold and the Phase 1–2 persistence core are built (the latter
+uncommitted); no business slices yet. The living project context lives in
+`CONTEXT.md`, and the next task is always in its
+`## Resume here (next session)` section.
 
 ## Rule 1 — Session handoff and work log (mandatory)
 
-- **Start:** read `CONTEXT.md` before doing anything else.
+- **Start:** read `CONTEXT.md` before doing anything else, beginning with its
+  `## Resume here (next session)` section.
+- `CONTEXT.md` must open with a **`## Resume here (next session)`** section as the
+  first section after the intro. It is the single entry point for continuing work.
+- That section must be **self-contained and executable without questions**: the
+  next task and objective; explicit **scope (do)** and **scope (do not)**; the
+  files/paths to create or edit; the authoritative docs to read first; acceptance
+  criteria and the exact verification commands; any open decisions/inputs that
+  block or shape it; and a one-line pointer to the step after it.
 - **End:** if the session changed anything (code, docs, decisions, data), update
   `CONTEXT.md` before finishing: current status + git HEAD, what changed since
   the last update, in-progress items, prioritised next steps, open
   decisions/inputs, and how to verify.
-- Append to the chronological work log and keep the **Next up** section accurate.
-  This is how work continues across sessions.
-- Session handoffs and context live **in the repo** (`CONTEXT.md`). Never write
-  handoff files to a temp directory or any path outside the repository.
+- At the end of **every** task — even small or docs-only ones — rewrite the
+  `Resume here` section for the new next step. If there is no next step or it is
+  blocked, say so explicitly and name the blocker.
+- Recognise the resume trigger: when the user says **"resume the work"** (or
+  simply "resume"), read the `Resume here` section and continue from it without
+  re-asking for context.
+- Keep the chronological **work log** appended (newest first) and keep
+  **Current status** (including git HEAD), **Next up**, **Open decisions /
+  inputs** and **Reversibility** accurate in the same pass.
+- Session handoffs and context live **in the repo** (`CONTEXT.md`) only. Never
+  write handoff files to a temp directory or any path outside the repository.
 
 ## Rule 2 — Make every task reversible (mandatory)
 
@@ -42,8 +58,8 @@ Changes must be revertible or carry a documented recovery path:
 
 ## Rule 3 — Decisions are the authority
 
-- The 48 accepted decisions in `12_OPEN_DECISIONS.md` govern. New decisions are
-  **appended there** (next id `DEC-049`) — never invented silently.
+- The 49 accepted decisions in `12_OPEN_DECISIONS.md` govern. New decisions are
+  **appended there** (next id `DEC-050`) — never invented silently.
 - Calculations follow `docs/phase0/CALCULATION_CONTRACT.md`: decimal only (never
   floats), HALF_UP, boundaries B0–B4, and the cost-source precedence.
 

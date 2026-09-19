@@ -8,6 +8,20 @@ on:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -15,7 +29,37 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm run db:migrate
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
       - run: npm run lint
       - run: npm run typecheck
       - run: npm run test
       - run: npm run build
+
+  # Offline Terraform gates only: `fmt` and `validate` need neither the Spaces
+  # remote-state backend nor DO credentials, so they run on every push/PR.
+  # `terraform plan` is deliberately NOT in CI because the Spaces/S3 backend and
+  # a real DIGITALOCEAN_TOKEN are required; plan is a credentialed pre-apply step
+  # (see docs/runbooks/deployment.md), while fmt/validate are the offline gates.
+  terraform:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          # Keep in sync with .terraform-version (1.16.3).
+          terraform_version: 1.16.3
+      - name: terraform fmt -check -recursive
+        working-directory: infra
+        run: terraform fmt -check -recursive
+      - name: terraform init -backend=false && terraform validate (staging)
+        working-directory: infra/envs/staging
+        run: |
+          terraform init -backend=false
+          terraform validate
+      - name: terraform init -backend=false && terraform validate (production)
+        working-directory: infra/envs/production
+        run: |
+          terraform init -backend=false
+          terraform validate

@@ -13,7 +13,7 @@ Use a responsive web application implemented as a modular monolith:
 - an internal authentication module inside the modular monolith (users, credentials, roles, scopes, sessions, TOTP 2FA). Managed OIDC was considered and rejected by DEC-013 — there is no external identity provider;
 - containerized local, staging and production environments.
 
-Exact framework and library versions must be selected and pinned when implementation starts. Business logic must not be coupled to framework route handlers or UI components.
+Exact framework and library versions must be selected and pinned when implementation starts. Business logic must not be coupled to framework route handlers or UI components. The modular monolith's component runtimes and deployment topology are defined in `docs/adr/0012-deployment-topology-and-service-runtimes.md`.
 
 ## 2.2 Logical topology
 
@@ -90,7 +90,12 @@ External calls must not be kept inside long database transactions. Use an outbox
 - Staging: production-like services with sanitized or synthetic data.
 - Production: isolated database/storage, encrypted backups, managed secrets and monitored workers.
 - CI: lint, type check, unit tests, integration tests, migration checks and dependency/security scanning.
-- CD: deploy application, run backward-compatible migrations, verify health, then release workers.
+- CD: pre-deploy migration job applies pending, backward-compatible migrations, then application components roll to the new revision; verify health, then release workers.
+- Hosting (decided 2026-09-18): application runtimes (`web`, `api`, `worker`, `scheduler`) deploy as
+  **DigitalOcean App Platform components**; the database is **DO Managed PostgreSQL with PITR**
+  (DEC-014) and files live in **DO Spaces** — provisioned with **Terraform**, with a **pre-deploy
+  migration job** (`npm run db:migrate`). See `docs/adr/0012-deployment-topology-and-service-runtimes.md`
+  and `docs/runbooks/deployment.md`.
 
 Do not combine destructive schema changes with application changes that still need old fields. Use expand/migrate/contract releases.
 

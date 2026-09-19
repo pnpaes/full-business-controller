@@ -1,10 +1,15 @@
+# Build-context hygiene. `apps/`, `packages/` (including
+# packages/persistence/drizzle/ migration SQL + meta/) and the Dockerfile MUST
+# stay in the context; everything excluded here is noise for the image build.
+#
+# NB: do NOT ignore `drizzle` — Docker matches it at any depth and it would drop
+# packages/persistence/drizzle/, breaking the pre-deploy `npm run db:migrate`.
 node_modules
 .git
 .gitignore
 .next
 dist
 coverage
-drizzle
 *.tsbuildinfo
 .env*
 !.env.example
@@ -16,3 +21,9 @@ samples
 schemas
 references
 *.md
+.github
+infra
+.terraform
+*.tfstate
+*.tfstate.*
+*.tfvars

@@ -23,7 +23,7 @@ The system is an internal operating and management platform connecting:
 
 ## Implementation recommendation
 
-Start as a responsive TypeScript modular monolith with PostgreSQL. Keep domain modules separate inside one deployable application and one transactional database. Use an append-only stock ledger, effective-dated master data, reproducible calculation snapshots, explicit approval states, idempotent imports and immutable audit entries.
+Start as a responsive TypeScript modular monolith with PostgreSQL. Keep domain modules separate inside one repository (modular monolith) deployed as separate application runtimes (`web`, `api`, `worker`, `scheduler`) and one transactional database. Use an append-only stock ledger, effective-dated master data, reproducible calculation snapshots, explicit approval states, idempotent imports and immutable audit entries.
 
 The first operational release is Phases 0–3: foundation, costing/pricing, inventory/production, and sales/reporting. Planning intelligence and advanced automation follow only after data quality is proven.
 
