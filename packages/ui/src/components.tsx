@@ -6,7 +6,15 @@
  * All styling is token-driven inline styles; see `uiGlobalCss` for the few
  * rules (focus ring) that inline styles cannot express.
  */
-import type { CSSProperties, ReactNode, TableHTMLAttributes } from "react";
+import type {
+  ButtonHTMLAttributes,
+  CSSProperties,
+  InputHTMLAttributes,
+  ReactNode,
+  TableHTMLAttributes,
+  ThHTMLAttributes,
+  TdHTMLAttributes,
+} from "react";
 
 import { color, elevation, radius, spacing, typography } from "./tokens";
 
@@ -28,9 +36,15 @@ const focusableReset: CSSProperties = {
 /**
  * Global CSS the components rely on for the visible focus ring (§7.8).
  * Drop into the app shell once: `<style>{uiGlobalCss}</style>`.
+ * Inline styles cannot express `:focus-within`, so the TextField wrapper
+ * carries a stable class and this rule draws its focus ring.
  */
 export const uiGlobalCss = `
 :where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid ${color.border.focus};
+  outline-offset: 2px;
+}
+.aquarela-field:focus-within {
   outline: 2px solid ${color.border.focus};
   outline-offset: 2px;
 }
@@ -38,6 +52,12 @@ export const uiGlobalCss = `
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
 `;
+
+/** Minimum interactive size for kitchen/phone use (§8.6, §7.8). */
+export const MIN_TOUCH_TARGET_PX = 44;
+/** StatusPill indicator dot geometry (§7.8 non-color status cue). */
+export const STATUS_DOT_SIZE_PX = 8;
+export const STATUS_DOT_BORDER_PX = 1.5;
 
 /* ---------------------------------- Button --------------------------------- */
 
@@ -75,7 +95,7 @@ const buttonSizes: Record<ButtonSize, CSSProperties> = {
     fontSize: typography.fontSize.sm,
   },
   md: {
-    minHeight: 44,
+    minHeight: MIN_TOUCH_TARGET_PX,
     padding: `${spacing[2]}px ${spacing[4]}px`,
     fontSize: typography.fontSize.md,
   },
@@ -86,13 +106,10 @@ const buttonSizes: Record<ButtonSize, CSSProperties> = {
   },
 };
 
-export interface ButtonProps {
+export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
   size?: ButtonSize;
-  type?: "button" | "submit";
-  disabled?: boolean;
   loading?: boolean;
-  children: ReactNode;
 }
 
 export function Button({
@@ -102,10 +119,13 @@ export function Button({
   disabled = false,
   loading = false,
   children,
+  style,
+  ...rest
 }: ButtonProps) {
   const inactive = disabled || loading;
   return (
     <button
+      {...rest}
       type={type}
       disabled={inactive}
       aria-busy={loading || undefined}
@@ -120,6 +140,7 @@ export function Button({
         fontWeight: typography.fontWeight.medium,
         cursor: inactive ? "not-allowed" : "pointer",
         opacity: inactive ? 0.6 : 1,
+        ...style,
       }}
     >
       {loading ? (
@@ -134,7 +155,7 @@ export function Button({
 
 /* -------------------------------- TextField -------------------------------- */
 
-export interface TextFieldProps {
+export interface TextFieldProps extends Omit<InputHTMLAttributes<HTMLInputElement>, "id" | "size"> {
   name: string;
   label: string;
   id?: string;
@@ -167,13 +188,21 @@ export function TextField({
   suffix,
   inputMode,
   placeholder,
+  className,
+  style,
+  ...rest
 }: TextFieldProps) {
   const inputId = id ?? `field-${name}`;
   const helpId = help ? `${inputId}-help` : undefined;
   const errorId = error ? `${inputId}-error` : undefined;
-  const describedBy = [errorId, helpId].filter(Boolean).join(" ") || undefined;
+  // Only reference ids actually rendered: when an error is shown the help
+  // paragraph is not, so its id must not appear in aria-describedby.
+  const describedBy = error ? errorId : helpId;
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: spacing[1], ...fontSans }}>
+    <div
+      className={cx("aquarela-field", className)}
+      style={{ display: "flex", flexDirection: "column", gap: spacing[1], ...fontSans, ...style }}
+    >
       <label
         htmlFor={inputId}
         style={{
@@ -197,10 +226,11 @@ export function TextField({
           backgroundColor: color.background.surface,
           border: `1px solid ${error ? color.status.danger.fg : color.border.default}`,
           borderRadius: radius.sm,
-          minHeight: 44,
+          minHeight: MIN_TOUCH_TARGET_PX,
         }}
       >
         <input
+          {...rest}
           id={inputId}
           name={name}
           type={type}
@@ -294,9 +324,13 @@ export interface PanelProps {
   title: string;
   meta?: ReactNode;
   children: ReactNode;
+  /** Heading element for the title; default 2. Lower it for nested panels so
+   * the page does not accumulate duplicate h2s. */
+  headingLevel?: 1 | 2 | 3 | 4 | 5 | 6;
 }
 
-export function Panel({ title, meta, children }: PanelProps) {
+export function Panel({ title, meta, children, headingLevel = 2 }: PanelProps) {
+  const Heading = `h${headingLevel}` as const;
   return (
     <Card>
       <div
@@ -308,7 +342,7 @@ export function Panel({ title, meta, children }: PanelProps) {
           marginBottom: spacing[4],
         }}
       >
-        <h2
+        <Heading
           style={{
             ...fontDisplay,
             margin: 0,
@@ -318,7 +352,7 @@ export function Panel({ title, meta, children }: PanelProps) {
           }}
         >
           {title}
-        </h2>
+        </Heading>
         {meta ? (
           <span style={{ fontSize: typography.fontSize.sm, color: color.text.muted }}>{meta}</span>
         ) : null}
@@ -425,11 +459,11 @@ export function StatusPill({ tone, children }: StatusPillProps) {
       <span
         aria-hidden="true"
         style={{
-          width: 8,
-          height: 8,
+          width: STATUS_DOT_SIZE_PX,
+          height: STATUS_DOT_SIZE_PX,
           borderRadius: radius.pill,
           backgroundColor: tone === "warning" || tone === "danger" ? tone_.fg : "transparent",
-          border: `1.5px solid ${tone_.fg}`,
+          border: `${STATUS_DOT_BORDER_PX}px solid ${tone_.fg}`,
         }}
       />
       {children}
@@ -439,7 +473,10 @@ export function StatusPill({ tone, children }: StatusPillProps) {
 
 /* --------------------------------- Table ----------------------------------- */
 
-export interface TableProps extends TableHTMLAttributes<HTMLTableElement> {
+export interface TableProps extends Omit<
+  TableHTMLAttributes<HTMLTableElement>,
+  "dangerouslySetInnerHTML"
+> {
   caption: string;
   /** Number of columns, used to span the empty-state row. */
   columnCount: number;
@@ -498,7 +535,10 @@ export function Table({ caption, columnCount, emptyMessage, children, ...rest }:
 export function Th({
   children,
   ...rest
-}: { children: ReactNode } & React.ThHTMLAttributes<HTMLTableCellElement>) {
+}: { children: ReactNode } & Omit<
+  ThHTMLAttributes<HTMLTableCellElement>,
+  "dangerouslySetInnerHTML"
+>) {
   return (
     <th
       scope="col"
@@ -522,7 +562,10 @@ export function Th({
 export function Td({
   children,
   ...rest
-}: { children: ReactNode } & React.TdHTMLAttributes<HTMLTableCellElement>) {
+}: { children: ReactNode } & Omit<
+  TdHTMLAttributes<HTMLTableCellElement>,
+  "dangerouslySetInnerHTML"
+>) {
   return (
     <td
       {...rest}
