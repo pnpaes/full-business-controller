@@ -139,6 +139,33 @@ export class FakeAuthStore implements AuthStore {
     return this.totps.get(userId);
   }
 
+  async setTotpSecret(userId: string, secretEncrypted: string): Promise<void> {
+    this.totps.set(userId, {
+      secretEncrypted,
+      confirmedAt: null,
+      recoveryCodesHash: [],
+      lastUsedCounter: null,
+    });
+  }
+
+  async confirmTotp(userId: string, at: Date): Promise<void> {
+    const totp = this.totps.get(userId);
+    if (totp !== undefined) {
+      this.totps.set(userId, { ...totp, confirmedAt: at });
+    }
+  }
+
+  async clearTotp(userId: string): Promise<void> {
+    this.totps.delete(userId);
+  }
+
+  async setTotpEnabled(userId: string, enabled: boolean): Promise<void> {
+    const user = this.users.get(userId);
+    if (user !== undefined) {
+      this.users.set(userId, { ...user, totpEnabled: enabled });
+    }
+  }
+
   async withTransaction<T>(fn: (store: AuthStore) => Promise<T>): Promise<T> {
     return fn(this);
   }

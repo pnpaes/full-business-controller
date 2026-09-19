@@ -34,6 +34,18 @@ export function createPostgresAuthStore(db: Database): AuthStore {
       await repo.updatePasswordHash(db, userId, passwordHash, at);
     },
     getTotp: (userId) => repo.getTotp(db, userId),
+    setTotpSecret: async (userId, secretEncrypted) => {
+      await repo.resetTotpEnrolment(db, userId, secretEncrypted);
+    },
+    confirmTotp: async (userId, at) => {
+      await repo.confirmTotp(db, userId, at);
+    },
+    clearTotp: async (userId) => {
+      await repo.clearTotp(db, userId);
+    },
+    setTotpEnabled: async (userId, enabled) => {
+      await repo.setTotpEnabled(db, userId, enabled);
+    },
     advanceLastUsedCounter: async (userId, counter) =>
       (await repo.advanceLastUsedCounter(db, userId, counter)) !== undefined,
     consumeRecoveryCodeHash: async (userId, codeHash) =>

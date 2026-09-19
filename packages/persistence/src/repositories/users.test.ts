@@ -17,6 +17,7 @@ import {
   findUserByIdentifier,
   recordLoginFailure,
   recordLoginSuccess,
+  setTotpEnabled,
   setUserStatus,
   updatePasswordHash,
 } from "./users";
@@ -156,6 +157,18 @@ describe.skipIf(!databaseUrl)("user repository", () => {
       expect(await updatePasswordHash(tx, randomUUID(), "hash-v3")).toBeUndefined();
       expect(await setUserStatus(tx, randomUUID(), "active")).toBeUndefined();
       expect(await recordLoginSuccess(tx, randomUUID())).toBeUndefined();
+    });
+  });
+
+  it("toggles totp_enabled and returns undefined for an unknown user", async () => {
+    await inRollback(client.db, async (tx) => {
+      const user = await createTestUser(tx, orgId);
+      expect(user.totpEnabled).toBe(false);
+
+      expect((await setTotpEnabled(tx, user.id, true))?.totpEnabled).toBe(true);
+      expect((await findUserById(tx, user.id))?.totpEnabled).toBe(true);
+      expect((await setTotpEnabled(tx, user.id, false))?.totpEnabled).toBe(false);
+      expect(await setTotpEnabled(tx, randomUUID(), true)).toBeUndefined();
     });
   });
 });

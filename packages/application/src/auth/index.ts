@@ -22,6 +22,26 @@ export type { AuthenticateInput, AuthenticateResult } from "./authenticate";
 export { verifyMfa } from "./mfa";
 export type { VerifyMfaInput, VerifyMfaResult } from "./mfa";
 
+export {
+  beginTotpEnrolment,
+  confirmTotpEnrolment,
+  disableTotp,
+  regenerateRecoveryCodes,
+  totpEnrolmentUri,
+} from "./totp-enrolment";
+export type {
+  BeginTotpEnrolmentInput,
+  BeginTotpEnrolmentResult,
+  ConfirmTotpEnrolmentInput,
+  ConfirmTotpEnrolmentResult,
+  DisableTotpInput,
+  DisableTotpResult,
+  RegenerateRecoveryCodesInput,
+  RegenerateRecoveryCodesResult,
+  TotpEnrolmentSecret,
+  TotpRecoveryCodes,
+} from "./totp-enrolment";
+
 export { beginPasswordReset, completePasswordReset } from "./password-reset";
 export type {
   BeginPasswordResetInput,

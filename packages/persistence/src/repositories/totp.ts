@@ -27,6 +27,39 @@ export async function upsertTotpSecret(
   return rows[0]!;
 }
 
+/**
+ * Creates or replaces the sealed secret as a fresh, unconfirmed enrolment. The
+ * stale confirmation, replay counter and recovery-code set are cleared, so an
+ * aborted earlier attempt cannot leave state behind (the caller commits the
+ * audit row in the same transaction).
+ */
+export async function resetTotpEnrolment(
+  db: Database,
+  userId: string,
+  secretEncrypted: string,
+): Promise<UserTotp> {
+  const rows = await db
+    .insert(userTotp)
+    .values({
+      userId,
+      secretEncrypted,
+      confirmedAt: null,
+      lastUsedCounter: null,
+      recoveryCodesHash: [],
+    })
+    .onConflictDoUpdate({
+      target: userTotp.userId,
+      set: {
+        secretEncrypted,
+        confirmedAt: null,
+        lastUsedCounter: null,
+        recoveryCodesHash: [],
+      },
+    })
+    .returning();
+  return rows[0]!;
+}
+
 export async function confirmTotp(
   db: Database,
   userId: string,
@@ -37,6 +70,17 @@ export async function confirmTotp(
     .set({ confirmedAt: at })
     .where(eq(userTotp.userId, userId))
     .returning();
+  return rows[0];
+}
+
+/**
+ * Deletes the whole enrolment (sealed secret, confirmation, replay counter and
+ * recovery codes), returning the removed row or `undefined` when none existed.
+ * Caller must append the corresponding `audit_event` row in the same transaction
+ * (ADR-0003) and flip `app_user.totp_enabled`.
+ */
+export async function clearTotp(db: Database, userId: string): Promise<UserTotp | undefined> {
+  const rows = await db.delete(userTotp).where(eq(userTotp.userId, userId)).returning();
   return rows[0];
 }
 

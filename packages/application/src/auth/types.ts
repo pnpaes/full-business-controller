@@ -110,6 +110,18 @@ export interface AuthStore {
   updatePasswordHash(userId: string, passwordHash: string, at: Date): Promise<void>;
   getTotp(userId: string): Promise<AuthTotpRecord | undefined>;
   /**
+   * Stores a freshly sealed secret as an unconfirmed enrolment, clearing any
+   * stale confirmation, replay counter and recovery-code set from a prior
+   * attempt.
+   */
+  setTotpSecret(userId: string, secretEncrypted: string): Promise<void>;
+  /** Marks an existing unconfirmed enrolment as confirmed. */
+  confirmTotp(userId: string, at: Date): Promise<void>;
+  /** Deletes the enrolment: secret, confirmation, replay counter and recovery codes. */
+  clearTotp(userId: string): Promise<void>;
+  /** Toggles `app_user.totp_enabled`; the caller commits it with the state change. */
+  setTotpEnabled(userId: string, enabled: boolean): Promise<void>;
+  /**
    * Atomically advances the TOTP replay counter. Returns `false` when it did not
    * advance (the code was already consumed by a concurrent request), which the
    * caller treats as a replay.

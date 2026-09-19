@@ -123,3 +123,20 @@ export async function setUserStatus(
   const rows = await db.update(appUser).set({ status }).where(eq(appUser.id, userId)).returning();
   return rows[0];
 }
+
+/**
+ * Toggles `app_user.totp_enabled`. Caller must append the corresponding
+ * `audit_event` row in the same transaction (ADR-0003).
+ */
+export async function setTotpEnabled(
+  db: Database,
+  userId: string,
+  enabled: boolean,
+): Promise<User | undefined> {
+  const rows = await db
+    .update(appUser)
+    .set({ totpEnabled: enabled })
+    .where(eq(appUser.id, userId))
+    .returning();
+  return rows[0];
+}

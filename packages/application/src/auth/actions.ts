@@ -14,6 +14,17 @@ export const AUTH_AUDIT_ACTIONS = {
   mfaSucceeded: "auth.mfa.succeeded",
   mfaFailed: "auth.mfa.failed",
   mfaRecoveryUsed: "auth.mfa.recovery_used",
+  mfaEnrolmentStarted: "auth.mfa.enrolment_started",
+  mfaEnrolmentConfirmed: "auth.mfa.enrolment_confirmed",
+  /**
+   * Enrolment-management failure (start, confirm or recovery-code regeneration).
+   * The `reason` names the operation and cause; the plaintext secret, code and
+   * returned recovery codes never reach an audit row.
+   */
+  mfaEnrolmentFailed: "auth.mfa.enrolment_failed",
+  mfaRecoveryRegenerated: "auth.mfa.recovery_regenerated",
+  mfaDisabled: "auth.mfa.disabled",
+  mfaDisableFailed: "auth.mfa.disable_failed",
   sessionRevoked: "auth.session.revoked",
   sessionsRevokedAll: "auth.session.revoked_all",
   passwordResetRequested: "auth.password_reset.requested",

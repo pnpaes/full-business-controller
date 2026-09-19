@@ -6,9 +6,11 @@ import { appUser, organization } from "../schema";
 import { createTestOrganization, createTestUser, inRollback, uniqueSuffix } from "./test-support";
 import {
   advanceLastUsedCounter,
+  clearTotp,
   confirmTotp,
   consumeRecoveryCodeHash,
   getTotp,
+  resetTotpEnrolment,
   setRecoveryCodes,
   upsertTotpSecret,
 } from "./totp";
@@ -107,6 +109,32 @@ describe.skipIf(!databaseUrl)("totp repository", () => {
       expect(consumed?.recoveryCodesHash).toEqual(["hash-b"]);
       // A concurrent second consume matches nothing.
       expect(await consumeRecoveryCodeHash(tx, user.id, "hash-a")).toBeUndefined();
+    });
+  });
+
+  it("resets a stale enrolment to an unconfirmed one and clears it again", async () => {
+    await inRollback(client.db, async (tx) => {
+      const user = await createTestUser(tx, orgId);
+      await upsertTotpSecret(tx, user.id, "v1.aaaa.bbbb.cccc");
+      await confirmTotp(tx, user.id, new Date());
+      await setRecoveryCodes(tx, user.id, ["hash-a"]);
+      await advanceLastUsedCounter(tx, user.id, 5);
+
+      const reset = await resetTotpEnrolment(tx, user.id, "v1.dddd.eeee.ffff");
+      expect(reset.secretEncrypted).toBe("v1.dddd.eeee.ffff");
+      expect(reset.confirmedAt).toBeNull();
+      expect(reset.lastUsedCounter).toBeNull();
+      expect(reset.recoveryCodesHash).toEqual([]);
+
+      // A second reset replaces the secret without creating a second row.
+      const again = await resetTotpEnrolment(tx, user.id, "v1.gggg.hhhh.iiii");
+      expect(again.secretEncrypted).toBe("v1.gggg.hhhh.iiii");
+
+      const cleared = await clearTotp(tx, user.id);
+      expect(cleared?.userId).toBe(user.id);
+      expect(await getTotp(tx, user.id)).toBeUndefined();
+      // Clearing an absent enrolment is a no-op.
+      expect(await clearTotp(tx, user.id)).toBeUndefined();
     });
   });
 });
