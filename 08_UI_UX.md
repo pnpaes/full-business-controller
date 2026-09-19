@@ -93,3 +93,16 @@ Define tokens for color, spacing, typography, radius, elevation and data visuali
 
 Before build commitment, test clickable prototypes for management home, product cost card, receiving, production batch, count, waste entry, sales import and daily close with the actual users who perform each workflow. Record task completion time, mistakes, unclear terminology and required defaults.
 
+## 8.9 Layout and interaction references
+
+Structural references for screen composition and interaction density. They are subordinate to
+the Aquarela visual direction in §8.7 (cream/navy/berry/green/gold palette, serif titles,
+limited watercolor accents) and to the dashboard, form/table, mobile and accessibility rules
+above (and file 07): take layout, information hierarchy, density, navigation patterns and
+analytics composition from them, and do not copy their branding, copy, illustrations or
+assets. Where a reference conflicts with §8.7 or an accessibility rule, this document wins.
+
+| Reference | What to take from it |
+| --- | --- |
+| [Modern CRM & Analytics Platform — SaaS UX/UI Design](https://www.behance.net/gallery/236915009/Modern-CRM-Analytics-Platform-SaaS-UX-UI-Design) (Gulshan Ali / Ibdai Studio, published 2025-10-20) | Dense but calm admin/dashboard composition: KPI header, scope/filter bar, card-and-table balance, drill-down analytics, sidebar plus top-bar navigation and restrained status colour. Applied to Management home (§8.3), Insights and Administration — always wrapped in the Aquarela palette rather than the reference's own. |
+
