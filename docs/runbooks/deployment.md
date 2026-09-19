@@ -48,6 +48,19 @@ Environment/secret inventory (per environment, never committed): `DATABASE_URL`,
 `DATABASE_MIGRATIONS_URL`, `SPACES_ACCESS_KEY_ID` / `SPACES_SECRET_KEY` (or App-bound Spaces keys),
 `LOG_LEVEL`, app-level session/encryption secrets when introduced.
 
+### Owner decisions and inputs
+
+Three decision-input briefs must be closed before the first real `apply` (gates per
+`docs/BUILD_ROADMAP.md` §3):
+
+- **Component cost estimate** — `../phase0/DEPLOYMENT_COST_ESTIMATE.md`: monthly estimate for the
+  literal `staging.tfvars` / `production.tfvars` values, with confidence and variance notes.
+- **Multi-tenancy posture** — `../phase0/MULTITENANCY_POSTURE.md`: the owner decision (single-org
+  deployment, multi-org-capable schema) that gates the deployment apply.
+- **Jobs runtime comparison** — `../phase0/JOBS_RUNTIME_COMPARISON.md`: evidence brief feeding the
+  `ADR-0004` gate (`docs/adr/0004-jobs-and-outbox.md`, still `Proposed`) for the
+  `worker` / `scheduler` runtime.
+
 ## Terraform layout
 
 ```text
@@ -207,6 +220,14 @@ psql "postgresql://doadmin:<password>@<host>:25060/<db>?sslmode=require" \
   `plan` is deliberately **not** in CI — it needs the Spaces remote-state backend and a real
   `DIGITALOCEAN_TOKEN`, so it stays a credentialed pre-apply step.
 
+- **Pre-apply instance-size check:** the tfvars use the legacy App Platform slugs `basic-xxs`
+  (`staging.tfvars`) and `basic-s` (`production.tfvars`). Before applying, confirm each slug still
+  maps to a current plan in `ams3` **and that the plan supports manual scaling** — a plan without
+  manual scaling would reject the second production `web` instance
+  (`web_instance_count = 2` in `production.tfvars`). See the variance note in
+  `../phase0/DEPLOYMENT_COST_ESTIMATE.md` ("Confidence and variance notes") rather than restating
+  the numbers here.
+
 ## Deploy procedure
 
 1. **Build/test:** CI runs lint, typecheck, tests, migration checks (`.github/workflows/ci.yml`)
@@ -273,6 +294,9 @@ Verified 2026-09-19 (offline, no `apply`):
 
 Still pending (needs credentials/owner inputs, or a real deployment):
 
+- [ ] First real `apply` happens on **one environment only** (staging first), and only after the
+      owner decisions and inputs in "Owner decisions and inputs" are closed. The WHOLE strategy is
+      reversible because no Terraform state or cloud resource exists yet.
 - [ ] Credentialed `terraform plan` against the real Spaces backend + `DIGITALOCEAN_TOKEN`,
       reviewed per environment before apply.
 - [ ] Pre-deploy migration job demonstrated in **staging** on App Platform.
