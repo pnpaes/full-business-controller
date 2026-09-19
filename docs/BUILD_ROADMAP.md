@@ -13,9 +13,8 @@ This file is **updated at the end of every slice** — statuses and the "current
 line move with the work; `CONTEXT.md` keeps the narrative handoff and the immediate
 `Resume here` section.
 
-**Current position:** slice 0 `done`; slices 1a, 1b-i (committed `9fc8ba0`) and 1b-ii
-(uncommitted) `done`; slice 1b-iii (password reset + access control) is the immediate next
-step per `CONTEXT.md`.
+**Current position:** slice 0 `done`; auth slices 1a–1e, slice 2, slice 3 and slice 4
+`done` (HEAD `0b4904f` on `main`); **slice 5 (recipes) is next** per `CONTEXT.md`.
 
 ## 2. The execution loop (per slice)
 
@@ -72,7 +71,7 @@ Pause the loop and raise to the owner, recording it in `CONTEXT.md`, when any of
   approval in `DEC-015`, a named credentials owner, and a documented, tested rollback
   (`AGENTS.md` Rule 2). Never perform it without both.
 - **A decision would have to be invented.** *Needed from owner:* append the decision to
-  `12_OPEN_DECISIONS.md` (next id `DEC-050`) — never resolve accounting, tax, valuation,
+  `12_OPEN_DECISIONS.md` (next id `DEC-052`) — never resolve accounting, tax, valuation,
   privacy or system-of-record ambiguity in code (`13_AGENT_BUILD_BRIEF.md`).
 - **Slice budget reached.** The session has completed its agreed slice budget. *Needed from
   owner:* confirm the next slice (or that work pauses); hand off via `CONTEXT.md`.
@@ -89,11 +88,13 @@ sequence). Requirement IDs are from `11_REQUIREMENTS_CATALOG.md`; decision IDs f
 | 1a | Auth domain primitives (Argon2id, TOTP, recovery codes, tokens, lockout) | P1 / epic 1 | `FND-002`, `SEC-001`, `SEC-003`; `DEC-013`; `ADR-0003` (accepted) | 0 | none | done |
 | 1b-i | Auth persistence layer (Drizzle client, repositories, TOTP counter migration) | P1 / epic 1 | `FND-002`, `FND-005`; `DEC-013`; `ADR-0003` (accepted) | 1a | none | done |
 | 1b-ii | Auth application flow (authenticate, MFA, sessions, audit port/adapter) | P1 / epic 1 | `FND-002`, `FND-005`, `SEC-001`, `SEC-003`; `DEC-013`; `ADR-0003` (accepted) | 1b-i | none | done |
-| 1b-iii | Password reset + access control (roles/location scope, admin operations) | P1 / epic 1 | `SEC-001`, `SEC-003`; `DEC-013`; `ADR-0003` (accepted) | 1b-ii | none | todo |
-| 1c | Auth HTTP surface (`/api/v1/auth`, session cookies, minimal login/2FA UI) | P1 / epic 1 | `SEC-001`, `SEC-003`; `DEC-013`; `ADR-0003` (accepted) | 1b-iii | none | todo |
-| 2 | Units & catalog value objects (decimal money/quantity) | P1 / epic 2 | `FND-003`, `PROC-001`; `DEC-030` | 1 | none | todo |
-| 3 | Item + supplier pack + conversion + price | P1 / epic 2 | `PROC-001`–`005`, `PROC-008`, `COST-010`, `FND-008`, `FND-009`; `DEC-021`, `DEC-030`, `DEC-041`, `DEC-044`, `DEC-046` | 2 | none — I4/I6 data gates real values | todo |
-| 4 | Receipt + price history + landed cost | P1 / epic 3 | `PROC-002`–`005`, `PROC-008`, `COST-010`, `COST-012`; `DEC-047`; `CALCULATION_CONTRACT.md` §5 | 3 | none — I4 data gates real values | todo |
+| 1b-iii | Password reset + access control (roles/location scope, admin operations) | P1 / epic 1 | `SEC-001`, `SEC-003`; `DEC-013`; `ADR-0003` (accepted) | 1b-ii | none | done |
+| 1c | Auth HTTP surface (`/api/v1/auth`, session cookies, minimal login/2FA UI) | P1 / epic 1 | `SEC-001`, `SEC-003`; `DEC-013`; `ADR-0003` (accepted) | 1b-iii | none | done |
+| 1d | TOTP enrolment + recovery codes (enrolment and recovery-code surface) | P1 / epic 1 | `SEC-001`, `SEC-003`; `DEC-013`; `ADR-0003` (accepted) | 1c | none | done |
+| 1e | First-owner bootstrap + MFA enrolment HTTP surface | P1 / epic 1 | `SEC-001`, `SEC-003`; `DEC-013`; `ADR-0003` (accepted) | 1d | none | done |
+| 2 | Units & catalog value objects (decimal money/quantity) | P1 / epic 2 | `FND-003`, `PROC-001`; `DEC-030` | 1 | none | done |
+| 3 | Item + supplier pack + conversion + price | P1 / epic 2 | `PROC-001`–`005`, `PROC-008`, `COST-010`, `FND-008`, `FND-009`; `DEC-021`, `DEC-030`, `DEC-041`, `DEC-044`, `DEC-046` | 2 | none — I4/I6 data gates real values | done |
+| 4 | Receipt + price history + landed cost | P1 / epic 3 | `PROC-002`–`005`, `PROC-008`, `COST-010`, `COST-012`; `DEC-047`; `CALCULATION_CONTRACT.md` §5 | 3 | none — I4 data gates real values | done |
 | 5 | Recipes / sub-recipes / version / yield / allergens | P1 / epic 4 | `COST-001`, `COST-002`, `PROD-005`; `DEC-005`, `DEC-030`, `DEC-036`; `CALCULATION_CONTRACT.md` §6 | 3 | none — I5 data gates real recipes | todo |
 | 6 | Operating costs + labour + allocation | P1 / epic 5 | `COST-004`, `COST-006`, `COST-007`, `COST-011`, `COST-013`; `DEC-006`, `DEC-007`, `DEC-048`; `CALCULATION_CONTRACT.md` §7, §9 | 3 | none — I8 remainder + I9 ruling confirm loaded rates | todo |
 | 7 | Cost card + snapshots + price scenario + approval | P1 / epic 6 | `COST-005`, `COST-008`, `COST-009`, `PRICE-001`–`005`; `DEC-021`–`024`; `CALCULATION_CONTRACT.md`; `GOLDEN_FIXTURES.md` | 4, 5, 6 | six golden fixtures signed (A5) before "verified" | todo |
@@ -122,12 +123,13 @@ Outstanding owner decisions/inputs that gate slices (no new decisions invented h
 dates assigned):
 
 - **`ADR-0003` accepted (2026-09-19)** — `docs/adr/0003-identity-and-role-model.md`;
-  slices 1a–1c are unblocked. Its open items (final access matrix / shared-device login,
+  slices 1a–1e are done. Its open items (final access matrix / shared-device login,
   Argon2id parameters against the ~250 ms target, admin-assisted password reset) are still
   open and tracked here.
-- **`ADR-0004` acceptance + Graphile Worker vs pg-boss** — `docs/adr/0004-jobs-and-outbox.md`
-  (`Proposed`); gates the job/outbox runtime used by imports, summaries, forecasts,
-  publishing and AI.
+- **`ADR-0004` acceptance + jobs runtime (Graphile Worker vs pg-boss)** —
+  `docs/adr/0004-jobs-and-outbox.md` (`Proposed`); gates the job/outbox runtime used by
+  imports, summaries, forecasts, publishing and AI. The jobs-runtime comparison
+  (`3505aa8`) **recommends pg-boss**; the acceptance decision remains with the owner.
 - **`ADR-0005`, `ADR-0007`–`0011` acceptance** — the remaining `Proposed` ADRs; they gate
   slices 8, 12, 13, 16, 17, 18.
 - **Multi-tenancy posture** (shared-schema vs schema/DB-per-tenant) — owner decision
@@ -137,7 +139,19 @@ dates assigned):
 - **Staging data-sanitization owner** — `CONTEXT.md` "Open decisions / inputs";
   `docs/runbooks/deployment.md`.
 - **Real DO credentials + provisioned Spaces state bucket + single-runner apply** —
-  `docs/runbooks/deployment.md` ("Database privilege bootstrap", state-bucket bootstrap).
+  `docs/runbooks/deployment.md` ("Database privilege bootstrap", state-bucket bootstrap,
+  proxy/dry-run notes); includes the **legacy instance-slug check** before apply.
+- **Unit `m` vs the missing `length` dimension** — a dimension-vocabulary mismatch in
+  `schemas/domain-enums.yaml` surfaced by slice 3; owner/TECH to resolve (FND-003).
+- **`numeric(19,6)` digit cap in `packages/domain/src/decimal.ts`** — the domain decimal
+  type lacks the cap; TECH, before a slice relies on it.
+- **UI palette hex values + data-viz palette semantics** — owner (BUS) sign-off of the
+  design-token palette; the data-viz palette semantics are undefined.
+- **Shared rate-limit store** — the auth per-IP limiter is per-process; a shared store
+  (a migration) is needed before multi-instance deployment (TECH; pairs with
+  `ADR-0004`).
+- **Reset-token delivery** — `deliverResetToken` is a no-op stub until the
+  email/notification slice; owner to pick the delivery channel.
 - **Golden-fixture signatures (six)** — `docs/phase0/GOLDEN_FIXTURES.md` §5; finance +
   product owner, based on I4/I5/I8 and the I9 ruling.
 - **Source files I4, I5, I7, I8** — `docs/phase0/SOURCE_DATA_REQUEST.md` and

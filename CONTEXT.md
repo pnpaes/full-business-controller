@@ -10,73 +10,81 @@ duplicate their content.
 **Say "resume the work" and start here.** A fresh session must be able to continue
 from this section alone.
 
-**Next task:** **Auth slice 1c — `/api/v1/auth` HTTP surface**. Slices 1a, 1b-i, 1b-ii and
-1b-iii are done; **1b-iii (password reset + access control) is uncommitted** in the working
-tree. `docs/BUILD_ROADMAP.md` tracks the loop and gates. Expose the completed application
-auth surface over HTTP — routes, session cookies and the minimal login/2FA UI — with no new
-domain logic.
-
-**Objective:** wire the server-side auth core (sign-in, MFA, sessions, password reset,
-role/location authorization, admin operations) to HTTP without leaking secrets or changing
-the application behaviour built in 1b-ii/1b-iii.
+**Next task:** **slice 5 — recipes / sub-recipes / version / yield / allergens**
+(`CALCULATION_CONTRACT.md` §6; `COST-001`, `COST-002`, `PROD-005`; `DEC-005`, `DEC-030`,
+`DEC-036`; depends on slice 3). Slice 4 is committed as `0b4904f`; its two adversarial
+reviews were in flight when this section was written, so **reconcile any unapplied slice 4
+findings first** (the structural review's accepted items: cross-org/item/supplier/unit
+guards only exist in the application while the FKs are deferred, and a check that allows a
+state the derived `base_qty_accepted` column then rejects). `docs/BUILD_ROADMAP.md` tracks
+the loop and gates.
 
 **Scope (do):**
 
-1. Read `docs/adr/0003-identity-and-role-model.md`, `DEC-013` in
-   `12_OPEN_DECISIONS.md`, `docs/BUILD_ROADMAP.md` (slice 1c), `packages/application/src/auth/`
-   (the 1b-ii/1b-iii API), `apps/web` and `packages/config/src/env.ts`.
-2. Add `/api/v1/auth` routes for sign-in, MFA verification, logout/logout-all, password reset
-   (begin/complete) and the admin operations, calling only the application commands and
-   returning the single generic error on failure.
-3. Session cookies `HttpOnly` + `Secure` + `SameSite`, short lifetime, rotated on privilege
-   change; tokens travel in headers, never in URLs (ADR-0003).
-4. Minimal login/2FA UI.
-5. Rate limiting on login/2FA/reset attempts (slice 1c owns it; ADR-0003).
+1. Read first: `docs/phase0/CALCULATION_CONTRACT.md` §6 (recipe cost and yield),
+   `03_DOMAIN_MODEL.md` (recipes, sub-recipes, versions, yield),
+   `docs/phase0/DATA_DICTIONARY.md` for the recipe tables, `DEC-005`, `DEC-030`,
+   `DEC-036`, the effective-dating invariants already applied in `0002`/`0005`, and the
+   slice 3/4 APIs you compose (`packages/domain/src/{unit,unit-conversion,supplier-pack,landed-cost}.ts`).
+2. Add the deferred recipe schema (`recipe`, `recipe_version`, `recipe_line`, allergens)
+   as a new migration (next free number) with a documented `_down.sql`, mirroring the
+   slice 3/4 conventions: additive, effective-dated with the same gated exclusion
+   constraints, org-scoped, decimal scales per the data dictionary, and `db:generate`
+   left clean. Hand-written invariants go in a separate hand-written migration, never
+   inside a generated file; migrations `0000–0006` are not edited.
+3. Implement the domain and application layer for the unambiguous parts: recipe version
+   state and effective dating, nested lines with unit conversion, yield/portion maths and
+   the per-portion cost from §6, reusing `convertQuantity`, `computeLandedCost` and the
+   DEC-047 cost-source precedence. Anything the contract does not pin down (allergen
+   propagation through sub-recipes, yield-loss application order, which cost source a line
+   uses) must be raised for a decision, not invented.
+4. Tests: unit tests with the in-memory fakes plus conditional PostgreSQL integration
+   tests (gated on `DATABASE_URL`, rolled back), covering the §6 formula, a version/yield
+   boundary case, nested sub-recipe composition, and the invariants the migration adds.
+5. Verify, send the calculation to two adversarial reviewers (roster in
+   `docs/BUILD_ROADMAP.md` §2), reconcile accepted/declined findings, and commit
+   atomically with the verification evidence and rollback in the body (Rule 2); then
+   rewrite this section for slice 6.
 
-**Scope (do not):** no changes to `packages/domain`, `packages/persistence` or the
-application auth behaviour unless a defect is found; no new migration; no external writes; no
-secrets, reset tokens or hashes in logs or responses; `ADR-0003` is **Accepted**
-(2026-09-19), with its access-matrix, Argon2id-parameter and admin-reset items still open and
-tracked in the roadmap.
+**Scope (do not):** do not rework the committed auth/UI/master-data/receiving
+workstreams; invent no decision (append to `12_OPEN_DECISIONS.md` as `DEC-052` or later
+only if genuinely needed); no external writes; do not edit migrations `0000–0006`.
 
-**Files/paths:** `apps/web` (routes + UI); `packages/application/src/auth/` only for a
-genuinely required export.
-
-**Read first:** `docs/adr/0003-identity-and-role-model.md`, `DEC-013` and `DEC-049` in
-`12_OPEN_DECISIONS.md`, `docs/BUILD_ROADMAP.md` (slice 1c), `packages/application/src/auth/`,
-`apps/web`, `AGENTS.md` Rules 1–3.
+**Files/paths:** `packages/persistence/src/schema/` + `repositories/`, the new
+`packages/persistence/drizzle/0007_*` (or next free), `packages/domain/src/`,
+`packages/application/src/`, `docs/runbooks/persistence-migrations.md` (migration order),
+`CONTEXT.md` and `docs/BUILD_ROADMAP.md`.
 
 **Acceptance / verification:** `npm run lint && npm run typecheck && npm run test &&
-npm run build && npm run format:check` all pass; failure responses are generic; cookies are
-`HttpOnly`/`Secure`/`SameSite`; no secret, token or hash appears in logs or responses.
+npm run build && npm run format:check` pass with and without `DATABASE_URL`; the migration
+applies on an empty database, re-runs as a no-op and its down path is rehearsed;
+`npm audit --omit=dev` stays 0; recipe costs match `CALCULATION_CONTRACT.md` §6 with
+decimal-only arithmetic and HALF_UP at the documented boundaries.
 
-**Open decisions / inputs that shape it:** `ADR-0003` is **Accepted** (2026-09-19); its open
-items (final access matrix / shared-device login, Argon2id parameters against the ~250 ms
-target, admin-assisted reset) still shape the implementation and are tracked in the
-roadmap's owner-input register. The lockout thresholds in `DEFAULT_LOCKOUT_POLICY` are
-provisional and tunable. `DEC-049` requires new queries to keep identifiers/aliases
-**code-controlled**. Deployment/apply stays blocked on `ADR-0004` acceptance and the
-Graphile Worker vs pg-boss choice; multi-tenancy posture; component cost estimate; staging
-data-sanitization owner; real DO credentials plus a provisioned Spaces state bucket; and a
-single-runner apply.
+**Open decisions / inputs that shape it:** I5 (real recipes) gates real values — build
+against synthetic fixtures per the roadmap convention. The open items under "Open
+decisions / inputs" still stand (the `m`/missing `length` dimension mismatch, the missing
+`numeric(19,6)` cap in `packages/domain/src/decimal.ts`). Slice 4's deferred
+acceptance-to-stock posting is slice 8, gated on `ADR-0005` (Proposed).
 
-**After this task:** **Slice 2 — units & catalog value objects** (decimal money/quantity),
-per `docs/BUILD_ROADMAP.md`.
+**After this task:** **slice 6 — operating costs + labour + allocation**
+(`DEC-047`/`DEC-048`), per `docs/BUILD_ROADMAP.md`.
 
 ## What this is
 
 **Aquarela Business Control** — a secure, testable modular monolith for an Oslo
 café with two locations, covering costing, pricing, inventory, production,
 sales/imports, workforce and reporting. It is **documentation-first**: Phase 0 is
-complete (specification, 49 accepted decisions, artifacts and ADRs); the
-foundation scaffold and the Phase 1–2 persistence core are built (the latter
-uncommitted). No business slices yet.
+complete (specification, 51 accepted decisions, artifacts and ADRs); the
+foundation scaffold, the Phase 1–2 persistence core, the auth slices (1a–1e), the
+UI token foundation and master-data slices 2–3 are built; slice 4 (receipt + price
+history + landed cost) is committed; slice 5 (recipes) is next.
 
 ## Where things live
 
 - `00_README.md` … `13_AGENT_BUILD_BRIEF.md` — the specification package
   (inputs, rarely edited). Start with `00_README.md`.
-- `12_OPEN_DECISIONS.md` — the accepted decisions (DEC-001…DEC-049); the
+- `12_OPEN_DECISIONS.md` — the accepted decisions (DEC-001…DEC-051); the
   authority. New decisions are appended here.
 - `docs/phase0/` — close-out plan, calculation contract, data dictionary, golden
   fixtures, source-data request, notes. See `docs/phase0/PHASE0_CLOSEOUT_PLAN.md`
@@ -95,122 +103,66 @@ uncommitted). No business slices yet.
 
 ## Current status
 
-- **As of:** 2026-09-19 — branch `main`; HEAD `06e3993` (Phase 0 → persistence core →
-  deployment foundation → build roadmap → auth domain primitives → ADR-0003 accepted → auth
-  persistence layer → auth application flow 1b-ii, committed as `9ae5d23` + `06e3993`), with
-  **auth slice 1b-iii (password reset + access control) uncommitted** in the working tree,
-  alongside unrelated concurrent work (`packages/ui/`, `packages/domain/src/unit.ts` and
-  `supplier-pack.ts`) written by another session in the same checkout. **Nothing has been
-  applied to DigitalOcean.**
-- **Commits:** `536d63e` (Phase 0 package) → `bb464d6` (foundation scaffold) →
-  `e55ea23` (handoff and reversibility rules) → `b223212` (context into repo) →
-  `f4c5c8f` (persistence core) → `52bf85a` (deployment foundation) → `9f96c42` (build roadmap)
-  → `1f92791` (auth domain primitives) → `5365557` (ADR-0003 accepted) → `9fc8ba0` (auth
-  persistence layer).
-- **Phase 0:** complete — the accepted decisions are DEC-001…DEC-049
-  (`12_OPEN_DECISIONS.md`; DEC-049 added 2026-09-19).
-- **Persistence core built (committed `f4c5c8f`):** Drizzle schema for the Phase 1–2
-  scope — 35 tables covering organization/identity, catalog, tax/fees/FX,
-  supplier pricing, recipes, products, costing snapshots, inventory ledger and
-  outbox/audit — with migrations `0000_enable_extensions` → `0001_phase1_core`
-  → `0002_invariants` under `packages/persistence/drizzle/`.
-  `@aquarela/persistence` added `pg` and `db:migrate`; ADR-0002 is accepted;
-  controlled-vocabulary authority is `schemas/domain-enums.yaml`.
-- **Deployment runtime scaffolding (committed `52bf85a`):** `apps/worker` / `apps/scheduler`
-  boot stubs and the advisory-locked `packages/persistence/scripts/migrate.mjs`
-  (`DATABASE_MIGRATIONS_URL ?? DATABASE_URL`, session advisory lock `8675309`);
-  `drizzle-orm` moved to runtime deps;
-  verified end to end against local Postgres 16.
-- **Deployment infrastructure scaffolded and validated (committed `52bf85a`, `infra/`):**
-  Terraform 1.16.3 (`.terraform-version`) per `docs/runbooks/deployment.md` — modules
-  `project`/`networking`/`spaces`/`database`/`app-platform`/`monitoring`/`dns` and env
-  roots `staging`/`production`, DO provider pinned `~> 2.101` (2.101.1,
-  `.terraform.lock.hcl` covering linux_amd64 + darwin_arm64). `terraform fmt -check
--recursive` clean; `init -backend=false` + `validate` green in both envs; offline
-  `plan -refresh=false` = **16 to add, 0 to change, 0 to destroy** each (dummy
-  `DIGITALOCEAN_TOKEN`, no network calls). App spec: `web` + `worker` + `scheduler`
-  (long-lived, since provider v2.101.1 has no `SCHEDULED` job kind) + one `PRE_DEPLOY`
-  `migrate` job; DB firewall and project attachment live at the env root. No `apply`.
-- **Verified (2026-09-19):** migrations apply cleanly to an empty PostgreSQL 16 (Docker) — the
-  first run applies 0000–0002 under the advisory lock, a second run is a no-op, and a run with
-  neither URL set exits 1 without printing a URL; 24 tests (6 files); `lint`, `typecheck`,
-  `build`, `format:check` pass; worker and scheduler stubs exit 0 under `*_TICKS=1`;
-  `docker build` succeeds, the image runs as non-root `nextjs` and `/api/health` returns
-  `{"status":"ok"}`.
-- **Auth slice 1a done (2026-09-19):** pure domain auth primitives in
-  `packages/domain/src/auth/` — Argon2id hashing with a timing-equalising dummy path and
-  `needsRehash`, RFC 6238 TOTP with replay rejection, single-use recovery codes,
-  domain-separated session/password-reset tokens, a progressive lockout policy and
-  `AUTH_ERROR_GENERIC`; new runtime dependency `@node-rs/argon2` (verified loading on
-  Alpine/musl). **71 tests** (11 files); `lint`/`typecheck`/`build`/`format:check` pass.
-  ADR-0003 was accepted 2026-09-19.
-- **Auth slice 1b-i done (2026-09-19, committed `9fc8ba0`):** persistence access layer in
-  `packages/persistence/src/` — `client.ts` (`createDb`, `Database` type over
-  `drizzle-orm/node-postgres` + `pg.Pool`) and `repositories/` for `app_user`,
-  `auth_session`, `user_totp`, `password_reset_token` and `audit_event` (append-only),
-  all taking `db: Database` first; plus domain TOTP secret sealing
-  (`packages/domain/src/auth/secret-box.ts`, AES-256-GCM `v1.iv.ct.tag`) and migration
-  `0003_user_totp_last_used_counter.sql` (nullable `user_totp.last_used_counter`,
-  `null or >= 0`). New devDependency `@types/pg`. Review findings applied (2026-09-19):
-  org-scoped `findUserByIdentifier(db, organizationId, identifier)` (throws on a
-  cross-column collision), loud invariant failures in `recordLoginFailure`
-  (past `lockedUntil`), `consumeResetToken` (expired token), `setLastUsedCounter`
-  (negative counter / no enrolment), `findActiveSessionByTokenHash` joins
-  `app_user` and requires `status = "active"`, caller-audit JSDoc on the four
-  security mutations, and the `0003_..._down.sql` companion. **104 tests** with
-  `DATABASE_URL` (17 files; +9 secret-box, +24 conditional PostgreSQL
-  integration) and **80 passed / 24 skipped** without it; migration applies
-  0000–0003 and a second run is a no-op; `lint`/`typecheck`/`build`/`format:check`
-  pass.
-- **Auth slice 1b-ii done (2026-09-19, uncommitted):** application auth flow in
-  `packages/application/src/auth/` — an `AuthStore` port plus `createPostgresAuthStore`
-  adapter, `authenticate` (always-hash timing path, `AUTH_ERROR_GENERIC`, lockout via
-  `computeLockout`/`isLocked`, rehash on success), `verifyMfa` (sealed TOTP secret, replay
-  counter, single-use recovery codes), `verifySession`/`logout`/`logoutAll`, and an audit
-  action vocabulary. `packages/config` gains `SESSION_TTL_MINUTES`,
-  `PASSWORD_RESET_TTL_MINUTES` and an optional `TOTP_SECRET_ENCRYPTION_KEY`; the
-  persistence `findUserById` primitive was added. Review fixes applied (2026-09-19):
-  TOTP counter advance and recovery-code consumption are atomic compare-and-sets
-  (`advanceLastUsedCounter`, `consumeRecoveryCodeHash`) so concurrent requests cannot
-  reuse a code; every command runs inside `AuthStore.withTransaction` so a state change
-  and its audit row commit together; MFA failures now count towards the shared progressive
-  lockout (ADR-0003 requires lockout on 2FA too); `openSecret` failure fails closed and is
-  audited; `app_user.status` is typed as the `UserStatus` union. **120 tests** with
-  `DATABASE_URL` (18 files) and **94 passed / 26 skipped** without it. Password reset,
-  role/location authorization and the admin operations are slice 1b-iii.
-- **Security regression (DEC-049):** `npm audit --omit=dev` reports **1 high** —
-  GHSA-gpj5-g38j-94v9 / CWE-89 in `drizzle-orm <0.45.2` (pinned 0.38.4), because `drizzle-orm`
-  is now a runtime dependency. Not reachable today (identifiers are code-controlled); upgrade
-  to `>=0.45.2` before user input can reach identifier/alias builders and before production.
-- **Deployment architecture decided (committed, docs only):** separate DO App Platform components
-  (`web`/`api`/`worker`/`scheduler`), DO Managed PostgreSQL kept (DEC-014 unchanged), DO Spaces,
-  Terraform; see `docs/adr/0012-deployment-topology-and-service-runtimes.md` and
-  `docs/runbooks/deployment.md`. The `infra/` layout is scaffolded and validated offline
-  (not yet applied).
-- **Not yet built:** business slices; the deferred tables (workforce,
-  integrations, competitor, AI, sales, procurement, production,
+- **As of:** 2026-09-19 — branch `main`; HEAD `0b4904f` (slice 4: goods receipts +
+  landed cost). Everything is committed; the working tree is clean. **Nothing has
+  been applied to DigitalOcean.**
+- **Auth complete and security-reviewed (slices 1a–1e):** domain primitives (1a);
+  persistence layer (1b-i); application flow (1b-ii); password reset + access
+  control (1b-iii, `2ce8847`; reset neutrality `5776914`); hardening (`60ac52e`:
+  fail-closed MFA config, 32-byte key validation, `isAuthorizedFor` throws on an
+  empty requirement, audit before/after the secret guard); the HTTP surface (1c,
+  `5c42c1d`: routes, cookies, CSRF/same-origin, per-IP limiter, login/2FA/reset
+  pages); TOTP enrolment + recovery codes (1d, `07af21d`); first-owner bootstrap +
+  MFA enrolment surface (1e, `e51a957`); atomic MFA disable + bootstrap `--dry-run`
+  (`0cce93b`).
+- **Master data done:** slice 2 — unit + supplier-pack value objects (`87f9ced`,
+  strict package-to-base fix `4ccfb23`); slice 3 — master-data schema + conversion
+  graph (`a869227`, migration `0004`), `unit_conversion` overlap invariants
+  (migration `0005`) + conversion-graph hardening and `DEC-050`/`DEC-051`
+  (`b8897bf`).
+- **UI foundation:** design tokens package (`aa2eff5`), token-driven UI primitives
+  (`a83a312`), layout reference note (`dad2ff0`), accessibility/form-wiring fixes
+  (`74ac467`).
+- **Decision briefs + cost estimate:** DEC-049 assessment (`c8e86e0`), deployment
+  cost estimate (`21e9c72`), multi-tenancy posture (`018930d`), jobs-runtime
+  comparison recommending pg-boss (`3505aa8`), runbook pre-apply inputs
+  (`bfc5f74`).
+- **DEC-049 closed:** drizzle-orm 0.45.2 / drizzle-kit 0.31.10 upgrade (`cc86f13`);
+  `npm audit --omit=dev` = 0.
+- **Tests:** 318 with `DATABASE_URL` before the drizzle upgrade, 321 after; 265
+  passed / 53 skipped without it (as recorded by the slice sessions; re-verify on
+  resume). Open verification debt: the per-process rate limiter needs a shared
+  store before multi-instance deployment; the reset-token delivery is a no-op stub
+  until the email slice; the palette hex values and data-viz palette semantics
+  await owner sign-off (see "Open decisions / inputs").
+- **Persistence core + deployment foundation (committed):** Drizzle schema (35
+  tables), migrations `0000_enable_extensions` → `0005_unit_conversion_invariants`
+  (additive, tested down paths), the advisory-locked migrator, worker/scheduler
+  stubs and the `infra/` Terraform scaffold validated offline. Not applied.
+- **Not yet built:** business slices 5+; the deferred tables
+  (workforce, integrations, competitor, AI, sales, procurement, production,
   counts/transfers, period close, platform job/file/approval).
 
 ## Next up (prioritised)
 
-`docs/BUILD_ROADMAP.md` is the ordered execution tracker for these slices (slice 0 done;
-slices 1a/1b-i/1b-ii done; **slice 1b-iii next**). The list below is the short narrative form.
+`docs/BUILD_ROADMAP.md` is the ordered execution tracker for these slices (slice 0 and
+1a–1e, 2, 3 and 4 done; **slice 5 next**). The list below is the short narrative form.
 
-1. **Auth slice** — `DEC-013` / `docs/adr/0003-identity-and-role-model.md`:
-   Argon2id, TOTP 2FA, server-side sessions. Slices 1a–1b-iii are done (1b-iii
-   uncommitted); **slice 1c — the `/api/v1/auth` HTTP surface — is next**. See
-   "Resume here".
-2. **Deployment foundation — scaffolded and validated offline (committed); not applied.**
-   `infra/` Terraform (project, database, spaces, networking, app-platform,
-   monitoring, dns) + the App Platform app spec are done, and the
+1. **Slice 4 — receipt + price history + landed cost** — finish, verify, review and
+   commit the in-flight work. See "Resume here".
+2. **Slice 5 — recipes / sub-recipes / version / yield / allergens** — per
+   `docs/BUILD_ROADMAP.md` (`CALCULATION_CONTRACT.md` §6).
+3. **Deployment foundation — scaffolded and validated offline (committed); not
+   applied.** `infra/` Terraform (project, database, spaces, networking,
+   app-platform, monitoring, dns) + the App Platform app spec are done, and the
    `apps/worker` / `apps/scheduler` stubs exist. Before any `apply`: the owner
-   decisions under "Open decisions", real DO credentials and a provisioned Spaces
-   state bucket, and a single-runner apply. See
+   decisions under "Open decisions / inputs", real DO credentials and a
+   provisioned Spaces state bucket, and a single-runner apply. See
    `docs/adr/0012-deployment-topology-and-service-runtimes.md` and
    `docs/runbooks/deployment.md`.
-3. **Costing slice** — against `docs/phase0/CALCULATION_CONTRACT.md`, using
-   synthetic fixtures.
-4. **Load real data** and sign the six golden fixtures
+4. **Costing verification** — against `docs/phase0/CALCULATION_CONTRACT.md` with
+   synthetic fixtures, then real data.
+5. **Load real data** and sign the six golden fixtures
    (`docs/phase0/GOLDEN_FIXTURES.md`).
 
 ## Open decisions / inputs (do not block development)
@@ -218,26 +170,40 @@ slices 1a/1b-i/1b-ii done; **slice 1b-iii next**). The list below is the short n
 - External inputs still outstanding: supplier costs/receipts (I4), recipes +
   yields (I5), productive-hours % (I8 remainder), opening counts (I7), and the
   Frontline data-shape confirmations (item-level sales lines, per-line
-  channel/applied tax, SKU, add-on representation).
-- See `docs/phase0/SOURCE_DATA_REQUEST.md` and
-  `docs/phase0/UNBLOCK_CHECKLIST.md`.
-- Deployment follow-ups (2026-09-19): **ADR-0004 acceptance** and the **Graphile Worker vs
-  pg-boss** choice (the worker/scheduler design depends on both); the **scheduler `SCHEDULED`
-  provider gap** (DO provider v2.101.1 has no `SCHEDULED` job kind, so `scheduler` is a
-  long-lived worker + tick loop until the provider/API exposes it or ADR-0004 picks a
-  scheduler); Terraform state locking (**Spaces has none** — a single-runner apply is the
-  serialization) plus the **out-of-band state-bucket bootstrap**; DO Functions scope;
-  multi-tenancy posture (shared-schema vs schema/DB-per-tenant) as an **owner decision**;
-  component cost estimate; staging data-sanitization owner; **real DO credentials** and a
-  **provisioned state bucket**. Dockerfile/migrator packaging is **resolved** (one parameterized
-  Dockerfile whose runner keeps devDependencies so the migrator carries `drizzle-kit`).
-  **Required pre-apply step:** run `infra/bootstrap/database-grants.sql` once as `doadmin` after
-  the cluster/users exist and **before the first deploy** (without it `migrator` has no DDL
+  channel/applied tax, SKU, add-on representation). See
+  `docs/phase0/SOURCE_DATA_REQUEST.md` and `docs/phase0/UNBLOCK_CHECKLIST.md`.
+- Surfaced by the 2026-09-19 slices (also tracked in `docs/BUILD_ROADMAP.md` §5):
+  - unit `m` vs the missing `length` dimension — a dimension-vocabulary mismatch
+    (`schemas/domain-enums.yaml`) to resolve with the owner;
+  - the missing `numeric(19,6)` digit cap in `packages/domain/src/decimal.ts`;
+  - the palette hex values need owner sign-off, and the data-viz palette
+    semantics are undefined;
+  - the per-IP rate limiter is per-process — a shared store (a migration) is
+    needed before multi-instance deployment;
+  - reset-token delivery is a no-op stub (`deliverResetToken` port) until the
+    email slice.
+- `DEC-049` is **closed** (2026-09-19): the drizzle-orm 0.45.2 /
+  drizzle-kit 0.31.10 upgrade is committed (`cc86f13`) and `npm audit --omit=dev`
+  reports 0; it is no longer an open security regression.
+- Deployment/apply gates (2026-09-19): **ADR-0004 acceptance** and the
+  **Graphile Worker vs pg-boss** choice (the jobs-runtime comparison `3505aa8`
+  recommends **pg-boss**; the worker/scheduler design depends on the outcome); the
+  **scheduler `SCHEDULED` provider gap** (DO provider v2.101.1 has no `SCHEDULED`
+  job kind, so `scheduler` is a long-lived worker + tick loop until the
+  provider/API exposes it or ADR-0004 picks a scheduler); Terraform state locking
+  (**Spaces has none** — a single-runner apply is the serialization) plus the
+  **out-of-band state-bucket bootstrap**; **multi-tenancy posture** (`018930d`,
+  shared-schema vs schema/DB-per-tenant, an **owner decision**); **component cost
+  estimate** (`21e9c72`); staging data-sanitization owner; the **legacy
+  instance-slug check** before apply; **real DO credentials** and a provisioned
+  state bucket. Dockerfile/migrator packaging is **resolved** (one parameterized
+  Dockerfile whose runner keeps devDependencies so the migrator carries
+  `drizzle-kit`). **Required pre-apply step:** run
+  `infra/bootstrap/database-grants.sql` once as `doadmin` after the cluster/users
+  exist and **before the first deploy** (without it `migrator` has no DDL
   privileges and `app` cannot read) — see `docs/runbooks/deployment.md`
-  ("Database privilege bootstrap").
-- **DEC-049 (drizzle-orm security):** upgrade to `>=0.45.2` — breaking, with a matching
-  `drizzle-kit` bump and migration re-verification — before user input can reach
-  identifier/alias builders and before production.
+  ("Database privilege bootstrap") and the runbook's proxy/dry-run notes
+  (`bfc5f74`).
 - Persistence-slice reconciliation: vocabulary authority is
   `schemas/domain-enums.yaml`; accepted/deferred review items are the
   `stock_balance` projection convention, the `component_kind` vocabulary
@@ -304,29 +270,64 @@ and Spaces credentials via `-backend-config` / `AWS_ACCESS_KEY_ID` +
 ## Reversibility
 
 - Revert any commit with `git revert <sha>`; no destructive git operations.
-- The `infra/` scaffold, runtime stubs and persistence core are now committed; revert them
-  with `git revert` if needed. **No cloud resource was created — only offline
-  `fmt`/`validate`/`plan` ran, never `apply`; no Terraform state exists.**
-- **Auth slice 1b-iii is uncommitted and additive:** discard the working-tree changes (or
-  `git revert` once committed); slices 1b-i/1b-ii are committed (`9fc8ba0`, `9ae5d23`,
-  `06e3993`). The new modules are imported by no runtime yet; **no migration was added** (the
-  identity/access schema already existed), and the integration tests run in rolled-back
-  transactions, so they leave no rows. The working tree also contains unrelated concurrent
-  work (`packages/ui/`, `packages/domain/src/unit.ts`, `packages/domain/src/supplier-pack.ts`)
-  written by another session in the same checkout — not part of this slice.
-- Bootstrap migrations are forward-only. While the database is empty the tested
-  recovery is `DROP SCHEMA public CASCADE; DROP SCHEMA drizzle CASCADE;
-CREATE SCHEMA public; npm run db:migrate` (see the runbook). Once data exists,
-  migrations must be additive (expand → migrate → contract) with a tested
-  data-preserving down path (see `AGENTS.md` Rule 2). Revising the schema now
-  requires regenerating `0001_phase1_core` and re-running the migration
-  verification.
+- **Everything through `0b4904f` is committed** (slice 4 included, with its migration
+  `0006` and additive down path); `git revert` any commit, or discard the working tree
+  if a future slice is in flight.
+- The `infra/` scaffold, runtime stubs and persistence core are committed; revert
+  them with `git revert` if needed. **No cloud resource was created — only offline
+  `fmt`/`validate`/`plan` ran, never `apply`; no Terraform state exists, and
+  nothing has been applied to DigitalOcean.**
+- Migrations 0000–0005 are additive with tested down paths. While the database is
+  empty the tested recovery is `DROP SCHEMA public CASCADE; DROP SCHEMA drizzle
+CASCADE; CREATE SCHEMA public; npm run db:migrate` (see the runbook). Once data
+  exists, migrations must be additive (expand → migrate → contract) with a tested
+  data-preserving down path (see `AGENTS.md` Rule 2).
 - External writes require a documented rollback and per-source approval
   (`DEC-015`).
 
 ## Work log (append-only, newest first)
 
-### 2026-09-19 — Auth slice 1b-iii: password reset + access control (uncommitted)
+### 2026-09-19 — Auth slices 1b-iii→1e, master data (2–3), UI tokens, decision briefs, drizzle upgrade
+
+Committed a run of slices on `main`, in order: `2ce8847` password reset + access
+control (slice 1b-iii); `5776914` reset neutrality (no token in the result, a
+`deliverResetToken` port, org-scoped redemption); `87f9ced` unit + supplier-pack
+value objects (slice 2); `4ccfb23` slice 2 review fix (strict package-to-base);
+`aa2eff5` design tokens package; `60ac52e` auth hardening (fail-closed MFA
+config, 32-byte key validation, `isAuthorizedFor` throws on an empty
+requirement, audit before/after the secret guard); `a83a312` token-driven UI
+primitives; `dad2ff0` UI layout reference note; `c8e86e0` DEC-049 assessment;
+`21e9c72` deployment cost estimate; `018930d` multi-tenancy posture; `3505aa8`
+jobs-runtime comparison (recommends pg-boss); `bfc5f74` runbook pre-apply
+inputs; `74ac467` UI primitive accessibility/form-wiring fixes; `5c42c1d` auth
+HTTP surface (slice 1c: routes, cookies, CSRF/same-origin, per-IP limiter,
+login/2FA/reset pages); `a869227` master-data schema + conversion graph (slice
+3: `unit_conversion`, `supplier`, `supplier_item`, `cost_center` + migration
+0004); `07af21d` TOTP enrolment + recovery codes (slice 1d); `b8897bf`
+`unit_conversion` overlap invariants (migration 0005) + conversion-graph
+hardening (reject self-edges, rescale per hop, 32-hop cap, round-to-zero
+rejection) + `DEC-050`/`DEC-051`; `e51a957` first-owner bootstrap + MFA
+enrolment surface (slice 1e); `cc86f13` drizzle-orm 0.45.2 / drizzle-kit 0.31.10
+upgrade, closing DEC-049 (`npm audit --omit=dev` = 0); `0cce93b` MFA disable now
+atomic (revocation inside disable's transaction) + bootstrap `--dry-run` +
+runbook proxy/dry-run notes.
+
+Verified per slice: with `DATABASE_URL` the suite grew from 318 tests before the
+drizzle upgrade to 321 after; without it 265 passed / 53 skipped;
+lint/typecheck/build/format:check green at each commit. Review findings
+accepted: the conversion-graph invariants and hardening, the atomic MFA
+disable, the neutral password reset, and token-family separation. Declined with
+reasons: none new this session — the earlier declines stand as recorded (the
+drizzle advisory was governed by DEC-049, now closed by the upgrade; the
+domain-layer logging policy; the provisional lockout escalation). Slice 4 was
+started by a parallel session and is left uncommitted in the working tree; its
+resume entry is at the top of this file.
+
+Rollback: each item above is its own commit — `git revert <sha>` per slice. The
+drizzle upgrade changed lockfile and migration metadata only; migrations
+0000–0005 are additive with tested down paths.
+
+### 2026-09-19 — Auth slice 1b-iii: password reset + access control (committed `2ce8847`)
 
 Completed the server-side auth application surface on the committed 1b-ii flow. Persistence:
 new `packages/persistence/src/repositories/access.ts` (`listUserRoles`, `listUserLocationScopes`,
