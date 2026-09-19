@@ -33,6 +33,7 @@ export const AUTH_AUDIT_ACTIONS = {
   accessRoleChanged: "auth.access.role_changed",
   accessScopesChanged: "auth.access.scopes_changed",
   userDisabled: "auth.user.disabled",
+  bootstrapOwnerCreated: "auth.bootstrap.owner_created",
 } as const;
 
 export type AuthAuditAction = (typeof AUTH_AUDIT_ACTIONS)[keyof typeof AUTH_AUDIT_ACTIONS];

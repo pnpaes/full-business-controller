@@ -19,6 +19,23 @@ export type {
 export { authenticate } from "./authenticate";
 export type { AuthenticateInput, AuthenticateResult } from "./authenticate";
 
+export {
+  MIN_BOOTSTRAP_PASSWORD_LENGTH,
+  bootstrapFirstOwner,
+  createPostgresBootstrapStore,
+} from "./bootstrap";
+export type {
+  BootstrapDeps,
+  BootstrapFailure,
+  BootstrapFirstOwnerInput,
+  BootstrapFirstOwnerResult,
+  BootstrapGrant,
+  BootstrapNewOwner,
+  BootstrapOrganization,
+  BootstrapRole,
+  BootstrapStore,
+} from "./bootstrap";
+
 export { verifyMfa } from "./mfa";
 export type { VerifyMfaInput, VerifyMfaResult } from "./mfa";
 

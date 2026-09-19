@@ -173,6 +173,39 @@ psql "postgresql://doadmin:<password>@<host>:25060/<db>?sslmode=require" \
   -f infra/bootstrap/database-grants.sql
 ```
 
+### First-owner bootstrap
+
+Run **once per environment, after migrations have applied and before the app is
+used**, because nothing else creates an organization or a user and the web app
+reads `ORGANIZATION_ID`. The command is `npm run bootstrap` (the CLI at
+`apps/web/scripts/bootstrap.ts`, using the pooled `DATABASE_URL`); it creates the
+organization, the first `owner` user and the role grant, and writes an audit row.
+
+Required configuration (flags win over env): `BOOTSTRAP_ORGANIZATION_NAME` (or
+`--organization-name`) and at least one of `BOOTSTRAP_OWNER_EMAIL` /
+`BOOTSTRAP_OWNER_USERNAME`. The owner password comes only from
+`BOOTSTRAP_OWNER_PASSWORD` (never a flag, so it stays out of shell history and
+`ps`) or is generated with the CSPRNG; a generated password is printed **once to
+stdout** and must be stored now. The command never writes the password to a log
+or the audit table. Copy the printed organization id into the app's
+`ORGANIZATION_ID` env var.
+
+```bash
+DATABASE_URL=... \
+BOOTSTRAP_ORGANIZATION_NAME="Aquarela Kafé" \
+BOOTSTRAP_OWNER_EMAIL=owner@aquarela.no \
+npm run bootstrap
+```
+
+The command is **idempotent per organization name**: a second run refuses (exit
+code 2) once an `owner` grant exists, and makes no changes. Use `--force` /
+`BOOTSTRAP_FORCE=1` only to deliberately add another owner or recover from a
+half-finished bootstrap. The generated password **must be changed at first
+login**; until the ADR-0003 "admin-assisted password reset" procedure exists,
+running this command with `--force` is the operator fallback when the owner
+account is unusable. Creating the first owner here is an accepted implementation
+default pending that open item.
+
 ## App Platform specification
 
 - Components: `web` (with `api` co-located as Next.js route handlers), `worker`, and `scheduler`
