@@ -50,6 +50,20 @@
       "when": 1789853260355,
       "tag": "0006_goods_receipt",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1789853887846,
+      "tag": "0007_goods_receipt_line_checks",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1789853918031,
+      "tag": "0008_supplier_price_effective_range",
+      "breakpoints": true
     }
   ]
 }

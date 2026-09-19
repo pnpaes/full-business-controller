@@ -14,6 +14,12 @@ import { TAX_BASIS } from "@aquarela/persistence";
 import { RECEIVING_AUDIT_ACTIONS } from "./actions";
 import type { ReceivingStore, ReceivingUnit } from "./types";
 
+/**
+ * One receipt line at the trust boundary (M5). `otherAcquisitionCost` is
+ * **intentionally absent**: §5 includes it in the landed pack cost, but
+ * `goods_receipt_line` has no such column, so accepting it here would compute a
+ * cost the receipt cannot persist. Add it (and the column) together.
+ */
 export interface RecordGoodsReceiptLineInput {
   readonly supplierItemId?: string | null;
   readonly itemId: string;
@@ -360,6 +366,15 @@ export async function recordGoodsReceipt(
       lines.push(await recordLine(tx, ctx, line));
     }
 
+    // Sum of line price × received pack quantity (money scale, HALF_UP), so an
+    // auditor can reconcile the receipt without joining the lines. A fixed
+    // derived number — no secret, no free text.
+    const grossTotal = validated.reduce(
+      (total, line) =>
+        total.add(Money.from(line.input.price, currency).multiply(line.input.receivedPackQty)),
+      Money.zero(currency),
+    );
+
     // Fixed, non-secret fields only, so the audit row is secret-safe by
     // construction (mirrors the auth audit convention without duplicating it).
     await tx.writeAudit({
@@ -368,7 +383,7 @@ export async function recordGoodsReceipt(
       action: RECEIVING_AUDIT_ACTIONS.receiptRecorded,
       entityType: "goods_receipt",
       entityId: receipt.id,
-      after: { status: "accepted", lineCount: lines.length },
+      after: { status: "accepted", lineCount: lines.length, gross_total: grossTotal.toString() },
     });
 
     return { goodsReceiptId: receipt.id, lines };

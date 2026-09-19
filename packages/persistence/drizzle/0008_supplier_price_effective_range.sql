@@ -1,0 +1,2 @@
+ALTER TABLE "supplier_price" DROP CONSTRAINT "supplier_price_effective_range_check";--> statement-breakpoint
+ALTER TABLE "supplier_price" ADD CONSTRAINT "supplier_price_effective_range_check" CHECK ("supplier_price"."effective_to" is null or "supplier_price"."effective_to" >= "supplier_price"."effective_from");

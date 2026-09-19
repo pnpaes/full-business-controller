@@ -87,6 +87,8 @@ describe("recordGoodsReceipt", () => {
       action: "receiving.goods_receipt.recorded",
       entityType: "goods_receipt",
       entityId: "receipt-1",
+      // Fixed, derived and secret-free: price × received packs, at money scale.
+      after: { status: "accepted", lineCount: 1, gross_total: "200.0000" },
     });
   });
 
@@ -217,6 +219,29 @@ describe("recordGoodsReceipt", () => {
         }),
       ),
     ).rejects.toThrow(/must not be supplied for an exclusive price/);
+  });
+
+  it("rejects a discount greater than the price (negative net pack price)", async () => {
+    await expect(
+      recordGoodsReceipt(
+        store,
+        baseInput({
+          lines: [
+            {
+              supplierItemId: "si-1",
+              itemId: "item-1",
+              receivedPackQty: "1",
+              acceptedPackQty: "1",
+              unitId: "pack",
+              packToBaseFactor: "1000",
+              price: "100",
+              discount: "100.01",
+              taxBasis: "exclusive",
+            },
+          ],
+        }),
+      ),
+    ).rejects.toThrow("net pack price must not be negative");
   });
 
   it("rejects accepted > received and a non-positive accepted quantity", async () => {

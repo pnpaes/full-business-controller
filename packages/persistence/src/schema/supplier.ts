@@ -2,16 +2,7 @@ import { sql } from "drizzle-orm";
 import { boolean, check, integer, pgTable, text, unique, uuid } from "drizzle-orm/pg-core";
 
 import { item, unit } from "./catalog";
-import {
-  currency,
-  effectiveRange,
-  enumCheck,
-  money,
-  orgId,
-  quantity,
-  rangeCheck,
-  uuidPk,
-} from "./columns";
+import { currency, effectiveRange, enumCheck, money, orgId, quantity, uuidPk } from "./columns";
 import { organization } from "./organization";
 import { taxRule } from "./tax";
 import { TAX_BASIS } from "./vocabularies";
@@ -102,7 +93,14 @@ export const supplierPrice = pgTable(
     check("supplier_price_gross_pack_price_check", sql`${t.grossPackPrice} >= 0`),
     check("supplier_price_discount_check", sql`${t.discount} >= 0`),
     check("supplier_price_tax_basis_check", enumCheck(t.taxBasis, TAX_BASIS)),
-    check("supplier_price_effective_range_check", rangeCheck(t.effectiveFrom, t.effectiveTo)),
+    // Half-open `[)` history: a same-instant re-record closes the previous
+    // window at `effective_from` (an empty interval), which is non-overlapping
+    // under `supplier_price_no_overlap`. `effective_to > effective_from` would
+    // reject that empty window, so equality is permitted here.
+    check(
+      "supplier_price_effective_range_check",
+      sql`${t.effectiveTo} is null or ${t.effectiveTo} >= ${t.effectiveFrom}`,
+    ),
     // supplier_price_no_overlap (exclusion constraint) is emitted in the raw
     // `invariants` migration: drizzle-kit 0.30 cannot express exclusion constraints.
   ],

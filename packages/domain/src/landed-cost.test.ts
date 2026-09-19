@@ -82,6 +82,33 @@ describe("computeLandedCost", () => {
     expect(down.landedBaseUnitCost).toBe("0.3333");
   });
 
+  it("rounds an exact half away from zero at B1 (remainder × 2 = denominator)", () => {
+    // 0.2469 / 2 = 0.12345 exactly: the 5th decimal is an exact half, so
+    // HALF_UP rounds away from zero to 0.1235. This pins the
+    // `remainder * 2n >= absDenominator` equality path in divideRoundHalfUp.
+    const exactHalf = computeLandedCost({
+      grossPackPrice: "0.2469",
+      recoverableTax: "0",
+      currency: "NOK",
+      acceptedPackQuantity: Quantity.from("1", "pack"),
+      pack: pack("2"),
+    });
+    expect(exactHalf.landedBaseUnitCost).toBe("0.1235");
+  });
+
+  it("rejects a discount greater than the pack price (negative net pack price)", () => {
+    expect(() =>
+      computeLandedCost({
+        grossPackPrice: "10",
+        discount: "10.01",
+        recoverableTax: "0",
+        currency: "NOK",
+        acceptedPackQuantity: Quantity.from("1", "pack"),
+        pack: pack("1000"),
+      }),
+    ).toThrow("net pack price must not be negative");
+  });
+
   it("rejects a non-positive accepted pack quantity", () => {
     expect(() =>
       computeLandedCost({

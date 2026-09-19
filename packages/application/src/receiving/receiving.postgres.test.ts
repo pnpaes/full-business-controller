@@ -174,6 +174,7 @@ describe.skipIf(!databaseUrl)("recordGoodsReceipt against PostgreSQL", () => {
       expect(audits[0]).toMatchObject({
         action: "receiving.goods_receipt.recorded",
         entityType: "goods_receipt",
+        after: { status: "accepted", lineCount: 1, gross_total: "200.0000" },
       });
     });
   });
@@ -214,6 +215,49 @@ describe.skipIf(!databaseUrl)("recordGoodsReceipt against PostgreSQL", () => {
       const second = prices.find((row) => row.grossPackPrice === "200.0000");
       expect(first?.effectiveTo).toEqual(later);
       expect(second?.effectiveTo).toBeNull();
+    });
+  });
+
+  it("keeps half-open windows non-overlapping when a receipt shares a timestamp", async () => {
+    await inRollback(client.db, async (tx) => {
+      const fixture = await createFixture(tx, orgId);
+      const store = createPostgresReceivingStore(tx);
+      const line = {
+        supplierItemId: fixture.supplierItemId,
+        itemId: fixture.itemId,
+        receivedPackQty: "1",
+        acceptedPackQty: "1",
+        unitId: fixture.packUnitId,
+        packToBaseFactor: "1000",
+        price: "100",
+        taxBasis: "exclusive",
+      };
+      const base: RecordGoodsReceiptInput = {
+        organizationId: orgId,
+        locationId: fixture.locationId,
+        actorId: randomUUID(),
+        receivedAt,
+        supplierId: fixture.supplierId,
+        lines: [line],
+      };
+      await recordGoodsReceipt(store, base);
+      // Same instant, same supplier item: the previous window closes at
+      // `receivedAt` as an empty `[receivedAt, receivedAt)` interval, so the two
+      // windows are non-overlapping under half-open semantics and exactly one
+      // stays open.
+      await recordGoodsReceipt(store, { ...base, lines: [{ ...line, price: "200" }] });
+
+      const prices = await listSupplierPricesForSupplierItem(tx, fixture.supplierItemId);
+      expect(prices).toHaveLength(2);
+      expect(prices.every((row) => row.effectiveFrom.getTime() === receivedAt.getTime())).toBe(
+        true,
+      );
+      const open = prices.filter((row) => row.effectiveTo === null);
+      expect(open).toHaveLength(1);
+      expect(open[0]!.grossPackPrice).toBe("200.0000");
+      const closed = prices.filter((row) => row.effectiveTo !== null);
+      expect(closed).toHaveLength(1);
+      expect(closed[0]!.effectiveTo!.getTime()).toBe(receivedAt.getTime());
     });
   });
 

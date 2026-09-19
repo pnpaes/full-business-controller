@@ -61,22 +61,27 @@ functions/triggers (`stock_movement`, `calculation_snapshot`, `audit_event`)
 live only in `0002_invariants.sql`; the two `unit_conversion` exclusion
 constraints (`unit_conversion_global_no_overlap`, `unit_conversion_item_no_overlap`)
 and its `NULLS NOT DISTINCT` `unit_conversion_version_key` live only in
-`0005_unit_conversion_invariants.sql`. This is the **hand-written invariants
-convention**: anything drizzle-kit cannot express (extensions, exclusion
-constraints, expression/partial indexes, deferrable FKs, triggers,
-`NULLS NOT DISTINCT` keys) goes in a `_invariants.sql` file that mirrors
-`0002`, and its columns stay plain `uuid`/`text` in the TypeScript schema so
-`generate` never fights it. All of these objects are **not** represented in
-`drizzle/meta/*_snapshot.json`, so `drizzle-kit generate` cannot see, protect
-or recreate them: it does not diff against them, a later generated migration
-will never include them, and dropping them manually is invisible to the tool.
+`0005_unit_conversion_invariants.sql`; the
+`goods_receipt_line_accept_qty_guard` trigger/function (an accepted receipt's
+line must have `accepted_pack_qty > 0`; a plain CHECK cannot read the parent
+status) lives only in `0007_goods_receipt_line_checks.sql`. This is the
+**hand-written invariants convention**: anything drizzle-kit cannot express
+(extensions, exclusion constraints, expression/partial indexes, deferrable FKs,
+triggers, `NULLS NOT DISTINCT` keys) goes in a hand-written `*_invariants.sql`
+or `*_checks.sql` file that mirrors `0002`, and its columns stay plain
+`uuid`/`text` in the TypeScript schema so `generate` never fights it. All of
+these objects are **not** represented in `drizzle/meta/*_snapshot.json`, so
+`drizzle-kit generate` cannot see, protect or recreate them: it does not diff
+against them, a later generated migration will never include them, and dropping
+them manually is invisible to the tool.
 
 > **Never run `drizzle-kit push` against a shared or live database.** `push`
 > diffs the live database against the TypeScript schema and, because the raw
 > objects are invisible to it, will silently drop the exclusion constraints, the
-> two deferrable FKs, the append-only triggers and the `unit_conversion`
-> constraints. Those objects live only in `0002_invariants.sql` and
-> `0005_unit_conversion_invariants.sql`; use `generate` + `migrate` and the
+> two deferrable FKs, the append-only triggers, the `unit_conversion`
+> constraints and the `goods_receipt_line` guard. Those objects live only in
+> `0002_invariants.sql`, `0005_unit_conversion_invariants.sql` and
+> `0007_goods_receipt_line_checks.sql`; use `generate` + `migrate` and the
 > guard below.
 
 **Guard:** before committing any future generated migration, diff the database
@@ -157,20 +162,37 @@ only, so the down file is an explicit operator action, not an automatic one.
   `psql "$DATABASE_URL" -f packages/persistence/drizzle/0006_goods_receipt_down.sql`.
   Only run it once no receipt rows are needed: the drops are destructive and
   financial/stock facts are append-only (AGENTS.md Rule 2).
+- **0007 adds the hand-written `goods_receipt_line` guard and follows the down
+  convention:** `0007_goods_receipt_line_checks_down.sql` drops the
+  `goods_receipt_line_accept_qty_guard` trigger and its function (no table, no
+  row), so it is safe to run whenever the guard must be removed. Apply it
+  manually with
+  `psql "$DATABASE_URL" -f packages/persistence/drizzle/0007_goods_receipt_line_checks_down.sql`.
+- **0008 relaxes `supplier_price_effective_range_check` to `effective_to >=
+  effective_from`** (half-open `[)` history allows an empty same-instant
+  window) and follows the down convention:
+  `0008_supplier_price_effective_range_down.sql` restores the strict `>`. The
+  down VALIDATES existing rows, so close/remove any degenerate empty windows
+  first. Apply it manually with
+  `psql "$DATABASE_URL" -f packages/persistence/drizzle/0008_supplier_price_effective_range_down.sql`.
+  Apply 0008's down **before** 0005's/0004's down, since the constraint lives on
+  `supplier_price`.
 
-  **Re-applying after a manual down:** drizzle-kit tracks applied migrations in
-  `drizzle.__drizzle_migrations`, not by comparing the schema, so a plain
-  `npm run db:migrate` after any down file is a no-op — the migration is still
-  recorded. To re-apply one, delete its ledger row and migrate again. The ledger
-  row is identified by `created_at` (the `_journal.json` `when`):
-  `DELETE FROM drizzle.__drizzle_migrations WHERE created_at = 1789847649193;`
-  for 0003, `… = 1789850858806` for 0004, `… = 1789851925634` for 0005 and
-  `… = 1789853260355` for 0006, then
-  `npm run db:migrate` (0003 verified 2026-09-19; 0005 rehearsed in the slice-3
-  review follow-up; 0006 rehearsed with the slice-4 receiving work). Re-applying
-  is only safe while the removed objects carry no
-  data that must be preserved — once real master data, TOTP counters or
-  conversions exist, prefer the additive forward path over re-running the down.
+**Re-applying after a manual down:** drizzle-kit tracks applied migrations in
+`drizzle.__drizzle_migrations`, not by comparing the schema, so a plain
+`npm run db:migrate` after any down file is a no-op — the migration is still
+recorded. To re-apply one, delete its ledger row and migrate again. The ledger
+row is identified by `created_at` (the `_journal.json` `when`):
+`DELETE FROM drizzle.__drizzle_migrations WHERE created_at = 1789847649193;`
+for 0003, `… = 1789850858806` for 0004, `… = 1789851925634` for 0005,
+`… = 1789853260355` for 0006, `… = 1789853887846` for 0007 and
+`… = 1789853918031` for 0008, then
+`npm run db:migrate` (0003 verified 2026-09-19; 0005 rehearsed in the slice-3
+review follow-up; 0006 rehearsed with the slice-4 receiving work; 0007 and
+0008 rehearsed with the slice-4 review follow-up). Re-applying is only safe
+while the removed objects carry no data that must be preserved — once real
+master data, TOTP counters or conversions exist, prefer the additive forward
+path over re-running the down.
 
 ## Known follow-up obligations
 
@@ -245,6 +267,8 @@ session will not serialise against each other.
 | 0004 | `0004_master_data.sql` | Generated: the four slice-3 master-data tables — `cost_center`, `unit_conversion`, `supplier`, `supplier_item` — with their checks, uniques, FKs and the `unit_conversion_lookup_idx`. Down companion: `0004_master_data_down.sql` (transactional `DROP TABLE IF EXISTS` in FK-safe order) |
 | 0005 | `0005_unit_conversion_invariants.sql` | Hand-written: two gist exclusion constraints on `unit_conversion` (`unit_conversion_global_no_overlap` for `item_id IS NULL`, `unit_conversion_item_no_overlap` for `item_id IS NOT NULL`) and the `NULLS NOT DISTINCT` `unit_conversion_version_key`. Down companion: `0005_unit_conversion_invariants_down.sql` (drops the three constraints) |
 | 0006 | `0006_goods_receipt.sql` | Generated: the two slice-4 receiving tables — `goods_receipt` and `goods_receipt_line` — with their checks (status, supplier-or-store, accepted, quantities, factor, money, `base_qty_accepted > 0`), FKs, the self-reversal FK and the two indexes. No hand-written invariants migration is needed (drizzle-kit expresses every constraint). Down companion: `0006_goods_receipt_down.sql` (transactional `DROP TABLE IF EXISTS` in FK-safe order) |
+| 0007 | `0007_goods_receipt_line_checks.sql` | Hand-written: `goods_receipt_line_accept_qty_guard`, a BEFORE INSERT/UPDATE trigger that rejects `accepted_pack_qty <= 0` when the parent receipt is `accepted` (a CHECK cannot read the parent status). Down companion: `0007_goods_receipt_line_checks_down.sql` (drops the trigger and function) |
+| 0008 | `0008_supplier_price_effective_range.sql` | Generated: relaxes `supplier_price_effective_range_check` to `effective_to >= effective_from`, so the half-open `[)` history can represent a same-instant re-record as an empty window (non-overlapping under `supplier_price_no_overlap`). Down companion: `0008_supplier_price_effective_range_down.sql` (restores the strict `>`) |
 
 Order matters: extensions before DDL that calls `gen_random_uuid()`, and before
 the exclusion constraints. Verify with:
@@ -274,9 +298,10 @@ DATABASE_URL=postgres://aquarela:aquarela@localhost:5432/aquarela npm run db:mig
 `public` alone leaves the ledger intact, so `db:migrate` reports success while
 restoring nothing. `DROP SCHEMA drizzle CASCADE` clears the ledger so all
 migrations replay from 0000. Verified: after this sequence `db:migrate`
-re-applies 0000–0006 and the database has all 41 tables plus both extensions
+re-applies 0000–0008 and the database has all 41 tables plus both extensions
 (0004 adds the four slice-3 master-data tables; 0006 adds the two slice-4
-receiving tables).
+receiving tables; 0007 adds the `goods_receipt_line` guard trigger — no table;
+0008 relaxes the `supplier_price` range check — no table).
 
 Once real data exists, this path is no longer acceptable: use small atomic
 commits, expand → migrate → contract for schema changes, and a tested
@@ -304,6 +329,13 @@ After applying to an empty database the following were verified with `psql`:
   `accepted_by`/`accepted_at`, or with neither `supplier_id` nor a non-blank
   `store_name`, is rejected; a line with `accepted_pack_qty > received_pack_qty`,
   a non-positive `pack_to_base_factor` or `base_qty_accepted <= 0` is rejected.
+- `supplier_price` (0008): `effective_to >= effective_from` is permitted (an
+  empty `[effective_from, effective_from)` window), while `effective_to <
+  effective_from` is still rejected by `supplier_price_effective_range_check`.
+- `goods_receipt_line` (0007): inserting a line with `accepted_pack_qty = 0`
+  against an `accepted` receipt is rejected by
+  `goods_receipt_line_accept_qty_guard`; the same line against a `rejected`
+  receipt is allowed.
 - `app_user`: case-insensitive duplicate `email` is rejected
   (`app_user_email_key` on `lower(btrim(email))`); whitespace variants
   (`'alice '` when `'alice'` exists) are also rejected.

@@ -1,4 +1,5 @@
 import { divideRoundHalfUp, formatDecimal, parseDecimal } from "./decimal";
+import { DomainError } from "./errors";
 import { MONEY_SCALE, Money } from "./money";
 import { QUANTITY_SCALE, Quantity } from "./quantity";
 import { SupplierPack } from "./supplier-pack";
@@ -49,6 +50,13 @@ export function computeLandedCost(input: LandedCostInput): LandedCost {
   const netPackPrice = money(input.grossPackPrice)
     .subtract(Money.from(input.recoverableTax, input.currency))
     .subtract(money(input.discount));
+
+  // §5 has no negative net pack price: a `discount` greater than the price (or a
+  // recoverable tax larger than it) is a caller error, not a cost. Fail at the
+  // trust boundary rather than returning a number only the DB would reject.
+  if (netPackPrice.compare(Money.zero(input.currency)) < 0) {
+    throw new DomainError("net pack price must not be negative");
+  }
 
   const landedPackCost = netPackPrice
     .add(money(input.allocatedFreight))
