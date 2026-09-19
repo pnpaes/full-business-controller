@@ -103,9 +103,9 @@ history + landed cost) is committed; slice 5 (recipes) is next.
 
 ## Current status
 
-- **As of:** 2026-09-19 — branch `main`; HEAD `0b4904f` (slice 4: goods receipts +
-  landed cost). Everything is committed; the working tree is clean. **Nothing has
-  been applied to DigitalOcean.**
+- **As of:** 2026-09-19 — branch `main`; HEAD `e3706c0` (slice 4 including its
+  review fixes and migrations `0007`/`0008`). Everything is committed; the working
+  tree is clean. **Nothing has been applied to DigitalOcean.**
 - **Auth complete and security-reviewed (slices 1a–1e):** domain primitives (1a);
   persistence layer (1b-i); application flow (1b-ii); password reset + access
   control (1b-iii, `2ce8847`; reset neutrality `5776914`); hardening (`60ac52e`:
@@ -181,7 +181,13 @@ history + landed cost) is committed; slice 5 (recipes) is next.
   - the per-IP rate limiter is per-process — a shared store (a migration) is
     needed before multi-instance deployment;
   - reset-token delivery is a no-op stub (`deliverResetToken` port) until the
-    email slice.
+    email slice;
+  - the deferred-FK hardening on `goods_receipt_line` (a `supplier_item_id` or
+    `item_id` from another organization, a mismatched supplier, or a unit that
+    does not match the item is guarded only in the application until those FKs
+    are added — make them composite and validate per the runbook's
+    `NOT VALID` → `VALIDATE` pattern; the `effective_to = effective_from` empty
+    window is allowed by `DEC-052`).
 - `DEC-049` is **closed** (2026-09-19): the drizzle-orm 0.45.2 /
   drizzle-kit 0.31.10 upgrade is committed (`cc86f13`) and `npm audit --omit=dev`
   reports 0; it is no longer an open security regression.
@@ -270,9 +276,9 @@ and Spaces credentials via `-backend-config` / `AWS_ACCESS_KEY_ID` +
 ## Reversibility
 
 - Revert any commit with `git revert <sha>`; no destructive git operations.
-- **Everything through `0b4904f` is committed** (slice 4 included, with its migration
-  `0006` and additive down path); `git revert` any commit, or discard the working tree
-  if a future slice is in flight.
+- **Everything through `e3706c0` is committed** (slice 4 included, with migrations
+  `0006`–`0008` and additive down paths); `git revert` any commit, or discard the
+  working tree if a future slice is in flight.
 - The `infra/` scaffold, runtime stubs and persistence core are committed; revert
   them with `git revert` if needed. **No cloud resource was created — only offline
   `fmt`/`validate`/`plan` ran, never `apply`; no Terraform state exists, and

@@ -14,7 +14,8 @@ line move with the work; `CONTEXT.md` keeps the narrative handoff and the immedi
 `Resume here` section.
 
 **Current position:** slice 0 `done`; auth slices 1a–1e, slice 2, slice 3 and slice 4
-`done` (HEAD `0b4904f` on `main`); **slice 5 (recipes) is next** per `CONTEXT.md`.
+`done` (including its review fixes, HEAD `e3706c0` on `main`); **slice 5 (recipes) is
+next** per `CONTEXT.md`.
 
 ## 2. The execution loop (per slice)
 
