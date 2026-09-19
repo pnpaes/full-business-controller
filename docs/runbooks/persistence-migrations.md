@@ -108,6 +108,7 @@ ALTER TABLE <table> VALIDATE CONSTRAINT <name>;  -- separate step/transaction
 This applies to: `supplier_price.supplier_item_id`, `supplier_price.source_receipt_id`,
 `cost_observation.receipt_file_id`, `stock_lot.source_movement_id`,
 `stock_movement.source_id`, `stock_movement.posted_by`, `recipe_version.approved_by`,
+`recipe_allergen.verified_by`,
 `cost_card.approved_by`, `audit_event.actor_id`, `goods_receipt.purchase_order_id`,
 `goods_receipt.accepted_by`, `goods_receipt.evidence_file_id`,
 `goods_receipt_line.supplier_item_id`.
@@ -177,6 +178,17 @@ only, so the down file is an explicit operator action, not an automatic one.
   `psql "$DATABASE_URL" -f packages/persistence/drizzle/0008_supplier_price_effective_range_down.sql`.
   Apply 0008's down **before** 0005's/0004's down, since the constraint lives on
   `supplier_price`.
+- **0009 adds the two slice-5 allergen tables and follows the down
+  convention:** `0009_recipe_allergens_down.sql` drops only the tables 0009
+  created (`recipe_allergen` → `allergen`, FK-safe order) inside one
+  `BEGIN;`/`COMMIT;`, with `DROP TABLE IF EXISTS` so a half-applied manual run
+  cannot wedge. The recipe tables the declarations point at (`recipe`,
+  `recipe_version`, `recipe_line`) were created by the 0001 core and are left
+  untouched. Apply it manually with
+  `psql "$DATABASE_URL" -f packages/persistence/drizzle/0009_recipe_allergens_down.sql`.
+  Only run it once no allergen declarations are needed: the drops are
+  destructive and master records referenced by versions are retired, not
+  deleted (AGENTS.md Rule 2).
 
 **Re-applying after a manual down:** drizzle-kit tracks applied migrations in
 `drizzle.__drizzle_migrations`, not by comparing the schema, so a plain
@@ -186,10 +198,11 @@ row is identified by `created_at` (the `_journal.json` `when`):
 `DELETE FROM drizzle.__drizzle_migrations WHERE created_at = 1789847649193;`
 for 0003, `… = 1789850858806` for 0004, `… = 1789851925634` for 0005,
 `… = 1789853260355` for 0006, `… = 1789853887846` for 0007 and
-`… = 1789853918031` for 0008, then
+`… = 1789853918031` for 0008, `… = 1789854468899` for 0009, then
 `npm run db:migrate` (0003 verified 2026-09-19; 0005 rehearsed in the slice-3
 review follow-up; 0006 rehearsed with the slice-4 receiving work; 0007 and
-0008 rehearsed with the slice-4 review follow-up). Re-applying is only safe
+0008 rehearsed with the slice-4 review follow-up; 0009 rehearsed with the
+slice-5 recipe work). Re-applying is only safe
 while the removed objects carry no data that must be preserved — once real
 master data, TOTP counters or conversions exist, prefer the additive forward
 path over re-running the down.
@@ -269,6 +282,7 @@ session will not serialise against each other.
 | 0006 | `0006_goods_receipt.sql` | Generated: the two slice-4 receiving tables — `goods_receipt` and `goods_receipt_line` — with their checks (status, supplier-or-store, accepted, quantities, factor, money, `base_qty_accepted > 0`), FKs, the self-reversal FK and the two indexes. No hand-written invariants migration is needed (drizzle-kit expresses every constraint). Down companion: `0006_goods_receipt_down.sql` (transactional `DROP TABLE IF EXISTS` in FK-safe order) |
 | 0007 | `0007_goods_receipt_line_checks.sql` | Hand-written: `goods_receipt_line_accept_qty_guard`, a BEFORE INSERT/UPDATE trigger that rejects `accepted_pack_qty <= 0` when the parent receipt is `accepted` (a CHECK cannot read the parent status). Down companion: `0007_goods_receipt_line_checks_down.sql` (drops the trigger and function) |
 | 0008 | `0008_supplier_price_effective_range.sql` | Generated: relaxes `supplier_price_effective_range_check` to `effective_to >= effective_from`, so the half-open `[)` history can represent a same-instant re-record as an empty window (non-overlapping under `supplier_price_no_overlap`). Down companion: `0008_supplier_price_effective_range_down.sql` (restores the strict `>`) |
+| 0009 | `0009_recipe_allergens.sql` | Generated: the two slice-5 allergen tables — `allergen` and `recipe_allergen` — with their checks, unique key, composite primary key, FKs and the `recipe_allergen_allergen_idx`. The recipe tables (`recipe`, `recipe_version`, `recipe_line`) already exist from the 0001 core (with `recipe_version_no_overlap` in 0002), so 0009 adds only the allergen declarations. Down companion: `0009_recipe_allergens_down.sql` (transactional `DROP TABLE IF EXISTS` in FK-safe order) |
 
 Order matters: extensions before DDL that calls `gen_random_uuid()`, and before
 the exclusion constraints. Verify with:
@@ -298,10 +312,11 @@ DATABASE_URL=postgres://aquarela:aquarela@localhost:5432/aquarela npm run db:mig
 `public` alone leaves the ledger intact, so `db:migrate` reports success while
 restoring nothing. `DROP SCHEMA drizzle CASCADE` clears the ledger so all
 migrations replay from 0000. Verified: after this sequence `db:migrate`
-re-applies 0000–0008 and the database has all 41 tables plus both extensions
+re-applies 0000–0009 and the database has all 43 tables plus both extensions
 (0004 adds the four slice-3 master-data tables; 0006 adds the two slice-4
 receiving tables; 0007 adds the `goods_receipt_line` guard trigger — no table;
-0008 relaxes the `supplier_price` range check — no table).
+0008 relaxes the `supplier_price` range check — no table; 0009 adds the two
+slice-5 allergen tables).
 
 Once real data exists, this path is no longer acceptable: use small atomic
 commits, expand → migrate → contract for schema changes, and a tested
@@ -341,6 +356,13 @@ After applying to an empty database the following were verified with `psql`:
   (`'alice '` when `'alice'` exists) are also rejected.
 - `user_totp`: a negative `last_used_counter` is rejected by
   `user_totp_last_used_counter_check` (null or `>= 0`).
+- `allergen` (0009): a duplicate `(organization_id, code)` is rejected by
+  `allergen_organization_id_code_key`.
+- `recipe_allergen` (0009): a duplicate `(recipe_version_id, allergen_id)` is
+  rejected by the composite primary key; a `source` outside
+  `{derived, verified}` is rejected by `recipe_allergen_source_check`; a
+  `verified` declaration without `verified_by` is rejected by
+  `recipe_allergen_verified_check`.
 - Deferrable FKs: a `calculation_snapshot` and its `cost_card` can be inserted
   in the same transaction in either order and commit together.
 - `calculation_snapshot`: a plain `TRUNCATE` is blocked first by the FK from

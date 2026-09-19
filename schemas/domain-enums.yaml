@@ -17,6 +17,7 @@ location_kind: [operating, central_production, virtual_transit]
 storage_area_kind: [kitchen, dry_store, refrigerator, freezer, front_counter, transit, other]
 channel_code: [dine_in, takeaway, wolt, direct_online, other]
 recipe_component_kind: [ingredient, packaging, sub_recipe]
+allergen_source: [derived, verified]
 product_kind: [base, variant, add_on]
 cost_card_state: [draft, approved, superseded]
 stock_movement_type:

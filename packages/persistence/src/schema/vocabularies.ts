@@ -37,6 +37,10 @@ export const STORAGE_AREA_KIND = [
 
 export const RECIPE_COMPONENT_KIND = ["ingredient", "packaging", "sub_recipe"] as const;
 
+// `recipe_allergen.source`: a declaration that was derived from a source
+// ingredient versus one a human explicitly verified.
+export const ALLERGEN_SOURCE = ["derived", "verified"] as const;
+
 export const PRODUCT_KIND = ["base", "variant", "add_on"] as const;
 
 export const COST_CARD_STATE = ["draft", "approved", "superseded"] as const;

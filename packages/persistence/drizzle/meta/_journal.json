@@ -64,6 +64,13 @@
       "when": 1789853918031,
       "tag": "0008_supplier_price_effective_range",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1789854468899,
+      "tag": "0009_recipe_allergens",
+      "breakpoints": true
     }
   ]
 }

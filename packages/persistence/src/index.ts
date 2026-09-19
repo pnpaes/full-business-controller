@@ -9,6 +9,7 @@ export * from "./repositories/bootstrap";
 export * from "./repositories/master-data";
 export * from "./repositories/password-reset";
 export * from "./repositories/receiving";
+export * from "./repositories/recipes";
 export * from "./repositories/sessions";
 export * from "./repositories/totp";
 export * from "./repositories/users";

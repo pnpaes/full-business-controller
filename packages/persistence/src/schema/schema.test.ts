@@ -14,12 +14,14 @@ import * as schema from "./index";
 
 const tables = Object.values(schema).filter((value) => is(value, PgTable));
 
-/** The 41 in-scope Phase 1-2 tables: the 35 core tables, the slice-3
+/** The 43 in-scope Phase 1-2 tables: the 35 core tables, the slice-3
  * master-data additions (`unit_conversion`, `supplier`, `supplier_item`,
- * `cost_center`) and the slice-4 receiving additions (`goods_receipt`,
- * `goods_receipt_line`) from `schemas/phase1_2_draft.sql` / `DATA_DICTIONARY`. */
+ * `cost_center`), the slice-4 receiving additions (`goods_receipt`,
+ * `goods_receipt_line`) and the slice-5 allergen additions (`allergen`,
+ * `recipe_allergen`) from `schemas/phase1_2_draft.sql` / `DATA_DICTIONARY`. */
 const EXPECTED_TABLES = [
   "addon_applicability",
+  "allergen",
   "app_user",
   "audit_event",
   "auth_session",
@@ -43,6 +45,7 @@ const EXPECTED_TABLES = [
   "product_recipe_assignment",
   "product_variant",
   "recipe",
+  "recipe_allergen",
   "recipe_line",
   "recipe_version",
   "role",
@@ -148,9 +151,14 @@ describe("phase 1-2 schema metadata", () => {
   it("gives every table a UUID primary key named id", () => {
     // Exceptions to the surrogate `id` convention, each deliberate:
     // - `user_location_scope`: join table keyed by (user_id, location_id);
-    // - `user_totp`: one row per user, keyed by user_id.
-    const COMPOSITE_PK_TABLES = ["user_location_scope"];
+    // - `user_totp`: one row per user, keyed by user_id;
+    // - `recipe_allergen`: join table keyed by (recipe_version_id, allergen_id).
+    const COMPOSITE_PK_TABLES = ["user_location_scope", "recipe_allergen"];
     const NON_ID_PK_TABLES: Record<string, string> = { user_totp: "user_id" };
+    const COMPOSITE_PK_COLUMNS: Record<string, string[]> = {
+      user_location_scope: ["location_id", "user_id"],
+      recipe_allergen: ["allergen_id", "recipe_version_id"],
+    };
 
     for (const table of tables) {
       const name = getTableName(table);
@@ -163,7 +171,7 @@ describe("phase 1-2 schema metadata", () => {
         expect(
           composite?.columns.map((column) => column.name).sort(),
           `${name} primary key columns`,
-        ).toEqual(["location_id", "user_id"]);
+        ).toEqual(COMPOSITE_PK_COLUMNS[name]);
         for (const column of composite?.columns ?? []) {
           expect(column.columnType, `${name}.${column.name} must be uuid`).toBe("PgUUID");
         }

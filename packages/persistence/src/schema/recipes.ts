@@ -1,5 +1,15 @@
 import { sql } from "drizzle-orm";
-import { check, index, integer, pgTable, text, unique, uuid } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  check,
+  index,
+  integer,
+  pgTable,
+  primaryKey,
+  text,
+  unique,
+  uuid,
+} from "drizzle-orm/pg-core";
 
 import { item, unit } from "./catalog";
 import {
@@ -14,7 +24,7 @@ import {
   uuidPk,
 } from "./columns";
 import { organization } from "./organization";
-import { DOCUMENT_STATUS, RECIPE_COMPONENT_KIND } from "./vocabularies";
+import { ALLERGEN_SOURCE, DOCUMENT_STATUS, RECIPE_COMPONENT_KIND } from "./vocabularies";
 
 export const recipe = pgTable(
   "recipe",
@@ -93,5 +103,56 @@ export const recipeLine = pgTable(
       sql`(${t.itemId} is not null)::int + (${t.subRecipeId} is not null)::int = 1`,
     ),
     index("recipe_line_version_idx").on(t.recipeVersionId),
+  ],
+);
+
+/**
+ * `allergen` master (`DATA_DICTIONARY` §3): org-scoped code + name, and an
+ * `is_derived` flag distinguishing an allergen that is automatically derived
+ * (from a source ingredient) from one maintained by hand. Allergens are
+ * referenced **per recipe version** by `recipe_allergen`.
+ */
+export const allergen = pgTable(
+  "allergen",
+  {
+    id: uuidPk(),
+    organizationId: orgId().references(() => organization.id),
+    code: text("code").notNull(),
+    name: text("name").notNull(),
+    isDerived: boolean("is_derived").notNull().default(false),
+  },
+  (t) => [unique("allergen_organization_id_code_key").on(t.organizationId, t.code)],
+);
+
+/**
+ * `recipe_allergen` (`DATA_DICTIONARY` §3): an allergen declared on a specific
+ * recipe **version** (the dictionary keys it by `recipe_version_id`, not by
+ * `recipe`), with `source` ∈ {derived, verified} and the verifier for a
+ * `verified` declaration. `source = 'verified'` requires `verified_by`
+ * (`recipe_allergen_verified_check`); `verified_by` stays a plain `uuid` because
+ * `app_user` FKs are added per the deferred-FK convention, as with
+ * `recipe_version.approved_by`. The composite `(recipe_version_id, allergen_id)`
+ * primary key gives one declaration per allergen per version.
+ */
+export const recipeAllergen = pgTable(
+  "recipe_allergen",
+  {
+    recipeVersionId: uuid("recipe_version_id")
+      .notNull()
+      .references(() => recipeVersion.id, { onDelete: "cascade" }),
+    allergenId: uuid("allergen_id")
+      .notNull()
+      .references(() => allergen.id),
+    source: text("source").notNull(),
+    verifiedBy: uuid("verified_by"),
+  },
+  (t) => [
+    primaryKey({ columns: [t.recipeVersionId, t.allergenId] }),
+    check("recipe_allergen_source_check", enumCheck(t.source, ALLERGEN_SOURCE)),
+    check(
+      "recipe_allergen_verified_check",
+      sql`${t.source} <> 'verified' or ${t.verifiedBy} is not null`,
+    ),
+    index("recipe_allergen_allergen_idx").on(t.allergenId),
   ],
 );
