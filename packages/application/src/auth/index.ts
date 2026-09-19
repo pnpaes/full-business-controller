@@ -23,15 +23,18 @@ export {
   MIN_BOOTSTRAP_PASSWORD_LENGTH,
   bootstrapFirstOwner,
   createPostgresBootstrapStore,
+  planBootstrapFirstOwner,
 } from "./bootstrap";
 export type {
   BootstrapDeps,
   BootstrapFailure,
   BootstrapFirstOwnerInput,
+  BootstrapFirstOwnerPlanResult,
   BootstrapFirstOwnerResult,
   BootstrapGrant,
   BootstrapNewOwner,
   BootstrapOrganization,
+  BootstrapPlan,
   BootstrapRole,
   BootstrapStore,
 } from "./bootstrap";

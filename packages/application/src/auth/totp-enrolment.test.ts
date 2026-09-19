@@ -337,6 +337,13 @@ describe("disableTotp", () => {
       token: totpCode(begun.secret, counterAt(NOW)),
     });
 
+    // Two live sessions issued while MFA was enabled.
+    const expiresAt = later(3600);
+    await store.createSession({ userId: user.id, tokenHash: "hash-a", expiresAt });
+    await store.createSession({ userId: user.id, tokenHash: "hash-b", expiresAt });
+    const activeSessions = (): number =>
+      [...store.sessions.values()].filter((session) => session.revokedAt === null).length;
+
     const wrong = await disableTotp(store, deps, {
       organizationId: ORG,
       userId: user.id,
@@ -345,6 +352,8 @@ describe("disableTotp", () => {
     expect(wrong).toEqual({ ok: false, error: AUTH_ERROR_GENERIC });
     expect(store.users.get(user.id)?.totpEnabled).toBe(true);
     expect(store.audits.some((entry) => entry.reason === "bad_password")).toBe(true);
+    // A wrong password must revoke nothing.
+    expect(activeSessions()).toBe(2);
 
     const right = await disableTotp(store, deps, {
       organizationId: ORG,
@@ -354,7 +363,11 @@ describe("disableTotp", () => {
     expect(right).toEqual({ ok: true });
     expect(store.users.get(user.id)?.totpEnabled).toBe(false);
     expect(store.totps.has(user.id)).toBe(false);
-    expect(store.actions()).toContain(AUTH_AUDIT_ACTIONS.mfaDisabled);
+    // A successful disable revokes every session and records the count.
+    expect(activeSessions()).toBe(0);
+    expect(
+      store.audits.find((entry) => entry.action === AUTH_AUDIT_ACTIONS.mfaDisabled)?.after,
+    ).toEqual({ sessionsRevoked: 2 });
 
     const after = await verifyMfa(store, authDeps({ now: later(30), totpEncryptionKey: KEY }), {
       organizationId: ORG,

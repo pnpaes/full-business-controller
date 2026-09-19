@@ -26,6 +26,10 @@ import type { AuditInput } from "./types";
  * Idempotency: the guard is scoped to the target organization name. A second run
  * against the same organization refuses once an `owner` grant exists, unless
  * `force` is set; a run for a different organization name is unaffected.
+ *
+ * `planBootstrapFirstOwner` previews a run through the same read-only guards and
+ * returns what would be created; it never writes and never opens a transaction, so
+ * the CLI's `--dry-run` cannot accidentally fall through to a write path.
  */
 
 /** Refuse an operator-supplied owner password shorter than this. */
@@ -126,6 +130,44 @@ export type BootstrapFirstOwnerResult =
       readonly organizationId?: string;
     };
 
+/**
+ * What a run would create, resolved from the same read-only guards the write path
+ * uses. A `create: false` entry is reused; `id` is absent only when the entity
+ * does not exist yet and its id will be minted at write time.
+ */
+export interface BootstrapPlan {
+  readonly organization: {
+    readonly legalName: string;
+    readonly create: boolean;
+    readonly id?: string;
+  };
+  readonly role: {
+    readonly code: string;
+    readonly create: boolean;
+    readonly id?: string;
+  };
+  readonly user: {
+    readonly displayName: string;
+    readonly username?: string;
+    readonly email?: string;
+    /** True when a run would generate the password (none was supplied). */
+    readonly generatesPassword: boolean;
+  };
+  readonly grant: {
+    readonly locationId: string | null;
+    /** Always true: creating the grant is the point of bootstrap. */
+    readonly create: boolean;
+  };
+}
+
+export type BootstrapFirstOwnerPlanResult =
+  | { readonly ok: true; readonly plan: BootstrapPlan }
+  | {
+      readonly ok: false;
+      readonly reason: BootstrapFailure;
+      readonly organizationId?: string;
+    };
+
 function normalizeOptional(value: string | undefined): string | undefined {
   if (value === undefined) {
     return undefined;
@@ -148,17 +190,21 @@ function roleDisplayName(code: string): string {
     .join(" ");
 }
 
-/**
- * Creates the organization (if absent), the first `owner` user and the role
- * grant in one transaction, with one audit row. Returns the generated password
- * exactly once when it generated one; an operator-supplied password is never
- * echoed back.
- */
-export async function bootstrapFirstOwner(
-  store: BootstrapStore,
-  deps: BootstrapDeps,
-  input: BootstrapFirstOwnerInput,
-): Promise<BootstrapFirstOwnerResult> {
+/** Normalized input shared by the plan and the write path. */
+interface ValidatedBootstrap {
+  readonly organizationName: string;
+  readonly email?: string;
+  readonly username?: string;
+  readonly roleCode: string;
+  readonly displayName: string;
+}
+
+type ValidationOutcome =
+  | { readonly ok: true; readonly value: ValidatedBootstrap }
+  | { readonly ok: false; readonly reason: BootstrapFailure };
+
+/** Pure input validation; identical for a dry run and a write. */
+function validateBootstrapInput(input: BootstrapFirstOwnerInput): ValidationOutcome {
   const organizationName = input.organizationName.trim();
   const email = normalizeOptional(input.ownerEmail);
   const username = normalizeOptional(input.ownerUsername);
@@ -176,53 +222,181 @@ export async function bootstrapFirstOwner(
 
   const displayName =
     normalizeOptional(input.ownerDisplayName) ?? username ?? email?.split("@")[0] ?? "Owner";
+  return {
+    ok: true,
+    value: {
+      organizationName,
+      ...(email !== undefined ? { email } : {}),
+      ...(username !== undefined ? { username } : {}),
+      roleCode,
+      displayName,
+    },
+  };
+}
 
-  return store.withTransaction(async (tx) => {
-    const existingOrganization = await tx.findOrganizationByName(organizationName);
-    if (existingOrganization !== undefined) {
-      const ownerExists = await tx.hasRoleGrant(existingOrganization.id, roleCode);
-      if (ownerExists && input.force !== true) {
-        return {
-          ok: false,
-          reason: "owner_exists",
-          organizationId: existingOrganization.id,
-        };
-      }
+interface ResolvedBootstrap {
+  readonly existingOrganization?: BootstrapOrganization;
+  readonly existingRole?: BootstrapRole;
+  readonly roleWillBeCreated: boolean;
+}
+
+type ResolutionOutcome =
+  | {
+      readonly ok: false;
+      readonly reason: "owner_exists" | "identifier_taken";
+      readonly organizationId: string;
     }
+  | { readonly ok: true; readonly resolution: ResolvedBootstrap };
 
-    const organization = existingOrganization ?? (await tx.createOrganization(organizationName));
-
-    let roleId = input.roleId;
-    if (roleId === undefined) {
-      const existingRole = await tx.findRoleByCode(organization.id, roleCode);
-      roleId =
-        existingRole?.id ??
-        (
-          await tx.createRole({
-            organizationId: organization.id,
-            code: roleCode,
-            name: normalizeOptional(input.roleName) ?? roleDisplayName(roleCode),
-          })
-        ).id;
+/**
+ * Read-only guard resolution. `bootstrapFirstOwner` calls this inside its
+ * transaction so the guard and the writes commit or roll back together;
+ * `planBootstrapFirstOwner` calls it directly and writes nothing. A brand-new
+ * organization has no users, so the identifier check only runs when the
+ * organization already exists.
+ */
+async function resolveBootstrap(
+  store: BootstrapStore,
+  input: BootstrapFirstOwnerInput,
+  value: ValidatedBootstrap,
+): Promise<ResolutionOutcome> {
+  const existingOrganization = await store.findOrganizationByName(value.organizationName);
+  if (existingOrganization !== undefined) {
+    const ownerExists = await store.hasRoleGrant(existingOrganization.id, value.roleCode);
+    if (ownerExists && input.force !== true) {
+      return { ok: false, reason: "owner_exists", organizationId: existingOrganization.id };
     }
+  }
 
-    for (const identifier of [email, username]) {
+  let existingRole: BootstrapRole | undefined;
+  let roleWillBeCreated = false;
+  if (input.roleId !== undefined) {
+    existingRole = { id: input.roleId };
+  } else if (existingOrganization !== undefined) {
+    existingRole = await store.findRoleByCode(existingOrganization.id, value.roleCode);
+    roleWillBeCreated = existingRole === undefined;
+  } else {
+    roleWillBeCreated = true;
+  }
+
+  if (existingOrganization !== undefined) {
+    for (const identifier of [value.email, value.username]) {
       if (identifier === undefined) {
         continue;
       }
-      const taken = await tx.findUserByIdentifier(organization.id, identifier);
+      const taken = await store.findUserByIdentifier(existingOrganization.id, identifier);
       if (taken !== undefined) {
-        return { ok: false, reason: "identifier_taken", organizationId: organization.id };
+        return { ok: false, reason: "identifier_taken", organizationId: existingOrganization.id };
       }
     }
+  }
+
+  return {
+    ok: true,
+    resolution: {
+      ...(existingOrganization !== undefined ? { existingOrganization } : {}),
+      ...(existingRole !== undefined ? { existingRole } : {}),
+      roleWillBeCreated,
+    },
+  };
+}
+
+/**
+ * Previews a bootstrap run without writing: it applies the same input validation
+ * and read-only guards as `bootstrapFirstOwner` (including the `force`
+ * `owner_exists` refusal and the `identifier_taken` check) and returns what a run
+ * would create. It never opens a transaction, never hashes or generates a
+ * password and never writes an audit row, so it is safe to run against
+ * production. Because the plan is a snapshot, a concurrent write could still
+ * change what the real run does; the write path re-checks inside its transaction.
+ */
+export async function planBootstrapFirstOwner(
+  store: BootstrapStore,
+  input: BootstrapFirstOwnerInput,
+): Promise<BootstrapFirstOwnerPlanResult> {
+  const validation = validateBootstrapInput(input);
+  if (!validation.ok) {
+    return { ok: false, reason: validation.reason };
+  }
+  const value = validation.value;
+
+  const resolved = await resolveBootstrap(store, input, value);
+  if (!resolved.ok) {
+    return { ok: false, reason: resolved.reason, organizationId: resolved.organizationId };
+  }
+  const { existingOrganization, existingRole, roleWillBeCreated } = resolved.resolution;
+
+  return {
+    ok: true,
+    plan: {
+      organization: {
+        legalName: value.organizationName,
+        create: existingOrganization === undefined,
+        ...(existingOrganization !== undefined ? { id: existingOrganization.id } : {}),
+      },
+      role: {
+        code: value.roleCode,
+        create: roleWillBeCreated,
+        ...(existingRole !== undefined ? { id: existingRole.id } : {}),
+      },
+      user: {
+        displayName: value.displayName,
+        ...(value.username !== undefined ? { username: value.username } : {}),
+        ...(value.email !== undefined ? { email: value.email } : {}),
+        generatesPassword: input.password === undefined,
+      },
+      grant: {
+        locationId: input.locationId ?? null,
+        create: true,
+      },
+    },
+  };
+}
+
+/**
+ * Creates the organization (if absent), the first `owner` user and the role
+ * grant in one transaction, with one audit row. Returns the generated password
+ * exactly once when it generated one; an operator-supplied password is never
+ * echoed back.
+ */
+export async function bootstrapFirstOwner(
+  store: BootstrapStore,
+  deps: BootstrapDeps,
+  input: BootstrapFirstOwnerInput,
+): Promise<BootstrapFirstOwnerResult> {
+  const validation = validateBootstrapInput(input);
+  if (!validation.ok) {
+    return { ok: false, reason: validation.reason };
+  }
+  const value = validation.value;
+
+  return store.withTransaction(async (tx) => {
+    const resolved = await resolveBootstrap(tx, input, value);
+    if (!resolved.ok) {
+      return { ok: false, reason: resolved.reason, organizationId: resolved.organizationId };
+    }
+    const { existingOrganization, existingRole } = resolved.resolution;
+
+    const organization =
+      existingOrganization ?? (await tx.createOrganization(value.organizationName));
+
+    const roleId =
+      existingRole?.id ??
+      (
+        await tx.createRole({
+          organizationId: organization.id,
+          code: value.roleCode,
+          name: normalizeOptional(input.roleName) ?? roleDisplayName(value.roleCode),
+        })
+      ).id;
 
     const password = input.password ?? generatePassword();
     const created = await tx.createUser({
       organizationId: organization.id,
-      displayName,
+      displayName: value.displayName,
       passwordHash: await hashPassword(password, deps.passwordHashOptions),
-      ...(username === undefined ? {} : { username }),
-      ...(email === undefined ? {} : { email }),
+      ...(value.username === undefined ? {} : { username: value.username }),
+      ...(value.email === undefined ? {} : { email: value.email }),
     });
 
     const locationId = input.locationId ?? null;
@@ -235,12 +409,12 @@ export async function bootstrapFirstOwner(
       entityType: "app_user",
       entityId: created.id,
       after: {
-        organizationName,
-        roleCode: input.roleId === undefined ? roleCode : null,
+        organizationName: value.organizationName,
+        roleCode: input.roleId === undefined ? value.roleCode : null,
         roleId,
         locationId,
-        username: username ?? null,
-        email: email ?? null,
+        username: value.username ?? null,
+        email: value.email ?? null,
         forced: input.force === true,
         generatedPassword: input.password === undefined,
       },

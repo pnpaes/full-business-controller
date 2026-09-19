@@ -181,6 +181,13 @@ reads `ORGANIZATION_ID`. The command is `npm run bootstrap` (the CLI at
 `apps/web/scripts/bootstrap.ts`, using the pooled `DATABASE_URL`); it creates the
 organization, the first `owner` user and the role grant, and writes an audit row.
 
+> **The organization name is the idempotency key — use the exact,
+> operator-approved name on every run.** The lookup matches case-insensitively and
+> trimmed, but the schema has **no unique index on `legal_name`** (it is
+> multi-organization-capable), so a different spelling creates a **second
+> organization** and points `ORGANIZATION_ID` at the wrong one. Reusing the exact
+> name is what makes the guard refuse once an `owner` grant exists.
+
 Required configuration (flags win over env): `BOOTSTRAP_ORGANIZATION_NAME` (or
 `--organization-name`) and at least one of `BOOTSTRAP_OWNER_EMAIL` /
 `BOOTSTRAP_OWNER_USERNAME`. The owner password comes only from
@@ -195,6 +202,20 @@ DATABASE_URL=... \
 BOOTSTRAP_ORGANIZATION_NAME="Aquarela Kafé" \
 BOOTSTRAP_OWNER_EMAIL=owner@aquarela.no \
 npm run bootstrap
+```
+
+Preview the run first with `--dry-run` (or `BOOTSTRAP_DRY_RUN=1`): it connects,
+applies the same read-only guards and prints exactly what would be created —
+organization, owner role, owner user and grant — then exits **0** without opening
+a transaction, hashing a password or writing an audit row. A run that would be
+refused (`owner_exists` without `--force`, `identifier_taken`) previews as that
+same refusal (exit 2/3), not as a false success.
+
+```bash
+DATABASE_URL=... \
+BOOTSTRAP_ORGANIZATION_NAME="Aquarela Kafé" \
+BOOTSTRAP_OWNER_EMAIL=owner@aquarela.no \
+npm run bootstrap -- --dry-run
 ```
 
 The command is **idempotent per organization name**: a second run refuses (exit
@@ -229,6 +250,13 @@ default pending that open item.
   `.dockerignore` already encodes this.
 - Env/secret wiring: `DATABASE_URL`, `DATABASE_MIGRATIONS_URL`, Spaces keys, `LOG_LEVEL` — encrypted,
   per environment.
+- **Proxy headers and the per-IP rate limiter (required):** the App Platform proxy — and any CDN/WAF
+  or load balancer in front of it — **must overwrite/strip `x-forwarded-for`** before the request
+  reaches the app. `apps/web/lib/client-ip.ts` reads the first `x-forwarded-for` entry (falling back
+  to `x-real-ip`) as the throttle key for the per-IP auth rate limiter; it is **never** an
+  authorization input. The header is unauthenticated, so if the proxy forwards a client-supplied
+  value an attacker can rotate it to bypass the per-IP limiter — confirm the setting when the app
+  spec or any fronting proxy changes.
 - **Pre-deploy migration job:** runs `npm run db:migrate` before component rollout. **Exactly one
   component owns it — `web`**; the other components must never run it. `npm run db:migrate` is
   `packages/persistence/scripts/migrate.mjs`, which resolves

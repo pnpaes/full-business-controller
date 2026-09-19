@@ -137,6 +137,24 @@ describe.skipIf(!databaseUrl)("TOTP enrolment against PostgreSQL", () => {
       });
       expect(regenerated.ok).toBe(true);
 
+      // Two sessions issued while MFA was enabled.
+      const sessionA = randomBytes(32).toString("hex");
+      const sessionB = randomBytes(32).toString("hex");
+      const sessionExpiry = new Date(next.getTime() + 3_600_000);
+      await store.createSession({ userId, tokenHash: sessionA, expiresAt: sessionExpiry });
+      await store.createSession({ userId, tokenHash: sessionB, expiresAt: sessionExpiry });
+
+      // Wrong password: generic error, MFA still on, both sessions still live.
+      const wrong = await disableTotp(store, deps(next), {
+        organizationId: orgId,
+        userId,
+        password: "wrong-password",
+      });
+      expect(wrong).toEqual({ ok: false, error: AUTH_ERROR_GENERIC });
+      expect((await store.findUserById(userId))?.totpEnabled).toBe(true);
+      expect(await store.findActiveSessionByTokenHash(sessionA, next)).toBeDefined();
+      expect(await store.findActiveSessionByTokenHash(sessionB, next)).toBeDefined();
+
       const disabled = await disableTotp(store, deps(next), {
         organizationId: orgId,
         userId,
@@ -145,6 +163,9 @@ describe.skipIf(!databaseUrl)("TOTP enrolment against PostgreSQL", () => {
       expect(disabled).toEqual({ ok: true });
       expect(await store.getTotp(userId)).toBeUndefined();
       expect((await store.findUserById(userId))?.totpEnabled).toBe(false);
+      // The correct password revokes every session atomically with the disable.
+      expect(await store.findActiveSessionByTokenHash(sessionA, next)).toBeUndefined();
+      expect(await store.findActiveSessionByTokenHash(sessionB, next)).toBeUndefined();
     });
   });
 

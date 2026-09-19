@@ -3,7 +3,11 @@ import { randomUUID } from "node:crypto";
 import { verifyPassword } from "@aquarela/domain";
 import { describe, expect, it } from "vitest";
 
-import { MIN_BOOTSTRAP_PASSWORD_LENGTH, bootstrapFirstOwner } from "./bootstrap";
+import {
+  MIN_BOOTSTRAP_PASSWORD_LENGTH,
+  bootstrapFirstOwner,
+  planBootstrapFirstOwner,
+} from "./bootstrap";
 import type {
   BootstrapGrant,
   BootstrapNewOwner,
@@ -238,5 +242,97 @@ describe("bootstrapFirstOwner", () => {
       ok: false,
       reason: "invalid_input",
     });
+  });
+});
+
+describe("planBootstrapFirstOwner", () => {
+  it("reports what would be created without writing anything", async () => {
+    const { store } = setup();
+
+    const result = await planBootstrapFirstOwner(store, {
+      organizationName: "Aquarela Kafé",
+      ownerEmail: "owner@aquarela.no",
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.plan.organization).toEqual({ legalName: "Aquarela Kafé", create: true });
+    expect(result.plan.role).toEqual({ code: "owner", create: true });
+    expect(result.plan.user).toEqual({
+      displayName: "owner",
+      email: "owner@aquarela.no",
+      generatesPassword: true,
+    });
+    expect(result.plan.grant).toEqual({ locationId: null, create: true });
+    // A dry run must not touch the store at all.
+    expect(store.organizations).toHaveLength(0);
+    expect(store.roles).toHaveLength(0);
+    expect(store.users).toHaveLength(0);
+    expect(store.grants).toHaveLength(0);
+    expect(store.audits).toHaveLength(0);
+  });
+
+  it("reuses an existing organization and role, and mirrors the owner-exists refusal", async () => {
+    const { store, deps } = setup();
+    await bootstrapFirstOwner(store, deps, {
+      organizationName: "Aquarela Kafé",
+      ownerEmail: "owner@aquarela.no",
+    });
+    const organization = [...store.organizations.values()][0]!;
+    const role = [...store.roles.values()][0]!;
+
+    const refused = await planBootstrapFirstOwner(store, {
+      organizationName: "Aquarela Kafé",
+      ownerEmail: "second@aquarela.no",
+    });
+    expect(refused).toEqual({
+      ok: false,
+      reason: "owner_exists",
+      organizationId: organization.id,
+    });
+    expect(store.users).toHaveLength(1);
+
+    const forced = await planBootstrapFirstOwner(store, {
+      organizationName: "Aquarela Kafé",
+      ownerEmail: "second@aquarela.no",
+      force: true,
+    });
+    expect(forced.ok).toBe(true);
+    if (!forced.ok) {
+      return;
+    }
+    expect(forced.plan.organization).toEqual({
+      legalName: "Aquarela Kafé",
+      create: false,
+      id: organization.id,
+    });
+    expect(forced.plan.role).toEqual({ code: "owner", create: false, id: role.id });
+    expect(forced.plan.user.email).toBe("second@aquarela.no");
+    // Still a preview: the forced run was not applied.
+    expect(store.users).toHaveLength(1);
+    expect(store.audits).toHaveLength(1);
+  });
+
+  it("reports an identifier collision without writing", async () => {
+    const { store, deps } = setup();
+    await bootstrapFirstOwner(store, deps, {
+      organizationName: "Aquarela Kafé",
+      ownerUsername: "owner",
+    });
+
+    const result = await planBootstrapFirstOwner(store, {
+      organizationName: "Aquarela Kafé",
+      ownerUsername: "owner",
+      force: true,
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      reason: "identifier_taken",
+      organizationId: expect.any(String),
+    });
+    expect(store.users).toHaveLength(1);
   });
 });

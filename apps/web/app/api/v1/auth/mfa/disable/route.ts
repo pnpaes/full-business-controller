@@ -1,4 +1,4 @@
-import { disableTotp, logoutAll } from "@aquarela/application";
+import { disableTotp } from "@aquarela/application";
 
 import { getAuthStore, requireSession } from "../../../../../../lib/auth";
 import { clearSessionCookie } from "../../../../../../lib/cookies";
@@ -14,10 +14,11 @@ export const runtime = "nodejs";
 
 /**
  * Disables TOTP after re-proving the password. Disabling a second factor is a
- * security downgrade, so every session for the user is revoked server-side and
- * the cookie is cleared: the next request must re-authenticate and, if the role
- * requires MFA (ADR-0003), re-enrol. The 1d `disableTotp` command deliberately
- * does not revoke sessions; this handler adds that policy explicitly.
+ * security downgrade, so `disableTotp` revokes every session for the user in the
+ * same transaction as the disable: the next request must re-authenticate and, if
+ * the role requires MFA (ADR-0003), re-enrol. Clearing the cookie below is a
+ * client-side convenience only; it cannot join that transaction and is not relied
+ * on for security, because the session rows are already revoked server-side.
  */
 export async function POST(request: Request): Promise<Response> {
   return withMutationGuards(request, limiters.mfaDisable, async () => {
@@ -39,12 +40,8 @@ export async function POST(request: Request): Promise<Response> {
       return jsonError(401);
     }
 
-    await logoutAll(getAuthStore(), {
-      organizationId,
-      userId: session.userId,
-      actorId: session.userId,
-      reason: "mfa_disabled",
-    });
+    // Server-side revocation already happened atomically inside `disableTotp`;
+    // this only expires the browser copy of the cookie.
     return jsonOk({}, [clearSessionCookie()]);
   });
 }

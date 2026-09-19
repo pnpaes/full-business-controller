@@ -347,19 +347,24 @@ export async function regenerateRecoveryCodes(
 
 /**
  * Disables TOTP: requires the user's password (verified through
- * `verifyPasswordOrDummy`, so an unknown account still pays one hash), clears
- * the enrolment and recovery codes and flips `totpEnabled` off in one
- * transaction, auditing `auth.mfa.disabled`. A wrong password yields the generic
- * error and leaves MFA enabled.
+ * `verifyPasswordOrDummy`, so an unknown account still pays one hash), revokes
+ * every session for the user, clears the enrolment and recovery codes and flips
+ * `totpEnabled` off — all in one transaction — auditing `auth.mfa.disabled` with
+ * the number of revoked sessions in its diff. A wrong password yields the generic
+ * error and changes nothing: MFA stays enabled and no session is revoked.
  *
- * Ambiguity left open deliberately: this does not revoke existing sessions.
+ * Revoking in the same transaction is the security point: disabling a mandated
+ * second factor (ADR-0003) without revoking would leave sessions issued under MFA
+ * live while MFA is off, so a crash between the two would open an escalation
+ * window. They can no longer be separated.
  */
 export async function disableTotp(
   store: AuthStore,
-  _deps: AuthDeps,
+  deps: AuthDeps,
   input: DisableTotpInput,
 ): Promise<DisableTotpResult> {
   return store.withTransaction(async (tx) => {
+    const now = deps.now ?? new Date();
     const context: AuditContext = {
       organizationId: input.organizationId,
       actorId: input.actorId ?? input.userId,
@@ -396,6 +401,7 @@ export async function disableTotp(
       return { ok: false, error: AUTH_ERROR_GENERIC };
     }
 
+    const sessionsRevoked = await tx.revokeAllSessionsForUser(user.id, now);
     await tx.clearTotp(user.id);
     await tx.setTotpEnabled(user.id, false);
     await audit(tx, {
@@ -403,6 +409,7 @@ export async function disableTotp(
       actorId: context.actorId,
       action: AUTH_AUDIT_ACTIONS.mfaDisabled,
       entityId: user.id,
+      after: { sessionsRevoked },
       ...(context.request !== undefined ? { request: context.request } : {}),
     });
     return { ok: true };
