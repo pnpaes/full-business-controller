@@ -21,6 +21,7 @@ import {
   createTestOrganization,
   createTestUnit,
   inRollback,
+  rejectionCause,
   uniqueName,
   uniqueSuffix,
 } from "./test-support";
@@ -289,14 +290,15 @@ describe.skipIf(!databaseUrl)("master data repository", () => {
         effectiveFrom: at("2026-01-01T00:00:00.000Z"),
         effectiveTo: at("2026-06-01T00:00:00.000Z"),
       });
-      await expect(
+      const cause = await rejectionCause(
         createUnitConversion(tx, {
           ...base,
           factor: "2000",
           effectiveFrom: at("2026-03-01T00:00:00.000Z"),
           effectiveTo: at("2026-09-01T00:00:00.000Z"),
         }),
-      ).rejects.toThrow(/unit_conversion_global_no_overlap/);
+      );
+      expect(cause.message).toMatch(/unit_conversion_global_no_overlap/);
     });
   });
 
@@ -321,14 +323,15 @@ describe.skipIf(!databaseUrl)("master data repository", () => {
         effectiveFrom: at("2026-01-01T00:00:00.000Z"),
         effectiveTo: null,
       });
-      await expect(
+      const cause = await rejectionCause(
         createUnitConversion(tx, {
           ...base,
           factor: "1500",
           effectiveFrom: at("2026-03-01T00:00:00.000Z"),
           effectiveTo: null,
         }),
-      ).rejects.toThrow(/unit_conversion_item_no_overlap/);
+      );
+      expect(cause.message).toMatch(/unit_conversion_item_no_overlap/);
     });
   });
 
@@ -350,9 +353,8 @@ describe.skipIf(!databaseUrl)("master data repository", () => {
       await createUnitConversion(tx, { ...base, factor: "1000" });
       // An exact duplicate version tuple is rejected by the overlap and/or the
       // unique key (the exclusion constraint fires first for an identical window).
-      await expect(createUnitConversion(tx, { ...base, factor: "1000" })).rejects.toThrow(
-        /unit_conversion_(global_no_overlap|version_key)/,
-      );
+      const cause = await rejectionCause(createUnitConversion(tx, { ...base, factor: "1000" }));
+      expect(cause.message).toMatch(/unit_conversion_(global_no_overlap|version_key)/);
     });
   });
 

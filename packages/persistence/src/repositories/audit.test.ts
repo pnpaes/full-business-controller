@@ -4,7 +4,13 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDb, type DbClient } from "../client";
 import { appUser, auditEvent, organization } from "../schema";
 import { writeAuditEvent } from "./audit";
-import { createTestOrganization, createTestUser, inRollback, uniqueSuffix } from "./test-support";
+import {
+  createTestOrganization,
+  createTestUser,
+  inRollback,
+  rejectionCause,
+  uniqueSuffix,
+} from "./test-support";
 
 const databaseUrl = process.env.DATABASE_URL;
 const suffix = uniqueSuffix();
@@ -74,9 +80,10 @@ describe.skipIf(!databaseUrl)("audit repository", () => {
         entityType: "app_user",
       });
 
-      await expect(
+      const cause = await rejectionCause(
         tx.update(auditEvent).set({ reason: "tampered" }).where(eq(auditEvent.id, event.id)),
-      ).rejects.toThrow(/append-only/);
+      );
+      expect(cause.message).toMatch(/append-only/);
     });
   });
 
@@ -88,9 +95,8 @@ describe.skipIf(!databaseUrl)("audit repository", () => {
         entityType: "auth_session",
       });
 
-      await expect(tx.delete(auditEvent).where(eq(auditEvent.id, event.id))).rejects.toThrow(
-        /append-only/,
-      );
+      const cause = await rejectionCause(tx.delete(auditEvent).where(eq(auditEvent.id, event.id)));
+      expect(cause.message).toMatch(/append-only/);
     });
   });
 });

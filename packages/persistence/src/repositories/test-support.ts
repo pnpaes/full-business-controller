@@ -128,6 +128,25 @@ export async function createTestItem(
 }
 
 /**
+ * Awaits `operation` expecting it to reject, then returns the underlying error.
+ *
+ * drizzle 0.44+ wraps driver errors in `DrizzleQueryError` with the original
+ * PostgreSQL error (the one carrying the trigger/constraint message) in
+ * `.cause`. Assertions on a failure reason must go through `.cause`; falling
+ * back to the wrapper keeps this usable if that wrapping ever changes.
+ */
+export async function rejectionCause(operation: Promise<unknown>): Promise<Error> {
+  const caught = await operation.then(
+    () => undefined,
+    (error: unknown) => error,
+  );
+  if (!(caught instanceof Error)) {
+    throw new Error("expected the operation to reject with an Error");
+  }
+  return caught.cause instanceof Error ? caught.cause : caught;
+}
+
+/**
  * Runs `fn` in a transaction and rolls it back. A statement that is expected to
  * fail can be caught inside `fn` without aborting the test: the rollback at the
  * end is what discards the work either way.
