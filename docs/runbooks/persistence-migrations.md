@@ -103,7 +103,9 @@ ALTER TABLE <table> VALIDATE CONSTRAINT <name>;  -- separate step/transaction
 This applies to: `supplier_price.supplier_item_id`, `supplier_price.source_receipt_id`,
 `cost_observation.receipt_file_id`, `stock_lot.source_movement_id`,
 `stock_movement.source_id`, `stock_movement.posted_by`, `recipe_version.approved_by`,
-`cost_card.approved_by`, `audit_event.actor_id`.
+`cost_card.approved_by`, `audit_event.actor_id`, `goods_receipt.purchase_order_id`,
+`goods_receipt.accepted_by`, `goods_receipt.evidence_file_id`,
+`goods_receipt_line.supplier_item_id`.
 
 ## Once data exists, the destructive recovery is no longer permitted
 
@@ -146,6 +148,15 @@ only, so the down file is an explicit operator action, not an automatic one.
   `psql "$DATABASE_URL" -f packages/persistence/drizzle/0005_unit_conversion_invariants_down.sql`.
   Apply 0005's down **before** 0004's down: its constraints live on
   `unit_conversion`, which 0004's down drops.
+- **0006 adds the two slice-4 receiving tables and follows the down
+  convention:** `0006_goods_receipt_down.sql` drops only the tables 0006 created
+  (`goods_receipt_line` → `goods_receipt`, FK-safe order) inside one
+  `BEGIN;`/`COMMIT;`, with `DROP TABLE IF EXISTS` so a half-applied manual run
+  cannot wedge. The append-only `audit_event` rows that recorded acceptance are
+  left in place; apply it manually with
+  `psql "$DATABASE_URL" -f packages/persistence/drizzle/0006_goods_receipt_down.sql`.
+  Only run it once no receipt rows are needed: the drops are destructive and
+  financial/stock facts are append-only (AGENTS.md Rule 2).
 
   **Re-applying after a manual down:** drizzle-kit tracks applied migrations in
   `drizzle.__drizzle_migrations`, not by comparing the schema, so a plain
@@ -153,9 +164,11 @@ only, so the down file is an explicit operator action, not an automatic one.
   recorded. To re-apply one, delete its ledger row and migrate again. The ledger
   row is identified by `created_at` (the `_journal.json` `when`):
   `DELETE FROM drizzle.__drizzle_migrations WHERE created_at = 1789847649193;`
-  for 0003, `… = 1789850858806` for 0004 and `… = 1789851925634` for 0005, then
+  for 0003, `… = 1789850858806` for 0004, `… = 1789851925634` for 0005 and
+  `… = 1789853260355` for 0006, then
   `npm run db:migrate` (0003 verified 2026-09-19; 0005 rehearsed in the slice-3
-  review follow-up). Re-applying is only safe while the removed objects carry no
+  review follow-up; 0006 rehearsed with the slice-4 receiving work). Re-applying
+  is only safe while the removed objects carry no
   data that must be preserved — once real master data, TOTP counters or
   conversions exist, prefer the additive forward path over re-running the down.
 
@@ -231,6 +244,7 @@ session will not serialise against each other.
 | 0003 | `0003_user_totp_last_used_counter.sql` | Generated: adds nullable `user_totp.last_used_counter` (`integer`, check `null or >= 0`) for TOTP replay protection. Down companion: `0003_user_totp_last_used_counter_down.sql` (`ALTER TABLE "user_totp" DROP COLUMN "last_used_counter";`; the check drops with the column) |
 | 0004 | `0004_master_data.sql` | Generated: the four slice-3 master-data tables — `cost_center`, `unit_conversion`, `supplier`, `supplier_item` — with their checks, uniques, FKs and the `unit_conversion_lookup_idx`. Down companion: `0004_master_data_down.sql` (transactional `DROP TABLE IF EXISTS` in FK-safe order) |
 | 0005 | `0005_unit_conversion_invariants.sql` | Hand-written: two gist exclusion constraints on `unit_conversion` (`unit_conversion_global_no_overlap` for `item_id IS NULL`, `unit_conversion_item_no_overlap` for `item_id IS NOT NULL`) and the `NULLS NOT DISTINCT` `unit_conversion_version_key`. Down companion: `0005_unit_conversion_invariants_down.sql` (drops the three constraints) |
+| 0006 | `0006_goods_receipt.sql` | Generated: the two slice-4 receiving tables — `goods_receipt` and `goods_receipt_line` — with their checks (status, supplier-or-store, accepted, quantities, factor, money, `base_qty_accepted > 0`), FKs, the self-reversal FK and the two indexes. No hand-written invariants migration is needed (drizzle-kit expresses every constraint). Down companion: `0006_goods_receipt_down.sql` (transactional `DROP TABLE IF EXISTS` in FK-safe order) |
 
 Order matters: extensions before DDL that calls `gen_random_uuid()`, and before
 the exclusion constraints. Verify with:
@@ -260,8 +274,9 @@ DATABASE_URL=postgres://aquarela:aquarela@localhost:5432/aquarela npm run db:mig
 `public` alone leaves the ledger intact, so `db:migrate` reports success while
 restoring nothing. `DROP SCHEMA drizzle CASCADE` clears the ledger so all
 migrations replay from 0000. Verified: after this sequence `db:migrate`
-re-applies 0000–0005 and the database has all 39 tables plus both extensions
-(0004 adds the four slice-3 master-data tables).
+re-applies 0000–0006 and the database has all 41 tables plus both extensions
+(0004 adds the four slice-3 master-data tables; 0006 adds the two slice-4
+receiving tables).
 
 Once real data exists, this path is no longer acceptable: use small atomic
 commits, expand → migrate → contract for schema changes, and a tested
@@ -285,6 +300,10 @@ After applying to an empty database the following were verified with `psql`:
   the matching exclusion constraint, which fires first for an identical window).
 - `NULLS NOT DISTINCT`: duplicate `stock_balance` rows with a null `lot_id`, and
   duplicate `user_role` rows with a null `location_id`, are rejected.
+- `goods_receipt` / `goods_receipt_line` (0006): an `accepted` receipt without
+  `accepted_by`/`accepted_at`, or with neither `supplier_id` nor a non-blank
+  `store_name`, is rejected; a line with `accepted_pack_qty > received_pack_qty`,
+  a non-positive `pack_to_base_factor` or `base_qty_accepted <= 0` is rejected.
 - `app_user`: case-insensitive duplicate `email` is rejected
   (`app_user_email_key` on `lower(btrim(email))`); whitespace variants
   (`'alice '` when `'alice'` exists) are also rejected.

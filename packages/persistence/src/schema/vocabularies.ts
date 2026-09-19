@@ -7,6 +7,10 @@
 
 export const DOCUMENT_STATUS = ["draft", "submitted", "approved", "rejected", "retired"] as const;
 
+// Values from `schemas/domain-enums.yaml` (`receipt_status`): per-entity
+// workflow states take precedence over the generic `document_status`.
+export const RECEIPT_STATUS = ["draft", "submitted", "accepted", "rejected", "reversed"] as const;
+
 export const ITEM_TYPE = [
   "ingredient",
   "packaging",

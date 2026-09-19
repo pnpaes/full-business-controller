@@ -10,4 +10,5 @@ export * from "./recipes";
 export * from "./products";
 export * from "./costing";
 export * from "./inventory";
+export * from "./receiving";
 export * from "./platform";

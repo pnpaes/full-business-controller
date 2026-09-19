@@ -1,3 +1,5 @@
+import { and, eq } from "drizzle-orm";
+
 import type { Database } from "../client";
 import { auditEvent } from "../schema";
 
@@ -13,4 +15,16 @@ export type NewAuditEvent = typeof auditEvent.$inferInsert;
 export async function writeAuditEvent(db: Database, input: NewAuditEvent): Promise<AuditEvent> {
   const rows = await db.insert(auditEvent).values(input).returning();
   return rows[0]!;
+}
+
+/** Audit facts for one entity (unordered); read-only companion for tests/reporting. */
+export async function listAuditEventsForEntity(
+  db: Database,
+  entityType: string,
+  entityId: string,
+): Promise<AuditEvent[]> {
+  return db
+    .select()
+    .from(auditEvent)
+    .where(and(eq(auditEvent.entityType, entityType), eq(auditEvent.entityId, entityId)));
 }

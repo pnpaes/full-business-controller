@@ -1,5 +1,6 @@
 export * from "./auth";
 export { DomainError } from "./errors";
+export { computeLandedCost, type LandedCost, type LandedCostInput } from "./landed-cost";
 export { MONEY_SCALE, Money } from "./money";
 export { QUANTITY_SCALE, Quantity } from "./quantity";
 export { SupplierPack } from "./supplier-pack";

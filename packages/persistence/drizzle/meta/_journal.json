@@ -43,6 +43,13 @@
       "when": 1789851925634,
       "tag": "0005_unit_conversion_invariants",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1789853260355,
+      "tag": "0006_goods_receipt",
+      "breakpoints": true
     }
   ]
 }

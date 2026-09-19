@@ -14,9 +14,10 @@ import * as schema from "./index";
 
 const tables = Object.values(schema).filter((value) => is(value, PgTable));
 
-/** The 39 in-scope Phase 1-2 tables: the 35 core tables plus the slice-3
+/** The 41 in-scope Phase 1-2 tables: the 35 core tables, the slice-3
  * master-data additions (`unit_conversion`, `supplier`, `supplier_item`,
- * `cost_center`) from `schemas/phase1_2_draft.sql` / `DATA_DICTIONARY` §2. */
+ * `cost_center`) and the slice-4 receiving additions (`goods_receipt`,
+ * `goods_receipt_line`) from `schemas/phase1_2_draft.sql` / `DATA_DICTIONARY`. */
 const EXPECTED_TABLES = [
   "addon_applicability",
   "app_user",
@@ -30,6 +31,8 @@ const EXPECTED_TABLES = [
   "cost_observation",
   "data_ownership",
   "exchange_rate",
+  "goods_receipt",
+  "goods_receipt_line",
   "item",
   "location",
   "organization",
@@ -76,6 +79,11 @@ const NOT_EXPECTED_TABLES = [
   "payroll_report",
   "ai_analysis_run",
   "ai_suggestion",
+  // Procurement/receiving companions left to a later slice (DEC-047 needs only
+  // the goods receipt; purchasing and reordering stay deferred).
+  "purchase_order",
+  "purchase_order_line",
+  "reorder_policy",
 ];
 
 /** New DB-enforced checks added to the generated core DDL (0001). */
