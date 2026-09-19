@@ -24,6 +24,10 @@ export class FakeMasterDataStore implements MasterDataStore {
     this.conversions.push(edge);
   }
 
+  async withTransaction<T>(fn: (store: MasterDataStore) => Promise<T>): Promise<T> {
+    return fn(this);
+  }
+
   findUnit(unitId: string): Promise<MasterUnit | undefined> {
     return Promise.resolve(this.units.get(unitId));
   }

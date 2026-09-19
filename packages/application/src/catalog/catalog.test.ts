@@ -14,6 +14,7 @@ function buildStore(): FakeMasterDataStore {
   store.units.set("g", { id: "g", code: "g", dimension: "mass", isBase: true });
   store.units.set("kg", { id: "kg", code: "kg", dimension: "mass", isBase: false });
   store.units.set("pack", { id: "pack", code: "pack", dimension: "package", isBase: true });
+  store.units.set("ml", { id: "ml", code: "ml", dimension: "volume", isBase: true });
   store.items.set("item-1", { id: "item-1", organizationId: ORG, baseUnitId: "g" });
   store.suppliers.set("sup-1", { id: "sup-1", organizationId: ORG });
   return store;
@@ -107,31 +108,89 @@ describe("registerSupplierItem", () => {
     ).rejects.toThrow("pack unit not found");
   });
 
-  it("rejects an incompatible pack conversion (package to a non-base unit)", async () => {
+  it("registers a package to the item's base unit, including a non-dimension base", async () => {
     const store = buildStore();
+    // item-1's base is `g` (the mass base): pack -> g registers.
     await expect(
       registerSupplierItem(store, {
         organizationId: ORG,
         supplierId: "sup-1",
         itemId: "item-1",
-        supplierSku: "X",
+        supplierSku: "PACK-G",
         packUnitId: "pack",
-        packToBaseUnitFactor: "1",
+        packToBaseUnitFactor: "1000",
       }),
     ).resolves.toBeDefined();
 
-    // Base unit is kg (not `is_base`), so `pack -> kg` is not a valid pack.
+    // DEC-051: item-kg's base is `kg` (not `is_base`), and pack -> kg now registers.
     store.items.set("item-kg", { id: "item-kg", organizationId: ORG, baseUnitId: "kg" });
     await expect(
       registerSupplierItem(store, {
         organizationId: ORG,
         supplierId: "sup-1",
         itemId: "item-kg",
-        supplierSku: "Y",
+        supplierSku: "PACK-KG",
         packUnitId: "pack",
         packToBaseUnitFactor: "1",
       }),
+    ).resolves.toBeDefined();
+  });
+
+  it("rejects a non-package cross-dimension pack conversion", async () => {
+    const store = buildStore();
+    // kg (mass) -> ml (volume) is not a package conversion, so it stays rejected.
+    store.items.set("item-ml", { id: "item-ml", organizationId: ORG, baseUnitId: "ml" });
+    await expect(
+      registerSupplierItem(store, {
+        organizationId: ORG,
+        supplierId: "sup-1",
+        itemId: "item-ml",
+        supplierSku: "KG-ML",
+        packUnitId: "kg",
+        packToBaseUnitFactor: "1",
+      }),
     ).rejects.toThrow(/incompatible pack dimensions/);
+  });
+
+  it("rejects a non-positive minOrderQty and an invalid leadTimeDays", async () => {
+    const store = buildStore();
+    const base = {
+      organizationId: ORG,
+      supplierId: "sup-1",
+      itemId: "item-1",
+      packUnitId: "pack",
+      packToBaseUnitFactor: "1",
+    };
+    await expect(
+      registerSupplierItem(store, { ...base, supplierSku: "M1", minOrderQty: "0" }),
+    ).rejects.toThrow(/minOrderQty/);
+    await expect(
+      registerSupplierItem(store, { ...base, supplierSku: "M2", minOrderQty: "-1" }),
+    ).rejects.toThrow(/minOrderQty/);
+    await expect(
+      registerSupplierItem(store, { ...base, supplierSku: "M3", leadTimeDays: -1 }),
+    ).rejects.toThrow(/leadTimeDays/);
+    await expect(
+      registerSupplierItem(store, { ...base, supplierSku: "M4", leadTimeDays: 1.5 }),
+    ).rejects.toThrow(/leadTimeDays/);
+  });
+
+  it("registers no supplier item when the pack conversion is rejected", async () => {
+    const store = buildStore();
+    store.items.set("item-ml", { id: "item-ml", organizationId: ORG, baseUnitId: "ml" });
+    await expect(
+      registerSupplierItem(store, {
+        organizationId: ORG,
+        supplierId: "sup-1",
+        itemId: "item-ml",
+        supplierSku: "NO-ROW",
+        packUnitId: "kg",
+        packToBaseUnitFactor: "1",
+      }),
+    ).rejects.toThrow(/incompatible pack dimensions/);
+    // The transaction rolls back, so the failed attempt leaves no row behind —
+    // in particular it cannot burn the SKU and make a later retry collide.
+    expect(store.supplierItems).toHaveLength(0);
   });
 
   it("rejects a duplicate supplier SKU and an empty supplier SKU", async () => {

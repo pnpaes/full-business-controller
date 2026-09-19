@@ -23,9 +23,10 @@ export class SupplierPack {
   }
 
   static from(packUnit: Unit, baseUnit: Unit, packToBaseUnitFactor: string): SupplierPack {
-    // "dimension must match unless package↔base" (DATA_DICTIONARY §2,
-    // unit_conversion): a cross-dimension pack must resolve to the *base* unit of
-    // the other dimension, so `pack → kg` is rejected (kg is not `is_base`; g is).
+    // PROC-001 (DEC-051): the factor is relative to the *item's* base unit, which
+    // need not be the dimension's canonical base, so a package may convert to any
+    // same- or cross-dimension unit (`pack → kg` is allowed). Stored
+    // `unit_conversion` edges keep the stricter dimension-base rule.
     if (!areUnitsConvertible(packUnit, baseUnit)) {
       throw new DomainError(
         `incompatible pack dimensions: ${packUnit.dimension} vs ${baseUnit.dimension}`,

@@ -61,6 +61,12 @@ export interface ConversionEdge {
 }
 
 export interface MasterDataStore {
+  /**
+   * Runs `fn` with a store bound to one database transaction, so the duplicate
+   * check and the insert in `registerSupplierItem` commit (or roll back)
+   * together. When the store is already bound to a transaction it runs inline.
+   */
+  withTransaction<T>(fn: (store: MasterDataStore) => Promise<T>): Promise<T>;
   findUnit(unitId: string): Promise<MasterUnit | undefined>;
   findItem(itemId: string): Promise<MasterItem | undefined>;
   findSupplier(supplierId: string): Promise<MasterSupplier | undefined>;

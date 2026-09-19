@@ -1,8 +1,28 @@
-import type { UnitDimension } from "@aquarela/domain";
+import { DomainError, type UnitDimension } from "@aquarela/domain";
 import * as repo from "@aquarela/persistence";
-import type { Database } from "@aquarela/persistence";
+import type { Database, NodeDatabase } from "@aquarela/persistence";
 
 import type { ConversionEdge, MasterDataStore, MasterUnit, SupplierItemRecord } from "./types";
+
+/** A transaction handle has no `transaction` method of its own. */
+function isNodeDatabase(db: Database): db is NodeDatabase {
+  return typeof (db as NodeDatabase).transaction === "function";
+}
+
+const SUPPLIER_SKU_CONSTRAINT = "supplier_item_supplier_id_supplier_sku_key";
+const SUPPLIER_SKU_CONFLICT_MESSAGE = "supplier SKU already registered for this supplier";
+
+/**
+ * Translates the `supplier_item` unique-constraint violation (SQLSTATE 23505)
+ * into the command's domain failure instead of leaking a raw driver error.
+ */
+function isSupplierSkuConflict(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) {
+    return false;
+  }
+  const { code, constraint } = error as { code?: string; constraint?: string };
+  return code === "23505" && (constraint === undefined || constraint === SUPPLIER_SKU_CONSTRAINT);
+}
 
 /** The DB `check` constraints restrict these to `unit_dimension`. */
 function toDimension(value: string): UnitDimension {
@@ -43,6 +63,12 @@ function toSupplierItem(row: repo.SupplierItem): SupplierItemRecord {
 /** Adapts the persistence repositories to the `MasterDataStore` port. */
 export function createPostgresMasterDataStore(db: Database): MasterDataStore {
   return {
+    withTransaction: async (fn) => {
+      if (!isNodeDatabase(db)) {
+        return fn(createPostgresMasterDataStore(db));
+      }
+      return db.transaction((tx) => fn(createPostgresMasterDataStore(tx)));
+    },
     findUnit: async (unitId) => {
       const row = await repo.findUnitById(db, unitId);
       return row === undefined
@@ -68,7 +94,16 @@ export function createPostgresMasterDataStore(db: Database): MasterDataStore {
       const row = await repo.findSupplierItemBySku(db, supplierId, supplierSku);
       return row === undefined ? undefined : toSupplierItem(row);
     },
-    createSupplierItem: async (input) => toSupplierItem(await repo.createSupplierItem(db, input)),
+    createSupplierItem: async (input) => {
+      try {
+        return toSupplierItem(await repo.createSupplierItem(db, input));
+      } catch (error) {
+        if (isSupplierSkuConflict(error)) {
+          throw new DomainError(SUPPLIER_SKU_CONFLICT_MESSAGE);
+        }
+        throw error;
+      }
+    },
     listEffectiveConversions: async (
       organizationId: string,
       asOf: Date,

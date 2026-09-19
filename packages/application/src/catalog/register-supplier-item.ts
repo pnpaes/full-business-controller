@@ -1,4 +1,4 @@
-import { DomainError, SupplierPack, Unit } from "@aquarela/domain";
+import { DomainError, parseDecimal, QUANTITY_SCALE, SupplierPack, Unit } from "@aquarela/domain";
 
 import type { MasterDataStore, MasterUnit } from "./types";
 
@@ -24,11 +24,13 @@ function toDomainUnit(unit: MasterUnit): Unit {
 
 /**
  * Registers a supplier pack (PROC-001): 1 `packUnitId` = `packToBaseUnitFactor`
- * of the item's base unit. The pack factor is validated with the domain
- * `SupplierPack` (positive, compatible dimensions — `package` to/from the base
- * unit of another dimension only), so an invalid pack never reaches the
- * database. The organization and item/supplier existence are checked here
- * because the repository functions are intentionally unscoped.
+ * of the item's base unit (`SupplierPack` allows a package to convert to the
+ * item's base unit even when that is not the dimension's canonical base, DEC-051).
+ * The pack factor and optional `minOrderQty`/`leadTimeDays` are validated at
+ * this boundary, so an invalid row never reaches the database. The organization
+ * and item/supplier existence are checked here because the repository functions
+ * are intentionally unscoped. The duplicate-SKU check and the insert share one
+ * transaction; the unique constraint is the concurrency authority.
  */
 export async function registerSupplierItem(
   store: MasterDataStore,
@@ -37,42 +39,60 @@ export async function registerSupplierItem(
   if (input.supplierSku.trim().length === 0) {
     throw new DomainError("supplier SKU must not be empty");
   }
-  const [item, supplier, packUnit] = await Promise.all([
-    store.findItem(input.itemId),
-    store.findSupplier(input.supplierId),
-    store.findUnit(input.packUnitId),
-  ]);
-  if (item === undefined || item.organizationId !== input.organizationId) {
-    throw new DomainError("item not found in organization");
+  // Validate the optional boundary inputs before opening a transaction, so a bad
+  // value fails without touching the database. `parseDecimal` rejects malformed
+  // or over-precise values (numeric(19,6)).
+  if (input.minOrderQty !== undefined && parseDecimal(input.minOrderQty, QUANTITY_SCALE) <= 0n) {
+    throw new DomainError("minOrderQty must be a positive quantity of at most 6 decimal places");
   }
-  if (supplier === undefined || supplier.organizationId !== input.organizationId) {
-    throw new DomainError("supplier not found in organization");
-  }
-  if (packUnit === undefined) {
-    throw new DomainError("pack unit not found");
-  }
-  const baseUnit = await store.findUnit(item.baseUnitId);
-  if (baseUnit === undefined) {
-    throw new DomainError("item base unit not found");
+  if (
+    input.leadTimeDays !== undefined &&
+    (!Number.isInteger(input.leadTimeDays) || input.leadTimeDays < 0)
+  ) {
+    throw new DomainError("leadTimeDays must be a non-negative integer");
   }
 
-  SupplierPack.from(toDomainUnit(packUnit), toDomainUnit(baseUnit), input.packToBaseUnitFactor);
+  // The duplicate check and the insert run in one transaction. The unique
+  // constraint remains the authority under concurrency; the Postgres adapter
+  // translates its violation into the same domain failure.
+  return store.withTransaction(async (tx) => {
+    const [item, supplier, packUnit] = await Promise.all([
+      tx.findItem(input.itemId),
+      tx.findSupplier(input.supplierId),
+      tx.findUnit(input.packUnitId),
+    ]);
+    if (item === undefined || item.organizationId !== input.organizationId) {
+      throw new DomainError("item not found in organization");
+    }
+    if (supplier === undefined || supplier.organizationId !== input.organizationId) {
+      throw new DomainError("supplier not found in organization");
+    }
+    if (packUnit === undefined) {
+      throw new DomainError("pack unit not found");
+    }
+    const baseUnit = await tx.findUnit(item.baseUnitId);
+    if (baseUnit === undefined) {
+      throw new DomainError("item base unit not found");
+    }
 
-  const existing = await store.findSupplierItemBySku(input.supplierId, input.supplierSku);
-  if (existing !== undefined) {
-    throw new DomainError("supplier SKU already registered for this supplier");
-  }
+    SupplierPack.from(toDomainUnit(packUnit), toDomainUnit(baseUnit), input.packToBaseUnitFactor);
 
-  const created = await store.createSupplierItem({
-    organizationId: input.organizationId,
-    supplierId: input.supplierId,
-    itemId: input.itemId,
-    supplierSku: input.supplierSku,
-    packUnitId: input.packUnitId,
-    packToBaseUnitFactor: input.packToBaseUnitFactor,
-    ...(input.minOrderQty !== undefined ? { minOrderQty: input.minOrderQty } : {}),
-    ...(input.leadTimeDays !== undefined ? { leadTimeDays: input.leadTimeDays } : {}),
-    ...(input.preferred !== undefined ? { preferred: input.preferred } : {}),
+    const existing = await tx.findSupplierItemBySku(input.supplierId, input.supplierSku);
+    if (existing !== undefined) {
+      throw new DomainError("supplier SKU already registered for this supplier");
+    }
+
+    const created = await tx.createSupplierItem({
+      organizationId: input.organizationId,
+      supplierId: input.supplierId,
+      itemId: input.itemId,
+      supplierSku: input.supplierSku,
+      packUnitId: input.packUnitId,
+      packToBaseUnitFactor: input.packToBaseUnitFactor,
+      ...(input.minOrderQty !== undefined ? { minOrderQty: input.minOrderQty } : {}),
+      ...(input.leadTimeDays !== undefined ? { leadTimeDays: input.leadTimeDays } : {}),
+      ...(input.preferred !== undefined ? { preferred: input.preferred } : {}),
+    });
+    return { supplierItemId: created.id };
   });
-  return { supplierItemId: created.id };
 }

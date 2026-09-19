@@ -63,12 +63,29 @@ export class Unit {
 }
 
 /**
- * Dimension rule shared by every conversion edge (`DATA_DICTIONARY` §2,
- * `unit_conversion`; FND-003): dimensions must match, **unless** one side is a
- * `package` unit and the other is the canonical base unit of another dimension
- * (`pack → g` is allowed; `pack → kg` is not, because `kg` is not `is_base`).
+ * Compatibility for **pack conversions** (PROC-001, DEC-051): units of the same
+ * dimension always convert, and a `package` unit converts to any unit of another
+ * dimension. A supplier pack is expressed against the *item's* `base_unit_id`,
+ * which need not be the dimension's canonical base (an item may be based in
+ * `kg`), so `pack → kg` is allowed here.
+ *
+ * The `unit_conversion` table is deliberately **stricter** — use
+ * `areConversionEdgeUnits` for stored edges, which must resolve to the
+ * dimension's `is_base` unit (`DATA_DICTIONARY` §2).
  */
 export function areUnitsConvertible(a: Unit, b: Unit): boolean {
+  return a.dimension === b.dimension || a.dimension === "package" || b.dimension === "package";
+}
+
+/**
+ * The `unit_conversion` edge rule (`DATA_DICTIONARY` §2, FND-003): dimensions
+ * must match, **unless** one side is a `package` unit and the other is the
+ * canonical base unit of another dimension (`pack → g` is allowed; `pack → kg`
+ * is not, because `kg` is not `is_base`). Kept separate from
+ * `areUnitsConvertible` so the pack rule cannot silently loosen the stored-edge
+ * rule (DEC-051).
+ */
+export function areConversionEdgeUnits(a: Unit, b: Unit): boolean {
   return (
     a.dimension === b.dimension ||
     (a.dimension === "package" && b.isBase) ||

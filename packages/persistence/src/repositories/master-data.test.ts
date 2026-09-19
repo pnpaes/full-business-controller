@@ -252,6 +252,110 @@ describe.skipIf(!databaseUrl)("master data repository", () => {
     });
   });
 
+  it("installs the 0005 unit_conversion overlap and version constraints", async () => {
+    const { rows } = await client.pool.query<{ conname: string }>(
+      "select conname from pg_constraint where conname = any($1::text[])",
+      [
+        [
+          "unit_conversion_global_no_overlap",
+          "unit_conversion_item_no_overlap",
+          "unit_conversion_version_key",
+        ],
+      ],
+    );
+    expect(rows.map((row) => row.conname).sort()).toEqual([
+      "unit_conversion_global_no_overlap",
+      "unit_conversion_item_no_overlap",
+      "unit_conversion_version_key",
+    ]);
+  });
+
+  it("rejects overlapping global unit_conversion windows", async () => {
+    await inRollback(client.db, async (tx) => {
+      const gram = await createTestUnit(tx, orgId, { code: uniqueName("g"), dimension: "mass" });
+      const kilo = await createTestUnit(tx, orgId, {
+        code: uniqueName("kg"),
+        dimension: "mass",
+        isBase: false,
+      });
+      const base = {
+        organizationId: orgId,
+        fromUnitId: kilo.id,
+        toUnitId: gram.id,
+      };
+      await createUnitConversion(tx, {
+        ...base,
+        factor: "1000",
+        effectiveFrom: at("2026-01-01T00:00:00.000Z"),
+        effectiveTo: at("2026-06-01T00:00:00.000Z"),
+      });
+      await expect(
+        createUnitConversion(tx, {
+          ...base,
+          factor: "2000",
+          effectiveFrom: at("2026-03-01T00:00:00.000Z"),
+          effectiveTo: at("2026-09-01T00:00:00.000Z"),
+        }),
+      ).rejects.toThrow(/unit_conversion_global_no_overlap/);
+    });
+  });
+
+  it("rejects overlapping item-scoped unit_conversion windows", async () => {
+    await inRollback(client.db, async (tx) => {
+      const gram = await createTestUnit(tx, orgId, { code: uniqueName("g"), dimension: "mass" });
+      const kilo = await createTestUnit(tx, orgId, {
+        code: uniqueName("kg"),
+        dimension: "mass",
+        isBase: false,
+      });
+      const testItem = await createTestItem(tx, orgId, gram.id);
+      const base = {
+        organizationId: orgId,
+        fromUnitId: kilo.id,
+        toUnitId: gram.id,
+        itemId: testItem.id,
+      };
+      await createUnitConversion(tx, {
+        ...base,
+        factor: "1000",
+        effectiveFrom: at("2026-01-01T00:00:00.000Z"),
+        effectiveTo: null,
+      });
+      await expect(
+        createUnitConversion(tx, {
+          ...base,
+          factor: "1500",
+          effectiveFrom: at("2026-03-01T00:00:00.000Z"),
+          effectiveTo: null,
+        }),
+      ).rejects.toThrow(/unit_conversion_item_no_overlap/);
+    });
+  });
+
+  it("rejects a duplicate unit_conversion version tuple", async () => {
+    await inRollback(client.db, async (tx) => {
+      const gram = await createTestUnit(tx, orgId, { code: uniqueName("g"), dimension: "mass" });
+      const kilo = await createTestUnit(tx, orgId, {
+        code: uniqueName("kg"),
+        dimension: "mass",
+        isBase: false,
+      });
+      const base = {
+        organizationId: orgId,
+        fromUnitId: kilo.id,
+        toUnitId: gram.id,
+        effectiveFrom: at("2026-01-01T00:00:00.000Z"),
+        effectiveTo: at("2026-06-01T00:00:00.000Z"),
+      };
+      await createUnitConversion(tx, { ...base, factor: "1000" });
+      // An exact duplicate version tuple is rejected by the overlap and/or the
+      // unique key (the exclusion constraint fires first for an identical window).
+      await expect(createUnitConversion(tx, { ...base, factor: "1000" })).rejects.toThrow(
+        /unit_conversion_(global_no_overlap|version_key)/,
+      );
+    });
+  });
+
   it("uses the expected schema objects", () => {
     // Guard against a silent rename that would leave this file testing nothing.
     expect(item).toBeDefined();

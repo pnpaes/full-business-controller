@@ -110,10 +110,14 @@ export const costObservation = pgTable(
 /**
  * `unit_conversion` (`DATA_DICTIONARY` §2): the effective-dated, optionally
  * item-scoped conversion graph (FND-003). `item_id` is null for a global factor
- * and set for a pack/density-specific one; the draft deliberately leaves the
- * item-vs-global precedence and the overlap rule unspecified, so no exclusion
- * constraint is emitted here and the domain resolver rejects a conflicting
- * pair as ambiguous instead of guessing a precedence.
+ * and set for a pack/density-specific one. Overlapping effective windows within
+ * one scope are rejected by the hand-written
+ * `0005_unit_conversion_invariants` (two gist exclusion constraints plus a
+ * `NULLS NOT DISTINCT` version key), deliberately outside drizzle-kit as
+ * `0002_invariants` is. The cross-scope case — a global and a matching
+ * item-scoped edge that disagree — stays deliberately undecided (DEC-050): the
+ * domain resolver rejects it as ambiguous instead of guessing a precedence, so
+ * no item-over-global priority is emitted here.
  */
 export const unitConversion = pgTable(
   "unit_conversion",

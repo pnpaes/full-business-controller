@@ -9,5 +9,12 @@ export {
   type ResolveConversionOptions,
   type UnitConversionEdge,
 } from "./unit-conversion";
-export { UNIT_DIMENSIONS, Unit, areUnitsConvertible, convertQuantity } from "./unit";
+export { parseDecimal } from "./decimal";
+export {
+  UNIT_DIMENSIONS,
+  Unit,
+  areConversionEdgeUnits,
+  areUnitsConvertible,
+  convertQuantity,
+} from "./unit";
 export type { UnitDimension } from "./unit";

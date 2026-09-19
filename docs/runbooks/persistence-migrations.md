@@ -58,17 +58,26 @@ The four exclusion constraints (`channel_fee_rule`, `supplier_price`,
 `recipe_version`, `product_recipe_assignment`), the two deferrable mutual FKs
 (`cost_card` ↔ `calculation_snapshot`) and the six append-only trigger
 functions/triggers (`stock_movement`, `calculation_snapshot`, `audit_event`)
-live only in `0002_invariants.sql`. They are **not** represented in
+live only in `0002_invariants.sql`; the two `unit_conversion` exclusion
+constraints (`unit_conversion_global_no_overlap`, `unit_conversion_item_no_overlap`)
+and its `NULLS NOT DISTINCT` `unit_conversion_version_key` live only in
+`0005_unit_conversion_invariants.sql`. This is the **hand-written invariants
+convention**: anything drizzle-kit cannot express (extensions, exclusion
+constraints, expression/partial indexes, deferrable FKs, triggers,
+`NULLS NOT DISTINCT` keys) goes in a `_invariants.sql` file that mirrors
+`0002`, and its columns stay plain `uuid`/`text` in the TypeScript schema so
+`generate` never fights it. All of these objects are **not** represented in
 `drizzle/meta/*_snapshot.json`, so `drizzle-kit generate` cannot see, protect
 or recreate them: it does not diff against them, a later generated migration
 will never include them, and dropping them manually is invisible to the tool.
 
 > **Never run `drizzle-kit push` against a shared or live database.** `push`
 > diffs the live database against the TypeScript schema and, because the raw
-> objects are invisible to it, will silently drop the four exclusion
-> constraints, the two deferrable FKs and the six append-only triggers. Those
-> objects live only in `0002_invariants.sql`; use `generate` + `migrate` and
-> the guard below.
+> objects are invisible to it, will silently drop the exclusion constraints, the
+> two deferrable FKs, the append-only triggers and the `unit_conversion`
+> constraints. Those objects live only in `0002_invariants.sql` and
+> `0005_unit_conversion_invariants.sql`; use `generate` + `migrate` and the
+> guard below.
 
 **Guard:** before committing any future generated migration, diff the database
 schema against the previous revision (`pg_dump --schema-only` before/after, or
@@ -121,15 +130,34 @@ only, so the down file is an explicit operator action, not an automatic one.
   safe to run once 0003's feature is not in use. Apply it manually with
   `psql "$DATABASE_URL" -f packages/persistence/drizzle/0003_user_totp_last_used_counter_down.sql`
   (never `drizzle-kit`, and not via `db:migrate`).
+- **0004 adds the four slice-3 master-data tables and follows the down
+  convention:** `0004_master_data_down.sql` drops only the tables 0004 created
+  (`supplier_item` → `supplier` → `unit_conversion` → `cost_center`, FK-safe
+  order) inside one `BEGIN;`/`COMMIT;`, with `DROP TABLE IF EXISTS` so a
+  half-applied manual run cannot wedge. Apply it manually with
+  `psql "$DATABASE_URL" -f packages/persistence/drizzle/0004_master_data_down.sql`.
+  Only run it once no master-data rows are needed: the drops are destructive and
+  financial/stock facts are append-only (AGENTS.md Rule 2).
+- **0005 adds the `unit_conversion` invariants and follows the down
+  convention:** `0005_unit_conversion_invariants_down.sql` drops the two
+  exclusion constraints and the version key (no table, no row), so it is safe to
+  run whenever the hand-written invariants must be removed (for example before a
+  data repair). Apply it manually with
+  `psql "$DATABASE_URL" -f packages/persistence/drizzle/0005_unit_conversion_invariants_down.sql`.
+  Apply 0005's down **before** 0004's down: its constraints live on
+  `unit_conversion`, which 0004's down drops.
 
   **Re-applying after a manual down:** drizzle-kit tracks applied migrations in
   `drizzle.__drizzle_migrations`, not by comparing the schema, so a plain
-  `npm run db:migrate` after the down file is a no-op — 0003 is still recorded.
-  To re-apply it, delete its ledger row and migrate again:
+  `npm run db:migrate` after any down file is a no-op — the migration is still
+  recorded. To re-apply one, delete its ledger row and migrate again. The ledger
+  row is identified by `created_at` (the `_journal.json` `when`):
   `DELETE FROM drizzle.__drizzle_migrations WHERE created_at = 1789847649193;`
-  then `npm run db:migrate` (verified 2026-09-19). This is safe while the
-  column's data is disposable; once real TOTP counters exist, prefer the
-  additive forward path over re-running 0003.
+  for 0003, `… = 1789850858806` for 0004 and `… = 1789851925634` for 0005, then
+  `npm run db:migrate` (0003 verified 2026-09-19; 0005 rehearsed in the slice-3
+  review follow-up). Re-applying is only safe while the removed objects carry no
+  data that must be preserved — once real master data, TOTP counters or
+  conversions exist, prefer the additive forward path over re-running the down.
 
 ## Known follow-up obligations
 
@@ -201,6 +229,8 @@ session will not serialise against each other.
 | 0001 | `0001_phase1_core.sql` | Generated DDL for the 35 Phase 1–2 core tables, checks, uniques, FKs and indexes |
 | 0002 | `0002_invariants.sql` | `app_user` case-insensitive partial unique indexes; `channel_fee_rule`, `supplier_price`, `recipe_version`, `product_recipe_assignment` exclusion constraints; `cost_card.snapshot_id` ↔ `calculation_snapshot.cost_card_id` deferrable FKs; append-only trigger functions/triggers for `stock_movement`, `calculation_snapshot` and `audit_event` |
 | 0003 | `0003_user_totp_last_used_counter.sql` | Generated: adds nullable `user_totp.last_used_counter` (`integer`, check `null or >= 0`) for TOTP replay protection. Down companion: `0003_user_totp_last_used_counter_down.sql` (`ALTER TABLE "user_totp" DROP COLUMN "last_used_counter";`; the check drops with the column) |
+| 0004 | `0004_master_data.sql` | Generated: the four slice-3 master-data tables — `cost_center`, `unit_conversion`, `supplier`, `supplier_item` — with their checks, uniques, FKs and the `unit_conversion_lookup_idx`. Down companion: `0004_master_data_down.sql` (transactional `DROP TABLE IF EXISTS` in FK-safe order) |
+| 0005 | `0005_unit_conversion_invariants.sql` | Hand-written: two gist exclusion constraints on `unit_conversion` (`unit_conversion_global_no_overlap` for `item_id IS NULL`, `unit_conversion_item_no_overlap` for `item_id IS NOT NULL`) and the `NULLS NOT DISTINCT` `unit_conversion_version_key`. Down companion: `0005_unit_conversion_invariants_down.sql` (drops the three constraints) |
 
 Order matters: extensions before DDL that calls `gen_random_uuid()`, and before
 the exclusion constraints. Verify with:
@@ -230,7 +260,8 @@ DATABASE_URL=postgres://aquarela:aquarela@localhost:5432/aquarela npm run db:mig
 `public` alone leaves the ledger intact, so `db:migrate` reports success while
 restoring nothing. `DROP SCHEMA drizzle CASCADE` clears the ledger so all
 migrations replay from 0000. Verified: after this sequence `db:migrate`
-re-applies 0000–0003 and the database has all 35 tables plus both extensions.
+re-applies 0000–0005 and the database has all 39 tables plus both extensions
+(0004 adds the four slice-3 master-data tables).
 
 Once real data exists, this path is no longer acceptable: use small atomic
 commits, expand → migrate → contract for schema changes, and a tested
@@ -246,6 +277,12 @@ After applying to an empty database the following were verified with `psql`:
 - `audit_event`: `UPDATE` rejected by `reject_immutable_change`.
 - `supplier_price`: an overlapping `tstzrange(effective_from, effective_to)` for
   the same `supplier_item_id` is rejected by `supplier_price_no_overlap`.
+- `unit_conversion` (0005): an overlapping effective window for the same
+  `(organization_id, from_unit_id, to_unit_id)` with `item_id IS NULL` is
+  rejected by `unit_conversion_global_no_overlap`; the same overlap with a
+  non-null `item_id` is rejected by `unit_conversion_item_no_overlap`; an exact
+  duplicate version tuple is rejected by `unit_conversion_version_key` (or by
+  the matching exclusion constraint, which fires first for an identical window).
 - `NULLS NOT DISTINCT`: duplicate `stock_balance` rows with a null `lot_id`, and
   duplicate `user_role` rows with a null `location_id`, are rejected.
 - `app_user`: case-insensitive duplicate `email` is rejected

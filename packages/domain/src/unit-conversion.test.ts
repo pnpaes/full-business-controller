@@ -8,6 +8,7 @@ import { Unit } from "./unit";
 const gram = Unit.from("g", "mass", true);
 const kilogram = Unit.from("kg", "mass");
 const milligram = Unit.from("mg", "mass");
+const microgram = Unit.from("mcg", "mass");
 const litre = Unit.from("l", "volume", true);
 const pack = Unit.from("pack", "package", true);
 
@@ -158,6 +159,47 @@ describe("ConversionGraph", () => {
       edge(gram, kilogram, "0.001"),
     ]);
     expect(graph.resolve(kilogram, gram, { asOf: AT })).toBe("1000.000000");
+  });
+
+  it("accepts two different paths that agree", () => {
+    const graph = ConversionGraph.from([
+      edge(kilogram, gram, "1000"),
+      edge(gram, milligram, "1000"),
+      edge(kilogram, milligram, "1000000"),
+    ]);
+    expect(graph.resolve(kilogram, milligram, { asOf: AT })).toBe("1000000.000000");
+  });
+
+  it("resolves a three-hop path", () => {
+    const graph = ConversionGraph.from([
+      edge(kilogram, gram, "1000"),
+      edge(gram, milligram, "1000"),
+      edge(milligram, microgram, "1000"),
+    ]);
+    expect(graph.resolve(kilogram, microgram, { asOf: AT })).toBe("1000000000.000000");
+  });
+
+  it("does not infer the reverse of a one-directional edge", () => {
+    const graph = ConversionGraph.from([edge(kilogram, gram, "1000")]);
+    expect(() => graph.resolve(gram, kilogram, { asOf: AT })).toThrow(
+      /no conversion from "g" to "kg"/,
+    );
+  });
+
+  it("rejects a composed factor that rounds to zero at factor scale", () => {
+    const graph = ConversionGraph.from([
+      edge(kilogram, gram, "0.001"),
+      edge(gram, milligram, "0.0004"),
+    ]);
+    expect(() => graph.resolve(kilogram, milligram, { asOf: AT })).toThrow(
+      /rounds to zero at 6 dp and is unusable/,
+    );
+  });
+
+  it("rejects a self-edge at construction", () => {
+    expect(() => ConversionGraph.from([edge(kilogram, kilogram, "1")])).toThrow(
+      /to itself is not allowed/,
+    );
   });
 
   it("throws when no effective path connects the units", () => {

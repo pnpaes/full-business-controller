@@ -28,9 +28,13 @@ describe("SupplierPack", () => {
     expect(() => SupplierPack.from(kilogram, gram, "1000")).not.toThrow();
   });
 
-  it("rejects a cross-dimension pack that does not resolve to the base unit", () => {
-    // `g` is the base mass unit, `kg` is not, so pack -> kg is not "package↔base".
-    expect(() => SupplierPack.from(pack, kilogram, "1000")).toThrow(DomainError);
+  it("allows a package to the item's base unit even when it is not the dimension base", () => {
+    // PROC-001/DEC-051: the factor is relative to the item's base_unit_id, which
+    // may be `kg` (not the mass `is_base` unit), so `pack -> kg` is valid.
+    const flour = SupplierPack.from(pack, kilogram, "1");
+    expect(flour.factor).toBe("1.000000");
+    expect(flour.baseUnitsReceived(Quantity.from("2", "pack")).toString()).toBe("2.000000");
+    expect(flour.baseUnitsReceived(Quantity.from("2", "pack")).unit).toBe("kg");
   });
 
   it("rejects a non-positive or over-precise factor", () => {

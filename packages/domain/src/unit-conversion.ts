@@ -1,10 +1,17 @@
 import { formatDecimal, parseDecimal, rescale } from "./decimal";
 import { DomainError } from "./errors";
 import { Quantity } from "./quantity";
-import { areUnitsConvertible, convertQuantity, Unit } from "./unit";
+import { areConversionEdgeUnits, convertQuantity, Unit } from "./unit";
 
 /** `unit_conversion.factor` is `numeric(19,6)` (`DATA_DICTIONARY` §2). */
 const FACTOR_SCALE = 6;
+
+/**
+ * Upper bound on a resolved path. `numeric(19,6)` factors cannot represent an
+ * unbounded chain, and a path this long signals corrupt or adversarial data
+ * rather than a real conversion (`DATA_DICTIONARY` §2; FND-003).
+ */
+const MAX_CHAIN_LENGTH = 32;
 
 /**
  * One row of the effective-dated `unit_conversion` graph. `itemId` is `null`
@@ -32,25 +39,16 @@ export interface ResolveConversionOptions {
   readonly itemId?: string | null;
 }
 
-/** Exact decimal value `units / 10^scale`; keeps compositions precise. */
-interface ScaledFactor {
-  readonly units: bigint;
-  readonly scale: number;
-}
+/** A factor is always held at `FACTOR_SCALE`, so it is a valid `numeric(19,6)`. */
+const ONE = 10n ** BigInt(FACTOR_SCALE);
 
-const ONE: ScaledFactor = { units: 10n ** BigInt(FACTOR_SCALE), scale: FACTOR_SCALE };
-
-/** The composed-factor value is exact; any presence of a cycle is compared before rounding. */
-function multiplyFactors(a: ScaledFactor, b: ScaledFactor): ScaledFactor {
-  return { units: a.units * b.units, scale: a.scale + b.scale };
-}
-
-function factorsEqual(a: ScaledFactor, b: ScaledFactor): boolean {
-  return a.units * 10n ** BigInt(b.scale) === b.units * 10n ** BigInt(a.scale);
-}
-
-function factorToString(value: ScaledFactor): string {
-  return formatDecimal(rescale(value.units, value.scale, FACTOR_SCALE), FACTOR_SCALE);
+/**
+ * Composes two factors and rescales the product back to factor scale (HALF_UP)
+ * immediately, so the running value stays a `numeric(19,6)` and its scale cannot
+ * grow with the path length (DEC-024; review finding on composed-factor scale).
+ */
+function multiplyFactors(a: bigint, b: bigint): bigint {
+  return rescale(a * b, FACTOR_SCALE * 2, FACTOR_SCALE);
 }
 
 function isEffective(edge: UnitConversionEdge, asOf: Date): boolean {
@@ -78,7 +76,10 @@ export class ConversionGraph {
 
   static from(edges: readonly UnitConversionEdge[]): ConversionGraph {
     for (const edge of edges) {
-      if (!areUnitsConvertible(edge.from, edge.to)) {
+      if (edge.from.code === edge.to.code) {
+        throw new DomainError(`conversion edge from "${edge.from.code}" to itself is not allowed`);
+      }
+      if (!areConversionEdgeUnits(edge.from, edge.to)) {
         throw new DomainError(
           `incompatible unit dimensions: ${edge.from.dimension} vs ${edge.to.dimension}`,
         );
@@ -94,13 +95,15 @@ export class ConversionGraph {
   }
 
   /**
-   * Resolves `from` → `to` to a single factor at factor scale (6 dp). Throws
-   * when the dimensions are incompatible, no effective path exists, or the
-   * effective edges imply two different factors for the same unit (ambiguity or
-   * an inconsistent cycle).
+   * Resolves `from` → `to` to a single factor at factor scale (6 dp). Each hop
+   * is rescaled HALF_UP before the next, so a composed factor is always a valid
+   * `numeric(19,6)`. Throws when the dimensions are incompatible, no effective
+   * path exists, the path exceeds `MAX_CHAIN_LENGTH` hops, a composed factor
+   * rounds to zero, or the effective edges imply two different factors for the
+   * same unit (ambiguity or an inconsistent cycle).
    */
   resolve(from: Unit, to: Unit, options: ResolveConversionOptions): string {
-    if (!areUnitsConvertible(from, to)) {
+    if (!areConversionEdgeUnits(from, to)) {
       throw new DomainError(`incompatible unit dimensions: ${from.dimension} vs ${to.dimension}`);
     }
 
@@ -121,18 +124,29 @@ export class ConversionGraph {
       }
     }
 
-    const visited = new Map<string, ScaledFactor>([[from.code, ONE]]);
-    const stack: Array<{ unit: string; value: ScaledFactor }> = [{ unit: from.code, value: ONE }];
+    const visited = new Map<string, bigint>([[from.code, ONE]]);
+    const stack: Array<{ unit: string; value: bigint; hops: number }> = [
+      { unit: from.code, value: ONE, hops: 0 },
+    ];
     while (stack.length > 0) {
       const current = stack.pop()!;
       for (const edge of adjacency.get(current.unit) ?? []) {
-        const next = multiplyFactors(current.value, {
-          units: parseDecimal(edge.factor, FACTOR_SCALE),
-          scale: FACTOR_SCALE,
-        });
+        if (current.hops + 1 > MAX_CHAIN_LENGTH) {
+          throw new DomainError(
+            `conversion path from "${from.code}" to "${to.code}" exceeds ` +
+              `${MAX_CHAIN_LENGTH} hops; the graph is not a usable conversion`,
+          );
+        }
+        const next = multiplyFactors(current.value, parseDecimal(edge.factor, FACTOR_SCALE));
+        if (next === 0n) {
+          throw new DomainError(
+            `conversion from "${from.code}" to "${to.code}" rounds to zero at ` +
+              `${FACTOR_SCALE} dp and is unusable`,
+          );
+        }
         const seen = visited.get(edge.to.code);
         if (seen !== undefined) {
-          if (!factorsEqual(seen, next)) {
+          if (seen !== next) {
             throw new DomainError(
               `ambiguous conversion from "${from.code}" to "${to.code}": ` +
                 `"${edge.to.code}" resolves to two different factors`,
@@ -141,7 +155,7 @@ export class ConversionGraph {
           continue;
         }
         visited.set(edge.to.code, next);
-        stack.push({ unit: edge.to.code, value: next });
+        stack.push({ unit: edge.to.code, value: next, hops: current.hops + 1 });
       }
     }
 
@@ -151,7 +165,7 @@ export class ConversionGraph {
         `no conversion from "${from.code}" to "${to.code}" effective at the requested date`,
       );
     }
-    return factorToString(resolved);
+    return formatDecimal(resolved, FACTOR_SCALE);
   }
 }
 
