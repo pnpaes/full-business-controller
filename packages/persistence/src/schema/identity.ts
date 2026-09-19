@@ -23,6 +23,7 @@ import {
 } from "./columns";
 import { organization, location } from "./organization";
 import { APP_USER_STATUS, DATA_AREA, ROLE_CODE } from "./vocabularies";
+import type { UserStatus } from "./vocabularies";
 
 export const appUser = pgTable(
   "app_user",
@@ -34,7 +35,7 @@ export const appUser = pgTable(
     displayName: text("display_name").notNull(),
     passwordHash: text("password_hash").notNull(),
     passwordChangedAt: tstz("password_changed_at"),
-    status: text("status").notNull().default("active"),
+    status: text("status").$type<UserStatus>().notNull().default("active"),
     failedLoginCount: integer("failed_login_count").notNull().default(0),
     lockedUntil: tstz("locked_until"),
     lastLoginAt: tstz("last_login_at"),

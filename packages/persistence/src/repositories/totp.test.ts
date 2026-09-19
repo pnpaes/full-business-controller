@@ -5,9 +5,10 @@ import { createDb, type DbClient } from "../client";
 import { appUser, organization } from "../schema";
 import { createTestOrganization, createTestUser, inRollback, uniqueSuffix } from "./test-support";
 import {
+  advanceLastUsedCounter,
   confirmTotp,
+  consumeRecoveryCodeHash,
   getTotp,
-  setLastUsedCounter,
   setRecoveryCodes,
   upsertTotpSecret,
 } from "./totp";
@@ -63,16 +64,17 @@ describe.skipIf(!databaseUrl)("totp repository", () => {
     });
   });
 
-  it("advances the replay counter monotonically", async () => {
+  it("advances the replay counter only when it moves forward", async () => {
     await inRollback(client.db, async (tx) => {
       const user = await createTestUser(tx, orgId);
       const enrolled = await upsertTotpSecret(tx, user.id, "v1.aaaa.bbbb.cccc");
       expect(enrolled.lastUsedCounter).toBeNull();
 
-      expect((await setLastUsedCounter(tx, user.id, 5)).lastUsedCounter).toBe(5);
-      // A stale, slower verification must not move the counter backwards.
-      expect((await setLastUsedCounter(tx, user.id, 3)).lastUsedCounter).toBe(5);
-      expect((await setLastUsedCounter(tx, user.id, 7)).lastUsedCounter).toBe(7);
+      expect((await advanceLastUsedCounter(tx, user.id, 5))?.lastUsedCounter).toBe(5);
+      // A stale or concurrent verification loses the compare-and-set.
+      expect(await advanceLastUsedCounter(tx, user.id, 3)).toBeUndefined();
+      expect(await advanceLastUsedCounter(tx, user.id, 5)).toBeUndefined();
+      expect((await advanceLastUsedCounter(tx, user.id, 7))?.lastUsedCounter).toBe(7);
     });
   });
 
@@ -81,19 +83,30 @@ describe.skipIf(!databaseUrl)("totp repository", () => {
       const user = await createTestUser(tx, orgId);
       await upsertTotpSecret(tx, user.id, "v1.aaaa.bbbb.cccc");
 
-      await expect(setLastUsedCounter(tx, user.id, -1)).rejects.toThrow(
-        "counter must be non-negative",
+      await expect(advanceLastUsedCounter(tx, user.id, -1)).rejects.toThrow(
+        "counter must be a non-negative integer",
       );
       expect((await getTotp(tx, user.id))?.lastUsedCounter).toBeNull();
     });
   });
 
-  it("throws when the user has no TOTP enrolment", async () => {
+  it("returns undefined when the user has no TOTP enrolment", async () => {
     await inRollback(client.db, async (tx) => {
       const user = await createTestUser(tx, orgId);
-      await expect(setLastUsedCounter(tx, user.id, 5)).rejects.toThrow(
-        "user has no TOTP enrolment",
-      );
+      expect(await advanceLastUsedCounter(tx, user.id, 5)).toBeUndefined();
+    });
+  });
+
+  it("consumes a recovery-code hash exactly once", async () => {
+    await inRollback(client.db, async (tx) => {
+      const user = await createTestUser(tx, orgId);
+      await upsertTotpSecret(tx, user.id, "v1.aaaa.bbbb.cccc");
+      await setRecoveryCodes(tx, user.id, ["hash-a", "hash-b"]);
+
+      const consumed = await consumeRecoveryCodeHash(tx, user.id, "hash-a");
+      expect(consumed?.recoveryCodesHash).toEqual(["hash-b"]);
+      // A concurrent second consume matches nothing.
+      expect(await consumeRecoveryCodeHash(tx, user.id, "hash-a")).toBeUndefined();
     });
   });
 });

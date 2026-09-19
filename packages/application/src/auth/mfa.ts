@@ -1,5 +1,12 @@
 import { ConfigError } from "@aquarela/config";
-import { AUTH_ERROR_GENERIC, openSecret, verifyRecoveryCode, verifyTotp } from "@aquarela/domain";
+import {
+  AUTH_ERROR_GENERIC,
+  computeLockout,
+  isLocked,
+  openSecret,
+  verifyRecoveryCode,
+  verifyTotp,
+} from "@aquarela/domain";
 import type { VerifyTotpOptions } from "@aquarela/domain";
 
 import { AUTH_AUDIT_ACTIONS } from "./actions";
@@ -19,77 +26,118 @@ export type VerifyMfaResult =
   | { readonly ok: false; readonly error: string };
 
 /**
- * Second factor: a fresh TOTP code, or a single-use recovery code. A valid TOTP
- * advances the persisted replay counter; a used recovery code is removed from
- * the stored set. Every outcome is audited and every failure is generic.
+ * Second factor: a fresh TOTP code, or a single-use recovery code.
+ *
+ * Failures count against the shared progressive-lockout counter (ADR-0003
+ * requires lockout on 2FA attempts too), and a success resets it. Both the TOTP
+ * counter advance and the recovery-code removal are atomic compare-and-sets, so
+ * two concurrent requests cannot both consume the same code. Every outcome is
+ * audited inside the same transaction and every failure is generic.
  */
 export async function verifyMfa(
   store: AuthStore,
   deps: AuthDeps,
   input: VerifyMfaInput,
 ): Promise<VerifyMfaResult> {
-  const now = deps.now ?? new Date();
-  const generic: VerifyMfaResult = { ok: false, error: AUTH_ERROR_GENERIC };
-  const context = {
-    organizationId: input.organizationId,
-    actorId: input.userId,
-    entityId: input.userId,
-  };
+  return store.withTransaction(async (tx) => {
+    const now = deps.now ?? new Date();
+    const generic: VerifyMfaResult = { ok: false, error: AUTH_ERROR_GENERIC };
+    const context = {
+      organizationId: input.organizationId,
+      actorId: input.userId,
+      entityId: input.userId,
+    };
 
-  const user = await store.findUserById(input.userId);
-  if (user === undefined || user.status !== "active") {
-    await audit(store, {
-      ...context,
-      action: AUTH_AUDIT_ACTIONS.mfaFailed,
-      reason: "user_not_active",
-    });
-    return generic;
-  }
-
-  const totp = await store.getTotp(user.id);
-  if (totp === undefined || totp.confirmedAt === null) {
-    await audit(store, {
-      ...context,
-      action: AUTH_AUDIT_ACTIONS.mfaFailed,
-      reason: "no_confirmed_totp",
-    });
-    return generic;
-  }
-
-  const key = deps.totpEncryptionKey;
-  if (key === undefined) {
-    throw new ConfigError("TOTP_SECRET_ENCRYPTION_KEY is required to verify MFA");
-  }
-
-  const secret = openSecret(totp.secretEncrypted, key);
-  const options: VerifyTotpOptions =
-    totp.lastUsedCounter === null ? { now } : { now, lastUsedCounter: totp.lastUsedCounter };
-  const result = verifyTotp(secret, input.token, options);
-
-  if (result.valid) {
-    await store.setLastUsedCounter(user.id, result.counter);
-    const session = await issueSession(store, deps, user, now, input.request);
-    await audit(store, { ...context, action: AUTH_AUDIT_ACTIONS.mfaSucceeded });
-    return { ok: true, session };
-  }
-
-  if (totp.recoveryCodesHash.length > 0 && looksLikeRecoveryCode(input.token)) {
-    const index = await verifyRecoveryCode(totp.recoveryCodesHash, input.token);
-    if (index !== null) {
-      const remaining = totp.recoveryCodesHash.filter((_, position) => position !== index);
-      await store.setRecoveryCodes(user.id, remaining);
-      const session = await issueSession(store, deps, user, now, input.request);
-      await audit(store, {
+    const user = await tx.findUserById(input.userId);
+    if (user === undefined || user.status !== "active") {
+      await audit(tx, {
         ...context,
-        action: AUTH_AUDIT_ACTIONS.mfaRecoveryUsed,
-        reason: `remaining_${remaining.length}`,
+        action: AUTH_AUDIT_ACTIONS.mfaFailed,
+        reason: "user_not_active",
       });
+      return generic;
+    }
+
+    if (isLocked(user.lockedUntil, now)) {
+      await audit(tx, { ...context, action: AUTH_AUDIT_ACTIONS.mfaFailed, reason: "locked" });
+      return generic;
+    }
+
+    const totp = await tx.getTotp(user.id);
+    if (totp === undefined || totp.confirmedAt === null) {
+      await audit(tx, {
+        ...context,
+        action: AUTH_AUDIT_ACTIONS.mfaFailed,
+        reason: "no_confirmed_totp",
+      });
+      return generic;
+    }
+
+    const key = deps.totpEncryptionKey;
+    if (key === undefined) {
+      throw new ConfigError("TOTP_SECRET_ENCRYPTION_KEY is required to verify MFA");
+    }
+
+    let secret: string;
+    try {
+      secret = openSecret(totp.secretEncrypted, key);
+    } catch {
+      // A tampered or wrongly-keyed secret is a data fault: fail closed, audit
+      // it, and never throw into the request path or leak the cause.
+      await audit(tx, {
+        ...context,
+        action: AUTH_AUDIT_ACTIONS.mfaFailed,
+        reason: "secret_unseal_failed",
+      });
+      return generic;
+    }
+
+    const options: VerifyTotpOptions =
+      totp.lastUsedCounter === null ? { now } : { now, lastUsedCounter: totp.lastUsedCounter };
+    const result = verifyTotp(secret, input.token, options);
+
+    if (result.valid) {
+      const advanced = await tx.advanceLastUsedCounter(user.id, result.counter);
+      if (!advanced) {
+        await audit(tx, { ...context, action: AUTH_AUDIT_ACTIONS.mfaFailed, reason: "replayed" });
+        return generic;
+      }
+      await tx.recordLoginSuccess(user.id, now);
+      const session = await issueSession(tx, deps, user, now, input.request);
+      await audit(tx, { ...context, action: AUTH_AUDIT_ACTIONS.mfaSucceeded });
       return { ok: true, session };
     }
-  }
 
-  await audit(store, { ...context, action: AUTH_AUDIT_ACTIONS.mfaFailed, reason: result.reason });
-  return generic;
+    if (totp.recoveryCodesHash.length > 0 && looksLikeRecoveryCode(input.token)) {
+      const index = await verifyRecoveryCode(totp.recoveryCodesHash, input.token);
+      const matchedHash = index === null ? undefined : totp.recoveryCodesHash[index];
+      if (matchedHash !== undefined) {
+        const consumed = await tx.consumeRecoveryCodeHash(user.id, matchedHash);
+        if (!consumed) {
+          await audit(tx, { ...context, action: AUTH_AUDIT_ACTIONS.mfaFailed, reason: "replayed" });
+          return generic;
+        }
+        await tx.recordLoginSuccess(user.id, now);
+        const session = await issueSession(tx, deps, user, now, input.request);
+        await audit(tx, {
+          ...context,
+          action: AUTH_AUDIT_ACTIONS.mfaRecoveryUsed,
+          reason: "recovery_code",
+        });
+        return { ok: true, session };
+      }
+    }
+
+    const nextCount = user.failedLoginCount + 1;
+    const lockedUntil = computeLockout(nextCount, now).lockedUntil;
+    await tx.recordLoginFailure(user.id, { lockedUntil, at: now });
+    await audit(tx, {
+      ...context,
+      action: AUTH_AUDIT_ACTIONS.mfaFailed,
+      reason: lockedUntil === null ? result.reason : "lockout_applied",
+    });
+    return generic;
+  });
 }
 
 /**

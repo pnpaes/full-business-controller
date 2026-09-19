@@ -130,6 +130,9 @@ export const DATA_AREA = [
 // Values from `schemas/domain-enums.yaml` (`app_user_status`).
 export const APP_USER_STATUS = ["invited", "active", "disabled", "locked"] as const;
 
+/** Narrow type for `app_user.status`, so comparisons cannot drift into typos. */
+export type UserStatus = (typeof APP_USER_STATUS)[number];
+
 // Values from `schemas/domain-enums.yaml` (`price_scenario_state`): a subset of
 // `document_status`, minus `retired`.
 export const PRICE_SCENARIO_STATE = ["draft", "submitted", "approved", "rejected"] as const;

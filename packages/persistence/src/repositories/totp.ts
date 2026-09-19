@@ -1,4 +1,4 @@
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 
 import type { Database } from "../client";
 import { userTotp } from "../schema";
@@ -55,29 +55,50 @@ export async function setRecoveryCodes(
 }
 
 /**
- * Advances the replay counter monotonically: `greatest(current, counter)` means
- * a slower concurrent verification can never move it backwards. A negative
- * counter is a caller bug and throws; if no enrolment row matches, the update
- * changed nothing and throws rather than silently returning `undefined`.
+ * Atomically advances the replay counter, but only when `counter` is strictly
+ * greater than what is stored. This is a compare-and-set rather than a
+ * read-then-write, so two concurrent verifications of the same TOTP code cannot
+ * both win: the loser matches zero rows and gets `undefined`, which the caller
+ * treats as a replay. Returns `undefined` when the counter did not advance or
+ * the user has no `user_totp` row. A negative counter is a caller bug and throws.
  */
-export async function setLastUsedCounter(
+export async function advanceLastUsedCounter(
   db: Database,
   userId: string,
   counter: number,
-): Promise<UserTotp> {
-  if (counter < 0) {
-    throw new Error("counter must be non-negative");
+): Promise<UserTotp | undefined> {
+  if (!Number.isInteger(counter) || counter < 0) {
+    throw new Error("counter must be a non-negative integer");
   }
+
   const rows = await db
     .update(userTotp)
-    .set({
-      lastUsedCounter: sql`greatest(coalesce(${userTotp.lastUsedCounter}, -1), ${counter})`,
-    })
-    .where(eq(userTotp.userId, userId))
+    .set({ lastUsedCounter: counter })
+    .where(
+      and(
+        eq(userTotp.userId, userId),
+        sql`(${userTotp.lastUsedCounter} is null or ${userTotp.lastUsedCounter} < ${counter})`,
+      ),
+    )
     .returning();
-  const row = rows[0];
-  if (row === undefined) {
-    throw new Error("user has no TOTP enrolment");
-  }
-  return row;
+  return rows[0];
+}
+
+/**
+ * Atomically consumes one recovery-code hash. The `= any(...)` guard makes
+ * single use hold under concurrency: the second racing request matches zero rows
+ * and gets `undefined`. Returns the updated row, or `undefined` when the hash was
+ * absent (already consumed) or the user has no `user_totp` row.
+ */
+export async function consumeRecoveryCodeHash(
+  db: Database,
+  userId: string,
+  codeHash: string,
+): Promise<UserTotp | undefined> {
+  const rows = await db
+    .update(userTotp)
+    .set({ recoveryCodesHash: sql`array_remove(${userTotp.recoveryCodesHash}, ${codeHash})` })
+    .where(and(eq(userTotp.userId, userId), sql`${codeHash} = any(${userTotp.recoveryCodesHash})`))
+    .returning();
+  return rows[0];
 }

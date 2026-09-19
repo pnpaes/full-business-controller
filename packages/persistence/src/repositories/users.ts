@@ -1,11 +1,11 @@
 import { and, eq, or, sql } from "drizzle-orm";
 
 import type { Database } from "../client";
-import { appUser, APP_USER_STATUS } from "../schema";
+import { appUser } from "../schema";
+import type { UserStatus } from "../schema";
 
 export type User = typeof appUser.$inferSelect;
 export type NewUser = typeof appUser.$inferInsert;
-export type UserStatus = (typeof APP_USER_STATUS)[number];
 
 /**
  * Looks a user up by username or email **within one organization**,

@@ -118,15 +118,29 @@ class FakeAuthStore implements AuthStore {
     return this.totps.get(userId);
   }
 
-  async setLastUsedCounter(userId: string, counter: number): Promise<void> {
+  async withTransaction<T>(fn: (store: AuthStore) => Promise<T>): Promise<T> {
+    return fn(this);
+  }
+
+  async advanceLastUsedCounter(userId: string, counter: number): Promise<boolean> {
     const totp = this.totps.get(userId);
-    if (totp === undefined) {
-      throw new Error("user has no TOTP enrolment");
+    if (totp === undefined || counter <= (totp.lastUsedCounter ?? -1)) {
+      return false;
+    }
+    this.totps.set(userId, { ...totp, lastUsedCounter: counter });
+    return true;
+  }
+
+  async consumeRecoveryCodeHash(userId: string, codeHash: string): Promise<boolean> {
+    const totp = this.totps.get(userId);
+    if (totp === undefined || !totp.recoveryCodesHash.includes(codeHash)) {
+      return false;
     }
     this.totps.set(userId, {
       ...totp,
-      lastUsedCounter: Math.max(totp.lastUsedCounter ?? -1, counter),
+      recoveryCodesHash: totp.recoveryCodesHash.filter((hash) => hash !== codeHash),
     });
+    return true;
   }
 
   async setRecoveryCodes(userId: string, hashes: readonly string[]): Promise<void> {
@@ -397,6 +411,56 @@ describe("verifyMfa", () => {
     expect(second).toEqual({ ok: false, error: AUTH_ERROR_GENERIC });
     expect(store.totps.get(user.id)?.recoveryCodesHash).toHaveLength(2);
     expect(store.actions()).toContain(AUTH_AUDIT_ACTIONS.mfaRecoveryUsed);
+  });
+
+  it("counts MFA failures towards the lockout and then rejects even a valid code", async () => {
+    const store = new FakeAuthStore();
+    const user = await userWithPassword(store, "correct-password");
+    const secret = await enrolTotp(store, user);
+    const deps = { now: NOW, sessionTtlMinutes: 60, totpEncryptionKey: KEY };
+    const wrong = "000000";
+    const valid = totpCode(secret, counterAt(NOW));
+
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      await verifyMfa(store, deps, { organizationId: ORG, userId: user.id, token: wrong });
+    }
+
+    expect(store.failures).toHaveLength(5);
+    expect(store.users.get(user.id)?.lockedUntil).not.toBeNull();
+
+    const afterLock = await verifyMfa(store, deps, {
+      organizationId: ORG,
+      userId: user.id,
+      token: valid,
+    });
+    expect(afterLock).toEqual({ ok: false, error: AUTH_ERROR_GENERIC });
+    const locked = store.audits.find(
+      (entry) => entry.action === AUTH_AUDIT_ACTIONS.mfaFailed && entry.reason === "locked",
+    );
+    expect(locked).toBeDefined();
+  });
+
+  it("fails closed and audits when the sealed secret cannot be opened", async () => {
+    const store = new FakeAuthStore();
+    const user = await userWithPassword(store, "correct-password");
+    await enrolTotp(store, user);
+    store.totps.set(user.id, {
+      ...store.totps.get(user.id)!,
+      secretEncrypted: "v1.zzzz.zzzz.zzzz",
+    });
+
+    const result = await verifyMfa(
+      store,
+      { now: NOW, sessionTtlMinutes: 60, totpEncryptionKey: KEY },
+      { organizationId: ORG, userId: user.id, token: "123456" },
+    );
+
+    expect(result).toEqual({ ok: false, error: AUTH_ERROR_GENERIC });
+    const failed = store.audits.find(
+      (entry) =>
+        entry.action === AUTH_AUDIT_ACTIONS.mfaFailed && entry.reason === "secret_unseal_failed",
+    );
+    expect(failed).toBeDefined();
   });
 
   it("fails closed without the encryption key", async () => {

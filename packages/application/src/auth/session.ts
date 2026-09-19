@@ -53,19 +53,21 @@ export interface LogoutInput {
   readonly actorId: string | null;
 }
 
-/** Revokes one session and audits it. */
+/** Revokes one session and audits it, in one transaction. */
 export async function logout(
   store: AuthStore,
   input: LogoutInput,
   now = new Date(),
 ): Promise<void> {
-  await store.revokeSession(input.sessionId, now);
-  await audit(store, {
-    organizationId: input.organizationId,
-    actorId: input.actorId,
-    action: AUTH_AUDIT_ACTIONS.sessionRevoked,
-    entityType: "auth_session",
-    entityId: input.sessionId,
+  await store.withTransaction(async (tx) => {
+    await tx.revokeSession(input.sessionId, now);
+    await audit(tx, {
+      organizationId: input.organizationId,
+      actorId: input.actorId,
+      action: AUTH_AUDIT_ACTIONS.sessionRevoked,
+      entityType: "auth_session",
+      entityId: input.sessionId,
+    });
   });
 }
 
@@ -87,13 +89,15 @@ export async function logoutAll(
   input: LogoutAllInput,
   now = new Date(),
 ): Promise<number> {
-  const revoked = await store.revokeAllSessionsForUser(input.userId, now);
-  await audit(store, {
-    organizationId: input.organizationId,
-    actorId: input.actorId,
-    action: AUTH_AUDIT_ACTIONS.sessionsRevokedAll,
-    entityId: input.userId,
-    ...(input.reason !== undefined ? { reason: input.reason } : {}),
+  return store.withTransaction(async (tx) => {
+    const revoked = await tx.revokeAllSessionsForUser(input.userId, now);
+    await audit(tx, {
+      organizationId: input.organizationId,
+      actorId: input.actorId,
+      action: AUTH_AUDIT_ACTIONS.sessionsRevokedAll,
+      entityId: input.userId,
+      ...(input.reason !== undefined ? { reason: input.reason } : {}),
+    });
+    return revoked;
   });
-  return revoked;
 }

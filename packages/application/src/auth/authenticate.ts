@@ -30,98 +30,105 @@ export type AuthenticateResult =
   | { readonly ok: false; readonly error: string };
 
 /**
- * Username/password authentication. Every outcome is audited, and every failure
- * returns the same `AUTH_ERROR_GENERIC` so the response never reveals whether the
- * account exists, is disabled, or is locked (ADR-0003).
+ * Username/password authentication. Every outcome is audited, every failure
+ * returns the same `AUTH_ERROR_GENERIC`, and the state change plus its audit row
+ * commit in one transaction.
+ *
+ * Timing: exactly one verification always runs, including the dummy path for an
+ * unknown account, so response time does not reveal whether the account exists.
+ * Lockout: the failure counter is incremented on a bad password and is only
+ * reset once authentication completes — when MFA is required the counter is left
+ * for the MFA step to reset, so repeated second-factor failures still accumulate.
  */
 export async function authenticate(
   store: AuthStore,
   deps: AuthDeps,
   input: AuthenticateInput,
 ): Promise<AuthenticateResult> {
-  const now = deps.now ?? new Date();
-  const generic: AuthenticateResult = { ok: false, error: AUTH_ERROR_GENERIC };
+  return store.withTransaction(async (tx) => {
+    const now = deps.now ?? new Date();
+    const generic: AuthenticateResult = { ok: false, error: AUTH_ERROR_GENERIC };
 
-  const user = await store.findUserByIdentifier(input.organizationId, input.identifier);
-  // Always run one verification, even when the account is unknown: the dummy
-  // path has the same cost, so response timing does not reveal account existence.
-  const passwordOk = await verifyPasswordOrDummy(user?.passwordHash ?? null, input.password);
+    const user = await tx.findUserByIdentifier(input.organizationId, input.identifier);
+    const passwordOk = await verifyPasswordOrDummy(user?.passwordHash ?? null, input.password);
 
-  if (user === undefined) {
-    await audit(store, {
-      organizationId: input.organizationId,
-      actorId: null,
-      action: AUTH_AUDIT_ACTIONS.loginUnknown,
-      entityId: null,
-      reason: "unknown_identifier",
-      ...(input.request !== undefined ? { request: input.request } : {}),
-    });
-    return generic;
-  }
+    if (user === undefined) {
+      await audit(tx, {
+        organizationId: input.organizationId,
+        actorId: null,
+        action: AUTH_AUDIT_ACTIONS.loginUnknown,
+        entityId: null,
+        reason: "unknown_identifier",
+        ...(input.request !== undefined ? { request: input.request } : {}),
+      });
+      return generic;
+    }
 
-  if (user.status !== "active") {
-    await audit(store, {
+    if (user.status !== "active") {
+      await audit(tx, {
+        organizationId: input.organizationId,
+        actorId: user.id,
+        action: AUTH_AUDIT_ACTIONS.loginDisabled,
+        entityId: user.id,
+        reason: `status_${user.status}`,
+        ...(input.request !== undefined ? { request: input.request } : {}),
+      });
+      return generic;
+    }
+
+    if (isLocked(user.lockedUntil, now)) {
+      await audit(tx, {
+        organizationId: input.organizationId,
+        actorId: user.id,
+        action: AUTH_AUDIT_ACTIONS.loginLocked,
+        entityId: user.id,
+        reason: "locked",
+        ...(input.request !== undefined ? { request: input.request } : {}),
+      });
+      return generic;
+    }
+
+    if (!passwordOk) {
+      const nextCount = user.failedLoginCount + 1;
+      const lockedUntil = computeLockout(nextCount, now).lockedUntil;
+      await tx.recordLoginFailure(user.id, { lockedUntil, at: now });
+      await audit(tx, {
+        organizationId: input.organizationId,
+        actorId: user.id,
+        action:
+          lockedUntil === null ? AUTH_AUDIT_ACTIONS.loginFailed : AUTH_AUDIT_ACTIONS.loginLocked,
+        entityId: user.id,
+        reason: lockedUntil === null ? "bad_password" : "lockout_applied",
+        ...(input.request !== undefined ? { request: input.request } : {}),
+      });
+      return generic;
+    }
+
+    // Rehash first so the stronger hash is durable before the login completes.
+    if (needsRehash(user.passwordHash, DEFAULT_ARGON2_OPTIONS)) {
+      await tx.updatePasswordHash(user.id, await hashPassword(input.password), now);
+    }
+
+    if (user.totpEnabled) {
+      await audit(tx, {
+        organizationId: input.organizationId,
+        actorId: user.id,
+        action: AUTH_AUDIT_ACTIONS.loginMfaRequired,
+        entityId: user.id,
+        ...(input.request !== undefined ? { request: input.request } : {}),
+      });
+      return { ok: true, mfaRequired: true, user };
+    }
+
+    await tx.recordLoginSuccess(user.id, now);
+    const session = await issueSession(tx, deps, user, now, input.request);
+    await audit(tx, {
       organizationId: input.organizationId,
       actorId: user.id,
-      action: AUTH_AUDIT_ACTIONS.loginDisabled,
-      entityId: user.id,
-      reason: `status_${user.status}`,
-      ...(input.request !== undefined ? { request: input.request } : {}),
-    });
-    return generic;
-  }
-
-  if (isLocked(user.lockedUntil, now)) {
-    await audit(store, {
-      organizationId: input.organizationId,
-      actorId: user.id,
-      action: AUTH_AUDIT_ACTIONS.loginLocked,
-      entityId: user.id,
-      reason: "locked",
-      ...(input.request !== undefined ? { request: input.request } : {}),
-    });
-    return generic;
-  }
-
-  if (!passwordOk) {
-    const nextCount = user.failedLoginCount + 1;
-    const lockedUntil = computeLockout(nextCount, now).lockedUntil;
-    await store.recordLoginFailure(user.id, { lockedUntil, at: now });
-    await audit(store, {
-      organizationId: input.organizationId,
-      actorId: user.id,
-      action:
-        lockedUntil === null ? AUTH_AUDIT_ACTIONS.loginFailed : AUTH_AUDIT_ACTIONS.loginLocked,
-      entityId: user.id,
-      reason: lockedUntil === null ? "bad_password" : "lockout_applied",
-      ...(input.request !== undefined ? { request: input.request } : {}),
-    });
-    return generic;
-  }
-
-  if (needsRehash(user.passwordHash, DEFAULT_ARGON2_OPTIONS)) {
-    await store.updatePasswordHash(user.id, await hashPassword(input.password), now);
-  }
-  await store.recordLoginSuccess(user.id, now);
-
-  if (user.totpEnabled) {
-    await audit(store, {
-      organizationId: input.organizationId,
-      actorId: user.id,
-      action: AUTH_AUDIT_ACTIONS.loginMfaRequired,
+      action: AUTH_AUDIT_ACTIONS.loginSucceeded,
       entityId: user.id,
       ...(input.request !== undefined ? { request: input.request } : {}),
     });
-    return { ok: true, mfaRequired: true, user };
-  }
-
-  const session = await issueSession(store, deps, user, now, input.request);
-  await audit(store, {
-    organizationId: input.organizationId,
-    actorId: user.id,
-    action: AUTH_AUDIT_ACTIONS.loginSucceeded,
-    entityId: user.id,
-    ...(input.request !== undefined ? { request: input.request } : {}),
+    return { ok: true, mfaRequired: false, session, user };
   });
-  return { ok: true, mfaRequired: false, session, user };
 }
