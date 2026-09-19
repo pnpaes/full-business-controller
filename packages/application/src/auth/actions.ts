@@ -16,6 +16,12 @@ export const AUTH_AUDIT_ACTIONS = {
   mfaRecoveryUsed: "auth.mfa.recovery_used",
   sessionRevoked: "auth.session.revoked",
   sessionsRevokedAll: "auth.session.revoked_all",
+  passwordResetRequested: "auth.password_reset.requested",
+  passwordResetCompleted: "auth.password_reset.completed",
+  passwordResetFailed: "auth.password_reset.failed",
+  accessRoleChanged: "auth.access.role_changed",
+  accessScopesChanged: "auth.access.scopes_changed",
+  userDisabled: "auth.user.disabled",
 } as const;
 
 export type AuthAuditAction = (typeof AUTH_AUDIT_ACTIONS)[keyof typeof AUTH_AUDIT_ACTIONS];

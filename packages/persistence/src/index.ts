@@ -3,6 +3,7 @@ export * from "./schema";
 export { createDb } from "./client";
 export type { Database, DatabaseTransaction, DbClient, NodeDatabase } from "./client";
 
+export * from "./repositories/access";
 export * from "./repositories/audit";
 export * from "./repositories/password-reset";
 export * from "./repositories/sessions";

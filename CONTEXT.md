@@ -10,57 +10,45 @@ duplicate their content.
 **Say "resume the work" and start here.** A fresh session must be able to continue
 from this section alone.
 
-**Next task:** **Auth slice 1b-iii — password reset + access control**. Slices 1a (domain
-primitives), 1b-i (persistence layer) and 1b-ii (application sign-in/MFA/session flow) are
-done and committed; `docs/BUILD_ROADMAP.md` tracks the loop and gates. Complete the auth
-application surface: password reset, server-side role/location authorization, and the
-user/role administration operations that revoke sessions. No API/UI yet (slice 1c).
+**Next task:** **Auth slice 1c — `/api/v1/auth` HTTP surface**. Slices 1a, 1b-i, 1b-ii and
+1b-iii are done; **1b-iii (password reset + access control) is uncommitted** in the working
+tree. `docs/BUILD_ROADMAP.md` tracks the loop and gates. Expose the completed application
+auth surface over HTTP — routes, session cookies and the minimal login/2FA UI — with no new
+domain logic.
 
-**Objective:** complete the server-side auth core so the HTTP slice can expose it — neutral
-password-reset flows, role/location scope enforcement, and admin operations that revoke
-sessions on role change / off-boarding — with no external writes.
+**Objective:** wire the server-side auth core (sign-in, MFA, sessions, password reset,
+role/location authorization, admin operations) to HTTP without leaking secrets or changing
+the application behaviour built in 1b-ii/1b-iii.
 
 **Scope (do):**
 
 1. Read `docs/adr/0003-identity-and-role-model.md`, `DEC-013` in
-   `12_OPEN_DECISIONS.md`, `docs/BUILD_ROADMAP.md`, `packages/application/src/auth/`
-   (the 1b-ii API: `AuthStore`, `authenticate`, `verifyMfa`, sessions, `audit`, `AuthDeps`),
-   and `packages/persistence/src/repositories/password-reset.ts`.
-2. Add to `packages/application/src/auth/`: `beginPasswordReset` (neutral response for an
-   unknown identifier; store only `hashPasswordResetToken`, expiry from
-   `PASSWORD_RESET_TTL_MINUTES`; the plaintext token is returned only for out-of-band
-   delivery and must never be logged) and `completePasswordReset` (find the active token,
-   hash the new password, `updatePasswordHash`, consume the token, revoke all sessions,
-   audit; generic failure for an invalid, expired or used token).
-3. Add the authorization surface: `loadUserAccess` (roles via `user_role`, location scopes
-   via `user_location_scope`), `isAuthorizedFor(access, { role?, locationId? })` as a pure
-   helper, and admin operations (`assignRole`/`setLocationScopes`/`disableUser`) that revoke
-   sessions and audit in the same transaction. Authorization is enforced from server data,
-   never UI hiding.
-4. Extend the `AuthStore` port and `createPostgresAuthStore` adapter for the above; new
-   repository functions are acceptable where genuinely missing, with tests.
-5. Tests: unit tests with the in-memory fake plus conditional PostgreSQL integration tests,
-   covering the neutral reset for unknown identifiers, single-use and expiry, session
-   revocation after reset, role/scope allow and deny, and session revocation on role
-   change/disabling.
+   `12_OPEN_DECISIONS.md`, `docs/BUILD_ROADMAP.md` (slice 1c), `packages/application/src/auth/`
+   (the 1b-ii/1b-iii API), `apps/web` and `packages/config/src/env.ts`.
+2. Add `/api/v1/auth` routes for sign-in, MFA verification, logout/logout-all, password reset
+   (begin/complete) and the admin operations, calling only the application commands and
+   returning the single generic error on failure.
+3. Session cookies `HttpOnly` + `Secure` + `SameSite`, short lifetime, rotated on privilege
+   change; tokens travel in headers, never in URLs (ADR-0003).
+4. Minimal login/2FA UI.
+5. Rate limiting on login/2FA/reset attempts (slice 1c owns it; ADR-0003).
 
-**Scope (do not):** no API routes/cookies/UI (slice 1c); no new migration unless genuinely
-required (the schema exists); no external writes; no secrets, reset tokens or hashes in logs;
-`ADR-0003` is **Accepted** (2026-09-19), with its access-matrix, Argon2id-parameter and
-admin-reset items still open and tracked in the roadmap.
+**Scope (do not):** no changes to `packages/domain`, `packages/persistence` or the
+application auth behaviour unless a defect is found; no new migration; no external writes; no
+secrets, reset tokens or hashes in logs or responses; `ADR-0003` is **Accepted**
+(2026-09-19), with its access-matrix, Argon2id-parameter and admin-reset items still open and
+tracked in the roadmap.
 
-**Files/paths:** `packages/application/src/auth/`; `packages/persistence/src/repositories/`
-only for a genuinely missing function or a defect fix.
+**Files/paths:** `apps/web` (routes + UI); `packages/application/src/auth/` only for a
+genuinely required export.
 
 **Read first:** `docs/adr/0003-identity-and-role-model.md`, `DEC-013` and `DEC-049` in
-`12_OPEN_DECISIONS.md`, `docs/BUILD_ROADMAP.md`, `packages/application/src/auth/`,
-`packages/persistence/src/repositories/`, `docs/runbooks/persistence-migrations.md`,
-`AGENTS.md` Rules 1–3.
+`12_OPEN_DECISIONS.md`, `docs/BUILD_ROADMAP.md` (slice 1c), `packages/application/src/auth/`,
+`apps/web`, `AGENTS.md` Rules 1–3.
 
 **Acceptance / verification:** `npm run lint && npm run typecheck && npm run test &&
-npm run build && npm run format:check` all pass; the cases in scope item 5 are covered by
-unit and conditional PostgreSQL integration tests; no secrets, tokens or hashes in logs;
-audit rows for every security change.
+npm run build && npm run format:check` all pass; failure responses are generic; cookies are
+`HttpOnly`/`Secure`/`SameSite`; no secret, token or hash appears in logs or responses.
 
 **Open decisions / inputs that shape it:** `ADR-0003` is **Accepted** (2026-09-19); its open
 items (final access matrix / shared-device login, Argon2id parameters against the ~250 ms
@@ -72,8 +60,8 @@ Graphile Worker vs pg-boss choice; multi-tenancy posture; component cost estimat
 data-sanitization owner; real DO credentials plus a provisioned Spaces state bucket; and a
 single-runner apply.
 
-**After this task:** **Auth slice 1c** — `/api/v1/auth` routes, session cookies
-(`HttpOnly`/`Secure`/`SameSite`, rotated on privilege change), and the minimal login/2FA UI.
+**After this task:** **Slice 2 — units & catalog value objects** (decimal money/quantity),
+per `docs/BUILD_ROADMAP.md`.
 
 ## What this is
 
@@ -107,10 +95,13 @@ uncommitted). No business slices yet.
 
 ## Current status
 
-- **As of:** 2026-09-19 — branch `main`; HEAD `9fc8ba0` (Phase 0 → persistence core →
+- **As of:** 2026-09-19 — branch `main`; HEAD `06e3993` (Phase 0 → persistence core →
   deployment foundation → build roadmap → auth domain primitives → ADR-0003 accepted → auth
-  persistence layer), with **auth slice 1b-ii (application sign-in/MFA/session flow)
-  uncommitted** in the working tree. **Nothing has been applied to DigitalOcean.**
+  persistence layer → auth application flow 1b-ii, committed as `9ae5d23` + `06e3993`), with
+  **auth slice 1b-iii (password reset + access control) uncommitted** in the working tree,
+  alongside unrelated concurrent work (`packages/ui/`, `packages/domain/src/unit.ts` and
+  `supplier-pack.ts`) written by another session in the same checkout. **Nothing has been
+  applied to DigitalOcean.**
 - **Commits:** `536d63e` (Phase 0 package) → `bb464d6` (foundation scaffold) →
   `e55ea23` (handoff and reversibility rules) → `b223212` (context into repo) →
   `f4c5c8f` (persistence core) → `52bf85a` (deployment foundation) → `9f96c42` (build roadmap)
@@ -206,8 +197,8 @@ uncommitted). No business slices yet.
 slices 1a/1b-i/1b-ii done; **slice 1b-iii next**). The list below is the short narrative form.
 
 1. **Auth slice** — `DEC-013` / `docs/adr/0003-identity-and-role-model.md`:
-   Argon2id, TOTP 2FA, server-side sessions. The identity tables (including
-   `auth_session` and `user_totp`) already exist in the persistence core. See
+   Argon2id, TOTP 2FA, server-side sessions. Slices 1a–1b-iii are done (1b-iii
+   uncommitted); **slice 1c — the `/api/v1/auth` HTTP surface — is next**. See
    "Resume here".
 2. **Deployment foundation — scaffolded and validated offline (committed); not applied.**
    `infra/` Terraform (project, database, spaces, networking, app-platform,
@@ -316,14 +307,13 @@ and Spaces credentials via `-backend-config` / `AWS_ACCESS_KEY_ID` +
 - The `infra/` scaffold, runtime stubs and persistence core are now committed; revert them
   with `git revert` if needed. **No cloud resource was created — only offline
   `fmt`/`validate`/`plan` ran, never `apply`; no Terraform state exists.**
-- **Auth slice 1b-ii is uncommitted and additive:** discard the working-tree changes (or
-  `git revert` once committed); slice 1b-i is already committed as `9fc8ba0`. The new modules
-  are imported by no runtime yet; migration 0003
-  is additive (nullable column + check) with the documented down path
-  `ALTER TABLE "user_totp" DROP COLUMN "last_used_counter";`, and the empty-DB replay
-  (`DROP SCHEMA public CASCADE; DROP SCHEMA drizzle CASCADE; CREATE SCHEMA public;
-npm run db:migrate`) remains valid while no real data exists. The integration tests run in
-  rolled-back transactions, so they leave no rows.
+- **Auth slice 1b-iii is uncommitted and additive:** discard the working-tree changes (or
+  `git revert` once committed); slices 1b-i/1b-ii are committed (`9fc8ba0`, `9ae5d23`,
+  `06e3993`). The new modules are imported by no runtime yet; **no migration was added** (the
+  identity/access schema already existed), and the integration tests run in rolled-back
+  transactions, so they leave no rows. The working tree also contains unrelated concurrent
+  work (`packages/ui/`, `packages/domain/src/unit.ts`, `packages/domain/src/supplier-pack.ts`)
+  written by another session in the same checkout — not part of this slice.
 - Bootstrap migrations are forward-only. While the database is empty the tested
   recovery is `DROP SCHEMA public CASCADE; DROP SCHEMA drizzle CASCADE;
 CREATE SCHEMA public; npm run db:migrate` (see the runbook). Once data exists,
@@ -335,6 +325,39 @@ CREATE SCHEMA public; npm run db:migrate` (see the runbook). Once data exists,
   (`DEC-015`).
 
 ## Work log (append-only, newest first)
+
+### 2026-09-19 — Auth slice 1b-iii: password reset + access control (uncommitted)
+
+Completed the server-side auth application surface on the committed 1b-ii flow. Persistence:
+new `packages/persistence/src/repositories/access.ts` (`listUserRoles`, `listUserLocationScopes`,
+`listAssignableRoles`, `assignRole` — idempotent upsert against the `NULLS NOT DISTINCT`
+`user_role_key`, `removeRole`, `replaceLocationScopes`) exported from the package index, with
+rolled-back PostgreSQL integration tests (round-trip, duplicate grant, remove no-op, exact
+scope replacement). Application: `AuthStore` gained reset-token create/find/consume,
+role/scope list/assign/remove/replace and `setUserStatus`, and `createPostgresAuthStore`
+implements them; `AuthDeps` gained `passwordResetTtlMinutes` and an optional
+`passwordHashOptions` cost seam. New `password-reset.ts` (`beginPasswordReset` is always
+neutral and stores only the token hash; the plaintext token is returned only for out-of-band
+delivery and never logged/audited; `completePasswordReset` claims the token atomically,
+hashes the new password, revokes every session and audits in one transaction) and `access.ts`
+(`loadUserAccess`, the pure `isAuthorizedFor` with no implicit admin bypass, `assignRole`
+which revokes sessions, `replaceLocationScopes`, `disableUser` which disables and revokes in
+one transaction). `AUTH_AUDIT_ACTIONS` gained `auth.password_reset.{requested,completed,failed}`,
+`auth.access.{role_changed,scopes_changed}` and `auth.user.disabled`; `audit()` now passes
+`before`/`after` jsonb. The in-memory `FakeAuthStore` moved to `test-support.ts` and gained
+the new methods; new unit tests cover the neutral reset, single-use/expiry, session
+revocation after reset, role/scope allow/deny, role-change revocation and disable+reject.
+No migration and no new dependency.
+
+Verified: `lint`, `typecheck`, `build` pass and all changed/new files pass `format:check`;
+slice-scoped tests **41 passed / 32 skipped** without `DATABASE_URL` and **73 passed** with
+it; integration tables left with zero rows. Full-repo `test` currently also fails 3
+`packages/ui/src/{contrast,tokens}.test.ts` assertions from the concurrent workstream, and
+`format:check` flags those concurrent `packages/ui` files — neither is part of this slice.
+Roadmap statuses are left for the commit step.
+
+Rollback: discard this uncommitted change (or `git revert` once committed); the modules are
+additive and imported by no runtime yet; the schema already existed.
 
 ### 2026-09-19 — Auth slice 1b-ii: review fixes (atomicity, MFA lockout)
 

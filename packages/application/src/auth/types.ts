@@ -1,3 +1,4 @@
+import type { Argon2CostOptions } from "@aquarela/domain";
 import type { UserStatus } from "@aquarela/persistence";
 
 /**
@@ -41,6 +42,41 @@ export interface AuditInput {
   readonly entityId: string | null;
   readonly reason?: string;
   readonly requestId?: string;
+  /** Security-change diff (ADR-0003). Never contains secrets, tokens or hashes. */
+  readonly before?: unknown;
+  readonly after?: unknown;
+}
+
+export interface AuthResetTokenRecord {
+  readonly id: string;
+  readonly userId: string;
+  readonly expiresAt: Date;
+}
+
+export interface CreateResetTokenInput {
+  readonly userId: string;
+  readonly tokenHash: string;
+  readonly expiresAt: Date;
+  readonly createdBy: string | null;
+}
+
+export interface AuthRoleAssignment {
+  readonly roleId: string;
+  readonly code: string;
+  readonly locationId: string | null;
+}
+
+export interface RoleAssignmentInput {
+  readonly userId: string;
+  readonly roleId: string;
+  readonly locationId: string | null;
+  readonly grantedBy: string | null;
+}
+
+export interface RoleRemovalInput {
+  readonly userId: string;
+  readonly roleId: string;
+  readonly locationId: string | null;
 }
 
 export interface CreateSessionInput {
@@ -90,6 +126,19 @@ export interface AuthStore {
   ): Promise<AuthSessionRecord | undefined>;
   revokeSession(sessionId: string, at: Date): Promise<void>;
   revokeAllSessionsForUser(userId: string, at: Date): Promise<number>;
+  createResetToken(input: CreateResetTokenInput): Promise<{ id: string }>;
+  findActiveResetTokenByHash(
+    tokenHash: string,
+    now: Date,
+  ): Promise<AuthResetTokenRecord | undefined>;
+  /** Atomic single-use claim; `false` when the token was already used or expired. */
+  consumeResetToken(tokenId: string, at: Date): Promise<boolean>;
+  listUserRoles(userId: string): Promise<readonly AuthRoleAssignment[]>;
+  listUserLocationScopes(userId: string): Promise<readonly string[]>;
+  assignRole(input: RoleAssignmentInput): Promise<void>;
+  removeRole(input: RoleRemovalInput): Promise<void>;
+  replaceLocationScopes(userId: string, locationIds: readonly string[]): Promise<void>;
+  setUserStatus(userId: string, status: UserStatus): Promise<void>;
   writeAudit(input: AuditInput): Promise<void>;
 }
 
@@ -97,6 +146,12 @@ export interface AuthDeps {
   /** Fixed clock for deterministic tests; defaults to the wall clock. */
   readonly now?: Date;
   readonly sessionTtlMinutes: number;
+  readonly passwordResetTtlMinutes: number;
+  /**
+   * Argon2id cost override for password writes, so tests (and a future policy
+   * tuning pass per ADR-0003's open item) can run cheaply. Absent = policy cost.
+   */
+  readonly passwordHashOptions?: Argon2CostOptions;
   /** Required by MFA operations; absent everywhere else. */
   readonly totpEncryptionKey?: Uint8Array;
 }

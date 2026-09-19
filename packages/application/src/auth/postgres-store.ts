@@ -57,6 +57,33 @@ export function createPostgresAuthStore(db: Database): AuthStore {
       await repo.revokeSession(db, sessionId, at);
     },
     revokeAllSessionsForUser: (userId, at) => repo.revokeAllSessionsForUser(db, userId, at),
+    createResetToken: async (input) => {
+      const created = await repo.createResetToken(db, {
+        userId: input.userId,
+        tokenHash: input.tokenHash,
+        expiresAt: input.expiresAt,
+        createdBy: input.createdBy,
+      });
+      return { id: created.id };
+    },
+    findActiveResetTokenByHash: (tokenHash, now) =>
+      repo.findActiveResetTokenByHash(db, tokenHash, now),
+    consumeResetToken: async (tokenId, at) =>
+      (await repo.consumeResetToken(db, tokenId, at)) !== undefined,
+    listUserRoles: (userId) => repo.listUserRoles(db, userId),
+    listUserLocationScopes: async (userId) =>
+      (await repo.listUserLocationScopes(db, userId)).map((row) => row.locationId),
+    assignRole: async (input) => {
+      await repo.assignRole(db, input);
+    },
+    removeRole: async (input) => {
+      await repo.removeRole(db, input);
+    },
+    replaceLocationScopes: (userId, locationIds) =>
+      repo.replaceLocationScopes(db, userId, locationIds),
+    setUserStatus: async (userId, status) => {
+      await repo.setUserStatus(db, userId, status);
+    },
     writeAudit: async (input) => {
       await repo.writeAuditEvent(db, input);
     },

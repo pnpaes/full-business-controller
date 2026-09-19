@@ -8,6 +8,9 @@ export interface AuthAuditInput {
   readonly entityType?: string;
   readonly reason?: string;
   readonly request?: RequestContext;
+  /** Security-change diff (ADR-0003); never secrets, tokens or hashes. */
+  readonly before?: unknown;
+  readonly after?: unknown;
 }
 
 /**
@@ -24,5 +27,7 @@ export async function audit(store: AuthStore, input: AuthAuditInput): Promise<vo
     entityId: input.entityId,
     ...(input.reason !== undefined ? { reason: input.reason } : {}),
     ...(input.request?.requestId !== undefined ? { requestId: input.request.requestId } : {}),
+    ...(input.before !== undefined ? { before: input.before } : {}),
+    ...(input.after !== undefined ? { after: input.after } : {}),
   });
 }

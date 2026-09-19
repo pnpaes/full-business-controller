@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import type { Database, DatabaseTransaction, NodeDatabase } from "../client";
-import { organization } from "../schema";
+import { location, organization, role } from "../schema";
 import { createUser, type NewUser, type User } from "./users";
 
 /**
@@ -52,6 +52,40 @@ export async function createTestUser(
     passwordHash: "hash-v1",
     ...overrides,
   });
+}
+
+export async function createTestLocation(
+  db: Database,
+  organizationId: string,
+  overrides: Partial<typeof location.$inferInsert> = {},
+): Promise<typeof location.$inferSelect> {
+  const rows = await db
+    .insert(location)
+    .values({
+      organizationId,
+      code: uniqueName("loc"),
+      name: "Test Location",
+      ...overrides,
+    })
+    .returning();
+  return rows[0]!;
+}
+
+export async function createTestRole(
+  db: Database,
+  organizationId: string,
+  overrides: Partial<typeof role.$inferInsert> = {},
+): Promise<typeof role.$inferSelect> {
+  const rows = await db
+    .insert(role)
+    .values({
+      organizationId,
+      code: "owner",
+      name: "Owner",
+      ...overrides,
+    })
+    .returning();
+  return rows[0]!;
 }
 
 /**
