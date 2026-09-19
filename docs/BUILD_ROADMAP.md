@@ -13,8 +13,8 @@ This file is **updated at the end of every slice** — statuses and the "current
 line move with the work; `CONTEXT.md` keeps the narrative handoff and the immediate
 `Resume here` section.
 
-**Current position:** slice 0 (`done`); slice 1 (Auth) is the immediate next step per
-`CONTEXT.md`.
+**Current position:** slice 0 (`done`); slice 1a (auth domain primitives) `done`; slice 1b
+(auth persistence + application flow) is the immediate next step per `CONTEXT.md`.
 
 ## 2. The execution loop (per slice)
 
@@ -85,7 +85,9 @@ sequence). Requirement IDs are from `11_REQUIREMENTS_CATALOG.md`; decision IDs f
 | # | Slice | Phase / epic | Primary refs | Depends on | Owner gate | Status |
 | --- | --- | --- | --- | --- | --- | --- |
 | 0 | Foundation, persistence core, deployment foundation | P0 / pre-epic | `ADR-0001`, `ADR-0002`, `ADR-0012`; `13` implementation steps 1–3 | — | none | done |
-| 1 | Auth & identity (Argon2id, TOTP 2FA, server-side sessions) | P1 / epic 1 | `FND-002`, `FND-005`, `SEC-001`, `SEC-003`; `DEC-013`; `ADR-0003` (**Proposed**) | 0 | `ADR-0003` acceptance (access matrix / shared-device pattern, Argon2id params, admin reset) — raise at loop step 1 | todo |
+| 1a | Auth domain primitives (Argon2id, TOTP, recovery codes, tokens, lockout) | P1 / epic 1 | `FND-002`, `SEC-001`, `SEC-003`; `DEC-013`; `ADR-0003` (**Proposed**) | 0 | `ADR-0003` acceptance — raised, slice not settled | done |
+| 1b | Auth persistence + application flow (repositories, login/TOTP/session/audit) | P1 / epic 1 | `FND-002`, `FND-005`, `SEC-001`, `SEC-003`; `DEC-013`; `ADR-0003` (**Proposed**) | 1a | `ADR-0003` acceptance (still open) | todo |
+| 1c | Auth HTTP surface (`/api/v1/auth`, session cookies, minimal login/2FA UI) | P1 / epic 1 | `SEC-001`, `SEC-003`; `DEC-013`; `ADR-0003` (**Proposed**) | 1b | `ADR-0003` acceptance (still open) | todo |
 | 2 | Units & catalog value objects (decimal money/quantity) | P1 / epic 2 | `FND-003`, `PROC-001`; `DEC-030` | 1 | none | todo |
 | 3 | Item + supplier pack + conversion + price | P1 / epic 2 | `PROC-001`–`005`, `PROC-008`, `COST-010`, `FND-008`, `FND-009`; `DEC-021`, `DEC-030`, `DEC-041`, `DEC-044`, `DEC-046` | 2 | none — I4/I6 data gates real values | todo |
 | 4 | Receipt + price history + landed cost | P1 / epic 3 | `PROC-002`–`005`, `PROC-008`, `COST-010`, `COST-012`; `DEC-047`; `CALCULATION_CONTRACT.md` §5 | 3 | none — I4 data gates real values | todo |

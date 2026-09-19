@@ -10,63 +10,71 @@ duplicate their content.
 **Say "resume the work" and start here.** A fresh session must be able to continue
 from this section alone.
 
-**Next task:** the **Auth slice** — `DEC-013` /
-`docs/adr/0003-identity-and-role-model.md` (Argon2id, TOTP 2FA, server-side
-sessions). The identity tables already exist in the persistence core
-(`packages/persistence/src/schema/identity.ts`: `app_user`, `role`, `user_role`,
-`user_location_scope`, `user_totp`, `auth_session`, `password_reset_token`). The
-deployment foundation is scaffolded and validated **offline** (Terraform +
-App Platform app spec + `apps/worker`/`apps/scheduler` stubs); applying it is
-blocked on owner decisions (below) and is **not** part of the next session unless
-the owner redirects.
+**Next task:** **Auth slice 1b — persistence + application flow**. Slice 1a (the
+domain primitives) is done and committed; see `docs/BUILD_ROADMAP.md` for the loop and
+gates. Build the auth core on top of `packages/domain/src/auth/` against the existing
+identity tables: persistence repositories plus the application commands/queries for
+login, TOTP verification, session issue/revoke, lockout accounting, password reset and
+audit. No API/UI yet (slice 1c).
 
-**Objective:** identity and session primitives backed by the existing
-`organization`/`app_user` tables, tested, with no external writes.
+**Objective:** a tested, server-side authentication flow — generic login errors, lockout,
+TOTP + recovery codes, server-side session revocation, role/location-scope authorization —
+backed by the existing `packages/persistence` schema, with no external writes.
 
 **Scope (do):**
 
 1. Read `docs/adr/0003-identity-and-role-model.md`, `DEC-013` in
-   `12_OPEN_DECISIONS.md`, `docs/adr/0002-orm-and-migrations.md` and the
-   persistence schema under `packages/persistence/src/schema/` (start with
-   `identity.ts` and `organization.ts`).
-2. Implement the auth logic within the existing package boundaries
-   (`packages/domain`, `packages/application`, `packages/persistence`), with
-   vitest tests for a happy path and at least one edge case.
-3. Keep sessions server-side; no secrets in code or logs. If a migration turns
-   out to be required, follow `docs/runbooks/persistence-migrations.md`
-   (expand → migrate → contract, tested down path) and leave the advisory-lock
-   wrapper in `packages/persistence/scripts/migrate.mjs` intact.
+   `12_OPEN_DECISIONS.md`, `docs/BUILD_ROADMAP.md` (§2 loop, §3 gates),
+   `packages/domain/src/auth/` (the slice 1a API), `packages/persistence/src/schema/identity.ts`
+   and `platform.ts` (`audit_event`, `outbox_event`), and `packages/application/src/`
+   conventions.
+2. Add a persistence access layer if none exists (a Drizzle client plus repositories for
+   `app_user`, `user_role`, `user_location_scope`, `user_totp`, `auth_session`,
+   `password_reset_token`, `audit_event`), reusing the existing config/advisory-lock
+   conventions in `packages/persistence`.
+3. Implement the application commands/queries: authenticate (always call
+   `verifyPasswordOrDummy`, return `AUTH_ERROR_GENERIC`, apply `computeLockout`/`isLocked`,
+   reset the counter on success, rehash when `needsRehash`), verify TOTP (persist the matched
+   counter as `lastUsedCounter`, consume a recovery code), issue/verify/revoke sessions
+   (store only `hashSessionToken`), revoke all sessions on role change/off-boarding, password
+   reset (single-use `hashPasswordResetToken`), and write an audit row for every security
+   change.
+4. Enforce role + location scope server-side at the application boundary — never UI hiding.
+5. Tests: unit tests for the flow with an injected repository fake, plus integration tests
+   against local PostgreSQL 16 (skipped when `DATABASE_URL` is unset) covering the happy
+   path, wrong password, unknown user, lockout, replayed TOTP, session revocation and
+   role-change revocation.
 
-**Scope (do not):** no production `terraform apply`; do not change `DEC-014`; do
-not introduce microservices; do not enable external writes (`DEC-015`); do not
-commit secrets; do not treat `ADR-0003` as settled — it is still **Proposed**.
+**Scope (do not):** no API routes/cookies/UI (slice 1c); no migration unless genuinely
+required — the schema already exists, and if one is needed follow
+`docs/runbooks/persistence-migrations.md`; no external writes; no secrets in code or logs;
+do not treat `ADR-0003` as settled — it is still **Proposed**.
 
-**Files/paths:** `packages/domain/src/`, `packages/application/src/`,
-`packages/persistence/src/` (and `packages/persistence/drizzle/` only if a
-migration is required).
+**Files/paths:** `packages/persistence/src/` (client + repositories),
+`packages/application/src/` (auth commands/queries + authorization),
+`packages/domain/src/auth/` only to fix a primitive defect.
 
-**Read first:** `docs/adr/0003-identity-and-role-model.md`, `12_OPEN_DECISIONS.md`
-(`DEC-013` and the decisions it references),
-`docs/adr/0002-orm-and-migrations.md`, `docs/runbooks/persistence-migrations.md`,
-`AGENTS.md` Rules 1–3.
+**Read first:** `docs/adr/0003-identity-and-role-model.md`, `DEC-013` and `DEC-049` in
+`12_OPEN_DECISIONS.md`, `docs/BUILD_ROADMAP.md`, `docs/runbooks/persistence-migrations.md`,
+`packages/domain/src/auth/`, `packages/persistence/src/schema/identity.ts`, `AGENTS.md`
+Rules 1–3.
 
 **Acceptance / verification:** `npm run lint && npm run typecheck && npm run test &&
-npm run build && npm run format:check` all pass; new non-trivial logic has a
-`.test.ts` covering a happy path and an edge case; no secrets in code or logs.
+npm run build && npm run format:check` all pass; the auth tests (unit plus conditional
+PostgreSQL integration) cover the cases in scope item 5; no secrets in code or logs; audit
+rows are written for login success/failure and security changes.
 
-**Open decisions / inputs that shape it:** `DEC-013` is accepted (internal auth,
-TOTP 2FA, no third-party IdP), but `ADR-0003` itself is still **Proposed** and
-must be accepted before the slice is treated as settled; its open items (final
-access matrix / shared-device login pattern, Argon2id parameters against the
-~250 ms target, admin-assisted password reset) shape the implementation.
-`DEC-049` requires any new query to keep identifiers/aliases **code-controlled**
-(no user input to `sql.identifier()`/`.as()`). Deployment/apply stays blocked on
-`ADR-0004` acceptance and the Graphile Worker vs pg-boss choice; multi-tenancy
-posture; component cost estimate; staging data-sanitization owner; real DO
-credentials plus a provisioned Spaces state bucket; and a single-runner apply.
+**Open decisions / inputs that shape it:** `ADR-0003` is still **Proposed** — the slice may
+be built but is not "settled" until the owner/tech deciders accept it (final access matrix /
+shared-device login, Argon2id parameters against the ~250 ms target, admin-assisted reset).
+The lockout thresholds in `DEFAULT_LOCKOUT_POLICY` are provisional and tunable. `DEC-049`
+requires new queries to keep identifiers/aliases **code-controlled**. Deployment/apply stays
+blocked on `ADR-0004` acceptance and the Graphile Worker vs pg-boss choice; multi-tenancy
+posture; component cost estimate; staging data-sanitization owner; real DO credentials plus a
+provisioned Spaces state bucket; and a single-runner apply.
 
-**After this task:** the **Costing slice** against
-`docs/phase0/CALCULATION_CONTRACT.md`, using synthetic fixtures.
+**After this task:** **Auth slice 1c** — `/api/v1/auth` routes, session cookies
+(`HttpOnly`/`Secure`/`SameSite`, rotated on privilege change), and the minimal login/2FA UI.
 
 ## What this is
 
@@ -137,6 +145,13 @@ uncommitted). No business slices yet.
   `build`, `format:check` pass; worker and scheduler stubs exit 0 under `*_TICKS=1`;
   `docker build` succeeds, the image runs as non-root `nextjs` and `/api/health` returns
   `{"status":"ok"}`.
+- **Auth slice 1a done (2026-09-19):** pure domain auth primitives in
+  `packages/domain/src/auth/` — Argon2id hashing with a timing-equalising dummy path and
+  `needsRehash`, RFC 6238 TOTP with replay rejection, single-use recovery codes,
+  domain-separated session/password-reset tokens, a progressive lockout policy and
+  `AUTH_ERROR_GENERIC`; new runtime dependency `@node-rs/argon2` (verified loading on
+  Alpine/musl). **71 tests** (11 files); `lint`/`typecheck`/`build`/`format:check` pass.
+  ADR-0003 remains **Proposed**; slice 1b (persistence + application flow) is next.
 - **Security regression (DEC-049):** `npm audit --omit=dev` reports **1 high** —
   GHSA-gpj5-g38j-94v9 / CWE-89 in `drizzle-orm <0.45.2` (pinned 0.38.4), because `drizzle-orm`
   is now a runtime dependency. Not reachable today (identifiers are code-controlled); upgrade
@@ -279,6 +294,29 @@ CREATE SCHEMA public; npm run db:migrate` (see the runbook). Once data exists,
   (`DEC-015`).
 
 ## Work log (append-only, newest first)
+
+### 2026-09-19 — Auth slice 1a: domain auth primitives
+
+Built `packages/domain/src/auth/` (exported from `packages/domain`): Argon2id-only password
+hashing/verification with a timing-equalising dummy path and `needsRehash` (algorithm,
+version and all cost params), RFC 6238 TOTP on `node:crypto` (canonical base32 decode,
+±window verification, replay rejection by persisted counter, fails closed on an undecodable
+secret), single-use recovery codes (full-scan verify, no early exit), domain-separated
+opaque session/password-reset tokens (SHA-256 at rest, constant-time compare), a progressive
+lockout policy, and `AUTH_ERROR_GENERIC`. New runtime dependency: `@node-rs/argon2`
+(prebuilt musl + darwin), verified loading inside the built Alpine image.
+
+Verified: **71 tests** (11 files; +41 auth), `lint`, `typecheck`, `build`, `format:check`
+pass; `docker build` succeeds and `argon2-ok` under Alpine. Two adversarial reviews
+(reviewer-qwen, reviewer-glm) ran: accepted fixes were the TOTP fresh-over-stale window
+ordering, failing closed on a corrupt secret, canonical base32 validation, and token-family
+domain separation (plus the missing tests). Declined with reasons: logging/surfacing
+corrupt-hash verification errors (the domain layer must not log; the application layer owns
+that) and changing the documented 9th-failure lockout escalation (provisional, tunable). A
+unit test for a TOTP collision across window counters is not constructible in reasonable
+time (~3×10⁻⁶ per counter pair) and is covered by inspection of the fresh-wins loop.
+
+Rollback: revert this commit; the module is additive and referenced by no runtime yet.
 
 ### 2026-09-19 — Deployment foundation verified end to end; DEC-049 security pin
 
