@@ -48,7 +48,8 @@ backed by the existing `packages/persistence` schema, with no external writes.
 **Scope (do not):** no API routes/cookies/UI (slice 1c); no migration unless genuinely
 required — the schema already exists, and if one is needed follow
 `docs/runbooks/persistence-migrations.md`; no external writes; no secrets in code or logs;
-do not treat `ADR-0003` as settled — it is still **Proposed**.
+`ADR-0003` is **Accepted** (2026-09-19), with its access-matrix, Argon2id-parameter and
+admin-reset items still open and tracked in the roadmap.
 
 **Files/paths:** `packages/persistence/src/` (client + repositories),
 `packages/application/src/` (auth commands/queries + authorization),
@@ -64,9 +65,10 @@ npm run build && npm run format:check` all pass; the auth tests (unit plus condi
 PostgreSQL integration) cover the cases in scope item 5; no secrets in code or logs; audit
 rows are written for login success/failure and security changes.
 
-**Open decisions / inputs that shape it:** `ADR-0003` is still **Proposed** — the slice may
-be built but is not "settled" until the owner/tech deciders accept it (final access matrix /
-shared-device login, Argon2id parameters against the ~250 ms target, admin-assisted reset).
+**Open decisions / inputs that shape it:** `ADR-0003` is **Accepted** (2026-09-19); its open
+items (final access matrix / shared-device login, Argon2id parameters against the ~250 ms
+target, admin-assisted reset) still shape the implementation and are tracked in the
+roadmap's owner-input register.
 The lockout thresholds in `DEFAULT_LOCKOUT_POLICY` are provisional and tunable. `DEC-049`
 requires new queries to keep identifiers/aliases **code-controlled**. Deployment/apply stays
 blocked on `ADR-0004` acceptance and the Graphile Worker vs pg-boss choice; multi-tenancy
@@ -151,7 +153,7 @@ uncommitted). No business slices yet.
   domain-separated session/password-reset tokens, a progressive lockout policy and
   `AUTH_ERROR_GENERIC`; new runtime dependency `@node-rs/argon2` (verified loading on
   Alpine/musl). **71 tests** (11 files); `lint`/`typecheck`/`build`/`format:check` pass.
-  ADR-0003 remains **Proposed**; slice 1b (persistence + application flow) is next.
+  ADR-0003 was accepted 2026-09-19; slice 1b (persistence + application flow) is next.
 - **Security regression (DEC-049):** `npm audit --omit=dev` reports **1 high** —
   GHSA-gpj5-g38j-94v9 / CWE-89 in `drizzle-orm <0.45.2` (pinned 0.38.4), because `drizzle-orm`
   is now a runtime dependency. Not reachable today (identifiers are code-controlled); upgrade

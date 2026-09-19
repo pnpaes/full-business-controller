@@ -1,9 +1,10 @@
 # ADR-0003 — Identity provider and role model
 
-- **Status:** Proposed (needs tech-lead + owner acceptance)
-- This ADR is a proposal; implementation must not rely on it until status is `Accepted`.
-- **Date:** 2026-09-13 · **Updated:** 2026-09-14
-- **Deciders:** TECH, BUS (owner acceptance of DEC-013, 2026-09-14)
+- **Status:** Accepted (2026-09-19) — DEC-013 was accepted 2026-09-14; the technical owner
+  accepted this ADR on 2026-09-19, when the auth slice began.
+- **Date:** 2026-09-13 · **Updated:** 2026-09-19
+- **Deciders:** TECH (technical owner, 2026-09-19); BUS (owner acceptance of DEC-013,
+  2026-09-14)
 - **Related:** DEC-013, DEC-012; `07:3-28`, `13:39`
 - **Requirements:** FND-002, FND-005, SEC-001, SEC-003
 
@@ -73,6 +74,9 @@ Use **internal authentication** and keep **authorization in the application data
 - Access matrix (`07:7-19`) must be approved in Phase 0 and encoded as data.
 
 ## Open items
+
+Accepted 2026-09-19; these remain open implementation-shaping items, tracked in the
+owner-input register of `docs/BUILD_ROADMAP.md`:
 
 - Approve the final access matrix and shared-device login pattern.
 - Confirm Argon2id parameters against the ~250 ms target on the target hardware.
