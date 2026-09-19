@@ -17,21 +17,26 @@ export interface BeginPasswordResetInput {
   readonly request?: RequestContext;
 }
 
+/**
+ * Always `{ ok: true }`. The result carries no token and no status, so it can be
+ * returned to an unauthenticated caller without revealing whether the identifier
+ * exists or is active.
+ */
 export interface BeginPasswordResetResult {
   readonly ok: true;
-  /**
-   * Plaintext reset token, returned ONLY for out-of-band delivery to the account
-   * owner. Only `hashPasswordResetToken(token)` is persisted; the plaintext MUST
-   * NOT be logged, audited, or returned to an unauthenticated caller.
-   */
-  readonly token?: string;
 }
 
+/** Fixed plaintext whose only purpose is to make the non-active path pay a hash. */
+const TIMING_EQUALISER_PASSWORD = "password-reset-timing-equaliser";
+
 /**
- * Starts a password reset. The response is always neutral (`ok: true`) — an
- * unknown or disabled identifier yields no token and no error, so the endpoint
- * cannot be used to enumerate accounts. A token is minted only for an active
- * user, and only its hash is stored, with `deps.passwordResetTtlMinutes` expiry.
+ * Starts a password reset. An unknown, disabled or inactive identifier yields the
+ * same `{ ok: true }` and no stored token, and every path pays one Argon2id hash,
+ * so neither the body nor the timing can enumerate accounts (ADR-0003). A token
+ * is minted only for an active user; only `hashPasswordResetToken(token)` is
+ * persisted (with `deps.passwordResetTtlMinutes` expiry) and the plaintext is
+ * handed to `deps.deliverResetToken` for out-of-band delivery — it is never
+ * returned, logged or audited. Without a delivery port the token is dropped.
  */
 export async function beginPasswordReset(
   store: AuthStore,
@@ -42,6 +47,10 @@ export async function beginPasswordReset(
     const now = deps.now ?? new Date();
     const user = await tx.findUserByIdentifier(input.organizationId, input.identifier);
     const request = input.request !== undefined ? { request: input.request } : {};
+
+    // One hash on every path, active or not: the unknown/disabled branch must cost
+    // the same as the active one.
+    await hashPassword(TIMING_EQUALISER_PASSWORD, deps.passwordHashOptions);
 
     if (user === undefined || user.status !== "active") {
       await audit(tx, {
@@ -70,7 +79,14 @@ export async function beginPasswordReset(
       reason: input.createdBy !== undefined ? "admin_initiated" : "self_service",
       ...request,
     });
-    return { ok: true, token };
+    if (deps.deliverResetToken !== undefined) {
+      await deps.deliverResetToken({
+        organizationId: input.organizationId,
+        userId: user.id,
+        token,
+      });
+    }
+    return { ok: true };
   });
 }
 
@@ -121,13 +137,19 @@ export async function completePasswordReset(
     }
 
     const user = await tx.findUserById(record.userId);
-    if (user === undefined || user.status !== "active") {
+    // The token must redeem in the organization it was minted for, and the user
+    // must still be active.
+    if (
+      user === undefined ||
+      user.status !== "active" ||
+      user.organizationId !== input.organizationId
+    ) {
       await audit(tx, {
         organizationId: input.organizationId,
         actorId: user?.id ?? null,
         action: AUTH_AUDIT_ACTIONS.passwordResetFailed,
         entityId: user?.id ?? null,
-        reason: "user_not_active",
+        reason: user === undefined ? "user_missing" : "user_not_eligible",
         ...request,
       });
       return generic;

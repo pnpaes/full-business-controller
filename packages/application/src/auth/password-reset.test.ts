@@ -5,18 +5,32 @@ import { AUTH_AUDIT_ACTIONS } from "./actions";
 import { beginPasswordReset, completePasswordReset } from "./password-reset";
 import { issueSession, verifySession } from "./session";
 import { FakeAuthStore, NOW, ORG, authDeps, userWithPassword } from "./test-support";
+import type { AuthDeps } from "./types";
+
+/** Captures reset tokens the way an out-of-band delivery channel would. */
+function delivery(): { deps: AuthDeps; tokens: string[] } {
+  const tokens: string[] = [];
+  const deps = authDeps({
+    deliverResetToken: async ({ token }) => {
+      tokens.push(token);
+    },
+  });
+  return { deps, tokens };
+}
 
 describe("beginPasswordReset", () => {
-  it("is neutral for an unknown identifier: ok, no token, no stored token", async () => {
+  it("is neutral for an unknown identifier: ok, no delivery, no stored token", async () => {
     const store = new FakeAuthStore();
+    const { deps, tokens } = delivery();
 
-    const result = await beginPasswordReset(store, authDeps(), {
+    const result = await beginPasswordReset(store, deps, {
       organizationId: ORG,
       identifier: "nobody@example.test",
     });
 
     expect(result).toEqual({ ok: true });
-    expect(result.token).toBeUndefined();
+    expect(Object.keys(result)).toEqual(["ok"]);
+    expect(tokens).toEqual([]);
     expect(store.resetTokens.size).toBe(0);
     expect(store.actions()).toContain(AUTH_AUDIT_ACTIONS.passwordResetRequested);
   });
@@ -24,6 +38,46 @@ describe("beginPasswordReset", () => {
   it("is neutral for a disabled user and mints no token", async () => {
     const store = new FakeAuthStore();
     const user = await userWithPassword(store, "correct-password", { status: "disabled" });
+    const { deps, tokens } = delivery();
+
+    const result = await beginPasswordReset(store, deps, {
+      organizationId: ORG,
+      identifier: user.email ?? "",
+    });
+
+    expect(result).toEqual({ ok: true });
+    expect(tokens).toEqual([]);
+    expect(store.resetTokens.size).toBe(0);
+  });
+
+  it("delivers a token for an active user and stores only its hash with the TTL expiry", async () => {
+    const store = new FakeAuthStore();
+    const user = await userWithPassword(store, "correct-password");
+    const { deps, tokens } = delivery();
+
+    const result = await beginPasswordReset(
+      store,
+      { ...deps, passwordResetTtlMinutes: 15 },
+      { organizationId: ORG, identifier: user.email ?? "" },
+    );
+
+    expect(result).toEqual({ ok: true });
+    expect(Object.keys(result)).toEqual(["ok"]);
+    expect(tokens).toHaveLength(1);
+    const token = tokens[0] ?? "";
+    expect(token).toMatch(/^[A-Za-z0-9_-]+$/);
+
+    const stored = [...store.resetTokens.values()][0];
+    expect(stored?.userId).toBe(user.id);
+    expect(stored?.tokenHash).toBe(hashPasswordResetToken(token));
+    expect(stored?.tokenHash).not.toBe(token);
+    expect(stored?.expiresAt.getTime()).toBe(NOW.getTime() + 15 * 60_000);
+    expect(store.actions()).toContain(AUTH_AUDIT_ACTIONS.passwordResetRequested);
+  });
+
+  it("still stores a token when no delivery channel is configured (delivery is dropped)", async () => {
+    const store = new FakeAuthStore();
+    const user = await userWithPassword(store, "correct-password");
 
     const result = await beginPasswordReset(store, authDeps(), {
       organizationId: ORG,
@@ -31,27 +85,7 @@ describe("beginPasswordReset", () => {
     });
 
     expect(result).toEqual({ ok: true });
-    expect(store.resetTokens.size).toBe(0);
-  });
-
-  it("mints a token for an active user and stores only its hash with the TTL expiry", async () => {
-    const store = new FakeAuthStore();
-    const user = await userWithPassword(store, "correct-password");
-
-    const result = await beginPasswordReset(store, authDeps({ passwordResetTtlMinutes: 15 }), {
-      organizationId: ORG,
-      identifier: user.email ?? "",
-    });
-
-    expect(result.ok).toBe(true);
-    expect(result.token).toMatch(/^[A-Za-z0-9_-]+$/);
     expect(store.resetTokens.size).toBe(1);
-    const stored = [...store.resetTokens.values()][0]!;
-    expect(stored.tokenHash).toBe(hashPasswordResetToken(result.token ?? ""));
-    expect(stored.tokenHash).not.toBe(result.token);
-    expect(stored.userId).toBe(user.id);
-    expect(stored.expiresAt.getTime()).toBe(NOW.getTime() + 15 * 60_000);
-    expect(store.actions()).toContain(AUTH_AUDIT_ACTIONS.passwordResetRequested);
   });
 });
 
@@ -59,12 +93,9 @@ describe("completePasswordReset", () => {
   it("changes the password, consumes the token once, and audits completion", async () => {
     const store = new FakeAuthStore();
     const user = await userWithPassword(store, "old-password");
-    const deps = authDeps();
-    const begun = await beginPasswordReset(store, deps, {
-      organizationId: ORG,
-      identifier: user.email ?? "",
-    });
-    const token = begun.token ?? "";
+    const { deps, tokens } = delivery();
+    await beginPasswordReset(store, deps, { organizationId: ORG, identifier: user.email ?? "" });
+    const token = tokens[0] ?? "";
 
     const first = await completePasswordReset(store, deps, {
       organizationId: ORG,
@@ -73,9 +104,9 @@ describe("completePasswordReset", () => {
     });
 
     expect(first).toEqual({ ok: true });
-    const updated = store.users.get(user.id)!;
-    expect(await verifyPassword(updated.passwordHash, "new-password")).toBe(true);
-    expect(await verifyPassword(updated.passwordHash, "old-password")).toBe(false);
+    const updated = store.users.get(user.id);
+    expect(await verifyPassword(updated?.passwordHash ?? "", "new-password")).toBe(true);
+    expect(await verifyPassword(updated?.passwordHash ?? "", "old-password")).toBe(false);
     expect(store.actions()).toContain(AUTH_AUDIT_ACTIONS.passwordResetCompleted);
 
     const second = await completePasswordReset(store, deps, {
@@ -84,23 +115,37 @@ describe("completePasswordReset", () => {
       newPassword: "another-password",
     });
     expect(second).toEqual({ ok: false, error: AUTH_ERROR_GENERIC });
-    expect(store.users.get(user.id)?.passwordHash).toBe(updated.passwordHash);
+    expect(store.users.get(user.id)?.passwordHash).toBe(updated?.passwordHash);
+  });
+
+  it("rejects a valid token presented in a different organization", async () => {
+    const store = new FakeAuthStore();
+    const user = await userWithPassword(store, "old-password");
+    const { deps, tokens } = delivery();
+    const before = store.users.get(user.id)?.passwordHash;
+    await beginPasswordReset(store, deps, { organizationId: ORG, identifier: user.email ?? "" });
+
+    const result = await completePasswordReset(store, deps, {
+      organizationId: "org-2",
+      token: tokens[0] ?? "",
+      newPassword: "new-password",
+    });
+
+    expect(result).toEqual({ ok: false, error: AUTH_ERROR_GENERIC });
+    expect(store.users.get(user.id)?.passwordHash).toBe(before);
   });
 
   it("revokes every existing session on success", async () => {
     const store = new FakeAuthStore();
     const user = await userWithPassword(store, "old-password");
-    const deps = authDeps();
+    const { deps, tokens } = delivery();
     const session = await issueSession(store, deps, user, NOW);
     expect(await verifySession(store, session.token, NOW)).toBeDefined();
 
-    const begun = await beginPasswordReset(store, deps, {
-      organizationId: ORG,
-      identifier: user.email ?? "",
-    });
+    await beginPasswordReset(store, deps, { organizationId: ORG, identifier: user.email ?? "" });
     const result = await completePasswordReset(store, deps, {
       organizationId: ORG,
-      token: begun.token ?? "",
+      token: tokens[0] ?? "",
       newPassword: "new-password",
     });
 
@@ -111,21 +156,14 @@ describe("completePasswordReset", () => {
   it("rejects an expired token with the generic error and no password change", async () => {
     const store = new FakeAuthStore();
     const user = await userWithPassword(store, "old-password");
-    const deps = authDeps();
-    const begun = await beginPasswordReset(store, deps, {
-      organizationId: ORG,
-      identifier: user.email ?? "",
-    });
+    const { deps, tokens } = delivery();
     const before = store.users.get(user.id)?.passwordHash;
+    await beginPasswordReset(store, deps, { organizationId: ORG, identifier: user.email ?? "" });
 
     const result = await completePasswordReset(
       store,
       authDeps({ now: new Date(NOW.getTime() + 31 * 60_000) }),
-      {
-        organizationId: ORG,
-        token: begun.token ?? "",
-        newPassword: "new-password",
-      },
+      { organizationId: ORG, token: tokens[0] ?? "", newPassword: "new-password" },
     );
 
     expect(result).toEqual({ ok: false, error: AUTH_ERROR_GENERIC });

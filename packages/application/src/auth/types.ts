@@ -152,6 +152,16 @@ export interface AuthDeps {
    * tuning pass per ADR-0003's open item) can run cheaply. Absent = policy cost.
    */
   readonly passwordHashOptions?: Argon2CostOptions;
+  /**
+   * Out-of-band delivery of a password-reset token. `beginPasswordReset` never
+   * returns the plaintext token; it hands it to this port only for an active
+   * account. Absent = the token is dropped (no delivery channel configured yet).
+   */
+  readonly deliverResetToken?: (delivery: {
+    readonly organizationId: string;
+    readonly userId: string;
+    readonly token: string;
+  }) => Promise<void>;
   /** Required by MFA operations; absent everywhere else. */
   readonly totpEncryptionKey?: Uint8Array;
 }

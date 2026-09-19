@@ -103,12 +103,19 @@ describe.skipIf(!databaseUrl)("auth commands against PostgreSQL", () => {
       const session = await issueSession(store, deps(now), user, now);
       expect(await verifySession(store, session.token, now)).toBeDefined();
 
-      const begun = await beginPasswordReset(store, deps(now), {
-        organizationId: orgId,
-        identifier: user.email ?? "",
-      });
+      const delivered: string[] = [];
+      const begun = await beginPasswordReset(
+        store,
+        {
+          ...deps(now),
+          deliverResetToken: async ({ token }) => {
+            delivered.push(token);
+          },
+        },
+        { organizationId: orgId, identifier: user.email ?? "" },
+      );
       expect(begun.ok).toBe(true);
-      const token = begun.token ?? "";
+      const token = delivered[0] ?? "";
       expect(token.length).toBeGreaterThan(0);
 
       const result = await completePasswordReset(store, deps(now), {
