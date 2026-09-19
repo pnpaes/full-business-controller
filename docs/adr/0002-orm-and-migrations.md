@@ -1,9 +1,12 @@
 # ADR-0002 — ORM/query layer and migration strategy
 
-- **Status:** Proposed (needs tech-lead acceptance)
-- This ADR is a proposal; implementation must not rely on it until status is `Accepted`.
+- **Status:** Accepted (2026-09-18)
+- Accepted on 2026-09-18 by the technical owner (Paulo Paes) following the Phase 0
+  close-out clarification in `docs/phase0/PHASE0_CLOSEOUT_PLAN.md` ("Development blockers vs
+  data gates"): no development blocker remains, so foundation and costing work proceed.
 - **Date:** 2026-09-13
-- **Deciders:** TECH
+- **Deciders:** Technical owner (Paulo Paes)
+- **Pinned versions:** `drizzle-orm@0.38.4`, `drizzle-kit@0.30.6`, PostgreSQL 16.
 - **Related:** DEC-008, DEC-024; `02:10,68`, `03:90`
 - **Requirements:** FND-003, FND-004, COST-008, INV-002, OPS-002
 
@@ -38,5 +41,17 @@ migration is tested against production-like data and has a documented rollback/r
 
 ## Open items
 
-- Confirm Drizzle vs Prisma with the tech lead before scaffolding `packages/persistence`.
-- Decide migration runner in CI/CD and the rollback rehearsal procedure (`09:79`).
+- ~~Confirm Drizzle vs Prisma with the tech lead before scaffolding `packages/persistence`.~~
+  Resolved 2026-09-18: Drizzle confirmed and implemented in `packages/persistence` (see pins above).
+- ~~Decide migration runner in CI/CD and the rollback rehearsal procedure (`09:79`).~~
+  Resolved 2026-09-18: the runner is drizzle-kit `migrate`, invoked via `npm run db:migrate`;
+  the rollback rehearsal procedure is documented in `docs/runbooks/persistence-migrations.md`.
+- **Security — upgrade off the `0.38.4` pin (2026-09-19, DEC-049):** `drizzle-orm` is now a
+  **runtime dependency** (the schema modules import it), so the pinned `0.38.4` surfaces
+  **GHSA-gpj5-g38j-94v9 / CWE-89 (high) — SQL injection via improperly escaped SQL identifiers** in
+  `npm audit --omit=dev`. Exploitability requires attacker-controlled input reaching
+  identifier/alias builders (`sql.identifier()`, `.as()`); the current code builds queries from
+  typed, code-controlled columns, so it is not reachable today. The pin must move to
+  **`>=0.45.2`** — a breaking upgrade with a matching `drizzle-kit` bump — before the first feature
+  that lets user input reach identifier/alias builders **and** before production. Regenerating and
+  re-verifying the migrations is part of that upgrade. See DEC-049 in `12_OPEN_DECISIONS.md`.

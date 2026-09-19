@@ -6,6 +6,18 @@ Requirement IDs cite `11_REQUIREMENTS_CATALOG.md`.
 
 > **SCHEMA INPUTS.** DEC-027 (period-lock granularity) is accepted as of 2026-09-14; this dictionary reflects the accepted policy.
 
+> **Reconciled 2026-09-18.** `schemas/domain-enums.yaml` is the authoritative controlled
+> vocabulary; this dictionary was reconciled to it (role_code, employment_type, shift_state,
+> shift_assignment_state) where they conflicted. The Phase 1–2 core has been implemented and
+> migrated (35 tables, `packages/persistence`, migrations 0000–0002); all other entities
+> (workforce, integrations, competitor, AI, deferred slices) remain deferred per slice.
+> Columns that exist only in this dictionary and are absent from
+> `schemas/phase1_2_draft.sql` (for example `channel.external_ref`,
+> `item.reorder_policy_id` / `item.allergen_metadata` / `item.location_id`,
+> `recipe.owner_role` / `recipe.status`, the extra `price_scenario` fields, and
+> `calculation_snapshot.tax_rule_version`) are **deferred** and will be added
+> per slice; for implemented tables the DDL draft is authoritative.
+
 ## 0. Conventions
 
 - **Identity:** `id uuid primary key default gen_random_uuid()` (UUIDv7 preferred where available).
@@ -78,8 +90,8 @@ roles, scopes, sessions and TOTP live in this database. No external IdP.
 
 | Table | Key columns | Notes |
 | --- | --- | --- |
-| app_user | id, organization_id, username, email, display_name, password_hash, password_changed_at, status, failed_login_count, locked_until, last_login_at, totp_enabled, created_by/at, updated_by/at, version | `username`/`email` both nullable (staff may lack email); at least one identifies the account. `password_hash` is Argon2id (fallback bcrypt), per-user salt. |
-| role | id, organization_id, code, name, description | `code` uses the `role_code` enum: owner, gm, location_manager, kitchen, foh, purchasing, finance, admin, analyst |
+| app_user | id, organization_id, username, email, display_name, password_hash, password_changed_at, status, failed_login_count, locked_until, last_login_at, totp_enabled, created_by/at, updated_by/at, version | `username`/`email` both nullable (staff may lack email); at least one identifies the account. `password_hash` is Argon2id (fallback bcrypt), per-user salt. (2026-09-18) Uniqueness is per organization on `lower(btrim(username))` / `lower(btrim(email))`; trimming was added to prevent whitespace-variant duplicate identifiers. |
+| role | id, organization_id, code, name, description | `code` uses the `role_code` enum: owner, general_manager, location_manager, kitchen, front_of_house, purchasing, finance, admin, analyst, product_owner, technical_owner, data_owner |
 | user_role | user_id, role_id, location_id (null=all), granted_by, granted_at | scope on grant |
 | user_location_scope | user_id, location_id | explicit location allow-list (FND-002) |
 | user_totp | user_id, secret_encrypted, confirmed_at, recovery_codes_hash[] | TOTP (RFC 6238); secret encrypted at rest; recovery codes stored hashed and single-use |
@@ -373,7 +385,7 @@ clock-in/clock-out in the MVP, but the schema keeps room for actual time trackin
 | user_id | uuid | yes | optional FK `app_user`; an employee may exist without a login (WF-001) |
 | name | text | no | personal data; restricted, audited access |
 | role_code | text | no | `role_code` enum (see `role`); used for shift matching |
-| employment_type | text | no | permanent, temporary, part_time, casual [new enum] |
+| employment_type | text | no | `employment_type` enum: full_time, part_time, on_call, temporary, apprentice |
 | base_hourly_rate | numeric(19,4) | no | rate only; costing reads loaded role/cost-centre rate, not this employee (DEC-012) |
 | cost_center_id | uuid | yes | FK cost_center (deferred slice) |
 | primary_location_id | uuid | yes | FK location |
@@ -388,7 +400,7 @@ clock-in/clock-out in the MVP, but the schema keeps room for actual time trackin
 | role_code | text | yes | null = any role |
 | starts_at / ends_at | timestamptz | no | `ends_at > starts_at` |
 | break_minutes | integer | no | default 0; `>= 0` |
-| state | text | no | `shift_state` enum: open, published, assigned, cancelled [new enum] |
+| state | text | no | `shift_state` enum: open, published, assigned, cancelled, completed |
 | published_at | timestamptz | yes | set when published |
 | created_by | uuid | no | FK `app_user` |
 | actual_start / actual_end | timestamptz | yes | reserved for later actual time tracking (DEC-038); null in MVP |
@@ -400,7 +412,7 @@ clock-in/clock-out in the MVP, but the schema keeps room for actual time trackin
 | id, organization_id | uuid | no | |
 | shift_id | uuid | no | FK shift |
 | employee_id | uuid | no | FK employee |
-| state | text | no | `shift_assignment_state` enum: self_assigned, approved [new enum] |
+| state | text | no | `shift_assignment_state` enum: self_assigned, pending_approval, approved, withdrawn, rejected |
 | assigned_by | uuid | yes | FK `app_user`; null = self-assigned |
 | assigned_at | timestamptz | no | |
 | unique (shift_id, employee_id) | | | one assignment per employee per shift |
@@ -429,9 +441,9 @@ clock-in/clock-out in the MVP, but the schema keeps room for actual time trackin
 
 Worked hours are derived from registered shifts; corrections are recorded as `shift_adjustment` rows,
 never by editing the shift (DEC-038). `payroll_report` is a payroll-**input** report only: statutory
-payroll processing, tax withholding and payslips remain out of scope. New enums (`shift_state`,
-`shift_assignment_state`, `employment_type`, `payroll_report_status`) must be added to
-`schemas/domain-enums.yaml`.
+payroll processing, tax withholding and payslips remain out of scope. These enums (`shift_state`,
+`shift_assignment_state`, `employment_type`, `payroll_report_status`) are now defined in
+`schemas/domain-enums.yaml`, which is authoritative (reconciled 2026-09-18).
 
 ## 4B. AI-assisted analysis (Phase 4 — DEC-039, ADR-0009)
 

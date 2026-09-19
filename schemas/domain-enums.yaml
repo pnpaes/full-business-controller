@@ -102,3 +102,7 @@ payroll_report_status: [draft, generated, exported, superseded]
 # --- Integrations and external publishing (DEC-015, ADR-0011) ---
 allowed_operation: [read, write_price, write_menu_product, write_stock, write_accounting]
 publish_status: [pending, running, succeeded, failed, rolled_back]
+
+# Added 2026-09-18 from the persistence slice
+app_user_status: [invited, active, disabled, locked]
+price_scenario_state: [draft, submitted, approved, rejected]

@@ -289,8 +289,8 @@ Owner clarification recorded 2026-09-18.
 
 - [x] A1 decision log: every Phase-1 decision `accepted`, owners named.
 - [ ] A2 calculation contract signed by finance + product owner.
-- [ ] A3 data dictionary covers every Phase 1–2 entity; the DDL draft covers the ledger/effective-dating/money/quantity core, is completed per slice, and applies cleanly to an empty database.
-- [ ] A4 ADR-0001…0008 accepted; ORM (0002), job/outbox (0004), identity (0003), hosting (0001) pinned.
+- [x] A3 data dictionary covers every Phase 1–2 entity; the DDL draft covers the ledger/effective-dating/money/quantity core, is completed per slice, and applies cleanly to an empty database. (Phase 1–2 core implemented per slice as of 2026-09-18: 35 tables migrated via `packages/persistence`, applied cleanly to an empty database; deferred slices remain.)
+- [ ] A4 ADR-0001…0008 accepted; ORM (0002), job/outbox (0004), identity (0003), hosting (0001) pinned. (2026-09-18: ADR-0002 accepted with drizzle-orm 0.38.4 / drizzle-kit 0.30.6 / PostgreSQL 16 pinned; the remaining ADRs are still pending.)
 - [ ] A5 six fixtures reproduce component values and are signed by finance + owner.
 - [ ] Source samples I1–I8, I10 profiled; integration feasibility verified for POS + Wolt.
 - [ ] Controlled vocabularies approved; requirement→phase map in file 11.

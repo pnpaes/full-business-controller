@@ -1,6 +1,11 @@
 -- Phase 1-2 schema draft (representative core, not exhaustive).
 -- Companion to docs/phase0/DATA_DICTIONARY.md.
 -- Target: PostgreSQL 16. Draft for technical review; policy fields marked [DEC-xxx].
+--
+-- NOTE (2026-09-18): `schemas/domain-enums.yaml` is authoritative for controlled values;
+--   check constraints below were reconciled to it (role_code, employment_type, shift.state,
+--   shift_assignment.state). The Phase 1-2 core is now implemented in `packages/persistence`
+--   (Drizzle migrations 0000-0002); tables beyond that core remain deferred per slice.
 -- ponytail: only the ledger + effective-dating + money/quantity + outbox cores are DDL'd here.
 --           Remaining tables follow the same patterns and are added per slice.
 --
@@ -106,10 +111,12 @@ create table app_user (
   check (username is not null or email is not null)   -- at least one identifier for login
 );
 -- Case-insensitive uniqueness within an organization; partial so the other identifier may be null.
+-- (2026-09-18) `btrim` added: trimming prevents whitespace-variant duplicates
+-- (`'alice '` vs `'alice'`) that `lower()` alone would admit.
 create unique index app_user_username_key
-  on app_user (organization_id, lower(username)) where username is not null;
+  on app_user (organization_id, lower(btrim(username))) where username is not null;
 create unique index app_user_email_key
-  on app_user (organization_id, lower(email)) where email is not null;
+  on app_user (organization_id, lower(btrim(email))) where email is not null;
 
 -- ---------------------------------------------------------------------------
 -- Assignable ownership (FND-007 -- DEC-014 clarification, 2026-09-14)
@@ -140,7 +147,9 @@ create table role (
   id              uuid primary key default gen_random_uuid(),
   organization_id uuid not null references organization(id),
   code            text not null check (code in
-                    ('owner','gm','location_manager','kitchen','foh','purchasing','finance','admin','analyst')),
+                    ('owner','general_manager','location_manager','kitchen','front_of_house',
+                     'purchasing','finance','admin','analyst','product_owner',
+                     'technical_owner','data_owner')),
   name            text not null,
   description     text,
   unique (organization_id, code)
@@ -879,7 +888,7 @@ create table employee (
   name                text not null,
   role_code           text not null,
   employment_type     text not null
-                        check (employment_type in ('permanent','temporary','part_time','casual')),
+                        check (employment_type in ('full_time','part_time','on_call','temporary','apprentice')),
   base_hourly_rate    numeric(19,4) not null check (base_hourly_rate >= 0),
   cost_center_id      uuid,                           -- FK cost_center when that slice is declared
   primary_location_id uuid references location(id),
@@ -903,7 +912,7 @@ create table shift (
   ends_at         timestamptz not null,
   break_minutes   integer not null default 0 check (break_minutes >= 0),
   state           text not null default 'open'
-                    check (state in ('open','published','assigned','cancelled')),
+                    check (state in ('open','published','assigned','cancelled','completed')),
   published_at    timestamptz,
   created_by      uuid references app_user(id),
   actual_start    timestamptz,                        -- reserved: actual time tracking later (DEC-038)
@@ -919,7 +928,7 @@ create table shift_assignment (
   shift_id        uuid not null references shift(id),
   employee_id     uuid not null references employee(id),
   state           text not null default 'self_assigned'
-                    check (state in ('self_assigned','approved')),
+                    check (state in ('self_assigned','pending_approval','approved','withdrawn','rejected')),
   assigned_by     uuid references app_user(id),       -- null = self-assigned
   assigned_at     timestamptz not null default now(),
   unique (shift_id, employee_id)
