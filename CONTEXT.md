@@ -10,81 +10,93 @@ duplicate their content.
 **Say "resume the work" and start here.** A fresh session must be able to continue
 from this section alone.
 
-**Next task:** **slice 5 — recipes / sub-recipes / version / yield / allergens**
-(`CALCULATION_CONTRACT.md` §6; `COST-001`, `COST-002`, `PROD-005`; `DEC-005`, `DEC-030`,
-`DEC-036`; depends on slice 3). Slice 4 is committed as `0b4904f`; its two adversarial
-reviews were in flight when this section was written, so **reconcile any unapplied slice 4
-findings first** (the structural review's accepted items: cross-org/item/supplier/unit
-guards only exist in the application while the FKs are deferred, and a check that allows a
-state the derived `base_qty_accepted` column then rejects). `docs/BUILD_ROADMAP.md` tracks
-the loop and gates.
+**Next task:** **slice 6 — operating costs + labour + allocation** (`DEC-047`/`DEC-048`
+already govern; per `docs/BUILD_ROADMAP.md`: `COST-004`, `COST-006`, `COST-007`,
+`COST-011`, `COST-013`; `DEC-006`, `DEC-007`, `DEC-048`; `CALCULATION_CONTRACT.md` §7
+and §9; depends on slice 3; slices 4, 5 and 6 feed slice 7). `docs/BUILD_ROADMAP.md`
+tracks the loop and gates.
+
+**First, before anything else:** slice 5 (`841da96`) went in with its two adversarial
+reviews (`reviewer-qwen` on the §6 maths/cost precedence, `reviewer-minimax` on the
+migration/schema) **in flight when the slice was committed**. If their findings have not
+been reconciled yet, reconcile them first (accepted fixes applied as a small follow-up
+commit; declined items recorded with reasons) before starting slice 6.
 
 **Scope (do):**
 
-1. Read first: `docs/phase0/CALCULATION_CONTRACT.md` §6 (recipe cost and yield),
-   `03_DOMAIN_MODEL.md` (recipes, sub-recipes, versions, yield),
-   `docs/phase0/DATA_DICTIONARY.md` for the recipe tables, `DEC-005`, `DEC-030`,
-   `DEC-036`, the effective-dating invariants already applied in `0002`/`0005`, and the
-   slice 3/4 APIs you compose (`packages/domain/src/{unit,unit-conversion,supplier-pack,landed-cost}.ts`).
-2. Add the deferred recipe schema (`recipe`, `recipe_version`, `recipe_line`, allergens)
-   as a new migration (next free number) with a documented `_down.sql`, mirroring the
-   slice 3/4 conventions: additive, effective-dated with the same gated exclusion
-   constraints, org-scoped, decimal scales per the data dictionary, and `db:generate`
-   left clean. Hand-written invariants go in a separate hand-written migration, never
-   inside a generated file; migrations `0000–0006` are not edited.
-3. Implement the domain and application layer for the unambiguous parts: recipe version
-   state and effective dating, nested lines with unit conversion, yield/portion maths and
-   the per-portion cost from §6, reusing `convertQuantity`, `computeLandedCost` and the
-   DEC-047 cost-source precedence. Anything the contract does not pin down (allergen
-   propagation through sub-recipes, yield-loss application order, which cost source a line
-   uses) must be raised for a decision, not invented.
+1. Read first: `docs/phase0/CALCULATION_CONTRACT.md` §7 (operating costs / overhead) and
+   §9 (labour), `docs/phase0/LABOUR_ASSUMPTIONS.md`, `12_OPEN_DECISIONS.md`
+   `DEC-047`/`DEC-048` (cost-source precedence; owner labour at the kitchen loaded rate,
+   economic vs cash views), `COST-004`/`006`/`007`/`011`/`013`, `DEC-006`/`DEC-007`, and
+   the cost tables already in the schema (`cost_center` from slice 3; recipe costs from
+   slice 5). Note `DEC-048`: the economic view includes imputed owner labour at NOK
+   306.57 loaded; the statutory P&L shows no salary.
+2. Implement the domain + application layer for operating-cost allocation per §7/§9:
+   cost centres, allocation bases, the loaded-rate maths (decimal only, HALF_UP at the
+   documented boundaries), and the economic-vs-cash views. Anything the contract does
+   not pin down must be raised for a decision, not invented (next free id `DEC-053`).
+3. Persistence: check which tables already exist (`cost_center`, costing snapshots from
+   the slice-0 core) and add only what is missing as the next additive migration with a
+   documented down path, mirroring the slice 3–5 conventions; hand-written invariants go
+   in a separate hand-written migration; migrations `0000–0009` are not edited.
 4. Tests: unit tests with the in-memory fakes plus conditional PostgreSQL integration
-   tests (gated on `DATABASE_URL`, rolled back), covering the §6 formula, a version/yield
-   boundary case, nested sub-recipe composition, and the invariants the migration adds.
-5. Verify, send the calculation to two adversarial reviewers (roster in
-   `docs/BUILD_ROADMAP.md` §2), reconcile accepted/declined findings, and commit
-   atomically with the verification evidence and rollback in the body (Rule 2); then
-   rewrite this section for slice 6.
+   tests (gated on `DATABASE_URL`, rolled back), covering the allocation formula, a
+   rounding boundary case, and the economic/cash view split.
+5. Verify, run the usual adversarial review per `docs/BUILD_ROADMAP.md` §2, reconcile
+   findings, and commit atomically with the verification evidence and rollback in the
+   body (Rule 2); then rewrite this section for slice 7.
 
-**Scope (do not):** do not rework the committed auth/UI/master-data/receiving
-workstreams; invent no decision (append to `12_OPEN_DECISIONS.md` as `DEC-052` or later
-only if genuinely needed); no external writes; do not edit migrations `0000–0006`.
+**Scope (do not):** do not rework the committed auth/UI/master-data/receiving/recipe
+workstreams; invent no decision (append to `12_OPEN_DECISIONS.md` as `DEC-053` or later
+only if genuinely needed); no external writes; do not edit migrations `0000–0009`. Do
+not treat calculated costs as "verified" before the golden fixtures are signed (slice 7
+gate).
 
-**Files/paths:** `packages/persistence/src/schema/` + `repositories/`, the new
-`packages/persistence/drizzle/0007_*` (or next free), `packages/domain/src/`,
-`packages/application/src/`, `docs/runbooks/persistence-migrations.md` (migration order),
-`CONTEXT.md` and `docs/BUILD_ROADMAP.md`.
+**Files/paths:** `packages/domain/src/`, `packages/application/src/`,
+`packages/persistence/src/schema/` + `repositories/` + `drizzle/` (next free migration
+number, currently `0010_*`), the in-repo test-support fakes,
+`docs/runbooks/persistence-migrations.md` (migration order), `CONTEXT.md` and
+`docs/BUILD_ROADMAP.md`.
 
 **Acceptance / verification:** `npm run lint && npm run typecheck && npm run test &&
-npm run build && npm run format:check` pass with and without `DATABASE_URL`; the migration
-applies on an empty database, re-runs as a no-op and its down path is rehearsed;
-`npm audit --omit=dev` stays 0; recipe costs match `CALCULATION_CONTRACT.md` §6 with
-decimal-only arithmetic and HALF_UP at the documented boundaries.
+npm run build && npm run format:check` pass with and without `DATABASE_URL` (format is
+`npm run format:check`; when running Prettier standalone use
+`npx prettier --check CONTEXT.md` — `docs/` is prettier-ignored); `npm audit
+--omit=dev` stays 0; any new migration applies on an empty database, re-runs as a no-op
+and its down path is rehearsed; allocated operating costs match
+`CALCULATION_CONTRACT.md` §7/§9 with decimal-only arithmetic and HALF_UP at the
+documented boundaries, reconciling to the slice 4/5 cost primitives.
 
-**Open decisions / inputs that shape it:** I5 (real recipes) gates real values — build
-against synthetic fixtures per the roadmap convention. The open items under "Open
-decisions / inputs" still stand (the `m`/missing `length` dimension mismatch, the missing
-`numeric(19,6)` cap in `packages/domain/src/decimal.ts`). Slice 4's deferred
-acceptance-to-stock posting is slice 8, gated on `ADR-0005` (Proposed).
+**Open decisions / inputs that shape it:** I8 remainder (productive-hours %, insurance,
+role→location) and the I9 accountant ruling gate real loaded rates — build against
+`docs/phase0/LABOUR_ASSUMPTIONS.md` and synthetic fixtures per the roadmap convention.
+The eight slice-5 recipe ambiguities (tracked under "Open decisions / inputs") do not
+block slice 6 but touch its cost inputs — record any slice-6 finding on them rather than
+resolving silently. The standing open items still apply (the `m`/missing `length`
+dimension mismatch, the missing `numeric(19,6)` cap in
+`packages/domain/src/decimal.ts`). Slice 4's deferred acceptance-to-stock posting is
+slice 8, gated on `ADR-0005` (Proposed).
 
-**After this task:** **slice 6 — operating costs + labour + allocation**
-(`DEC-047`/`DEC-048`), per `docs/BUILD_ROADMAP.md`.
+**After this task:** **slice 7 — cost card + snapshots + price scenario + approval**
+(`COST-005`, `COST-008`, `COST-009`, `PRICE-001`–`005`; `DEC-021`–`024`; owner gate: six
+golden fixtures signed before "verified"), per `docs/BUILD_ROADMAP.md`.
 
 ## What this is
 
 **Aquarela Business Control** — a secure, testable modular monolith for an Oslo
 café with two locations, covering costing, pricing, inventory, production,
 sales/imports, workforce and reporting. It is **documentation-first**: Phase 0 is
-complete (specification, 51 accepted decisions, artifacts and ADRs); the
+complete (specification, 52 accepted decisions, artifacts and ADRs); the
 foundation scaffold, the Phase 1–2 persistence core, the auth slices (1a–1e), the
-UI token foundation and master-data slices 2–3 are built; slice 4 (receipt + price
-history + landed cost) is committed; slice 5 (recipes) is next.
+UI token foundation, master-data slices 2–3, slice 4 (receipt + price history +
+landed cost) and slice 5 (recipes) are built; slice 6 (operating costs + labour +
+allocation) is next.
 
 ## Where things live
 
 - `00_README.md` … `13_AGENT_BUILD_BRIEF.md` — the specification package
   (inputs, rarely edited). Start with `00_README.md`.
-- `12_OPEN_DECISIONS.md` — the accepted decisions (DEC-001…DEC-051); the
+- `12_OPEN_DECISIONS.md` — the accepted decisions (DEC-001…DEC-052); the
   authority. New decisions are appended here.
 - `docs/phase0/` — close-out plan, calculation contract, data dictionary, golden
   fixtures, source-data request, notes. See `docs/phase0/PHASE0_CLOSEOUT_PLAN.md`
@@ -103,9 +115,9 @@ history + landed cost) is committed; slice 5 (recipes) is next.
 
 ## Current status
 
-- **As of:** 2026-09-19 — branch `main`; HEAD `e3706c0` (slice 4 including its
-  review fixes and migrations `0007`/`0008`). Everything is committed; the working
-  tree is clean. **Nothing has been applied to DigitalOcean.**
+- **As of:** 2026-09-19 — branch `main`; HEAD `13a29b7` (slice 5 including its
+  review fixes and migration `0010`); the working tree is clean.
+  **Nothing has been applied to DigitalOcean.**
 - **Auth complete and security-reviewed (slices 1a–1e):** domain primitives (1a);
   persistence layer (1b-i); application flow (1b-ii); password reset + access
   control (1b-iii, `2ce8847`; reset neutrality `5776914`); hardening (`60ac52e`:
@@ -120,6 +132,11 @@ history + landed cost) is committed; slice 5 (recipes) is next.
   graph (`a869227`, migration `0004`), `unit_conversion` overlap invariants
   (migration `0005`) + conversion-graph hardening and `DEC-050`/`DEC-051`
   (`b8897bf`).
+- **Costing slices in progress:** slice 4 — receipt + price history + landed cost —
+  done (`e3706c0`, including its review fixes and migrations `0007`/`0008`,
+  `DEC-052`); slice 5 — recipes / sub-recipes / version / yield / allergens — done
+  (`841da96`, migration `0009`; details in the work log). Its two adversarial
+  reviews were still in flight at commit time; reconcile if unapplied.
 - **UI foundation:** design tokens package (`aa2eff5`), token-driven UI primitives
   (`a83a312`), layout reference note (`dad2ff0`), accessibility/form-wiring fixes
   (`74ac467`).
@@ -135,9 +152,9 @@ history + landed cost) is committed; slice 5 (recipes) is next.
   store before multi-instance deployment; the reset-token delivery is a no-op stub
   until the email slice; the palette hex values and data-viz palette semantics
   await owner sign-off (see "Open decisions / inputs").
-- **Persistence core + deployment foundation (committed):** Drizzle schema (35
-  tables), migrations `0000_enable_extensions` → `0005_unit_conversion_invariants`
-  (additive, tested down paths), the advisory-locked migrator, worker/scheduler
+- **Persistence core + deployment foundation (committed):** Drizzle schema,
+  migrations `0000_enable_extensions` → `0009` (additive, tested down paths), the
+  advisory-locked migrator, worker/scheduler
   stubs and the `infra/` Terraform scaffold validated offline. Not applied.
 - **Not yet built:** business slices 5+; the deferred tables
   (workforce, integrations, competitor, AI, sales, procurement, production,
@@ -146,12 +163,13 @@ history + landed cost) is committed; slice 5 (recipes) is next.
 ## Next up (prioritised)
 
 `docs/BUILD_ROADMAP.md` is the ordered execution tracker for these slices (slice 0 and
-1a–1e, 2, 3 and 4 done; **slice 5 next**). The list below is the short narrative form.
+1a–1e, 2, 3, 4 and 5 done; **slice 6 next**). The list below is the short narrative form.
 
-1. **Slice 4 — receipt + price history + landed cost** — finish, verify, review and
-   commit the in-flight work. See "Resume here".
-2. **Slice 5 — recipes / sub-recipes / version / yield / allergens** — per
-   `docs/BUILD_ROADMAP.md` (`CALCULATION_CONTRACT.md` §6).
+1. **Reconcile the in-flight slice-5 reviews first** (qwen on §6 maths/cost
+   precedence; minimax on the migration/schema) — apply accepted fixes or record
+   declines, as a small follow-up commit if needed.
+2. **Slice 6 — operating costs + labour + allocation** (`DEC-047`/`DEC-048`;
+   `CALCULATION_CONTRACT.md` §7, §9). See "Resume here".
 3. **Deployment foundation — scaffolded and validated offline (committed); not
    applied.** `infra/` Terraform (project, database, spaces, networking,
    app-platform, monitoring, dns) + the App Platform app spec are done, and the
@@ -187,7 +205,26 @@ history + landed cost) is committed; slice 5 (recipes) is next.
     does not match the item is guarded only in the application until those FKs
     are added — make them composite and validate per the runbook's
     `NOT VALID` → `VALIDATE` pattern; the `effective_to = effective_from` empty
-    window is allowed by `DEC-052`).
+    window is allowed by `DEC-052`);
+  - `DEC-054` open policy points: deleting a recipe version cascades
+    `recipe_allergen` (allergen history is dropped before any audit) and a zero
+    `current_cost` is accepted for an item — both need a policy decision; and
+    cross-organization referential integrity on the recipe FKs stays
+    application-guarded until the composite-FK/trigger invariants land;
+- Surfaced by slice 5 (`841da96`, deliberate ambiguities left for a decision —
+  also tracked in `docs/BUILD_ROADMAP.md` §5; do not resolve silently):
+  1. allergen roll-up from sub-recipes into the parent recipe is not implemented;
+  2. yield loss is applied per line and then once at recipe level, as §6 literally
+     states; a batch-level alternative would change rounding;
+  3. a same-instant tie between cost sources is rejected as ambiguous (no silent
+     precedence, in the spirit of `DEC-050`);
+  4. allergens are per recipe version, as `DATA_DICTIONARY` §3 keys them;
+  5. `recipe_version` quantities carry no unit and are treated as the output item's
+     base unit;
+  6. `yield_rate` is derived and persisted; it is never accepted as input;
+  7. `recipe_version_no_overlap` is ungated, so two draft versions of one recipe
+     cannot overlap in time;
+  8. `planned_output_qty` is stored but unused by the §6 formula.
 - `DEC-049` is **closed** (2026-09-19): the drizzle-orm 0.45.2 /
   drizzle-kit 0.31.10 upgrade is committed (`cc86f13`) and `npm audit --omit=dev`
   reports 0; it is no longer an open security regression.
@@ -276,14 +313,14 @@ and Spaces credentials via `-backend-config` / `AWS_ACCESS_KEY_ID` +
 ## Reversibility
 
 - Revert any commit with `git revert <sha>`; no destructive git operations.
-- **Everything through `e3706c0` is committed** (slice 4 included, with migrations
-  `0006`–`0008` and additive down paths); `git revert` any commit, or discard the
-  working tree if a future slice is in flight.
+- **Everything through `13a29b7` is committed** (slices 4 and 5 included, with
+  migrations `0006`–`0009` and additive down paths); `git revert` any commit, or discard
+  the working tree if a future slice is in flight.
 - The `infra/` scaffold, runtime stubs and persistence core are committed; revert
   them with `git revert` if needed. **No cloud resource was created — only offline
   `fmt`/`validate`/`plan` ran, never `apply`; no Terraform state exists, and
   nothing has been applied to DigitalOcean.**
-- Migrations 0000–0005 are additive with tested down paths. While the database is
+- Migrations 0000–0009 are additive with tested down paths. While the database is
   empty the tested recovery is `DROP SCHEMA public CASCADE; DROP SCHEMA drizzle
 CASCADE; CREATE SCHEMA public; npm run db:migrate` (see the runbook). Once data
   exists, migrations must be additive (expand → migrate → contract) with a tested
@@ -292,6 +329,48 @@ CASCADE; CREATE SCHEMA public; npm run db:migrate` (see the runbook). Once data
   (`DEC-015`).
 
 ## Work log (append-only, newest first)
+
+### 2026-09-19 — Slices 4 review fixes and slice 5 recipes committed (`e3706c0`, `841da96`); DEC-052; handoff updated
+
+Two atomic commits on `main` since the last handoff update (which recorded HEAD
+`52aaad8`/the slice 4 status; the tree is clean at HEAD `841da96`):
+
+- **`e3706c0` — slice 4 review fixes.** `computeLandedCost` now throws on a negative
+  net pack price; an exact-HALF_UP test was added (`0.2469 / 2 = 0.12345 → 0.1235`);
+  the receipt audit payload carries `gross_total`; a same-timestamp price test covers
+  the half-open window case; migration `0007` (hand-written, the
+  `goods_receipt_line_accept_qty_guard` BEFORE INSERT/UPDATE trigger guarding a
+  zero-accepted line on an accepted receipt, since a PostgreSQL `CHECK` cannot read
+  the parent row); migration `0008` relaxes
+  `supplier_price_effective_range_check` from `>` to `>=` so half-open empty windows
+  are allowed. Recorded as **`DEC-052`** (accepted in `12_OPEN_DECISIONS.md`).
+- **`841da96` — slice 5 recipes / sub-recipes / version / yield / allergens.** The
+  recipe tables already existed from the slice-0 core (`recipe`, `recipe_version`,
+  `recipe_line`, `recipe_version_no_overlap` in `0002`), so migration `0009` adds
+  only `allergen` and `recipe_allergen` plus the `ALLERGEN_SOURCE` vocabulary.
+  Domain adds the `CALCULATION_CONTRACT.md` §6 maths (`usableYieldRate`,
+  `requiredPurchaseQuantity`, `lineCost`, `computeRecipeCost`) with HALF_UP at
+  B0/B2/B3, recipe-version state/effective-dating helpers, and a sub-recipe cycle
+  check. Application adds `registerRecipe`, `registerAllergen`,
+  `registerRecipeVersion`, `loadRecipeVersionAsOf` and `computeRecipeCost` with the
+  `DEC-047` cost-source precedence; persistence adds the recipe/allergen
+  repositories.
+
+Verified: **396 tests** with `DATABASE_URL`, **327 passed / 69 skipped** without it;
+lint/typecheck/build/format/db:generate clean; the migration rehearsal applied
+`0000–0009` (43 tables), with a no-op re-run rehearsed and the down path rehearsed.
+
+Adversarial reviews: the two slice-5 reviews (`reviewer-qwen` on the §6 maths and
+cost-source precedence, `reviewer-minimax` on the migration/schema) were **in flight
+when `841da96` was committed** — if any finding is still unreconciled, reconcile it
+first at the start of the next session (see "Resume here"). **`DEC-052`** was the only
+new decision; slice 5 left **eight deliberate ambiguities** for the owner, now tracked
+under "Open decisions / inputs" and in `docs/BUILD_ROADMAP.md` §5.
+
+Rollback: both commits are independently revertible (`git revert e3706c0` would
+remove the slice 4 fixes and migrations 0007/0008 together with the code; `git
+revert 841da96` the slice 5 code; migrations are additive with rehearsed down
+paths — see "Reversibility").
 
 ### 2026-09-19 — Auth slices 1b-iii→1e, master data (2–3), UI tokens, decision briefs, drizzle upgrade
 

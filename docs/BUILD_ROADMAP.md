@@ -13,9 +13,10 @@ This file is **updated at the end of every slice** — statuses and the "current
 line move with the work; `CONTEXT.md` keeps the narrative handoff and the immediate
 `Resume here` section.
 
-**Current position:** slice 0 `done`; auth slices 1a–1e, slice 2, slice 3 and slice 4
-`done` (including its review fixes, HEAD `e3706c0` on `main`); **slice 5 (recipes) is
-next** per `CONTEXT.md`.
+**Current position:** slice 0 `done`; auth slices 1a–1e, slices 2, 3, 4 and 5
+`done` (slice 4 including its review fixes; HEAD `841da96` on `main`); **slice 6
+(operating costs + labour + allocation) is next** per `CONTEXT.md`. The two slice-5
+adversarial reviews were in flight at commit time — reconcile before slice 6.
 
 ## 2. The execution loop (per slice)
 
@@ -72,7 +73,7 @@ Pause the loop and raise to the owner, recording it in `CONTEXT.md`, when any of
   approval in `DEC-015`, a named credentials owner, and a documented, tested rollback
   (`AGENTS.md` Rule 2). Never perform it without both.
 - **A decision would have to be invented.** *Needed from owner:* append the decision to
-  `12_OPEN_DECISIONS.md` (next id `DEC-052`) — never resolve accounting, tax, valuation,
+  `12_OPEN_DECISIONS.md` (next id `DEC-055`) — never resolve accounting, tax, valuation,
   privacy or system-of-record ambiguity in code (`13_AGENT_BUILD_BRIEF.md`).
 - **Slice budget reached.** The session has completed its agreed slice budget. *Needed from
   owner:* confirm the next slice (or that work pauses); hand off via `CONTEXT.md`.
@@ -96,7 +97,7 @@ sequence). Requirement IDs are from `11_REQUIREMENTS_CATALOG.md`; decision IDs f
 | 2 | Units & catalog value objects (decimal money/quantity) | P1 / epic 2 | `FND-003`, `PROC-001`; `DEC-030` | 1 | none | done |
 | 3 | Item + supplier pack + conversion + price | P1 / epic 2 | `PROC-001`–`005`, `PROC-008`, `COST-010`, `FND-008`, `FND-009`; `DEC-021`, `DEC-030`, `DEC-041`, `DEC-044`, `DEC-046` | 2 | none — I4/I6 data gates real values | done |
 | 4 | Receipt + price history + landed cost | P1 / epic 3 | `PROC-002`–`005`, `PROC-008`, `COST-010`, `COST-012`; `DEC-047`; `CALCULATION_CONTRACT.md` §5 | 3 | none — I4 data gates real values | done |
-| 5 | Recipes / sub-recipes / version / yield / allergens | P1 / epic 4 | `COST-001`, `COST-002`, `PROD-005`; `DEC-005`, `DEC-030`, `DEC-036`; `CALCULATION_CONTRACT.md` §6 | 3 | none — I5 data gates real recipes | todo |
+| 5 | Recipes / sub-recipes / version / yield / allergens | P1 / epic 4 | `COST-001`, `COST-002`, `PROD-005`; `DEC-005`, `DEC-030`, `DEC-036`; `CALCULATION_CONTRACT.md` §6 | 3 | none — I5 data gates real recipes | done |
 | 6 | Operating costs + labour + allocation | P1 / epic 5 | `COST-004`, `COST-006`, `COST-007`, `COST-011`, `COST-013`; `DEC-006`, `DEC-007`, `DEC-048`; `CALCULATION_CONTRACT.md` §7, §9 | 3 | none — I8 remainder + I9 ruling confirm loaded rates | todo |
 | 7 | Cost card + snapshots + price scenario + approval | P1 / epic 6 | `COST-005`, `COST-008`, `COST-009`, `PRICE-001`–`005`; `DEC-021`–`024`; `CALCULATION_CONTRACT.md`; `GOLDEN_FIXTURES.md` | 4, 5, 6 | six golden fixtures signed (A5) before "verified" | todo |
 | 8 | Stock ledger + balances + lots / storage | P1–P2 / epic 7 | `INV-001`–`003`, `INV-008`, `PROD-002`, `WASTE-002`, `COST-008`; `DEC-008`, `DEC-009`, `DEC-010`, `DEC-028`, `DEC-034`; `ADR-0005` (**Proposed**) | 3, 4 | `ADR-0005` acceptance (finance) | blocked (owner) |
@@ -142,6 +143,21 @@ dates assigned):
 - **Real DO credentials + provisioned Spaces state bucket + single-runner apply** —
   `docs/runbooks/deployment.md` ("Database privilege bootstrap", state-bucket bootstrap,
   proxy/dry-run notes); includes the **legacy instance-slug check** before apply.
+- **Slice-5 recipe ambiguities (eight, deliberate, from `841da96`)** — record each
+  owner resolution in `12_OPEN_DECISIONS.md` (next free id `DEC-053`+); do not
+  resolve silently:
+  1. allergen roll-up from sub-recipes into the parent recipe is not implemented;
+  2. yield loss is applied per line and then once at recipe level, as §6 literally
+     states; a batch-level alternative would change rounding;
+  3. a same-instant tie between cost sources is rejected as ambiguous (no silent
+     precedence, in the spirit of `DEC-050`);
+  4. allergens are per recipe version, as `DATA_DICTIONARY` §3 keys them;
+  5. `recipe_version` quantities carry no unit and are treated as the output item's
+     base unit;
+  6. `yield_rate` is derived and persisted; it is never accepted as input;
+  7. `recipe_version_no_overlap` is ungated, so two draft versions of one recipe
+     cannot overlap in time;
+  8. `planned_output_qty` is stored but unused by the §6 formula.
 - **Unit `m` vs the missing `length` dimension** — a dimension-vocabulary mismatch in
   `schemas/domain-enums.yaml` surfaced by slice 3; owner/TECH to resolve (FND-003).
 - **`numeric(19,6)` digit cap in `packages/domain/src/decimal.ts`** — the domain decimal
