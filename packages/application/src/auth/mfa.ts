@@ -1,4 +1,3 @@
-import { ConfigError } from "@aquarela/config";
 import {
   AUTH_ERROR_GENERIC,
   computeLockout,
@@ -75,7 +74,16 @@ export async function verifyMfa(
 
     const key = deps.totpEncryptionKey;
     if (key === undefined) {
-      throw new ConfigError("TOTP_SECRET_ENCRYPTION_KEY is required to verify MFA");
+      // A missing key is a server misconfiguration, but throwing here would turn
+      // it into a 500 (DoS) and reveal that MFA is enrolled. Fail closed with the
+      // generic error and an audit row instead; boot-time config validation in
+      // `packages/config` is what catches the misconfiguration.
+      await audit(tx, {
+        ...context,
+        action: AUTH_AUDIT_ACTIONS.mfaFailed,
+        reason: "config_missing",
+      });
+      return generic;
     }
 
     let secret: string;

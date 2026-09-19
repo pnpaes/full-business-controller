@@ -17,11 +17,20 @@ export const envSchema = z.object({
     .refine((value) => /^postgres(ql)?:\/\//.test(value), {
       message: "must be a postgres:// or postgresql:// connection string",
     }),
-  SESSION_TTL_MINUTES: z.coerce.number().int().positive().default(480),
-  PASSWORD_RESET_TTL_MINUTES: z.coerce.number().int().positive().default(30),
-  // Base64 32-byte key sealing TOTP secrets at rest. Optional here so worker and
-  // scheduler boot without it; auth MFA operations fail loudly when it is absent.
-  TOTP_SECRET_ENCRYPTION_KEY: z.string().min(1).optional(),
+  // Bounded so a misconfiguration cannot create 694-day sessions or reset
+  // windows; 1440 minutes (24 h) is well above any operational need.
+  SESSION_TTL_MINUTES: z.coerce.number().int().positive().max(1440).default(480),
+  PASSWORD_RESET_TTL_MINUTES: z.coerce.number().int().positive().max(1440).default(30),
+  // Base64 32-byte key sealing TOTP secrets at rest (AES-256). Optional here so
+  // worker and scheduler boot without it; the length is enforced at config load
+  // so a wrong-size key fails fast instead of at the first MFA operation.
+  TOTP_SECRET_ENCRYPTION_KEY: z
+    .string()
+    .min(1)
+    .refine((value) => Buffer.from(value, "base64").length === 32, {
+      message: "must be a base64-encoded 32-byte key",
+    })
+    .optional(),
 });
 
 export type AppConfig = Readonly<z.infer<typeof envSchema>>;

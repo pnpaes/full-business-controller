@@ -249,14 +249,22 @@ describe("verifyMfa", () => {
     expect(failed).toBeDefined();
   });
 
-  it("fails closed without the encryption key", async () => {
+  it("fails closed without the encryption key and audits the misconfiguration", async () => {
     const store = new FakeAuthStore();
     const user = await userWithPassword(store, "correct-password");
     await enrolTotp(store, user);
 
-    await expect(
-      verifyMfa(store, authDeps(), { organizationId: ORG, userId: user.id, token: "123456" }),
-    ).rejects.toThrow("TOTP_SECRET_ENCRYPTION_KEY");
+    const result = await verifyMfa(store, authDeps(), {
+      organizationId: ORG,
+      userId: user.id,
+      token: "123456",
+    });
+
+    expect(result).toEqual({ ok: false, error: AUTH_ERROR_GENERIC });
+    const failed = store.audits.find(
+      (entry) => entry.action === AUTH_AUDIT_ACTIONS.mfaFailed && entry.reason === "config_missing",
+    );
+    expect(failed).toBeDefined();
   });
 });
 

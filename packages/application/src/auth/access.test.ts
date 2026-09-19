@@ -1,4 +1,4 @@
-import { AUTH_ERROR_GENERIC } from "@aquarela/domain";
+import { AUTH_ERROR_GENERIC, DomainError } from "@aquarela/domain";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -37,7 +37,14 @@ describe("loadUserAccess / isAuthorizedFor", () => {
     expect([...access.locationIds].sort()).toEqual(["loc-1", "loc-2"]);
     expect(isAuthorizedFor(access, { role: "owner" })).toBe(true);
     expect(isAuthorizedFor(access, { role: "owner", locationId: "loc-2" })).toBe(true);
-    expect(isAuthorizedFor(access, {})).toBe(true);
+  });
+
+  it("fails closed and loudly for an empty requirement", async () => {
+    const store = new FakeAuthStore();
+    const user = await userWithPassword(store, "correct-password");
+    const access = await loadUserAccess(store, user.id);
+
+    expect(() => isAuthorizedFor(access, {})).toThrow(DomainError);
   });
 
   it("denies a missing role or an out-of-scope location", async () => {

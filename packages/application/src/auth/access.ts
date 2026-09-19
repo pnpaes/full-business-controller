@@ -1,3 +1,5 @@
+import { DomainError } from "@aquarela/domain";
+
 import { AUTH_AUDIT_ACTIONS } from "./actions";
 import { audit } from "./audit";
 import type { AuthRoleAssignment, AuthStore, RequestContext } from "./types";
@@ -36,6 +38,11 @@ export async function loadUserAccess(store: AuthStore, userId: string): Promise<
  * from data.
  */
 export function isAuthorizedFor(access: UserAccess, requirement: AccessRequirement): boolean {
+  if (requirement.role === undefined && requirement.locationId === undefined) {
+    // Fail closed and loudly: an empty requirement is a programming error, so a
+    // missing requirement must never silently mean "everyone is authorized".
+    throw new DomainError("authorization requirement must specify a role or a location");
+  }
   if (requirement.role !== undefined && !access.roles.includes(requirement.role)) {
     return false;
   }
