@@ -8,6 +8,8 @@ export {
 } from "./allocation";
 export type { AllocatedUnitOverheadOptions, AllocationFallback } from "./allocation";
 export * from "./auth";
+export { computeCostCardTotals } from "./cost-card";
+export type { CostCardCompositionInput, CostCardTotals } from "./cost-card";
 export { DomainError } from "./errors";
 export { normalizeCurrency } from "./currency";
 export { computeLandedCost, type LandedCost, type LandedCostInput } from "./landed-cost";
@@ -26,6 +28,28 @@ export type {
   LoadedRateComponents,
 } from "./labour";
 export { MONEY_SCALE, Money } from "./money";
+export {
+  PRESENTED_MONEY_SCALE,
+  TAX_BASES,
+  TAX_RATE_SCALE,
+  breakEvenUnits,
+  channelVariableCost,
+  contributionMarginPct,
+  grossFromNet,
+  includedTax,
+  netFromGross,
+  presentedMoney,
+  requiredNetPrice,
+  unitContribution,
+  unitNetSales,
+  unitVariableCost,
+} from "./pricing";
+export type {
+  ChannelVariableCostInput,
+  TaxBasis,
+  UnitNetSalesInput,
+  UnitVariableCostInput,
+} from "./pricing";
 export { QUANTITY_SCALE, Quantity } from "./quantity";
 export {
   RECIPE_VERSION_STATES,

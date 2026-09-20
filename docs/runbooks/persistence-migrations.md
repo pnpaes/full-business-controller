@@ -255,6 +255,22 @@ only, so the down file is an explicit operator action, not an automatic one.
   `psql "$DATABASE_URL" -f packages/persistence/drizzle/0013_labor_rate_lookup_index_down.sql`.
   Apply 0013's down **before** 0011's down: its index lives on `labor_rate`,
   which 0011's down drops.
+- **0014 adds the slice-7 pricing columns and the snapshot-component vocabulary
+  and follows the down convention:** `0014_cost_card_pricing.sql` is generated
+  DDL that adds the four `price_scenario` columns deferred from the Phase 1–2
+  core (`target_contribution_pct numeric(9,6)`, `volume_assumption
+  numeric(19,6)`, `fee_breakdown jsonb not null default '{}'`, `outcome jsonb
+  not null default '{}'` — `DATA_DICTIONARY` §price_scenario) and the
+  `snapshot_component_kind_check` on `snapshot_component.component_kind`
+  (`SNAPSHOT_COMPONENT_KIND`), closing the controlled-vocabulary obligation
+  tracked below. It adds no table.
+  `0014_cost_card_pricing_down.sql` drops the four columns and the check inside
+  one `BEGIN;`/`COMMIT;`, with `DROP COLUMN IF EXISTS`/`DROP CONSTRAINT IF
+  EXISTS` so a half-applied manual run cannot wedge. Unlike 0013's no-row down,
+  it is **destructive** — the four columns carry data — so run it only while
+  that scenario data need not be preserved (AGENTS.md Rule 2). Apply it manually
+  with
+  `psql "$DATABASE_URL" -f packages/persistence/drizzle/0014_cost_card_pricing_down.sql`.
 
 **Re-applying after a manual down:** drizzle-kit tracks applied migrations in
 `drizzle.__drizzle_migrations`, not by comparing the schema, so a plain
@@ -266,13 +282,14 @@ for 0003, `… = 1789850858806` for 0004, `… = 1789851925634` for 0005,
 `… = 1789853260355` for 0006, `… = 1789853887846` for 0007 and
 `… = 1789853918031` for 0008, `… = 1789854468899` for 0009,
 `… = 1789855382064` for 0010, `… = 1789862475550` for 0011 and
-`… = 1789862630158` for 0012, `… = 1789864504597` for 0013, then
+`… = 1789862630158` for 0012, `… = 1789864504597` for 0013,
+`… = 1789866859108` for 0014, then
 `npm run db:migrate` (0003 verified 2026-09-19; 0005 rehearsed in the slice-3
 review follow-up; 0006 rehearsed with the slice-4 receiving work; 0007 and
 0008 rehearsed with the slice-4 review follow-up; 0009 rehearsed with the
 slice-5 recipe work; 0010 rehearsed with the slice-5 review follow-up; 0011
 rehearsed with the slice-6 costing work; 0013 rehearsed with the slice-6
-code-review follow-up).
+code-review follow-up; 0014 rehearsed with the slice-7 pricing work).
 A **full 0011 down** drops the tables the three 0012 constraints live on, so its
 replay must clear **both** ledger rows, not just 0011's:
 `DELETE FROM drizzle.__drizzle_migrations WHERE created_at IN (1789862475550, 1789862630158);`
@@ -294,8 +311,13 @@ implements it:
 - `stock_movement.source_id` needs a **per-`source_type` validation trigger**
   (the draft's "validated by trigger per slice"); the check constraint today
   only enumerates allowed `source_type` values.
-- `snapshot_component.component_kind` needs a **controlled vocabulary**
-  (`vocabularies.ts` + check constraint) to be defined in the costing slice.
+- ~~`snapshot_component.component_kind` needs a **controlled vocabulary**
+  (`vocabularies.ts` + check constraint) to be defined in the costing slice.~~
+  **Closed in `0014_cost_card_pricing.sql`:** `SNAPSHOT_COMPONENT_KIND`
+  (`vocabularies.ts`) is enforced by `snapshot_component_kind_check`. Its
+  `schemas/domain-enums.yaml` entry is still owned by the domain slice
+  (`vocabularies.test.ts` carries an explicit, self-clearing exemption until it
+  lands).
 - `stock_balance` is a **projection** whose only legitimate writer is the
   rebuild process. The database deliberately does not block writes to it
   (a rebuild must write it); the append-only ledger (`stock_movement`) is the
@@ -366,6 +388,7 @@ session will not serialise against each other.
 | 0011 | `0011_cost_allocation.sql` | Generated: the four slice-6 cost-allocation tables — `allocation_rule`, `cost_pool`, `labor_rate`, `operating_cost` — with their checks, FKs and the `allocation_rule_cost_pool_idx`, `cost_pool_organization_id_code_idx` and `operating_cost_lookup_idx` indexes. Down companion: `0011_cost_allocation_down.sql` (transactional `DROP TABLE IF EXISTS` in FK-safe order) |
 | 0012 | `0012_cost_allocation_invariants.sql` | Hand-written: the three FND-004 effective-dated exclusions drizzle-kit cannot express — `cost_pool_no_overlap` on `(organization_id, code)`, `labor_rate_no_overlap` on `(organization_id, cost_center_id, role_code)` and `allocation_rule_no_overlap` on `(cost_pool_id)`, each a `[)` `daterange`. `operating_cost` deliberately has no overlap exclusion (concurrent overheads are legitimate). Down companion: `0012_cost_allocation_invariants_down.sql` (drops the three constraints) |
 | 0013 | `0013_labor_rate_lookup_index.sql` | Generated: adds `labor_rate_lookup_idx` on `(organization_id, cost_center_id, role_code, effective_from)`, covering the `findEffectiveLaborRate` as-of lookup. Down companion: `0013_labor_rate_lookup_index_down.sql` (drops the index) |
+| 0014 | `0014_cost_card_pricing.sql` | Generated: adds the four slice-7 `price_scenario` columns (`target_contribution_pct` numeric(9,6), `volume_assumption` numeric(19,6), `fee_breakdown` jsonb not null default `'{}'`, `outcome` jsonb not null default `'{}'`) and `snapshot_component_kind_check` on `snapshot_component.component_kind`. No table. Down companion: `0014_cost_card_pricing_down.sql` (drops the four columns and the constraint; destructive — the columns carry data) |
 
 Order matters: extensions before DDL that calls `gen_random_uuid()`, and before
 the exclusion constraints. Verify with:
@@ -395,13 +418,18 @@ DATABASE_URL=postgres://aquarela:aquarela@localhost:5432/aquarela npm run db:mig
 `public` alone leaves the ledger intact, so `db:migrate` reports success while
 restoring nothing. `DROP SCHEMA drizzle CASCADE` clears the ledger so all
 migrations replay from 0000. Verified: after this sequence `db:migrate`
-re-applies 0000–0012 and the database has all 47 tables plus both extensions
+re-applies 0000–0014 and the database has all 47 tables plus both extensions
 (0004 adds the four slice-3 master-data tables; 0006 adds the two slice-4
 receiving tables; 0007 adds the `goods_receipt_line` guard trigger — no table;
 0008 relaxes the `supplier_price` range check — no table; 0009 adds the two
 slice-5 allergen tables; 0010 replaces the `recipe_version` exclusion
 constraint — no table; 0011 adds the four slice-6 cost-allocation tables; 0012
-adds the three cost-allocation exclusion constraints — no table).
+adds the three cost-allocation exclusion constraints — no table; 0013 adds the
+`labor_rate` lookup index — no table; 0014 adds the four slice-7
+`price_scenario` columns and the `snapshot_component` kind check — no table).
+0013 and 0014 were added after this replay was verified; both are additive and
+table-count-neutral, and 0014's apply/re-run/down/re-apply was rehearsed on the
+local dev database 2026-09-20.
 
 Once real data exists, this path is no longer acceptable: use small atomic
 commits, expand → migrate → contract for schema changes, and a tested

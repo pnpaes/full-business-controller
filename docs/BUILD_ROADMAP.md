@@ -16,7 +16,7 @@ line move with the work; `CONTEXT.md` keeps the narrative handoff and the immedi
 **Current position:** slice 0 `done`; auth slices 1a–1e and slices 2, 3, 4, 5 and 6
 `done` (slice 4 including its review fixes; the slice-5 adversarial reviews were
 reconciled in `13a29b7`); **slice 7 (cost card + snapshots + price scenario +
-approval) is next** per `CONTEXT.md`.
+approval) is in progress (uncommitted)**; its open points are recorded in §5.
 
 ## 2. The execution loop (per slice)
 
@@ -176,7 +176,64 @@ dates assigned):
      equipment depreciation is entered as an `operating_cost` for now.
   5. Owner imputation and the cash view are implemented (`economicView` = paid +
      imputed owner labour at the effective role rate; `cashView` = paid only),
-     pending the I8/I9 inputs.
+      pending the I8/I9 inputs.
+- **Slice-7 cost-card / pricing open points (deliberate; recorded not decided)** —
+  record each owner resolution in `12_OPEN_DECISIONS.md` (next free id `DEC-061`);
+  do not resolve silently:
+  1. `target_contribution_pct` semantics — `CALCULATION_CONTRACT.md` §10 solves
+     `required_net_price = unit_variable_cost / (1 − target_contribution_pct)`
+     (contribution over net price), but `DEC-021`/the UI say "target margin"; the
+     stored fraction vs percentage and display scale are not pinned. owner/FIN.
+  2. Gross-price fee solving — §10 says "solve algebraically or by bounded
+     iteration" but pins no algorithm, iteration cap, convergence criterion or
+     tolerance, and rejection rule 7 does not enumerate the unattainable fee
+     layouts. owner/TECH.
+  3. Tax → net-price conversion — §2/§8 give `unit_net_sales = gross −
+     included_tax` and the fixture uses `gross / (1 + rate)`, but the
+     derivation/rounding of `included_tax` from `tax_basis` + `rate_pct` is not
+     formally defined (same gap noted in `landed-cost.ts`). owner/FIN.
+  4. Break-even — `04_CALCULATIONS.md` defines it with a `fixed_cost` and a
+     "weighted_average_unit_contribution" from the sales mix, but no rule names
+     which fixed cost a single scenario uses or how the mix is weighted for one
+     product. owner/FIN.
+  5. "Expected monthly effect" and "sensitivity" — required scenario outputs
+     with no formula, axes or grain. owner/FIN.
+  6. "Price change in NOK and percent" — required output with no
+     boundary/rounding or n/a-on-zero-baseline rule. owner/FIN.
+  7. Contribution before vs after labour — both are mandatory outputs but which
+     one drives the target/margin/approval is not pinned. owner/FIN.
+  8. `price_version` is not created (deferred) — PRICE-002 ("approve price
+     versions by product/location/channel/effective date") and PRICE-003
+     ("prevent unapproved scenarios from becoming effective prices") are only
+     partially served by scenario state; blocked pending the `price_version`
+     table and its "no overlap per scope" key. owner/TECH.
+  9. The `approval` platform table (`DATA_DICTIONARY.md` §9, FND-005) does **not**
+     exist — `packages/persistence/src/schema/platform.ts` has only
+     `outbox_event` and `audit_event`; a `CONTEXT.md` claim that approval
+     platform tables exist is incorrect. Model cost-card/scenario approval via
+     state columns + `audit_event` for now, or add the table later. owner/TECH.
+  10. Cost-card version chain/effective dating — `cost_card` has no `version_no`
+      or effective dates and no uniqueness in scope; the supersede rule in
+      `DEC-060` is provisional until the owner defines the chain. owner/FIN.
+  11. "Required item" for §3's not-approvable rule ("no cost source for a
+      required item") is undefined (which recipe lines/sub-recipes/packaging
+      count). owner/FIN.
+  12. Per-item `cost_selection_policy` override (`DEC-021` "per-item override
+      allowed") is not modelled; the policy lives only on `cost_card`/
+      `calculation_snapshot`. owner/TECH.
+  13. `calculation_snapshot.tax_rule_version` in `DATA_DICTIONARY.md` vs the
+      implemented `tax_rule_snapshot jsonb` column: version reference vs full
+      JSON snapshot is unresolved. owner/TECH.
+  14. `calculation_snapshot.totals` and `snapshot_component.provenance` jsonb
+      shapes are unenumerated. owner/TECH.
+  15. Golden-fixture sign-off — the six fixtures are still unsigned and
+      `tests/fixtures/` does not exist; the storage format of the signed record
+      and how "verified" is represented in code are unpinned. The gate stands:
+      no cost is "verified" before owner sign-off. owner/FIN.
+  16. (Standing, from earlier slices) the unit `m` vs missing `length` dimension,
+      and the missing `numeric(19,6)` digit cap in
+      `packages/domain/src/decimal.ts` — tracked in the standing bullets
+      below. owner/TECH.
 - **Unit `m` vs the missing `length` dimension** — a dimension-vocabulary mismatch in
   `schemas/domain-enums.yaml` surfaced by slice 3; owner/TECH to resolve (FND-003).
 - **`numeric(19,6)` digit cap in `packages/domain/src/decimal.ts`** — the domain decimal

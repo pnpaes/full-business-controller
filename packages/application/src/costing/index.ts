@@ -3,7 +3,45 @@ export { allocateCostPool } from "./allocate-cost-pool";
 export type { AllocateCostPoolInput, AllocateCostPoolResult } from "./allocate-cost-pool";
 export { computeLabourCost } from "./compute-labour-cost";
 export type { ComputeLabourCostInput, ComputeLabourCostResult } from "./compute-labour-cost";
+export { COST_CARD_AUDIT_ACTIONS, approveCostCard, calculateCostCard } from "./cost-card";
+export type {
+  ApproveCostCardInput,
+  ApproveCostCardResult,
+  CalculateCostCardInput,
+  CalculateCostCardResult,
+  CostCardComponentInput,
+} from "./cost-card";
+export { createPostgresCostCardStore } from "./cost-card-postgres-store";
+export type {
+  CalculationSnapshotRecord,
+  CostCardRecord,
+  CostCardStore,
+  NewCalculationSnapshotRecord,
+  NewCostCardRecord,
+  NewSnapshotComponentRecord,
+  SnapshotComponentRecord,
+} from "./cost-card-types";
 export { createPostgresCostingStore } from "./postgres-store";
+export {
+  PRICE_SCENARIO_AUDIT_ACTIONS,
+  SNAPSHOT_ROUNDING,
+  approvePriceScenario,
+  calculatePriceScenario,
+} from "./price-scenario";
+export type {
+  ApprovePriceScenarioInput,
+  ApprovePriceScenarioResult,
+  CalculatePriceScenarioInput,
+  CalculatePriceScenarioResult,
+  PriceScenarioFeeInput,
+  PriceScenarioOutcome,
+} from "./price-scenario";
+export { createPostgresPriceScenarioStore } from "./price-scenario-postgres-store";
+export type {
+  NewPriceScenarioRecord,
+  PriceScenarioRecord,
+  PriceScenarioStore,
+} from "./price-scenario-types";
 export { registerAllocationRule } from "./register-allocation-rule";
 export type {
   RegisterAllocationRuleInput,

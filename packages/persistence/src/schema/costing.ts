@@ -12,6 +12,7 @@ import {
   orgId,
   quantity,
   rangeCheck,
+  rate,
   tstz,
   uuidPk,
 } from "./columns";
@@ -30,6 +31,7 @@ import {
   ROUNDING_BOUNDARY,
   ROUNDING_METHOD,
   SCOPE_TYPE,
+  SNAPSHOT_COMPONENT_KIND,
   TAX_BASIS,
 } from "./vocabularies";
 
@@ -45,6 +47,12 @@ export const priceScenario = pgTable(
     channelId: uuid("channel_id").references(() => channel.id),
     grossPrice: money("gross_price"),
     netPrice: money("net_price"),
+    // Deferred from the Phase 1-2 core (`DATA_DICTIONARY` §price_scenario) and
+    // added with the slice-7 pricing work.
+    targetContributionPct: rate("target_contribution_pct"),
+    volumeAssumption: quantity("volume_assumption"),
+    feeBreakdown: jsonObject("fee_breakdown"),
+    outcome: jsonObject("outcome"),
     state: text("state").notNull().default("draft"),
     createdAt: tstz("created_at").notNull().defaultNow(),
   },
@@ -126,6 +134,7 @@ export const calculationSnapshot = pgTable(
       sql`jsonb_typeof(${t.roundingScales}) = 'object'`,
     ),
     check("calculation_snapshot_totals_check", sql`jsonb_typeof(${t.totals}) = 'object'`),
+    index("calculation_snapshot_cost_card_idx").on(t.costCardId, t.createdAt),
   ],
 );
 
@@ -146,6 +155,7 @@ export const snapshotComponent = pgTable(
     provenance: jsonObject("provenance"),
   },
   (t) => [
+    check("snapshot_component_kind_check", enumCheck(t.componentKind, SNAPSHOT_COMPONENT_KIND)),
     check(
       "snapshot_component_rounding_boundary_check",
       enumCheck(t.roundingBoundary, ROUNDING_BOUNDARY),

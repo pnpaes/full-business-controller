@@ -99,6 +99,27 @@
       "when": 1789864504597,
       "tag": "0013_labor_rate_lookup_index",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1789866859108,
+      "tag": "0014_cost_card_pricing",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1789867750326,
+      "tag": "0015_calculation_snapshot_cost_card_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1789867797172,
+      "tag": "0016_cost_card_approved_scope",
+      "breakpoints": true
     }
   ]
 }

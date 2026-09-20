@@ -95,6 +95,19 @@ export const ROUNDING_METHOD = ["HALF_UP", "HALF_EVEN"] as const;
 
 export const ROUNDING_BOUNDARY = ["B0", "B1", "B2", "B3", "B4"] as const;
 
+// `snapshot_component.component_kind`: which cost layer a stored intermediate
+// belongs to. Defined by the slice-7 persistence work to close the runbook's
+// "controlled vocabulary" obligation for the column; the matching
+// `schemas/domain-enums.yaml` entry is owned by the domain slice.
+export const SNAPSHOT_COMPONENT_KIND = [
+  "ingredient",
+  "packaging",
+  "direct_labor",
+  "channel_variable",
+  "other_variable",
+  "allocated_overhead",
+] as const;
+
 export const COST_SELECTION_POLICY = [
   "latest_approved_price",
   "moving_weighted_average",

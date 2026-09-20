@@ -77,13 +77,34 @@ describe("vocabularies vs schemas/domain-enums.yaml", () => {
     expect(yamlEnums["allocation_driver"]).toHaveLength(11);
   });
 
+  // Exported vocabularies deliberately not (yet) in `schemas/domain-enums.yaml`.
+  // Currently empty: `SNAPSHOT_COMPONENT_KIND` was the last exemption and its
+  // yaml key (`snapshot_component_kind`) now exists, so the forward check below
+  // covers every exported vocabulary. The guard keeps this list from regrowing
+  // silently.
+  const YAML_ABSENT_VOCABULARIES: string[] = [];
+
   it("matches every exported vocabulary that has a yaml key", () => {
     for (const [name, values] of vocabEntries) {
+      if (YAML_ABSENT_VOCABULARIES.includes(name)) continue;
       const expected = yamlEnums[name.toLowerCase()];
       expect(expected, `${name} has no schemas/domain-enums.yaml key`).toBeDefined();
       expect([...values].sort(), `${name} drifted from the yaml`).toEqual(
         [...(expected ?? [])].sort(),
       );
+    }
+  });
+
+  it("keeps no exported vocabulary exempt from the yaml guard", () => {
+    expect(
+      YAML_ABSENT_VOCABULARIES,
+      "every exported vocabulary must have a schemas/domain-enums.yaml key",
+    ).toEqual([]);
+    for (const [name] of vocabEntries) {
+      expect(
+        yamlEnums[name.toLowerCase()],
+        `${name} has no schemas/domain-enums.yaml key`,
+      ).toBeDefined();
     }
   });
 

@@ -1,7 +1,17 @@
 import { randomUUID } from "node:crypto";
 
 import type { Database, DatabaseTransaction, NodeDatabase } from "../client";
-import { costCenter, item, location, organization, role, unit } from "../schema";
+import {
+  channel,
+  costCenter,
+  item,
+  location,
+  organization,
+  product,
+  productVariant,
+  role,
+  unit,
+} from "../schema";
 import { createUser, type NewUser, type User } from "./users";
 
 /**
@@ -65,6 +75,60 @@ export async function createTestLocation(
       organizationId,
       code: uniqueName("loc"),
       name: "Test Location",
+      ...overrides,
+    })
+    .returning();
+  return rows[0]!;
+}
+
+export async function createTestChannel(
+  db: Database,
+  organizationId: string,
+  overrides: Partial<typeof channel.$inferInsert> = {},
+): Promise<typeof channel.$inferSelect> {
+  const rows = await db
+    .insert(channel)
+    .values({
+      organizationId,
+      code: uniqueName("chan"),
+      name: "Test Channel",
+      ...overrides,
+    })
+    .returning();
+  return rows[0]!;
+}
+
+export async function createTestProduct(
+  db: Database,
+  organizationId: string,
+  overrides: Partial<typeof product.$inferInsert> = {},
+): Promise<typeof product.$inferSelect> {
+  const rows = await db
+    .insert(product)
+    .values({
+      organizationId,
+      code: uniqueName("prod"),
+      name: "Test Product",
+      ...overrides,
+    })
+    .returning();
+  return rows[0]!;
+}
+
+export async function createTestProductVariant(
+  db: Database,
+  organizationId: string,
+  productId: string,
+  overrides: Partial<typeof productVariant.$inferInsert> = {},
+): Promise<typeof productVariant.$inferSelect> {
+  const rows = await db
+    .insert(productVariant)
+    .values({
+      organizationId,
+      productId,
+      code: uniqueName("variant"),
+      sku: uniqueName("sku"),
+      name: "Test Variant",
       ...overrides,
     })
     .returning();

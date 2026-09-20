@@ -1,0 +1,1 @@
+CREATE INDEX "calculation_snapshot_cost_card_idx" ON "calculation_snapshot" USING btree ("cost_card_id","created_at");
