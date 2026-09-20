@@ -1,5 +1,5 @@
 import { createPostgresRecipeStore, getRecipe } from "@aquarela/application";
-import { DomainError } from "@aquarela/domain";
+import { DomainError, NotFoundError } from "@aquarela/domain";
 
 import { getDb } from "../../../../../lib/db";
 import { jsonError, jsonOk, mapErrors } from "../../../../../lib/http";
@@ -47,7 +47,7 @@ export async function GET(
       });
     } catch (error) {
       if (error instanceof DomainError) {
-        return jsonError(/not found/i.test(error.message) ? 404 : 400, error.message);
+        return jsonError(error instanceof NotFoundError ? 404 : 400, error.message);
       }
       throw error;
     }

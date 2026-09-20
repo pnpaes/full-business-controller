@@ -30,6 +30,7 @@ export const MAPPING_STATE_VIEW: Record<string, { tone: ImportTone; label: strin
   mapped: { tone: "success", label: "Mapped" },
   ignored: { tone: "info", label: "Ignored" },
   error: { tone: "danger", label: "Error" },
+  conflict: { tone: "danger", label: "Conflict" },
 };
 
 export function mappingStateView(state: string): { tone: ImportTone; label: string } {

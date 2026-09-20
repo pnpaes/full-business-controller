@@ -19,7 +19,8 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /**
  * Applies the SKU-first resolver to every staged row (`SALE-002`, `DEC-041`,
  * step 5). A `DEC-033` conflict is flagged and blocked — the row gets
- * `mapping_state = error` and is never remapped in place. Rows already ignored
+ * `mapping_state = conflict` (`error_code = mapping_conflict` retained as detail)
+ * and is never remapped in place. Rows already ignored
  * or carrying a validation error are skipped, so mapping cannot overwrite a
  * human decision. The run moves to `needs_review` while any row is unmapped or
  * in conflict, else `validated`.

@@ -7,7 +7,7 @@ import {
   type RecipeItemRecord,
   type RecipeStore,
 } from "@aquarela/application";
-import { DomainError, MONEY_SCALE, formatDecimal, parseDecimal, rescale } from "@aquarela/domain";
+import { MONEY_SCALE, NotFoundError, formatDecimal, parseDecimal, rescale } from "@aquarela/domain";
 import {
   Alert,
   Badge,
@@ -184,7 +184,7 @@ export default async function RecipeDetailPage({
   try {
     detail = await getRecipe(store, { organizationId, recipeId, asOf: new Date() });
   } catch (error) {
-    if (error instanceof DomainError && /not found/i.test(error.message)) {
+    if (error instanceof NotFoundError) {
       notFound();
     }
     throw error;
