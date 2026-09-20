@@ -70,6 +70,24 @@ export type {
   RecipeDependencyEdge,
   RecipeVersionState,
 } from "./recipe";
+export {
+  STOCK_QUANTITY_SCALE,
+  STOCK_VALUE_SCALE,
+  applyStockMovement,
+  applyStockMovementValue,
+  computeMovementValue,
+  deriveAverageUnitCost,
+  recomputeStockBalance,
+  reverseStockMovement,
+  revaluationGap,
+  wouldDriveNegative,
+} from "./stock";
+export type {
+  PostMovementInput,
+  StockBalanceSnapshot,
+  StockMovementValue,
+  StockPostingResult,
+} from "./stock";
 export { SupplierPack } from "./supplier-pack";
 export {
   ConversionGraph,
