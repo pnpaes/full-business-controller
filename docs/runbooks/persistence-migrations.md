@@ -72,8 +72,10 @@ exclusion constraints (`cost_pool_no_overlap`, `labor_rate_no_overlap`,
 validation of `stock_movement.source_id`) lives only in
 `0017_stock_ledger_invariants.sql`, and its **body is replaced** by
 `0020_slice9_counts_transfers_waste.sql` to also validate the slice-9
-`stock_count`, `transfer` and `waste_event` sources (the `goods_receipt` branch
-is kept; the remaining source types stay documented no-ops); the
+`stock_count`, `transfer` and `waste_event` sources and again by
+`0021_slice10_production.sql` to add the `production_batch` source (the
+`goods_receipt`/`stock_count`/`transfer`/`waste_event` branches are kept; the
+remaining source types stay documented no-ops); the
 `goods_receipt_line_accept_qty_guard` trigger/function (an accepted receipt's
 line must have `accepted_pack_qty > 0`; a plain CHECK cannot read the parent
 status) lives only in `0007_goods_receipt_line_checks.sql`; and the
@@ -97,15 +99,17 @@ them manually is invisible to the tool.
 > constraints, the state-gated `recipe_version_no_overlap`, the
 > `goods_receipt_line` guard, the three cost-allocation exclusion
 > constraints, the `cost_card_approved_scope_key` approval index and the
-> `stock_movement_source_guard` validation trigger (extended in `0020`). Those
+> `stock_movement_source_guard` validation trigger (extended in `0020` and
+> `0021`). Those
 > objects live only in
 > `0002_invariants.sql`, `0005_unit_conversion_invariants.sql`,
 > `0007_goods_receipt_line_checks.sql`,
 > `0010_recipe_version_draft_overlap.sql`,
 > `0012_cost_allocation_invariants.sql`,
 > `0016_cost_card_approved_scope.sql`,
-> `0017_stock_ledger_invariants.sql` and
-> `0020_slice9_counts_transfers_waste.sql`; use `generate` + `migrate` and the
+> `0017_stock_ledger_invariants.sql`,
+> `0020_slice9_counts_transfers_waste.sql` and
+> `0021_slice10_production.sql`; use `generate` + `migrate` and the
 > guard below.
 
 **Guard:** before committing any future generated migration, diff the database
@@ -135,21 +139,46 @@ This applies to: `supplier_price.supplier_item_id`, `supplier_price.source_recei
 `recipe_allergen.verified_by`,
 `cost_card.approved_by`, `audit_event.actor_id`, `goods_receipt.purchase_order_id`,
 `goods_receipt.accepted_by`, `goods_receipt.evidence_file_id`,
-`goods_receipt_line.supplier_item_id`, `operating_cost.evidence_file_id`.
+`goods_receipt_line.supplier_item_id`, `operating_cost.evidence_file_id`,
+`waste_event.production_batch_id`.
 
 `stock_lot.source_movement_id` was closed by `0017_stock_ledger_invariants.sql`
 as an ordinary validating FK (drizzle-kit generated it) because `stock_lot` is
-empty at first apply; the rest of the list still stands. `stock_movement.source_id`
+empty at first apply. `waste_event.production_batch_id` was closed by
+`0021_slice10_production.sql` using the `NOT VALID` → `VALIDATE` form above
+(the `waste_event` table may already hold rows). `stock_movement.source_id`
 is guarded by the `0017` `stock_movement_source_guard` trigger rather than an FK,
 because its target table varies by `source_type`.
 
 ## Pre-apply preflight for validating constraints and indexes
 
-Migrations 0014, 0016, 0017, 0018, 0019 and 0020 add objects that validate or
-build, so a failure aborts the whole transactional migration (drizzle-kit runs
-each file in one transaction). Run the matching preflight against the target
-database **before** applying and reconcile any hits; drizzle-kit cannot detect
-them because these files diff against existing data.
+Migrations 0014, 0016, 0017, 0018, 0019, 0020 and 0021 add objects that
+validate or build, so a failure aborts the whole transactional migration
+(drizzle-kit runs each file in one transaction). Run the matching preflight
+against the target database **before** applying and reconcile any hits;
+drizzle-kit cannot detect them because these files diff against existing data.
+
+- **`0021_slice10_production.sql`** — four new, empty tables
+  (`production_plan`, `production_batch`, `production_batch_input`,
+  `production_batch_output`) with their checks, FKs and indexes (cheap: the
+  tables are empty on first apply), plus the hand-written
+  `ALTER TABLE "waste_event" ADD CONSTRAINT … FOREIGN KEY ("production_batch_id")
+  … NOT VALID` followed by `VALIDATE CONSTRAINT` in the same transactional file.
+  The `NOT VALID` step is metadata-only; the `VALIDATE` scans `waste_event`, so
+  on a large `waste_event` table it is the only lock to schedule. Preflight for
+  orphans before applying:
+
+  ```sql
+  SELECT id, production_batch_id
+  FROM waste_event
+  WHERE production_batch_id IS NOT NULL
+    AND production_batch_id NOT IN (SELECT id FROM production_batch);
+  ```
+
+  Any hit must be repaired before the `VALIDATE` (or the FK added `NOT VALID`
+  and left unvalidated, per the pattern above). The
+  `CREATE OR REPLACE FUNCTION "stock_movement_source_guard"` that adds the
+  `production_batch` branch is metadata-only and scans nothing.
 
 - **`0020_slice9_counts_transfers_waste.sql`** — four new, empty tables
   (`stock_count`, `stock_count_line`, `stock_transfer`, `waste_event`) with
@@ -481,6 +510,25 @@ only, so the down file is an explicit operator action, not an automatic one.
   while those tables carry nothing that must be preserved. Apply it manually
   with
   `psql "$DATABASE_URL" -f packages/persistence/drizzle/0020_slice9_counts_transfers_waste_down.sql`.
+- **0021 adds the slice-10 production tables and follows the down
+  convention:** `0021_slice10_production.sql` is generated DDL for the four
+  tables (`production_plan`, `production_batch`, `production_batch_input`,
+  `production_batch_output`, with their status/quantity/kind checks, FKs —
+  including the batch→line `ON DELETE cascade` and the batch self-reversal FK —
+  and indexes), plus two hand-written statements: the deferred
+  `waste_event.production_batch_id` FK (`NOT VALID` → `VALIDATE`, because
+  `waste_event` may already hold rows) and a
+  `CREATE OR REPLACE FUNCTION "stock_movement_source_guard"` adding the
+  `production_batch` branch (keeping the existing branches). The output-kind
+  vocabulary (`PRODUCTION_OUTPUT_KIND`) is a provisional local constant with no
+  `schemas/domain-enums.yaml` key (open point (h)).
+  `0021_slice10_production_down.sql` is **destructive**: it restores the `0020`
+  guard body, drops the `waste_event.production_batch_id` FK (the column stays)
+  and drops the four tables (FK-safe order: `production_batch_input`,
+  `production_batch_output`, `production_batch`, `production_plan`), so it is
+  only safe while those tables carry nothing that must be preserved. Apply it
+  manually with
+  `psql "$DATABASE_URL" -f packages/persistence/drizzle/0021_slice10_production_down.sql`.
 
 **Re-applying after a manual down:** drizzle-kit tracks applied migrations in
 `drizzle.__drizzle_migrations`, not by comparing the schema, so a plain
@@ -495,8 +543,8 @@ for 0003, `… = 1789850858806` for 0004, `… = 1789851925634` for 0005,
 `… = 1789862630158` for 0012, `… = 1789864504597` for 0013,
 `… = 1789866859108` for 0014, `… = 1789867750326` for 0015,
 `… = 1789867797172` for 0016, `… = 1789895339462` for 0017,
-`… = 1789902579323` for 0018, `… = 1789904976754` for 0019 and
-`… = 1789911710033` for 0020, then
+`… = 1789902579323` for 0018, `… = 1789904976754` for 0019,
+`… = 1789911710033` for 0020 and `… = 1789913486015` for 0021, then
 `npm run db:migrate` (0003 verified 2026-09-19; 0005 rehearsed in the slice-3
 review follow-up; 0006 rehearsed with the slice-4 receiving work; 0007 and
 0008 rehearsed with the slice-4 review follow-up; 0009 rehearsed with the
@@ -506,16 +554,18 @@ code-review follow-up; 0014 rehearsed with the slice-7 pricing work; 0015 and
 0016 rehearsed with the slice-7 review follow-up; 0017 rehearsed with the
 slice-8 stock-ledger work; 0018 rehearsed with the slice-8 finding-fix work;
 0019 rehearsed with the slice-8 review-fix work; 0020 rehearsed with the
-slice-9 counts/transfers/waste work).
+slice-9 counts/transfers/waste work; 0021 rehearsed with the slice-10
+production work).
 A **full 0011 down** drops the tables the three 0012 constraints live on, so its
 replay must clear **both** ledger rows, not just 0011's:
 `DELETE FROM drizzle.__drizzle_migrations WHERE created_at IN (1789862475550, 1789862630158);`
 then `npm run db:migrate` re-applies 0011 (the four tables) followed by 0012 (the
 three exclusion constraints). Verified on the local dev database 2026-09-20:
 after the down the four tables are gone, and after the replay the database has
-all 51 tables with `cost_pool_no_overlap`, `labor_rate_no_overlap` and
-`allocation_rule_no_overlap` present (the count is 51 once `0020`'s four
-slice-9 tables exist; it was 47 before `0020`).
+all 55 tables with `cost_pool_no_overlap`, `labor_rate_no_overlap` and
+`allocation_rule_no_overlap` present (the count is 55 once `0020`'s four
+slice-9 tables and `0021`'s four slice-10 tables exist; it was 47 before
+`0020` and 51 before `0021`).
 Re-applying is only safe
 while the removed objects carry no data that must be preserved — once real
 master data, TOTP counters or conversions exist, prefer the additive forward
@@ -535,7 +585,9 @@ implements it:
   its source table is modelled; those slices extend the same trigger.
   **Extended in `0020_slice9_counts_transfers_waste.sql`:** the same function
   body now also validates the `stock_count`, `transfer` and `waste_event`
-  sources; `production_batch`, `sales_line`, `adjustment`, `revaluation` and
+  sources.
+  **Extended in `0021_slice10_production.sql`:** it now also validates the
+  `production_batch` source; `sales_line`, `adjustment`, `revaluation` and
   `correction` remain documented no-ops until their slices land.
 - ~~`snapshot_component.component_kind` needs a **controlled vocabulary**
   (`vocabularies.ts` + check constraint) to be defined in the costing slice.~~
@@ -548,6 +600,32 @@ implements it:
   rebuild process. The database deliberately does not block writes to it
   (a rebuild must write it); the append-only ledger (`stock_movement`) is the
   enforcement point, not a trigger on `stock_balance`.
+- **Slice-10 production open (owner/TECH) points — recorded, do not resolve
+  silently** (also in the `packages/persistence/src/schema/production.ts`
+  comment block; record each resolution in `12_OPEN_DECISIONS.md`, next free id
+  `DEC-066`):
+  - **(a)** No `batch_number`/`code` exists on `production_plan` or
+    `production_batch`, so there is no natural key and no `findOrCreate`
+    idempotency path (unlike `findOrCreateStockCountLine`).
+  - **(b)** `DEC-036` partial-portion handling has no column: the standard
+    portion size and the partial-portion representation are undefined, so the
+    lines store base-unit quantities only.
+  - **(c)** Output **cost allocation across multiple outputs** is undefined; no
+    allocation column is invented.
+  - **(d)** Planned-vs-actual variance posting vs **waste double-count**
+    (`WASTE-002`): posting the actual movements and also a linked `waste_event`
+    may double-count the loss; the posting policy is undecided.
+  - **(e)** There is no WIP / **source-draw storage area**; `production_batch`
+    has only a nullable `destination_storage_area_id`.
+  - **(f)** `production_plan` has no line/quantity table and **no status
+    vocabulary authority** (`production_status` describes the batch workflow),
+    so `production_plan.status` is unconstrained.
+  - **(g)** No **yield-variance tolerance or exception store**
+    (`PROD-003`); `yield_variance_pct` is stored as a fact with no check and no
+    exception rows.
+  - **(h)** The **output-kind vocabulary has no Phase-0 yaml key**; the
+    provisional local constant `PRODUCTION_OUTPUT_KIND` backs
+    `production_batch_output_kind_check` until the yaml key is added.
 - **Slice-9 open (owner/TECH) points — recorded, do not resolve silently**
   (also in the `packages/persistence/src/schema/transfers.ts` /
   `waste.ts` comment blocks; record each resolution in `12_OPEN_DECISIONS.md`,
@@ -644,6 +722,7 @@ session will not serialise against each other.
 | 0018 | `0018_stock_movement_org_idempotency_key.sql` | Generated: replaces the global `stock_movement_idempotency_key_key` unique with the per-organization composite `stock_movement_org_idempotency_key_key` on `(organization_id, idempotency_key)`, so one organization's key does not block another's posting while a retry within an organization still collides. No table. Down companion: `0018_stock_movement_org_idempotency_key_down.sql` (restores the global unique; re-add validates existing rows) |
 | 0019 | `0019_stock_movement_asof_index.sql` | Generated: adds `stock_movement_org_occurred_idx` on `(organization_id, occurred_at, posted_at, id)`, covering the bounded as-of aggregation (`sumStockMovementsAsOf`). No table. Down companion: `0019_stock_movement_asof_index_down.sql` (drops the index) |
 | 0020 | `0020_slice9_counts_transfers_waste.sql` | Generated + hand-written: the four slice-9 tables — `stock_count`, `stock_count_line`, `stock_transfer`, `waste_event` — with their status/timestamp/quantity checks and indexes, plus `stock_movement.transfer_id` (column, FK and partial `stock_movement_transfer_idx`). Hand-written: `CREATE OR REPLACE FUNCTION stock_movement_source_guard` extending the `0017` guard to the `stock_count`/`transfer`/`waste_event` sources. Down companion: `0020_slice9_counts_transfers_waste_down.sql` (restores the `0017` guard, drops `transfer_id`, drops the four tables — destructive) |
+| 0021 | `0021_slice10_production.sql` | Generated + hand-written: the four slice-10 tables — `production_plan`, `production_batch`, `production_batch_input`, `production_batch_output` — with their status/quantity/kind checks, FKs (including the batch→line cascade and the batch self-reversal FK) and indexes (the `production_batch_org_location_status_idx` plus the FK/line indexes). Hand-written: the deferred `waste_event.production_batch_id` FK (`NOT VALID` → `VALIDATE`) and `CREATE OR REPLACE FUNCTION stock_movement_source_guard` adding the `production_batch` branch. Down companion: `0021_slice10_production_down.sql` (restores the `0020` guard, drops the `waste_event` FK, drops the four tables — destructive) |
 
 Order matters: extensions before DDL that calls `gen_random_uuid()`, and before
 the exclusion constraints. Verify with:
@@ -673,7 +752,7 @@ DATABASE_URL=postgres://aquarela:aquarela@localhost:5432/aquarela npm run db:mig
 `public` alone leaves the ledger intact, so `db:migrate` reports success while
 restoring nothing. `DROP SCHEMA drizzle CASCADE` clears the ledger so all
 migrations replay from 0000. Verified: after this sequence `db:migrate`
-re-applies 0000–0020 and the database has all 51 tables plus both extensions
+re-applies 0000–0021 and the database has all 55 tables plus both extensions
 (0004 adds the four slice-3 master-data tables; 0006 adds the two slice-4
 receiving tables; 0007 adds the `goods_receipt_line` guard trigger — no table;
 0008 relaxes the `supplier_price` range check — no table; 0009 adds the two
@@ -689,12 +768,14 @@ no table; 0018 replaces the global `stock_movement` idempotency unique with the
 per-organization composite one — no table; 0019 adds the `stock_movement`
 as-of aggregation index — no table; 0020 adds the four slice-9
 count/transfer/waste tables, the `stock_movement.transfer_id` column/FK/index
-and replaces the `stock_movement_source_guard` body — four tables).
+and replaces the `stock_movement_source_guard` body — four tables; 0021 adds the
+four slice-10 production tables, the deferred `waste_event.production_batch_id`
+FK and replaces the `stock_movement_source_guard` body again — four tables).
 0013–0019 were added after this replay was verified; all are additive and
-table-count-neutral. `0020` is the first migration after the replay was written
-to add tables (four), so the 51-table figure above is the expected post-`0020`
-count; `0014`–`0020`'s apply/re-run/down/re-apply was rehearsed on the local dev
-database 2026-09-20.
+table-count-neutral. `0020` and `0021` are the only migrations after the replay
+was written to add tables (four each), so the 55-table figure above is the
+expected post-`0021` count (51 after `0020`); `0014`–`0021`'s
+apply/re-run/down/re-apply was rehearsed on the local dev database 2026-09-20.
 
 Once real data exists, this path is no longer acceptable: use small atomic
 commits, expand → migrate → contract for schema changes, and a tested
@@ -803,6 +884,20 @@ After applying to an empty database the following were verified with `psql`:
   is rejected by `waste_event_item_or_variant_check`, `quantity <= 0` by
   `waste_event_quantity_check`, and a negative `value` by
   `waste_event_value_check`.
+- `stock_movement` (0021): a `source_type = 'production_batch'` movement whose
+  `source_id` is not a `production_batch` in the same `organization_id` is
+  rejected by `stock_movement_source_guard`; a matching batch is accepted.
+- `production_batch` (0021): a `status` outside the `production_status`
+  vocabulary is rejected by `production_batch_status_check`; an `actual_finish`
+  before `actual_start` is rejected by `production_batch_actual_range_check`;
+  deleting a batch cascades to its `production_batch_input` /
+  `production_batch_output` rows (the batch→line FKs are `ON DELETE cascade`).
+- `production_batch_output` (0021): a `kind` outside the provisional
+  `PRODUCTION_OUTPUT_KIND` set is rejected by
+  `production_batch_output_kind_check`.
+- `waste_event` (0021): a non-null `production_batch_id` that does not name a
+  `production_batch` is rejected by
+  `waste_event_production_batch_id_production_batch_id_fk`.
 - Deferrable FKs: a `calculation_snapshot` and its `cost_card` can be inserted
   in the same transaction in either order and commit together.
 - `calculation_snapshot`: a plain `TRUNCATE` is blocked first by the FK from
