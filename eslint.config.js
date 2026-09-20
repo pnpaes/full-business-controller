@@ -27,6 +27,10 @@ export default tseslint.config(
       "**/coverage/**",
       "**/drizzle/**",
       "**/next-env.d.ts",
+      // Agent Manager worktrees live under the (gitignored) `.kilo/` directory
+      // and are separate checkouts; linting them double-reports and breaks the
+      // path-scoped exemptions below (e.g. `packages/.../columns.ts`).
+      "**/.kilo/**",
     ],
   },
   ...tseslint.configs.recommended,
