@@ -46,20 +46,49 @@ flowchart TD
 
 Environment/secret inventory (per environment, never committed): `DATABASE_URL`,
 `DATABASE_MIGRATIONS_URL`, `SPACES_ACCESS_KEY_ID` / `SPACES_SECRET_KEY` (or App-bound Spaces keys),
-`LOG_LEVEL`, app-level session/encryption secrets when introduced.
+`LOG_LEVEL`. The deployed `web` service additionally **requires**:
+
+- `ORGANIZATION_ID` — the single organization this install serves, printed by the first-owner
+  bootstrap (`npm run bootstrap`, below). Wired into `app-platform` as `organization_id`; empty
+  adds nothing, but the auth routes throw `ConfigError("ORGANIZATION_ID is not set")` until set.
+- `TOTP_SECRET_ENCRYPTION_KEY` — base64-encoded 32-byte key sealing TOTP secrets at rest
+  (AES-256), required for MFA. It is a **secret**: supply it as an App Platform `SECRET`/encrypted
+  env var via `TF_VAR_totp_secret_encryption_key`, never commit it. Generate with
+  `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"` (see `.env.example`).
+
+`worker` and `scheduler` read neither variable (their shared config keeps `TOTP_SECRET_ENCRYPTION_KEY`
+optional and they do not call `resolveOrganization`), so both are wired to the `web` service only.
+
+### Rehearsing against a production clone
+
+Staging is the rehearsal environment and uses **sanitized/synthetic data only** — never a raw
+production copy (Prerequisites). The only sanctioned path that touches real production data is a
+**PITR restore to a new isolated cluster** (see "Backup, restore and disaster recovery"), used for
+the drill rather than day-to-day rehearsal. Rehearsals that need **no cloud credentials** run
+locally:
+
+- Migrations: start the local `postgres:16-alpine` service and run `npm run db:migrate`, then
+  re-run to confirm the no-op path; every up migration needs a matching down file
+  (`docs/runbooks/persistence-migrations.md`).
+- Gates: `npm run lint`, `npm run typecheck`, `npm run test`, `npm run build`, plus the `infra/`
+  offline checks in "Offline validation".
+- App boot: run the built image against the local database and check `/api/health`.
+- Bootstrap dry run: `npm run bootstrap -- --dry-run` against a scratch database to preview the
+  organization/owner it would create without writing anything ("First-owner bootstrap").
 
 ### Owner decisions and inputs
 
-Three decision-input briefs must be closed before the first real `apply` (gates per
-`docs/BUILD_ROADMAP.md` §3):
+Outstanding inputs before the first real `apply` (tracker: `docs/BUILD_ROADMAP.md` §5):
 
 - **Component cost estimate** — `../phase0/DEPLOYMENT_COST_ESTIMATE.md`: monthly estimate for the
   literal `staging.tfvars` / `production.tfvars` values, with confidence and variance notes.
-- **Multi-tenancy posture** — `../phase0/MULTITENANCY_POSTURE.md`: the owner decision (single-org
-  deployment, multi-org-capable schema) that gates the deployment apply.
-- **Jobs runtime comparison** — `../phase0/JOBS_RUNTIME_COMPARISON.md`: evidence brief feeding the
-  `ADR-0004` gate (`docs/adr/0004-jobs-and-outbox.md`, still `Proposed`) for the
-  `worker` / `scheduler` runtime.
+- **Multi-tenancy posture — decided (`DEC-061`, 2026-09-20):** shared schema with
+  `organization_id` row scoping. The web layer pins the one organization via `ORGANIZATION_ID`
+  (see "First-owner bootstrap"); `../phase0/MULTITENANCY_POSTURE.md` fed this decision and is no
+  longer an open gate.
+- **Jobs runtime — decided (`DEC-062`, 2026-09-20):** pg-boss selected for the
+  `worker` / `scheduler` runtime. `ADR-0004` acceptance itself is **still open**, tracked with the
+  remaining `Proposed` ADRs in `docs/BUILD_ROADMAP.md` §5 (not `§3`).
 
 ## Terraform layout
 
@@ -120,7 +149,10 @@ state are separate from the app-files bucket's scoped key.
 **Status (2026-09-19):** the `infra/` layout is **scaffolded and validated offline** — `fmt
 -check -recursive` clean; `init -backend=false` + `validate` green in both envs; offline
 `plan -refresh=false` = **16 to add, 0 to change, 0 to destroy** per env with a dummy
-`DIGITALOCEAN_TOKEN`. **Nothing has been applied.**
+`DIGITALOCEAN_TOKEN`. **Nothing has been applied.** (Re-validated 2026-09-20 after wiring
+`ORGANIZATION_ID` / `TOTP_SECRET_ENCRYPTION_KEY` onto the `web` service: same 16/0/0, and with
+both inputs set the `web` component renders two extra env entries while `worker`/`scheduler`
+stay unchanged.)
 
 ```bash
 cd infra && terraform fmt -check -recursive
@@ -249,7 +281,12 @@ default pending that open item.
   without its SQL. `apps/`, `packages/` and the `Dockerfile` must stay in the build context;
   `.dockerignore` already encodes this.
 - Env/secret wiring: `DATABASE_URL`, `DATABASE_MIGRATIONS_URL`, Spaces keys, `LOG_LEVEL` — encrypted,
-  per environment.
+  per environment. The `web` service additionally gets `ORGANIZATION_ID` (from the first-owner
+  bootstrap; `GENERAL`) and, for MFA, `TOTP_SECRET_ENCRYPTION_KEY` (base64 32-byte secret;
+  App Platform `SECRET`). Both are optional `app-platform` inputs that add no env entry when empty;
+  `ORGANIZATION_ID` is non-secret and may be committed in the env's `tfvars` once known, while the
+  TOTP key stays in `TF_VAR_totp_secret_encryption_key` and is never committed. `worker` and
+  `scheduler` do not read either.
 - **Proxy headers and the per-IP rate limiter (required):** the App Platform proxy — and any CDN/WAF
   or load balancer in front of it — **must overwrite/strip `x-forwarded-for`** before the request
   reaches the app. `apps/web/lib/client-ip.ts` reads the first `x-forwarded-for` entry (falling back

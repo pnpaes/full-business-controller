@@ -30,6 +30,30 @@ locals {
     },
   ]
 
+  # Web-only runtime env. The auth layer pins the one organization this install
+  # serves (ORGANIZATION_ID, printed by `npm run bootstrap`) and seals TOTP
+  # secrets with a generated base64 32-byte key. Worker/scheduler read neither,
+  # so they keep the shared runtime_env. Empty values add nothing.
+  web_env = concat(
+    local.runtime_env,
+    var.organization_id == null || var.organization_id == "" ? [] : [
+      {
+        key   = "ORGANIZATION_ID"
+        value = var.organization_id
+        scope = "RUN_TIME"
+        type  = "GENERAL"
+      },
+    ],
+    var.totp_secret_encryption_key == null || var.totp_secret_encryption_key == "" ? [] : [
+      {
+        key   = "TOTP_SECRET_ENCRYPTION_KEY"
+        value = var.totp_secret_encryption_key
+        scope = "RUN_TIME"
+        type  = "SECRET"
+      },
+    ],
+  )
+
   # The migration job uses the DIRECT/session URL only (see the comment on the job).
   migrate_env = [
     {
@@ -123,7 +147,7 @@ resource "digitalocean_app" "this" {
       }
 
       dynamic "env" {
-        for_each = local.runtime_env
+        for_each = local.web_env
         content {
           key   = env.value.key
           value = env.value.value

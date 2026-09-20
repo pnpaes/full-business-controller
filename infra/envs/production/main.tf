@@ -54,27 +54,29 @@ module "database" {
 module "app_platform" {
   source = "../../modules/app-platform"
 
-  app_name                = var.app_name
-  region                  = var.region
-  vpc_id                  = module.networking.vpc_id
-  domain_name             = var.domain_name
-  domain_zone             = var.manage_dns ? var.domain_name : null
-  repo_owner              = var.repo_owner
-  repo_name               = var.repo_name
-  branch                  = var.branch
-  deploy_on_push          = var.deploy_on_push
-  web_instance_size       = var.web_instance_size
-  worker_instance_size    = var.worker_instance_size
-  scheduler_instance_size = var.scheduler_instance_size
-  migrate_instance_size   = var.migrate_instance_size
-  web_instance_count      = var.web_instance_count
-  log_level               = var.log_level
-  database_url            = module.database.database_url
-  database_migrations_url = module.database.database_migrations_url
-  spaces_access_key_id    = module.spaces.access_key_id
-  spaces_secret_key       = module.spaces.secret_key
-  alert_emails            = var.alert_email
-  slack_webhook_url       = var.slack_webhook_url
+  app_name                   = var.app_name
+  region                     = var.region
+  vpc_id                     = module.networking.vpc_id
+  domain_name                = var.domain_name
+  domain_zone                = var.manage_dns ? var.domain_name : null
+  repo_owner                 = var.repo_owner
+  repo_name                  = var.repo_name
+  branch                     = var.branch
+  deploy_on_push             = var.deploy_on_push
+  web_instance_size          = var.web_instance_size
+  worker_instance_size       = var.worker_instance_size
+  scheduler_instance_size    = var.scheduler_instance_size
+  migrate_instance_size      = var.migrate_instance_size
+  web_instance_count         = var.web_instance_count
+  log_level                  = var.log_level
+  database_url               = module.database.database_url
+  database_migrations_url    = module.database.database_migrations_url
+  spaces_access_key_id       = module.spaces.access_key_id
+  spaces_secret_key          = module.spaces.secret_key
+  alert_emails               = var.alert_email
+  slack_webhook_url          = var.slack_webhook_url
+  organization_id            = var.organization_id
+  totp_secret_encryption_key = var.totp_secret_encryption_key
 }
 
 module "monitoring" {

@@ -137,6 +137,19 @@ variable "admin_ip_addresses" {
   default     = []
 }
 
+variable "organization_id" {
+  description = "Organization id the web app serves (printed by `npm run bootstrap`); empty adds no ORGANIZATION_ID env var."
+  type        = string
+  default     = null
+}
+
+variable "totp_secret_encryption_key" {
+  description = "Base64-encoded 32-byte key sealing TOTP secrets at rest (required for MFA; secret — supply via TF_VAR_totp_secret_encryption_key, never commit). Empty adds no env var."
+  type        = string
+  sensitive   = true
+  default     = null
+}
+
 variable "alert_email" {
   description = "Email addresses for DB and deployment alerts."
   type        = list(string)

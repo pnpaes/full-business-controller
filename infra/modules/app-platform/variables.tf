@@ -126,6 +126,19 @@ variable "spaces_secret_key" {
   sensitive   = true
 }
 
+variable "organization_id" {
+  description = "Organization id this install serves (printed by `npm run bootstrap`); empty adds no ORGANIZATION_ID env var."
+  type        = string
+  default     = null
+}
+
+variable "totp_secret_encryption_key" {
+  description = "Base64-encoded 32-byte key sealing TOTP secrets at rest (required for MFA); empty adds no env var."
+  type        = string
+  sensitive   = true
+  default     = null
+}
+
 variable "alert_emails" {
   description = "Email addresses for App Platform deployment alerts."
   type        = list(string)

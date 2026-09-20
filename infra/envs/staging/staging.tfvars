@@ -15,3 +15,13 @@ migrate_instance_size   = "basic-xxs"
 web_instance_count      = 1
 pool_size               = 5
 log_level               = "info"
+
+# App-runtime wiring (empty adds nothing; both are per environment):
+#   organization_id            — the id printed by the first-owner bootstrap
+#                                (`npm run bootstrap`); safe to commit once known.
+#   totp_secret_encryption_key — generated base64 32-byte key (required for MFA);
+#                                a SECRET, so supply it via
+#                                TF_VAR_totp_secret_encryption_key, never here
+#                                (an empty assignment here would shadow the env var).
+organization_id = ""
+# totp_secret_encryption_key = ""
