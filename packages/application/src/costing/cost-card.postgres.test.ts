@@ -69,7 +69,9 @@ async function rejectionCause(operation: Promise<unknown>): Promise<Error> {
 describe.skipIf(!databaseUrl)("cost card against PostgreSQL", () => {
   let client: DbClient;
   let orgId: string;
+  let otherOrgId: string;
   let locationId: string;
+  let foreignLocationId: string;
   let variantId: string;
 
   beforeAll(async () => {
@@ -101,6 +103,17 @@ describe.skipIf(!databaseUrl)("cost card against PostgreSQL", () => {
       })
       .returning();
     variantId = variantRows[0]!.id;
+
+    const otherOrg = await client.pool.query<{ id: string }>(
+      "insert into organization (legal_name) values ($1) returning id",
+      [`Cost card foreign IT ${suffix}`],
+    );
+    otherOrgId = otherOrg.rows[0]!.id;
+    const foreignLocationRows = await client.db
+      .insert(location)
+      .values({ organizationId: otherOrgId, code: `loc_other_${suffix}`, name: "Foreign Location" })
+      .returning();
+    foreignLocationId = foreignLocationRows[0]!.id;
   });
 
   afterAll(async () => {
@@ -110,7 +123,9 @@ describe.skipIf(!databaseUrl)("cost card against PostgreSQL", () => {
       await client.pool.query("delete from product_variant where organization_id = $1", [orgId]);
       await client.pool.query("delete from product where organization_id = $1", [orgId]);
       await client.pool.query("delete from location where organization_id = $1", [orgId]);
+      await client.pool.query("delete from location where organization_id = $1", [otherOrgId]);
       await client.pool.query("delete from organization where id = $1", [orgId]);
+      await client.pool.query("delete from organization where id = $1", [otherOrgId]);
       await client.close();
     }
   });
@@ -203,6 +218,15 @@ describe.skipIf(!databaseUrl)("cost card against PostgreSQL", () => {
         tx.update(calculationSnapshot).set({ ruleVersion: "calc-v2" }),
       );
       expect(cause.message).toMatch(/append-only/);
+    });
+  });
+
+  it("rejects a location that belongs to another organization", async () => {
+    await inRollback(client.db, async (tx) => {
+      const store = createPostgresCostCardStore(tx);
+      await expect(
+        calculateCostCard(store, { ...scope(), locationId: foreignLocationId }),
+      ).rejects.toThrow(/location belongs to another organization/);
     });
   });
 });

@@ -95,6 +95,11 @@ export interface CostCardStore {
   findProductVariant(
     productVariantId: string,
   ): Promise<{ id: string; organizationId: string } | undefined>;
+  findLocation(locationId: string): Promise<{ id: string; organizationId: string } | undefined>;
+  findChannel(channelId: string): Promise<{ id: string; organizationId: string } | undefined>;
+  findRecipeVersion(
+    recipeVersionId: string,
+  ): Promise<{ id: string; organizationId: string } | undefined>;
   createCostCard(input: NewCostCardRecord): Promise<CostCardRecord>;
   findCostCard(costCardId: string): Promise<CostCardRecord | undefined>;
   listApprovedCostCardsForScope(query: {

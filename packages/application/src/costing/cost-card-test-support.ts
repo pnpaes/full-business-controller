@@ -16,6 +16,9 @@ import type {
  */
 export class FakeCostCardStore implements CostCardStore {
   readonly productVariants = new Map<string, { id: string; organizationId: string }>();
+  readonly locations = new Map<string, { id: string; organizationId: string }>();
+  readonly channels = new Map<string, { id: string; organizationId: string }>();
+  readonly recipeVersions = new Map<string, { id: string; organizationId: string }>();
   readonly costCards = new Map<string, CostCardRecord>();
   readonly snapshots: CalculationSnapshotRecord[] = [];
   readonly snapshotComponents: SnapshotComponentRecord[] = [];
@@ -36,6 +39,20 @@ export class FakeCostCardStore implements CostCardStore {
     productVariantId: string,
   ): Promise<{ id: string; organizationId: string } | undefined> {
     return Promise.resolve(this.productVariants.get(productVariantId));
+  }
+
+  findLocation(locationId: string): Promise<{ id: string; organizationId: string } | undefined> {
+    return Promise.resolve(this.locations.get(locationId));
+  }
+
+  findChannel(channelId: string): Promise<{ id: string; organizationId: string } | undefined> {
+    return Promise.resolve(this.channels.get(channelId));
+  }
+
+  findRecipeVersion(
+    recipeVersionId: string,
+  ): Promise<{ id: string; organizationId: string } | undefined> {
+    return Promise.resolve(this.recipeVersions.get(recipeVersionId));
   }
 
   createCostCard(input: NewCostCardRecord): Promise<CostCardRecord> {

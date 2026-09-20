@@ -5,6 +5,7 @@ import {
   createDb,
   findCalculationSnapshot,
   findPriceScenario,
+  location,
   product,
   productVariant,
   type DatabaseTransaction,
@@ -76,6 +77,8 @@ async function insertProductVariant(
 describe.skipIf(!databaseUrl)("price scenario against PostgreSQL", () => {
   let client: DbClient;
   let orgId: string;
+  let otherOrgId: string;
+  let foreignLocationId: string;
 
   beforeAll(async () => {
     client = createDb(databaseUrl!);
@@ -84,12 +87,29 @@ describe.skipIf(!databaseUrl)("price scenario against PostgreSQL", () => {
       [`Price Scenario IT ${suffix}`],
     );
     orgId = org.rows[0]!.id;
+
+    const otherOrg = await client.pool.query<{ id: string }>(
+      "insert into organization (legal_name) values ($1) returning id",
+      [`Price Scenario foreign IT ${suffix}`],
+    );
+    otherOrgId = otherOrg.rows[0]!.id;
+    const foreignLocationRows = await client.db
+      .insert(location)
+      .values({
+        organizationId: otherOrgId,
+        code: `loc_other_${suffix}`,
+        name: "Foreign Location",
+      })
+      .returning();
+    foreignLocationId = foreignLocationRows[0]!.id;
   });
 
   afterAll(async () => {
     if (client) {
-      // Every integration test rolls back, so only the org persists.
+      // Every integration test rolls back, so only the seeded orgs persist.
+      await client.pool.query("delete from location where organization_id = $1", [otherOrgId]);
       await client.pool.query("delete from organization where id = $1", [orgId]);
+      await client.pool.query("delete from organization where id = $1", [otherOrgId]);
       await client.close();
     }
   });
@@ -174,6 +194,29 @@ describe.skipIf(!databaseUrl)("price scenario against PostgreSQL", () => {
         ),
       );
       expect(cause.message).toMatch(/append-only/);
+    });
+  });
+
+  it("rejects a location that belongs to another organization", async () => {
+    await inRollback(client.db, async (tx) => {
+      const variantId = await seedVariant(tx);
+      const store = createPostgresPriceScenarioStore(tx);
+
+      await expect(
+        calculatePriceScenario(store, {
+          organizationId: orgId,
+          actorId: randomUUID(),
+          productVariantId: variantId,
+          locationId: foreignLocationId,
+          asOf: AS_OF,
+          ruleVersion: "2026-1",
+          costSelectionPolicy: "latest_approved_price",
+          grossPrice: "39.00",
+          taxBasis: "inclusive",
+          taxRate: "0.150000",
+          unitVariableCost: "9.3348",
+        }),
+      ).rejects.toThrow(/location belongs to another organization/);
     });
   });
 });

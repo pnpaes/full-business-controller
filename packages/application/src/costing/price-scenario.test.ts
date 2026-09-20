@@ -195,6 +195,34 @@ describe("calculatePriceScenario", () => {
       /product variant belongs to another organization/,
     );
   });
+
+  it("rejects a location or channel that belongs to another organization", async () => {
+    const store = new FakePriceScenarioStore();
+    seedVariant(store);
+    store.locations.set("location-1", { id: "location-1", organizationId: OTHER_ORG });
+    store.channels.set("channel-1", { id: "channel-1", organizationId: OTHER_ORG });
+
+    await expect(
+      calculatePriceScenario(store, cheeseBunInput({ locationId: "location-1" })),
+    ).rejects.toThrow(/location belongs to another organization/);
+    await expect(
+      calculatePriceScenario(store, cheeseBunInput({ channelId: "channel-1" })),
+    ).rejects.toThrow(/channel belongs to another organization/);
+    expect(store.priceScenarios.size).toBe(0);
+  });
+
+  it("rejects a missing location or channel", async () => {
+    const store = new FakePriceScenarioStore();
+    seedVariant(store);
+
+    await expect(
+      calculatePriceScenario(store, cheeseBunInput({ locationId: "missing" })),
+    ).rejects.toThrow(/location not found/);
+    await expect(
+      calculatePriceScenario(store, cheeseBunInput({ channelId: "missing" })),
+    ).rejects.toThrow(/channel not found/);
+    expect(store.priceScenarios.size).toBe(0);
+  });
 });
 
 describe("approvePriceScenario", () => {

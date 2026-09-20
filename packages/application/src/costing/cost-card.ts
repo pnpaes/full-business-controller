@@ -133,6 +133,35 @@ export async function calculateCostCard(
       throw new DomainError("product variant belongs to another organization");
     }
 
+    // Every org-scoped reference is resolved inside the transaction and checked
+    // against the card's organization; the single-column FKs are org-agnostic,
+    // so an id from another organization would otherwise be accepted.
+    const location = await tx.findLocation(input.locationId);
+    if (location === undefined) {
+      throw new DomainError("location not found");
+    }
+    if (location.organizationId !== input.organizationId) {
+      throw new DomainError("location belongs to another organization");
+    }
+    if (input.channelId != null) {
+      const channel = await tx.findChannel(input.channelId);
+      if (channel === undefined) {
+        throw new DomainError("channel not found");
+      }
+      if (channel.organizationId !== input.organizationId) {
+        throw new DomainError("channel belongs to another organization");
+      }
+    }
+    if (input.recipeVersionId != null) {
+      const recipeVersion = await tx.findRecipeVersion(input.recipeVersionId);
+      if (recipeVersion === undefined) {
+        throw new DomainError("recipe version not found");
+      }
+      if (recipeVersion.organizationId !== input.organizationId) {
+        throw new DomainError("recipe version belongs to another organization");
+      }
+    }
+
     const costCard = await tx.createCostCard({
       organizationId: input.organizationId,
       productVariantId: input.productVariantId,

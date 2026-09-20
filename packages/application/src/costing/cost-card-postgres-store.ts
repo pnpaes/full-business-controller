@@ -89,6 +89,38 @@ export function createPostgresCostCardStore(db: Database): CostCardStore {
       });
       return row === undefined ? undefined : { id: row.id, organizationId: row.organizationId };
     },
+    findLocation: async (locationId) => {
+      const row = await relational(db).query.location.findFirst({
+        where: (table, { eq }) => eq(table.id, locationId),
+        columns: { id: true, organizationId: true },
+      });
+      return row === undefined ? undefined : { id: row.id, organizationId: row.organizationId };
+    },
+    findChannel: async (channelId) => {
+      const row = await relational(db).query.channel.findFirst({
+        where: (table, { eq }) => eq(table.id, channelId),
+        columns: { id: true, organizationId: true },
+      });
+      return row === undefined ? undefined : { id: row.id, organizationId: row.organizationId };
+    },
+    findRecipeVersion: async (recipeVersionId) => {
+      // `recipe_version` carries no `organization_id`; it is org-scoped through
+      // its parent `recipe` (same convention as `allocation_rule` → `cost_pool`).
+      const version = await relational(db).query.recipeVersion.findFirst({
+        where: (table, { eq }) => eq(table.id, recipeVersionId),
+        columns: { id: true, recipeId: true },
+      });
+      if (version === undefined) {
+        return undefined;
+      }
+      const parent = await relational(db).query.recipe.findFirst({
+        where: (table, { eq }) => eq(table.id, version.recipeId),
+        columns: { organizationId: true },
+      });
+      return parent === undefined
+        ? undefined
+        : { id: version.id, organizationId: parent.organizationId };
+    },
     createCostCard: async (input) => toCostCard(await repo.createCostCard(db, input)),
     findCostCard: async (costCardId) => {
       const row = await repo.findCostCard(db, costCardId);

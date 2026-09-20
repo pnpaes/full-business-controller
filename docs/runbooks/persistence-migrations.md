@@ -64,7 +64,10 @@ and its `NULLS NOT DISTINCT` `unit_conversion_version_key` live only in
 `0005_unit_conversion_invariants.sql`; the three slice-6 cost-allocation
 exclusion constraints (`cost_pool_no_overlap`, `labor_rate_no_overlap`,
 `allocation_rule_no_overlap`) live only in
-`0012_cost_allocation_invariants.sql`; the
+`0012_cost_allocation_invariants.sql`; the slice-7
+`cost_card_approved_scope_key` partial unique index (`NULLS NOT DISTINCT` on
+`(organization_id, product_variant_id, location_id, channel_id)` `WHERE state =
+'approved'`) lives only in `0016_cost_card_approved_scope.sql`; the
 `goods_receipt_line_accept_qty_guard` trigger/function (an accepted receipt's
 line must have `accepted_pack_qty > 0`; a plain CHECK cannot read the parent
 status) lives only in `0007_goods_receipt_line_checks.sql`; and the
@@ -86,12 +89,14 @@ them manually is invisible to the tool.
 > objects are invisible to it, will silently drop the exclusion constraints, the
 > two deferrable FKs, the append-only triggers, the `unit_conversion`
 > constraints, the state-gated `recipe_version_no_overlap`, the
-> `goods_receipt_line` guard and the three cost-allocation exclusion
-> constraints. Those objects live only in
+> `goods_receipt_line` guard, the three cost-allocation exclusion
+> constraints and the `cost_card_approved_scope_key` approval index. Those
+> objects live only in
 > `0002_invariants.sql`, `0005_unit_conversion_invariants.sql`,
 > `0007_goods_receipt_line_checks.sql`,
-> `0010_recipe_version_draft_overlap.sql` and
-> `0012_cost_allocation_invariants.sql`; use `generate` + `migrate` and the
+> `0010_recipe_version_draft_overlap.sql`,
+> `0012_cost_allocation_invariants.sql` and
+> `0016_cost_card_approved_scope.sql`; use `generate` + `migrate` and the
 > guard below.
 
 **Guard:** before committing any future generated migration, diff the database
@@ -271,6 +276,29 @@ only, so the down file is an explicit operator action, not an automatic one.
   that scenario data need not be preserved (AGENTS.md Rule 2). Apply it manually
   with
   `psql "$DATABASE_URL" -f packages/persistence/drizzle/0014_cost_card_pricing_down.sql`.
+- **0015 adds the `calculation_snapshot` cost-card lookup index and follows the
+  down convention:** `0015_calculation_snapshot_cost_card_index.sql` is generated
+  DDL for `calculation_snapshot_cost_card_idx` on
+  `(cost_card_id, created_at)`, covering the cost-card snapshot history read. It
+  adds no table.
+  `0015_calculation_snapshot_cost_card_index_down.sql` drops the index (no table,
+  no row), so it is safe to run whenever the index must be removed (for example
+  before a data repair). Apply it manually with
+  `psql "$DATABASE_URL" -f packages/persistence/drizzle/0015_calculation_snapshot_cost_card_index_down.sql`.
+  It touches no table and no row, only the index, so the ordering constraint is
+  just that it runs before any drop of the `calculation_snapshot` table.
+- **0016 adds the cost-card approved-scope invariant and follows the down
+  convention:** `0016_cost_card_approved_scope.sql` is hand-written DDL for
+  `cost_card_approved_scope_key`, a partial unique index (`NULLS NOT DISTINCT`
+  on `(organization_id, product_variant_id, location_id, channel_id)` `WHERE
+  state = 'approved'`) that guarantees at most one approved card per scope —
+  the database-level backstop for `approveCostCard`'s supersede rule
+  (`DEC-060`). It adds no table and no row.
+  `0016_cost_card_approved_scope_down.sql` drops the index (no table, no row), so
+  it is safe to run whenever the invariant must be removed (for example before a
+  data repair); the application supersede rule remains the only guard while it is
+  dropped. Apply it manually with
+  `psql "$DATABASE_URL" -f packages/persistence/drizzle/0016_cost_card_approved_scope_down.sql`.
 
 **Re-applying after a manual down:** drizzle-kit tracks applied migrations in
 `drizzle.__drizzle_migrations`, not by comparing the schema, so a plain
@@ -283,13 +311,15 @@ for 0003, `… = 1789850858806` for 0004, `… = 1789851925634` for 0005,
 `… = 1789853918031` for 0008, `… = 1789854468899` for 0009,
 `… = 1789855382064` for 0010, `… = 1789862475550` for 0011 and
 `… = 1789862630158` for 0012, `… = 1789864504597` for 0013,
-`… = 1789866859108` for 0014, then
+`… = 1789866859108` for 0014, `… = 1789867750326` for 0015 and
+`… = 1789867797172` for 0016, then
 `npm run db:migrate` (0003 verified 2026-09-19; 0005 rehearsed in the slice-3
 review follow-up; 0006 rehearsed with the slice-4 receiving work; 0007 and
 0008 rehearsed with the slice-4 review follow-up; 0009 rehearsed with the
 slice-5 recipe work; 0010 rehearsed with the slice-5 review follow-up; 0011
 rehearsed with the slice-6 costing work; 0013 rehearsed with the slice-6
-code-review follow-up; 0014 rehearsed with the slice-7 pricing work).
+code-review follow-up; 0014 rehearsed with the slice-7 pricing work; 0015 and
+0016 rehearsed with the slice-7 review follow-up).
 A **full 0011 down** drops the tables the three 0012 constraints live on, so its
 replay must clear **both** ledger rows, not just 0011's:
 `DELETE FROM drizzle.__drizzle_migrations WHERE created_at IN (1789862475550, 1789862630158);`
@@ -389,6 +419,8 @@ session will not serialise against each other.
 | 0012 | `0012_cost_allocation_invariants.sql` | Hand-written: the three FND-004 effective-dated exclusions drizzle-kit cannot express — `cost_pool_no_overlap` on `(organization_id, code)`, `labor_rate_no_overlap` on `(organization_id, cost_center_id, role_code)` and `allocation_rule_no_overlap` on `(cost_pool_id)`, each a `[)` `daterange`. `operating_cost` deliberately has no overlap exclusion (concurrent overheads are legitimate). Down companion: `0012_cost_allocation_invariants_down.sql` (drops the three constraints) |
 | 0013 | `0013_labor_rate_lookup_index.sql` | Generated: adds `labor_rate_lookup_idx` on `(organization_id, cost_center_id, role_code, effective_from)`, covering the `findEffectiveLaborRate` as-of lookup. Down companion: `0013_labor_rate_lookup_index_down.sql` (drops the index) |
 | 0014 | `0014_cost_card_pricing.sql` | Generated: adds the four slice-7 `price_scenario` columns (`target_contribution_pct` numeric(9,6), `volume_assumption` numeric(19,6), `fee_breakdown` jsonb not null default `'{}'`, `outcome` jsonb not null default `'{}'`) and `snapshot_component_kind_check` on `snapshot_component.component_kind`. No table. Down companion: `0014_cost_card_pricing_down.sql` (drops the four columns and the constraint; destructive — the columns carry data) |
+| 0015 | `0015_calculation_snapshot_cost_card_index.sql` | Generated: adds `calculation_snapshot_cost_card_idx` on `(cost_card_id, created_at)`, covering the cost-card snapshot history read. No table. Down companion: `0015_calculation_snapshot_cost_card_index_down.sql` (drops the index) |
+| 0016 | `0016_cost_card_approved_scope.sql` | Hand-written: adds `cost_card_approved_scope_key`, a partial unique index (`NULLS NOT DISTINCT` on `(organization_id, product_variant_id, location_id, channel_id)` `WHERE state = 'approved'`) so at most one approved card exists per scope — the database backstop for `approveCostCard`'s supersede rule (`DEC-060`). No table. Down companion: `0016_cost_card_approved_scope_down.sql` (drops the index) |
 
 Order matters: extensions before DDL that calls `gen_random_uuid()`, and before
 the exclusion constraints. Verify with:
@@ -418,7 +450,7 @@ DATABASE_URL=postgres://aquarela:aquarela@localhost:5432/aquarela npm run db:mig
 `public` alone leaves the ledger intact, so `db:migrate` reports success while
 restoring nothing. `DROP SCHEMA drizzle CASCADE` clears the ledger so all
 migrations replay from 0000. Verified: after this sequence `db:migrate`
-re-applies 0000–0014 and the database has all 47 tables plus both extensions
+re-applies 0000–0016 and the database has all 47 tables plus both extensions
 (0004 adds the four slice-3 master-data tables; 0006 adds the two slice-4
 receiving tables; 0007 adds the `goods_receipt_line` guard trigger — no table;
 0008 relaxes the `supplier_price` range check — no table; 0009 adds the two
@@ -426,10 +458,12 @@ slice-5 allergen tables; 0010 replaces the `recipe_version` exclusion
 constraint — no table; 0011 adds the four slice-6 cost-allocation tables; 0012
 adds the three cost-allocation exclusion constraints — no table; 0013 adds the
 `labor_rate` lookup index — no table; 0014 adds the four slice-7
-`price_scenario` columns and the `snapshot_component` kind check — no table).
-0013 and 0014 were added after this replay was verified; both are additive and
-table-count-neutral, and 0014's apply/re-run/down/re-apply was rehearsed on the
-local dev database 2026-09-20.
+`price_scenario` columns and the `snapshot_component` kind check — no table;
+0015 adds the `calculation_snapshot_cost_card_idx` index — no table; 0016 adds
+the `cost_card_approved_scope_key` approval index — no table).
+0013–0016 were added after this replay was verified; all are additive and
+table-count-neutral, and 0014–0016's apply/re-run/down/re-apply was rehearsed on
+the local dev database 2026-09-20.
 
 Once real data exists, this path is no longer acceptable: use small atomic
 commits, expand → migrate → contract for schema changes, and a tested
@@ -496,6 +530,13 @@ After applying to an empty database the following were verified with `psql`:
   rejected by `allocation_rule_no_overlap`. `operating_cost` deliberately has
   **no** overlap exclusion: two concurrent costs in one cost centre and period
   (rent and insurance) are accepted.
+- `calculation_snapshot` (0015): the `calculation_snapshot_cost_card_idx` index on
+  `(cost_card_id, created_at)` covers the cost-card snapshot history read.
+- `cost_card` (0016): a second `approved` card in the same
+  `(organization_id, product_variant_id, location_id, channel_id)` scope is
+  rejected by `cost_card_approved_scope_key`; a `NULL` `channel_id` is **not**
+  treated as distinct (`NULLS NOT DISTINCT`), so a second company-wide approved
+  card is also rejected.
 - Deferrable FKs: a `calculation_snapshot` and its `cost_card` can be inserted
   in the same transaction in either order and commit together.
 - `calculation_snapshot`: a plain `TRUNCATE` is blocked first by the FK from

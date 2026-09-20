@@ -27,6 +27,11 @@ function seedVariant(store: FakeCostCardStore, id = VARIANT, organizationId = OR
   return id;
 }
 
+function seedLocation(store: FakeCostCardStore, id = LOCATION, organizationId = ORG): string {
+  store.locations.set(id, { id, organizationId });
+  return id;
+}
+
 function calculateInput(overrides: Partial<Parameters<typeof calculateCostCard>[1]> = {}) {
   return {
     organizationId: ORG,
@@ -45,6 +50,7 @@ describe("calculateCostCard", () => {
   it("computes the cheese-bun totals and records the calculation snapshot and audit", async () => {
     const store = new FakeCostCardStore();
     seedVariant(store);
+    seedLocation(store);
 
     const result = await calculateCostCard(
       store,
@@ -120,12 +126,59 @@ describe("calculateCostCard", () => {
     );
     expect(store.costCards.size).toBe(0);
   });
+
+  it("rejects a missing location", async () => {
+    const store = new FakeCostCardStore();
+    seedVariant(store);
+
+    await expect(calculateCostCard(store, calculateInput())).rejects.toThrow(/location not found/);
+    expect(store.costCards.size).toBe(0);
+  });
+
+  it("rejects a location that belongs to another organization", async () => {
+    const store = new FakeCostCardStore();
+    seedVariant(store);
+    seedLocation(store, LOCATION, OTHER_ORG);
+
+    await expect(calculateCostCard(store, calculateInput())).rejects.toThrow(
+      /location belongs to another organization/,
+    );
+    expect(store.costCards.size).toBe(0);
+  });
+
+  it("rejects a channel that belongs to another organization", async () => {
+    const store = new FakeCostCardStore();
+    seedVariant(store);
+    seedLocation(store);
+    store.channels.set("channel-1", { id: "channel-1", organizationId: OTHER_ORG });
+
+    await expect(
+      calculateCostCard(store, calculateInput({ channelId: "channel-1" })),
+    ).rejects.toThrow(/channel belongs to another organization/);
+    expect(store.costCards.size).toBe(0);
+  });
+
+  it("rejects a recipe version that belongs to another organization", async () => {
+    const store = new FakeCostCardStore();
+    seedVariant(store);
+    seedLocation(store);
+    store.recipeVersions.set("recipe-version-1", {
+      id: "recipe-version-1",
+      organizationId: OTHER_ORG,
+    });
+
+    await expect(
+      calculateCostCard(store, calculateInput({ recipeVersionId: "recipe-version-1" })),
+    ).rejects.toThrow(/recipe version belongs to another organization/);
+    expect(store.costCards.size).toBe(0);
+  });
 });
 
 describe("approveCostCard", () => {
   it("approves a card and supersedes the previously approved card in scope", async () => {
     const store = new FakeCostCardStore();
     seedVariant(store);
+    seedLocation(store);
 
     const first = await calculateCostCard(store, calculateInput());
     const second = await calculateCostCard(store, calculateInput());
@@ -172,6 +225,7 @@ describe("approveCostCard", () => {
   it("rejects an already-approved card", async () => {
     const store = new FakeCostCardStore();
     seedVariant(store);
+    seedLocation(store);
     const { costCardId } = await calculateCostCard(store, calculateInput());
     await approveCostCard(store, {
       organizationId: ORG,

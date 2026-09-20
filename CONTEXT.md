@@ -10,8 +10,12 @@ duplicate their content.
 **Say "resume the work" and start here.** A fresh session must be able to continue
 from this section alone.
 
-**Next task:** **slice 8 — stock ledger + balances + lots/storage** — and it is
-**BLOCKED (owner)**: it depends on `ADR-0005`
+**Next task:** **commit the slice-7 review-fix working tree** (cross-org
+reference guards + the `0015`/`0016` runbook entries) as one atomic, revertible
+commit — it is applied and fully verified but uncommitted at HEAD `60f3ec5`
+(see the newest work log entry). After that, the next business slice is **slice
+8 — stock ledger + balances + lots/storage** — and it is **BLOCKED (owner)**: it
+depends on `ADR-0005`
 (`docs/adr/`, the stock-inventory model), whose status is still **`Proposed`**. It is
 gated by `ADR-0005` acceptance (finance) per `docs/BUILD_ROADMAP.md` §3/§4; slice 9
 also depends on slice 8. **There is no unblocked next business slice.** The unblocked
@@ -37,8 +41,9 @@ If the owner accepts `ADR-0005` in-session, snapshot 8 proceeds: read
 the §2 execution loop from step 1 (pre-flight → design → implement → verify → reviews
 → reconcile → atomic commit).
 
-**Scope (do):** keep the git state clean and the working tree at
-`400c95b`; run only documentation/decision record-and-track work surfaced by the
+**Scope (do):** commit the slice-7 review-fix working tree (verify with the
+commands below first); then keep the git state clean and run only
+documentation/decision record-and-track work surfaced by the
 owner actions above; if the owner accepts `ADR-0005`, proceed with slice 8 per
 `docs/BUILD_ROADMAP.md` §2/§4 row 8 — never treating calculated costs as "verified"
 before the golden fixtures are signed.
@@ -112,10 +117,12 @@ and slice 7 (cost card + snapshots + price scenario + approval) are built.
 
 ## Current status
 
-- **As of:** 2026-09-20 — branch `main`; HEAD `400c95b` (slice 7 committed).
-  **Slice 7 (cost card + snapshots + price scenario + approval) is complete,
-  reviewed, verified and committed; the working tree is clean. Nothing has been
-  applied to DigitalOcean.**
+- **As of:** 2026-09-20 — branch `main`; HEAD `60f3ec5` (slice 7 + its handoff
+  committed). **Slice 7 (cost card + snapshots + price scenario + approval) is
+  complete, reviewed, verified and committed, and its two accepted code-review
+  follow-up fixes (cross-organization reference guards + the `0015`/`0016`
+  runbook entries) are applied in the working tree (uncommitted). Nothing has
+  been applied to DigitalOcean.**
 - **Auth complete and security-reviewed (slices 1a–1e):** domain primitives (1a);
   persistence layer (1b-i); application flow (1b-ii); password reset + access
   control (1b-iii, `2ce8847`; reset neutrality `5776914`); hardening (`60ac52e`:
@@ -149,8 +156,9 @@ and slice 7 (cost card + snapshots + price scenario + approval) are built.
   (`bfc5f74`).
 - **DEC-049 closed:** drizzle-orm 0.45.2 / drizzle-kit 0.31.10 upgrade (`cc86f13`);
   `npm audit --omit=dev` = 0.
-- **Tests:** 466 passed / 112 skipped (578) without `DATABASE_URL`; **578 passed /
-  578 (60 files)** with it (verified 2026-09-20 at HEAD `400c95b`).
+- **Tests:** 472 passed / 114 skipped (586) without `DATABASE_URL`; **586 passed /
+  586 (60 files)** with it (verified 2026-09-20 on the slice-7 review-fix working
+  tree at HEAD `60f3ec5`).
   Open verification debt: the per-process rate limiter needs a shared
   store before multi-instance deployment; the reset-token delivery is a no-op stub
   until the email slice; the palette hex values and data-viz palette semantics
@@ -376,6 +384,49 @@ CASCADE; CREATE SCHEMA public; npm run db:migrate` (see the runbook). Once data
   (`DEC-015`).
 
 ## Work log (append-only, newest first)
+
+### 2026-09-20 — Slice 7 review fixes: cross-org reference guards + runbook 0015/0016 (uncommitted)
+
+Applied the two accepted slice-7 code-review findings on the committed slice-7
+tree (HEAD `60f3ec5`; nothing applied to DigitalOcean). No migration or generated
+file was touched.
+
+- **Fix 1 (blocker) — cross-organization references were unguarded.**
+  `calculateCostCard` and `calculatePriceScenario` org-checked only
+  `productVariantId`; the single-column, org-agnostic FKs accepted a
+  `location_id`/`channel_id`/`recipe_version_id` from another organization.
+  Both commands now resolve every org-scoped reference **inside**
+  `withTransaction` and throw `DomainError("<ref> not found")` /
+  `DomainError("<ref> belongs to another organization")`, matching
+  `registerOperatingCost`. Cost card guards `locationId` (required), `channelId`
+  and `recipeVersionId`; price scenario guards `locationId` and `channelId`
+  (both optional). `recipe_version` is org-scoped through its parent `recipe`.
+  Ports gained `findLocation`/`findChannel` (both stores) and
+  `findRecipeVersion` (cost-card store, returning `{ id, organizationId }`);
+  implemented in the Postgres adapters (relational queries; a two-step
+  `recipe_version` → `recipe` lookup) and in the fakes as seedable public maps.
+  Tests: unit rejections (missing/foreign location, foreign channel, foreign
+  recipe version; foreign/missing location+channel for the scenario) and one
+  cross-org location rejection per Postgres integration test (raw inserts in the
+  existing file style — the persistence `test-support` helpers are not exported
+  across the package boundary).
+- **Fix 2 — runbook.** `docs/runbooks/persistence-migrations.md` now documents
+  `0015_calculation_snapshot_cost_card_index.sql`
+  (`calculation_snapshot_cost_card_idx`, ledger `1789867750326`) and
+  `0016_cost_card_approved_scope.sql` (`cost_card_approved_scope_key` partial
+  unique `NULLS NOT DISTINCT WHERE state='approved'`, ledger `1789867797172`):
+  migration-order rows, per-migration bullets, down companions, the ledger
+  re-apply keys, the empty-database recovery range corrected to `0000–0016`, the
+  `0016` index added to the raw-SQL inventory and the never-`push` warning, plus
+  invariant-check entries.
+
+Verified (exact): `npm run lint`, `npm run typecheck`, `npm run build` and
+`npm run format:check` pass; without `DATABASE_URL` **472 passed / 114 skipped
+(586)**; with it **586 passed / 586 (60 files)**. `npx prettier --write` run on
+every touched TypeScript file; `docs/` is prettier-ignored and matched by eye.
+Rollback: revert/discard the working tree — the change is additive and touches
+no migration or generated file. Next: commit (Rule 2), then the owner-gated
+slice 8 (see "Resume here").
 
 ### 2026-09-20 — Slice 7 cost card + snapshots + price scenario + approval committed (`400c95b`)
 

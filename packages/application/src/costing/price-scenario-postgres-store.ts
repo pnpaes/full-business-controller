@@ -51,6 +51,20 @@ export function createPostgresPriceScenarioStore(db: Database): PriceScenarioSto
       });
       return row === undefined ? undefined : { id: row.id, organizationId: row.organizationId };
     },
+    findLocation: async (locationId) => {
+      const row = await relational(db).query.location.findFirst({
+        where: (table, { eq }) => eq(table.id, locationId),
+        columns: { id: true, organizationId: true },
+      });
+      return row === undefined ? undefined : { id: row.id, organizationId: row.organizationId };
+    },
+    findChannel: async (channelId) => {
+      const row = await relational(db).query.channel.findFirst({
+        where: (table, { eq }) => eq(table.id, channelId),
+        columns: { id: true, organizationId: true },
+      });
+      return row === undefined ? undefined : { id: row.id, organizationId: row.organizationId };
+    },
     createPriceScenario: async (input) =>
       toPriceScenario(await repo.createPriceScenario(db, input)),
     findPriceScenario: async (priceScenarioId) => {

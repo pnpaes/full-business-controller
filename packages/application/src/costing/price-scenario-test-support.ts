@@ -17,6 +17,8 @@ export class FakePriceScenarioStore implements PriceScenarioStore {
     string,
     { readonly id: string; readonly organizationId: string }
   >();
+  readonly locations = new Map<string, { readonly id: string; readonly organizationId: string }>();
+  readonly channels = new Map<string, { readonly id: string; readonly organizationId: string }>();
   readonly priceScenarios = new Map<string, PriceScenarioRecord>();
   readonly snapshots: Array<SnapshotInput & { readonly id: string }> = [];
   readonly audits: AuditInput[] = [];
@@ -36,6 +38,18 @@ export class FakePriceScenarioStore implements PriceScenarioStore {
     productVariantId: string,
   ): Promise<{ readonly id: string; readonly organizationId: string } | undefined> {
     return Promise.resolve(this.productVariants.get(productVariantId));
+  }
+
+  findLocation(
+    locationId: string,
+  ): Promise<{ readonly id: string; readonly organizationId: string } | undefined> {
+    return Promise.resolve(this.locations.get(locationId));
+  }
+
+  findChannel(
+    channelId: string,
+  ): Promise<{ readonly id: string; readonly organizationId: string } | undefined> {
+    return Promise.resolve(this.channels.get(channelId));
   }
 
   createPriceScenario(input: NewPriceScenarioRecord): Promise<PriceScenarioRecord> {

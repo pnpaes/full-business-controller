@@ -233,6 +233,28 @@ export async function calculatePriceScenario(
       throw new DomainError("product variant belongs to another organization");
     }
 
+    // Optional org-scoped references are resolved inside the transaction and
+    // checked against the scenario's organization; the single-column FKs are
+    // org-agnostic, so a foreign id would otherwise be accepted.
+    if (input.locationId != null) {
+      const location = await tx.findLocation(input.locationId);
+      if (location === undefined) {
+        throw new DomainError("location not found");
+      }
+      if (location.organizationId !== input.organizationId) {
+        throw new DomainError("location belongs to another organization");
+      }
+    }
+    if (input.channelId != null) {
+      const channel = await tx.findChannel(input.channelId);
+      if (channel === undefined) {
+        throw new DomainError("channel not found");
+      }
+      if (channel.organizationId !== input.organizationId) {
+        throw new DomainError("channel belongs to another organization");
+      }
+    }
+
     const scenarioInput: NewPriceScenarioRecord = {
       organizationId: input.organizationId,
       productVariantId: input.productVariantId,

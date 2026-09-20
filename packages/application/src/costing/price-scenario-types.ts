@@ -45,6 +45,12 @@ export interface PriceScenarioStore {
   findProductVariant(
     productVariantId: string,
   ): Promise<{ readonly id: string; readonly organizationId: string } | undefined>;
+  findLocation(
+    locationId: string,
+  ): Promise<{ readonly id: string; readonly organizationId: string } | undefined>;
+  findChannel(
+    channelId: string,
+  ): Promise<{ readonly id: string; readonly organizationId: string } | undefined>;
   createPriceScenario(input: NewPriceScenarioRecord): Promise<PriceScenarioRecord>;
   findPriceScenario(priceScenarioId: string): Promise<PriceScenarioRecord | undefined>;
   listPriceScenariosForVariant(query: {
