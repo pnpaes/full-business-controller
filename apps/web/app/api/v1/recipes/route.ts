@@ -70,7 +70,7 @@ export async function POST(request: Request): Promise<Response> {
       return jsonOk({ recipeId: result.recipeId });
     } catch (error) {
       if (error instanceof DomainError) {
-        return jsonError(400);
+        return jsonError(400, error.message);
       }
       throw error;
     }

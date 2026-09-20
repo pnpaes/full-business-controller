@@ -53,7 +53,7 @@ export async function GET(request: Request): Promise<Response> {
     } catch (error) {
       // `listStockMovements` is the single validator of the ISO window.
       if (error instanceof DomainError) {
-        return jsonError(400);
+        return jsonError(400, error.message);
       }
       throw error;
     }
@@ -113,7 +113,7 @@ export async function POST(request: Request): Promise<Response> {
       });
     } catch (error) {
       if (error instanceof DomainError) {
-        return jsonError(400);
+        return jsonError(400, error.message);
       }
       throw error;
     }

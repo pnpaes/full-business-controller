@@ -48,7 +48,7 @@ export async function POST(
       return jsonOk({ transferId: result.transferId });
     } catch (error) {
       if (error instanceof DomainError) {
-        return jsonError(400);
+        return jsonError(400, error.message);
       }
       throw error;
     }

@@ -43,7 +43,7 @@ export async function GET(
     } catch (error) {
       // `getItem` treats an unknown or cross-organization id as a domain failure.
       if (error instanceof DomainError) {
-        return jsonError(404);
+        return jsonError(404, error.message);
       }
       throw error;
     }

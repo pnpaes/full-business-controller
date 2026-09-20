@@ -60,7 +60,7 @@ export async function POST(
       });
     } catch (error) {
       if (error instanceof DomainError) {
-        return jsonError(400);
+        return jsonError(400, error.message);
       }
       throw error;
     }

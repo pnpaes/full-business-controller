@@ -51,7 +51,7 @@ export async function GET(request: Request): Promise<Response> {
     } catch (error) {
       // `listWasteEvents` is the single validator of the ISO window and paging.
       if (error instanceof DomainError) {
-        return jsonError(400);
+        return jsonError(400, error.message);
       }
       throw error;
     }
@@ -104,7 +104,7 @@ export async function POST(request: Request): Promise<Response> {
       });
     } catch (error) {
       if (error instanceof DomainError) {
-        return jsonError(400);
+        return jsonError(400, error.message);
       }
       throw error;
     }

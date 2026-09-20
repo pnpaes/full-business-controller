@@ -57,7 +57,7 @@ export async function POST(
       });
     } catch (error) {
       if (error instanceof DomainError) {
-        return jsonError(/not found/i.test(error.message) ? 404 : 400);
+        return jsonError(/not found/i.test(error.message) ? 404 : 400, error.message);
       }
       throw error;
     }

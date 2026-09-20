@@ -48,7 +48,7 @@ export async function GET(request: Request): Promise<Response> {
       receipts = await listGoodsReceipts(store, { organizationId, ...parsed.query });
     } catch (error) {
       if (error instanceof DomainError) {
-        return jsonError(400);
+        return jsonError(400, error.message);
       }
       throw error;
     }
@@ -100,7 +100,7 @@ export async function POST(request: Request): Promise<Response> {
       result = await recordGoodsReceipt(store, input);
     } catch (error) {
       if (error instanceof DomainError) {
-        return jsonError(400);
+        return jsonError(400, error.message);
       }
       throw error;
     }

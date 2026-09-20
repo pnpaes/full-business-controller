@@ -44,7 +44,7 @@ export async function GET(request: Request): Promise<Response> {
     } catch (error) {
       // `listItems` is the authority for the page bounds.
       if (error instanceof DomainError) {
-        return jsonError(400);
+        return jsonError(400, error.message);
       }
       throw error;
     }
