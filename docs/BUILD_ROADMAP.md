@@ -13,41 +13,35 @@ This file is **updated at the end of every slice** — statuses and the "current
 line move with the work; `CONTEXT.md` keeps the narrative handoff and the immediate
 `Resume here` section.
 
-**Current position:** HEAD `c324418` on `main` (nothing pushed; the ADR-acceptance
-commit — `ADR-0007` and `ADR-0008` accepted 2026-09-20, owner-delegated,
-revertible); slice 0, auth slices 1a–1e, slices 2–10 and row 11 (import framework
-+ external mappings) `done` and committed; **row 12 (sales + settlements +
-reconciliation) `done` but uncommitted** on top of `c324418`. Row 12 delivered:
-migration `0023` (tables `sales_transaction`, `sales_line`, `settlement`,
-`reconciliation`; the `sales_line` branch added to the
-`stock_movement_source_guard`), vocabularies `RECONCILIATION_STATUS`/
-`OPTION_KIND`, domain `packages/domain/src/sales-consumption.ts` (recipe
-explosion + the `DEC-026` tolerance evaluator), application
-`packages/application/src/sales/**` (`postImportRun`,
-`postTheoreticalConsumption`, list/get) and
+**Current position:** HEAD `77d913e` on `main` (nothing pushed; the working tree is
+clean). Slice 0, auth slices 1a–1e, slices 2–10, row 11 (import framework +
+external mappings) and **row 12 (sales + settlements + reconciliation) are `done`
+and committed**; `ADR-0007` and `ADR-0008` accepted 2026-09-20 (owner-delegated,
+revertible). Row 12 delivered: migration `0023` (tables `sales_transaction`,
+`sales_line`, `settlement`, `reconciliation`; the `sales_line` branch added to the
+`stock_movement_source_guard`), vocabularies `RECONCILIATION_STATUS`/`OPTION_KIND`,
+domain `packages/domain/src/sales-consumption.ts` (recipe explosion + the `DEC-026`
+tolerance evaluator), application `packages/application/src/sales/**`
+(`postImportRun`, `postTheoreticalConsumption`, list/get) and
 `packages/application/src/reconciliation/**` (`reconcileImportRun`,
 `reconcileSettlement`, `resolveReconciliation`, list, `resolveTolerance`), web
 `/api/v1/sales/**` and `/api/v1/reconciliations/**` plus the `(app)/sales/**`
-screens (landing, transactions list/detail, reconciliation with resolve), and
-`apps/web/scripts/seed-sales.ts`. Verification at the uncommitted tree:
+screens, and `apps/web/scripts/seed-sales.ts`. Verification at `77d913e`:
 `typecheck`, `lint`, `build`, `format:check` clean; **1186/1186 tests with
 `DATABASE_URL`** (127 files); `npm audit --omit=dev` 0; `db:migrate` through
-`0023` is a no-op; the `0023` down path was rehearsed; a pre-existing inventory
-test that posted a `sales_line` movement with a fake source id was fixed (the
-new guard correctly rejects it). Programme direction: proceed autonomously, per
-task — parallel background agents → adversarial review + fixes → document status
-and next steps → commit → next task. **Remaining roadmap after row 12:** row 13
-is now only **data-gated** on history/grain quality (I11); row 14 is
-**owner-gated** on a privacy review / access matrix; rows 15–18 remain blocked
-(data / `ADR-0009`–`0011`) — so no roadmap slice is buildable purely from code
-without owner inputs or real history. **Next unblocked task:** commit row 12,
-then resolve the recorded open owner questions as decisions (`DEC-072`+) and
-implement the low-risk ones — e.g. a tolerance-configuration table (`DEC-026`
-effective-dated config), sales-line reversal semantics (`DEC-028`), a typed
-not-found error to replace the brittle `/not found/i` message matching in
-`recipes/[id]`/`recipes/[id]/versions`, a `MAPPING_STATE` `conflict` value, and
-the `tax_rule_id`/`applied_tax_rate` naming question; next free decision id
-`DEC-072`.
+`0023` is a no-op; every down path rehearsed; 62 tables. Programme direction:
+proceed autonomously, per task — parallel background agents → adversarial review +
+fixes → document status and next steps → commit → next task. **Remaining roadmap:**
+row 13 is **data-gated** on history/grain quality (I11); row 14 is **owner-gated**
+on a privacy review / access matrix; rows 15–18 remain blocked (data /
+`ADR-0009`–`0011`) — so no roadmap slice is buildable from code alone without owner
+inputs or real history. **Next unblocked task:** resolve the recorded open owner
+questions as decisions (`DEC-072`+) and implement the low-risk ones — a
+tolerance-configuration table (`DEC-026` effective-dated config), sales-line
+reversal semantics (`DEC-028`), a typed not-found error to replace the brittle
+`/not found/i` message matching in `recipes/[id]`/`recipes/[id]/versions`, a
+`MAPPING_STATE` `conflict` value, and the `tax_rule_id`/`applied_tax_rate` naming
+question; next free decision id `DEC-072`.
 
 ## 2. The execution loop (per slice)
 
@@ -166,7 +160,8 @@ dates assigned):
 - **`ADR-0005` accepted (2026-09-20); `ADR-0007` + `ADR-0008` accepted (2026-09-20);
   `ADR-0009`/`0010`/`0011` acceptance** — `ADR-0005`, `ADR-0007` and `ADR-0008` are
   settled (2026-09-20; `ADR-0007`/`ADR-0008` owner-delegated in-session, revertible;
-  slices 8 unblocked and rows 12/13 unblocked, with row 12 the next slice); the
+  slices 8 unblocked and rows 12/13 unblocked — row 12 is now `done` and committed,
+  and row 13 is data-gated on history/grain quality); the
   remaining `Proposed` ADRs (`0009`/`0010`/`0011`) gate
   slices 16, 17, 18.
 - **~~Multi-tenancy posture~~ resolved (2026-09-20, `DEC-061`)** — shared schema with
