@@ -14,14 +14,16 @@ import * as schema from "./index";
 
 const tables = Object.values(schema).filter((value) => is(value, PgTable));
 
-/** The 51 in-scope Phase 1-2 tables: the 35 core tables, the slice-3
+/** The 55 in-scope Phase 1-2 tables: the 35 core tables, the slice-3
  * master-data additions (`unit_conversion`, `supplier`, `supplier_item`,
  * `cost_center`), the slice-4 receiving additions (`goods_receipt`,
  * `goods_receipt_line`), the slice-5 allergen additions (`allergen`,
  * `recipe_allergen`), the slice-6 cost-allocation additions
- * (`operating_cost`, `labor_rate`, `cost_pool`, `allocation_rule`) and the
+ * (`operating_cost`, `labor_rate`, `cost_pool`, `allocation_rule`), the
  * slice-9 counts/transfers/waste additions (`stock_count`, `stock_count_line`,
- * `stock_transfer`, `waste_event`) from `schemas/phase1_2_draft.sql` /
+ * `stock_transfer`, `waste_event`) and the slice-10 production additions
+ * (`production_plan`, `production_batch`, `production_batch_input`,
+ * `production_batch_output`) from `schemas/phase1_2_draft.sql` /
  * `DATA_DICTIONARY`. */
 const EXPECTED_TABLES = [
   "addon_applicability",
@@ -49,6 +51,10 @@ const EXPECTED_TABLES = [
   "outbox_event",
   "password_reset_token",
   "price_scenario",
+  "production_batch",
+  "production_batch_input",
+  "production_batch_output",
+  "production_plan",
   "product",
   "product_recipe_assignment",
   "product_variant",

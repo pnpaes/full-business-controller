@@ -182,3 +182,45 @@ export async function findOrCreateStockCountLine(
   }
   return row;
 }
+
+export interface StockCountPatch {
+  status?: string;
+  approvedBy?: string | null;
+  approvedAt?: Date | null;
+  updatedAt?: Date;
+}
+
+/**
+ * Narrow update for the count lifecycle (`INV-004`, `DEC-017`): status plus the
+ * approval stamp. The schema's `stock_count_approved_check` still governs which
+ * combinations are legal.
+ */
+export async function updateStockCount(
+  db: Database,
+  id: string,
+  patch: StockCountPatch,
+): Promise<StockCount | undefined> {
+  const rows = await db.update(stockCount).set(patch).where(eq(stockCount.id, id)).returning();
+  return rows[0];
+}
+
+export interface StockCountLinePatch {
+  countedQty?: string | null;
+  varianceQty?: string | null;
+  reasonCode?: string | null;
+  recount?: boolean;
+}
+
+/** Records an observation (`counted_qty`) or the derived variance on one line. */
+export async function updateStockCountLine(
+  db: Database,
+  id: string,
+  patch: StockCountLinePatch,
+): Promise<StockCountLine | undefined> {
+  const rows = await db
+    .update(stockCountLine)
+    .set(patch)
+    .where(eq(stockCountLine.id, id))
+    .returning();
+  return rows[0];
+}

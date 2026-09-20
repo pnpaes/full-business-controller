@@ -50,6 +50,7 @@ export type {
   UnitNetSalesInput,
   UnitVariableCostInput,
 } from "./pricing";
+export { outputUnitCost, yieldRate, yieldVariancePct } from "./production";
 export { QUANTITY_SCALE, Quantity } from "./quantity";
 export {
   RECIPE_VERSION_STATES,

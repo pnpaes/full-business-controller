@@ -239,6 +239,18 @@ export const WASTE_VALUE_METHOD = [
   "manual",
 ] as const;
 
+// Slice 10 (production planning + batches), from `schemas/domain-enums.yaml`:
+// the `production_batch` workflow state (`planned` → `cancelled`). It governs
+// the batch, not the `production_plan`; the plan has no status vocabulary
+// authority (recorded as an open point in `./production.ts`).
+export const PRODUCTION_STATUS = [
+  "planned",
+  "released",
+  "in_progress",
+  "completed",
+  "cancelled",
+] as const;
+
 // `stock_movement.reason_code` for count/adjustment postings (`adjustment_reason`
 // in `schemas/domain-enums.yaml`). Exported here because the count-adjustment
 // and waste slices need a closed vocabulary for the reason code.

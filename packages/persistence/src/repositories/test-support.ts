@@ -9,6 +9,12 @@ import {
   organization,
   product,
   productVariant,
+  productionBatch,
+  productionBatchInput,
+  productionBatchOutput,
+  productionPlan,
+  recipe,
+  recipeVersion,
   role,
   stockCount,
   stockCountLine,
@@ -379,6 +385,119 @@ export async function createTestWasteEvent(
       valueMethod: "moving_average",
       occurredAt: new Date("2026-03-01T00:00:00.000Z"),
       actorId: randomUUID(),
+      ...overrides,
+    })
+    .returning();
+  return rows[0]!;
+}
+
+export async function createTestProductionPlan(
+  db: Database,
+  organizationId: string,
+  locationId: string,
+  overrides: Partial<typeof productionPlan.$inferInsert> = {},
+): Promise<typeof productionPlan.$inferSelect> {
+  const rows = await db
+    .insert(productionPlan)
+    .values({
+      organizationId,
+      locationId,
+      productionDate: "2026-03-01",
+      ...overrides,
+    })
+    .returning();
+  return rows[0]!;
+}
+
+export async function createTestRecipe(
+  db: Database,
+  organizationId: string,
+  overrides: Partial<typeof recipe.$inferInsert> = {},
+): Promise<typeof recipe.$inferSelect> {
+  const rows = await db
+    .insert(recipe)
+    .values({
+      organizationId,
+      code: uniqueName("recipe"),
+      name: "Test Recipe",
+      ...overrides,
+    })
+    .returning();
+  return rows[0]!;
+}
+
+export async function createTestRecipeVersion(
+  db: Database,
+  recipeId: string,
+  overrides: Partial<typeof recipeVersion.$inferInsert> = {},
+): Promise<typeof recipeVersion.$inferSelect> {
+  const rows = await db
+    .insert(recipeVersion)
+    .values({
+      recipeId,
+      versionNo: 1,
+      plannedInputQty: "1",
+      plannedOutputQty: "1",
+      approvedUsableOutput: "1",
+      yieldRate: "1",
+      effectiveFrom: new Date("2026-01-01T00:00:00.000Z"),
+      ...overrides,
+    })
+    .returning();
+  return rows[0]!;
+}
+
+export async function createTestProductionBatch(
+  db: Database,
+  organizationId: string,
+  refs: { readonly locationId: string; readonly recipeVersionId: string },
+  overrides: Partial<typeof productionBatch.$inferInsert> = {},
+): Promise<typeof productionBatch.$inferSelect> {
+  const rows = await db
+    .insert(productionBatch)
+    .values({
+      organizationId,
+      locationId: refs.locationId,
+      recipeVersionId: refs.recipeVersionId,
+      ...overrides,
+    })
+    .returning();
+  return rows[0]!;
+}
+
+export async function createTestProductionBatchInput(
+  db: Database,
+  productionBatchId: string,
+  refs: { readonly itemId: string; readonly unitId: string },
+  overrides: Partial<typeof productionBatchInput.$inferInsert> = {},
+): Promise<typeof productionBatchInput.$inferSelect> {
+  const rows = await db
+    .insert(productionBatchInput)
+    .values({
+      productionBatchId,
+      itemId: refs.itemId,
+      unitId: refs.unitId,
+      plannedQty: "1",
+      ...overrides,
+    })
+    .returning();
+  return rows[0]!;
+}
+
+export async function createTestProductionBatchOutput(
+  db: Database,
+  productionBatchId: string,
+  refs: { readonly itemId: string; readonly unitId: string },
+  overrides: Partial<typeof productionBatchOutput.$inferInsert> = {},
+): Promise<typeof productionBatchOutput.$inferSelect> {
+  const rows = await db
+    .insert(productionBatchOutput)
+    .values({
+      productionBatchId,
+      itemId: refs.itemId,
+      unitId: refs.unitId,
+      kind: "finished",
+      plannedQty: "1",
       ...overrides,
     })
     .returning();

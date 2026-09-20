@@ -13,6 +13,7 @@ export * from "./repositories/inventory";
 export * from "./repositories/master-data";
 export * from "./repositories/password-reset";
 export * from "./repositories/price-scenario";
+export * from "./repositories/production";
 export * from "./repositories/receiving";
 export * from "./repositories/recipes";
 export * from "./repositories/sessions";

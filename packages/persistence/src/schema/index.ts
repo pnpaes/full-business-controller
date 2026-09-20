@@ -14,4 +14,5 @@ export * from "./receiving";
 export * from "./counts";
 export * from "./transfers";
 export * from "./waste";
+export * from "./production";
 export * from "./platform";
