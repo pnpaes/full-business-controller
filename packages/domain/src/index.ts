@@ -10,7 +10,7 @@ export type { AllocatedUnitOverheadOptions, AllocationFallback } from "./allocat
 export * from "./auth";
 export { computeCostCardTotals } from "./cost-card";
 export type { CostCardCompositionInput, CostCardTotals } from "./cost-card";
-export { DomainError } from "./errors";
+export { DomainError, NotFoundError } from "./errors";
 export { normalizeCurrency } from "./currency";
 export { computeLandedCost, type LandedCost, type LandedCostInput } from "./landed-cost";
 export {
@@ -76,6 +76,7 @@ export {
   TOLERANCE_KINDS,
   defaultToleranceFor,
   explodeTheoreticalConsumption,
+  toleranceAmount,
   withinTolerance,
 } from "./sales-consumption";
 export type {
@@ -83,6 +84,7 @@ export type {
   RecipeComponentQuantityInput,
   TheoreticalConsumptionInput,
   TheoreticalConsumptionLine,
+  ToleranceAmountInput,
   ToleranceEvaluation,
   ToleranceKind,
 } from "./sales-consumption";

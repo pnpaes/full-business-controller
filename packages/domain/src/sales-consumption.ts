@@ -128,6 +128,21 @@ export const RECONCILIATION_TOLERANCE_DEFAULTS: Readonly<
   supplier_invoice: { rate: "0.01", floor: "10" },
 };
 
+export interface ToleranceAmountInput {
+  readonly rate: string; // numeric(9,6) fraction
+  readonly floor: string; // numeric(19,4)
+  readonly expected: string; // numeric(19,4)
+}
+
+/** max(rate × |expected|, floor) at money scale (HALF_UP). */
+export function toleranceAmount(input: ToleranceAmountInput): string {
+  const expected = parseDecimal(input.expected, MONEY_SCALE);
+  const absolute = expected < 0n ? -expected : expected;
+  const percentage = divideRoundHalfUp(absolute * parseDecimal(input.rate, RATE_SCALE), RATE_ONE);
+  const floor = parseDecimal(input.floor, MONEY_SCALE);
+  return formatDecimal(percentage > floor ? percentage : floor, MONEY_SCALE);
+}
+
 /**
  * `DEC-026`: the tolerance for `kind` against `expectedAmount` is the greater of
  * the percentage of the expected amount or the flat floor, at money scale
@@ -140,11 +155,11 @@ export function defaultToleranceFor(kind: ToleranceKind, expectedAmount: string)
   if (config === undefined) {
     throw new DomainError(`unknown tolerance kind "${kind}"`);
   }
-  const expected = parseDecimal(expectedAmount, MONEY_SCALE);
-  const absolute = expected < 0n ? -expected : expected;
-  const percentage = divideRoundHalfUp(absolute * parseDecimal(config.rate, RATE_SCALE), RATE_ONE);
-  const floor = parseDecimal(config.floor, MONEY_SCALE);
-  return formatDecimal(percentage > floor ? percentage : floor, MONEY_SCALE);
+  return toleranceAmount({
+    rate: config.rate,
+    floor: config.floor,
+    expected: expectedAmount,
+  });
 }
 
 export interface EvaluateToleranceInput {

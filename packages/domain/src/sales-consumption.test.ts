@@ -4,6 +4,7 @@ import { DomainError } from "./errors";
 import {
   defaultToleranceFor,
   explodeTheoreticalConsumption,
+  toleranceAmount,
   withinTolerance,
 } from "./sales-consumption";
 
@@ -108,6 +109,29 @@ describe("defaultToleranceFor (DEC-026)", () => {
 
   it("uses the absolute expected amount for a credit/refund", () => {
     expect(defaultToleranceFor("sales_settlement", "-1000.0000")).toBe("5.0000");
+  });
+});
+
+describe("toleranceAmount", () => {
+  it("returns the floor when it dominates the percentage", () => {
+    expect(toleranceAmount({ rate: "0.005", floor: "5", expected: "100.0000" })).toBe("5.0000");
+  });
+
+  it("returns the percentage when it dominates the floor", () => {
+    expect(toleranceAmount({ rate: "0.005", floor: "5", expected: "2000.0000" })).toBe("10.0000");
+  });
+
+  it("uses the absolute expected amount for a credit/refund", () => {
+    expect(toleranceAmount({ rate: "0.01", floor: "10", expected: "-2000.0000" })).toBe("20.0000");
+  });
+
+  it("returns the floor for a zero expected amount", () => {
+    expect(toleranceAmount({ rate: "0.01", floor: "10", expected: "0.0000" })).toBe("10.0000");
+  });
+
+  it("rounds the percentage HALF_UP at money scale", () => {
+    // 0.005 × 100.05 = 0.50025 → 0.5003 (floor 0.1 does not dominate)
+    expect(toleranceAmount({ rate: "0.005", floor: "0.1", expected: "100.0500" })).toBe("0.5003");
   });
 });
 
