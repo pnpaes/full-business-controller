@@ -35,13 +35,13 @@ fixes → document status and next steps → commit → next task. **Remaining r
 row 13 is **data-gated** on history/grain quality (I11); row 14 is **owner-gated**
 on a privacy review / access matrix; rows 15–18 remain blocked (data /
 `ADR-0009`–`0011`) — so no roadmap slice is buildable from code alone without owner
-inputs or real history. **Next unblocked task:** resolve the recorded open owner
-questions as decisions (`DEC-072`+) and implement the low-risk ones — a
-tolerance-configuration table (`DEC-026` effective-dated config), sales-line
-reversal semantics (`DEC-028`), a typed not-found error to replace the brittle
-`/not found/i` message matching in `recipes/[id]`/`recipes/[id]/versions`, a
-`MAPPING_STATE` `conflict` value, and the `tax_rule_id`/`applied_tax_rate` naming
-question; next free decision id `DEC-072`.
+inputs or real history. **Next unblocked task:** the five recorded low-risk open
+points are now **resolved** as accepted decisions `DEC-072`–`DEC-076` (2026-09-20):
+the effective-dated tolerance-configuration table (`DEC-072`, migration `0024`),
+sales-line reversal semantics (`DEC-073`), the `MAPPING_STATE` `conflict` value
+(`DEC-074`, migration `0025`), the `tax_rule_id`/`applied_tax_rate` naming
+question (`DEC-075`) and the typed not-found error replacing the `/not found/i`
+message matching (`DEC-076`). Next free decision id `DEC-077`.
 
 ## 2. The execution loop (per slice)
 
@@ -393,12 +393,12 @@ dates assigned):
   OPS+TECH define one); `DEC-070` expected trim/cooking loss never posts a `waste`
   movement (only actual abnormal loss becomes a `waste_event`); `DEC-071`
   `production_batch_output.kind` uses a provisional local vocabulary pending a
-  `domain-enums.yaml` key. Next free decision id **`DEC-072`**.
+   `domain-enums.yaml` key. Next free decision id **`DEC-077`**.
 - **Slice-9/10 open owner questions (deliberate; recorded not decided)** — surfaced
   by the concurrent slice-9/10 build (uncommitted working tree at HEAD `2a5799e`);
-  record each resolution in `12_OPEN_DECISIONS.md` (next free id **`DEC-072`**); do
-  not resolve silently:
-  1. Output-cost allocation across multiple outputs/by-products of one batch.
+   record each resolution in `12_OPEN_DECISIONS.md` (next free id **`DEC-077`**); do
+   not resolve silently:
+   1. Output-cost allocation across multiple outputs/by-products of one batch.
      owner/FIN.
   2. Yield-variance tolerance and the exception store (`PROD-003`). owner/FIN+TECH.
   3. Work-in-progress / source-draw storage area for production batches.
@@ -413,7 +413,7 @@ dates assigned):
       point 6). owner/TECH.
 - **Row-11 import-framework open points (deliberate; recorded not decided)** —
   surfaced by the row-11 build (uncommitted working tree at HEAD `7f6aa78`);
-  record each resolution in `12_OPEN_DECISIONS.md` (next free id **`DEC-072`**);
+  record each resolution in `12_OPEN_DECISIONS.md` (next free id **`DEC-077`**);
   do not resolve silently:
   1. ~~Row 12 is gated on `ADR-0008` acceptance~~ resolved 2026-09-20:
      `ADR-0008` is accepted (owner-delegated in-session); the I1 channel/SKU
@@ -425,32 +425,37 @@ dates assigned):
   3. Sales/consumption grain ambiguity: `DEC-009` daily-per-location vs a single
      `sales_line` `source_id` — unresolved. owner/TECH.
   4. No import-profile table exists (profiles are implicit in the run payload).
-     owner/TECH.
-  5. No tolerance-configuration table exists. owner/FIN.
+      owner/TECH.
+  5. ~~No tolerance-configuration table exists~~ resolved 2026-09-20 (`DEC-072`):
+      an effective-dated `reconciliation_tolerance` table (migration `0024`);
+      missing config blocks close.
   6. `file_object` is absent from the schema, so `import_run.file_object_id` is a
-     plain uuid with no FK target. owner/TECH.
+      plain uuid with no FK target. owner/TECH.
   7. Dispositions live in `import_run.diagnostics.dispositions` (jsonb), not a
-     table. owner/TECH.
-  8. Two routes return 404 by matching the text `/not found/i` on the
-     `DomainError` message (`recipes/[id]`, `recipes/[id]/versions`) — a brittle
-     pattern to replace with a typed not-found error. TECH.
-  9. `MAPPING_STATE` has no `conflict` value; conflicts are represented as
-     `error` + `error_code=mapping_conflict`. owner/TECH.
+      table. owner/TECH.
+  8. ~~Two routes return 404 by matching the text `/not found/i` on the
+      `DomainError` message~~ resolved 2026-09-20 (`DEC-076`): a typed
+      `NotFoundError` maps to 404 by `instanceof`.
+  9. ~~`MAPPING_STATE` has no `conflict` value~~ resolved 2026-09-20
+      (`DEC-074`): `conflict` is a first-class value (migration `0025`).
   (Local note: a live-check left one dev `import_run` row in the local database —
   a local dev-data artefact, no repository impact.)
 - **Row-12 sales/reconciliation open points (deliberate; recorded not decided)** —
   surfaced by the row-12 build (uncommitted working tree on top of HEAD
-  `c324418`); record each resolution in `12_OPEN_DECISIONS.md` (next free id
-  **`DEC-072`**); do not resolve silently:
+   `c324418`); record each resolution in `12_OPEN_DECISIONS.md` (next free id
+   **`DEC-077`**); do not resolve silently:
   1. Consumption grain A1: `DEC-009` daily-per-location vs a single `sales_line`
      `source_id` — unresolved. owner/TECH.
-  2. No tolerance-configuration table exists; the `DEC-026` tolerance is
-     hardcoded in the domain evaluator (an effective-dated config table is the
-     natural home). owner/FIN.
-  3. `tax_code_id` vs `tax_rule_id` + `applied_tax_rate` authority (A4) — which
-     field is authoritative for the applied rate. owner/FIN+TECH.
-  4. `DEC-028` sales-line reversal semantics are not implemented (a sales-line
-     reversal path does not exist yet). owner/TECH.
+  2. ~~No tolerance-configuration table exists; the `DEC-026` tolerance is
+      hardcoded in the domain evaluator~~ resolved 2026-09-20 (`DEC-072`): an
+      effective-dated `reconciliation_tolerance` table (migration `0024`);
+      missing config blocks close.
+  3. ~~`tax_code_id` vs `tax_rule_id` + `applied_tax_rate` authority (A4)~~
+      resolved 2026-09-20 (`DEC-075`): `tax_rule_id` is canonical;
+      `applied_tax_rate` is the captured applied rate.
+  4. ~~`DEC-028` sales-line reversal semantics are not implemented~~ resolved
+      2026-09-20 (`DEC-073`): a new negated `sales_line` with `reversal_of_id`,
+      mandatory reason, linked consumption reversed via `reverseStockMovement`.
   5. `settlement.status` and `reconciliation.scope_type` have no vocabulary
      (free status strings today). owner/TECH.
   6. A pre-existing inventory test posted a `sales_line` movement with a fake
@@ -465,14 +470,12 @@ dates assigned):
   (row 13 data-gated on history/grain quality I11; row 14 owner-gated on the
   privacy review / access matrix; rows 15–18 blocked on data /
   `ADR-0009`–`0011`), no roadmap slice is buildable purely from code without
-  owner inputs or real history. The next unblocked work is to resolve the
-  recorded open owner questions as decisions (`DEC-072`+) and implement the
-  low-risk ones — e.g. a tolerance-configuration table (`DEC-026`
-  effective-dated config), sales-line reversal semantics (`DEC-028`), a typed
-  not-found error replacing the brittle `/not found/i` message matching in
-  `recipes/[id]`/`recipes/[id]/versions`, a `MAPPING_STATE` `conflict` value,
-  and the `tax_rule_id`/`applied_tax_rate` naming question. Next free decision
-  id **`DEC-072`**.
+  owner inputs or real history. The recorded low-risk open owner questions
+  have now been **resolved** as decisions `DEC-072`–`DEC-076` (2026-09-20;
+  effective-dated tolerance table `DEC-072`, sales-line reversal `DEC-073`,
+  `MAPPING_STATE` `conflict` `DEC-074`, `tax_rule_id`/`applied_tax_rate`
+  `DEC-075`, typed not-found error `DEC-076`). The remaining recorded open
+  points above stay open. Next free decision id **`DEC-077`**.
 - **Unit `m` vs the missing `length` dimension** — a dimension-vocabulary mismatch in
   `schemas/domain-enums.yaml` surfaced by slice 3; owner/TECH to resolve (FND-003).
 - **`numeric(19,6)` digit cap in `packages/domain/src/decimal.ts`** — the domain decimal
