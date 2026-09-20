@@ -21,8 +21,17 @@ export interface RecipeUnit {
 export interface RecipeItemRecord {
   readonly id: string;
   readonly organizationId: string;
+  readonly code: string;
+  readonly name: string;
   readonly baseUnitId: string;
   readonly currentCost: string | null;
+}
+
+/** Filters for the recipe list read. `limit`/`offset` are applied by the store. */
+export interface ListRecipesQuery {
+  readonly search?: string;
+  readonly limit?: number;
+  readonly offset?: number;
 }
 
 export interface RecipeRecord {
@@ -157,6 +166,8 @@ export interface RecipeStore {
   findItem(itemId: string): Promise<RecipeItemRecord | undefined>;
   findRecipe(recipeId: string): Promise<RecipeRecord | undefined>;
   findRecipeByCode(organizationId: string, code: string): Promise<RecipeRecord | undefined>;
+  /** Organization-scoped recipe list with an optional search and bounded pagination. */
+  listRecipes(organizationId: string, query: ListRecipesQuery): Promise<readonly RecipeRecord[]>;
   createRecipe(input: NewRecipeRecord): Promise<RecipeRecord>;
   findRecipeVersion(recipeVersionId: string): Promise<RecipeVersionRecord | undefined>;
   listRecipeVersions(recipeId: string): Promise<readonly RecipeVersionRecord[]>;

@@ -25,7 +25,7 @@ function makeItem(
   baseUnitId: string,
   currentCost: string | null = null,
 ) {
-  store.items.set(id, { id, organizationId: ORG, baseUnitId, currentCost });
+  store.items.set(id, { id, organizationId: ORG, code: id, name: id, baseUnitId, currentCost });
   return id;
 }
 

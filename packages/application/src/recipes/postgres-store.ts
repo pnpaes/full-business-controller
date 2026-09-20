@@ -128,6 +128,8 @@ export function createPostgresRecipeStore(db: Database): RecipeStore {
         : {
             id: row.id,
             organizationId: row.organizationId,
+            code: row.code,
+            name: row.name,
             baseUnitId: row.baseUnitId,
             currentCost: row.currentCost,
           };
@@ -140,6 +142,8 @@ export function createPostgresRecipeStore(db: Database): RecipeStore {
       const row = await repo.findRecipeByCode(db, organizationId, code);
       return row === undefined ? undefined : toRecipe(row);
     },
+    listRecipes: async (organizationId, query) =>
+      (await repo.listRecipesForOrganization(db, { organizationId, ...query })).map(toRecipe),
     createRecipe: async (input) => toRecipe(await repo.createRecipe(db, input)),
     findRecipeVersion: async (recipeVersionId) => {
       const row = await repo.findRecipeVersionById(db, recipeVersionId);

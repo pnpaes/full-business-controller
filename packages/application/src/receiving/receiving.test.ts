@@ -9,10 +9,34 @@ const RECEIVED_AT = new Date("2026-09-19T10:00:00.000Z");
 
 function buildStore(): FakeReceivingStore {
   const store = new FakeReceivingStore();
-  store.units.set("g", { id: "g", code: "g", dimension: "mass", isBase: true });
-  store.units.set("pack", { id: "pack", code: "pack", dimension: "package", isBase: false });
-  store.units.set("ml", { id: "ml", code: "ml", dimension: "volume", isBase: true });
-  store.items.set("item-1", { id: "item-1", organizationId: ORG, baseUnitId: "g" });
+  store.units.set("g", {
+    id: "g",
+    organizationId: ORG,
+    code: "g",
+    dimension: "mass",
+    isBase: true,
+  });
+  store.units.set("pack", {
+    id: "pack",
+    organizationId: ORG,
+    code: "pack",
+    dimension: "package",
+    isBase: false,
+  });
+  store.units.set("ml", {
+    id: "ml",
+    organizationId: ORG,
+    code: "ml",
+    dimension: "volume",
+    isBase: true,
+  });
+  store.items.set("item-1", {
+    id: "item-1",
+    organizationId: ORG,
+    code: "ITEM-1",
+    name: "Item 1",
+    baseUnitId: "g",
+  });
   store.suppliers.set("sup-1", { id: "sup-1", organizationId: ORG });
   store.supplierItems.set("si-1", {
     id: "si-1",
@@ -305,7 +329,13 @@ describe("recordGoodsReceipt", () => {
       ),
     ).rejects.toThrow(/packToBaseFactor must be positive/);
 
-    store.items.set("item-2", { id: "item-2", organizationId: "other", baseUnitId: "g" });
+    store.items.set("item-2", {
+      id: "item-2",
+      organizationId: "other",
+      code: "ITEM-2",
+      name: "Item 2",
+      baseUnitId: "g",
+    });
     await expect(
       recordGoodsReceipt(
         store,
@@ -381,7 +411,13 @@ describe("recordGoodsReceipt", () => {
   });
 
   it("rejects an incompatible pack dimension and an empty line list", async () => {
-    store.items.set("item-ml", { id: "item-ml", organizationId: ORG, baseUnitId: "ml" });
+    store.items.set("item-ml", {
+      id: "item-ml",
+      organizationId: ORG,
+      code: "ITEM-ML",
+      name: "Item ml",
+      baseUnitId: "ml",
+    });
     await expect(
       recordGoodsReceipt(
         store,

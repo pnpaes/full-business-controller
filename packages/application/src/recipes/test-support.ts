@@ -2,6 +2,7 @@ import type { AuditInput } from "../auth";
 import type { ConversionEdge } from "../catalog";
 import type {
   AllergenRecord,
+  ListRecipesQuery,
   NewAllergenRecord,
   NewRecipeAllergenRecord,
   NewRecipeLineRecord,
@@ -9,6 +10,7 @@ import type {
   NewRecipeVersionRecord,
   RawCostObservation,
   RecipeAllergenRecordView,
+  RecipeItemRecord,
   RecipeLineRecord,
   RecipeRecord,
   RecipeStore,
@@ -25,10 +27,7 @@ import type {
  */
 export class FakeRecipeStore implements RecipeStore {
   readonly units = new Map<string, RecipeUnit>();
-  readonly items = new Map<
-    string,
-    { id: string; organizationId: string; baseUnitId: string; currentCost: string | null }
-  >();
+  readonly items = new Map<string, RecipeItemRecord>();
   readonly recipes = new Map<string, RecipeRecord>();
   readonly versions: RecipeVersionRecord[] = [];
   readonly lines: RecipeLineRecord[] = [];
@@ -59,7 +58,7 @@ export class FakeRecipeStore implements RecipeStore {
     return Promise.resolve(this.units.get(unitId));
   }
 
-  findItem(itemId: string): Promise<ReturnType<FakeRecipeStore["items"]["get"]>> {
+  findItem(itemId: string): Promise<RecipeItemRecord | undefined> {
     return Promise.resolve(this.items.get(itemId));
   }
 
@@ -73,6 +72,23 @@ export class FakeRecipeStore implements RecipeStore {
         (recipe) => recipe.organizationId === organizationId && recipe.code === code,
       ),
     );
+  }
+
+  listRecipes(organizationId: string, query: ListRecipesQuery): Promise<readonly RecipeRecord[]> {
+    const term = query.search?.trim().toLowerCase();
+    const filtered = [...this.recipes.values()]
+      .filter((recipe) => recipe.organizationId === organizationId)
+      .filter(
+        (recipe) =>
+          term === undefined ||
+          term.length === 0 ||
+          recipe.code.toLowerCase().includes(term) ||
+          recipe.name.toLowerCase().includes(term),
+      )
+      .sort((a, b) => a.code.localeCompare(b.code));
+    const offset = query.offset ?? 0;
+    const limit = query.limit ?? 50;
+    return Promise.resolve(filtered.slice(offset, offset + limit));
   }
 
   createRecipe(input: NewRecipeRecord): Promise<RecipeRecord> {

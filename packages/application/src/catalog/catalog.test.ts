@@ -15,7 +15,13 @@ function buildStore(): FakeMasterDataStore {
   store.units.set("kg", { id: "kg", code: "kg", dimension: "mass", isBase: false });
   store.units.set("pack", { id: "pack", code: "pack", dimension: "package", isBase: true });
   store.units.set("ml", { id: "ml", code: "ml", dimension: "volume", isBase: true });
-  store.items.set("item-1", { id: "item-1", organizationId: ORG, baseUnitId: "g" });
+  store.items.set("item-1", {
+    id: "item-1",
+    organizationId: ORG,
+    code: "item-1",
+    sku: "item-1-sku",
+    baseUnitId: "g",
+  });
   store.suppliers.set("sup-1", { id: "sup-1", organizationId: ORG });
   return store;
 }
@@ -70,7 +76,13 @@ describe("registerSupplierItem", () => {
 
   it("rejects an item or supplier outside the organization", async () => {
     const store = buildStore();
-    store.items.set("item-2", { id: "item-2", organizationId: "other", baseUnitId: "g" });
+    store.items.set("item-2", {
+      id: "item-2",
+      organizationId: "other",
+      code: "item-2",
+      sku: "item-2-sku",
+      baseUnitId: "g",
+    });
     await expect(
       registerSupplierItem(store, {
         organizationId: ORG,
@@ -123,7 +135,13 @@ describe("registerSupplierItem", () => {
     ).resolves.toBeDefined();
 
     // DEC-051: item-kg's base is `kg` (not `is_base`), and pack -> kg now registers.
-    store.items.set("item-kg", { id: "item-kg", organizationId: ORG, baseUnitId: "kg" });
+    store.items.set("item-kg", {
+      id: "item-kg",
+      organizationId: ORG,
+      code: "item-kg",
+      sku: "item-kg-sku",
+      baseUnitId: "kg",
+    });
     await expect(
       registerSupplierItem(store, {
         organizationId: ORG,
@@ -139,7 +157,13 @@ describe("registerSupplierItem", () => {
   it("rejects a non-package cross-dimension pack conversion", async () => {
     const store = buildStore();
     // kg (mass) -> ml (volume) is not a package conversion, so it stays rejected.
-    store.items.set("item-ml", { id: "item-ml", organizationId: ORG, baseUnitId: "ml" });
+    store.items.set("item-ml", {
+      id: "item-ml",
+      organizationId: ORG,
+      code: "item-ml",
+      sku: "item-ml-sku",
+      baseUnitId: "ml",
+    });
     await expect(
       registerSupplierItem(store, {
         organizationId: ORG,
@@ -177,7 +201,13 @@ describe("registerSupplierItem", () => {
 
   it("registers no supplier item when the pack conversion is rejected", async () => {
     const store = buildStore();
-    store.items.set("item-ml", { id: "item-ml", organizationId: ORG, baseUnitId: "ml" });
+    store.items.set("item-ml", {
+      id: "item-ml",
+      organizationId: ORG,
+      code: "item-ml",
+      sku: "item-ml-sku",
+      baseUnitId: "ml",
+    });
     await expect(
       registerSupplierItem(store, {
         organizationId: ORG,

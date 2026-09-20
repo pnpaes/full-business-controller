@@ -2,7 +2,15 @@ import type { UnitDimension } from "@aquarela/domain";
 import * as repo from "@aquarela/persistence";
 import type { Database, NodeDatabase } from "@aquarela/persistence";
 
-import type { ReceivingStore, ReceivingUnit } from "./types";
+import type {
+  GoodsReceiptLineRecord,
+  GoodsReceiptSummaryRecord,
+  ReceivingLocationRecord,
+  ReceivingStore,
+  ReceivingSupplierItemOption,
+  ReceivingSupplierOption,
+  ReceivingUnit,
+} from "./types";
 
 /** A transaction handle has no `transaction` method of its own. */
 function isNodeDatabase(db: Database): db is NodeDatabase {
@@ -15,7 +23,86 @@ function toDimension(value: string): UnitDimension {
 }
 
 function toUnit(row: repo.Unit): ReceivingUnit {
-  return { id: row.id, code: row.code, dimension: toDimension(row.dimension), isBase: row.isBase };
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    code: row.code,
+    dimension: toDimension(row.dimension),
+    isBase: row.isBase,
+  };
+}
+
+/** `timestamptz` columns become ISO strings; `date` columns already are. */
+function toGoodsReceiptSummary(row: repo.GoodsReceiptSummary): GoodsReceiptSummaryRecord {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    supplierId: row.supplierId,
+    storeName: row.storeName,
+    locationId: row.locationId,
+    purchaseOrderId: row.purchaseOrderId,
+    deliveryRef: row.deliveryRef,
+    receivedAt: row.receivedAt.toISOString(),
+    status: row.status,
+    acceptedBy: row.acceptedBy,
+    acceptedAt: row.acceptedAt === null ? null : row.acceptedAt.toISOString(),
+    reversalOfId: row.reversalOfId,
+    evidenceFileId: row.evidenceFileId,
+    grossTotal: row.grossTotal,
+  };
+}
+
+function toGoodsReceiptLine(row: repo.GoodsReceiptLine): GoodsReceiptLineRecord {
+  return {
+    id: row.id,
+    goodsReceiptId: row.goodsReceiptId,
+    supplierItemId: row.supplierItemId,
+    itemId: row.itemId,
+    receivedPackQty: row.receivedPackQty,
+    acceptedPackQty: row.acceptedPackQty,
+    rejectedPackQty: row.rejectedPackQty,
+    unitId: row.unitId,
+    packToBaseFactor: row.packToBaseFactor,
+    price: row.price,
+    discount: row.discount,
+    taxBasis: row.taxBasis,
+    taxCodeId: row.taxCodeId,
+    allocatedFreight: row.allocatedFreight,
+    importFee: row.importFee,
+    lotNumber: row.lotNumber,
+    expiryDate: row.expiryDate,
+    baseQtyAccepted: row.baseQtyAccepted,
+    landedBaseUnitCost: row.landedBaseUnitCost,
+  };
+}
+
+function toLocation(row: repo.Location): ReceivingLocationRecord {
+  return { id: row.id, organizationId: row.organizationId, code: row.code, name: row.name };
+}
+
+function toSupplierOption(row: repo.Supplier): ReceivingSupplierOption {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    code: row.code,
+    name: row.name,
+    currency: row.currency,
+  };
+}
+
+function toSupplierItemOption(row: repo.ReceivingSupplierItemOption): ReceivingSupplierItemOption {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    supplierId: row.supplierId,
+    itemId: row.itemId,
+    itemCode: row.itemCode,
+    itemName: row.itemName,
+    baseUnitId: row.baseUnitId,
+    packUnitId: row.packUnitId,
+    packUnitCode: row.packUnitCode,
+    packToBaseUnitFactor: row.packToBaseUnitFactor,
+  };
 }
 
 /** Adapts the persistence repositories to the `ReceivingStore` port. */
@@ -31,7 +118,13 @@ export function createPostgresReceivingStore(db: Database): ReceivingStore {
       const row = await repo.findItemById(db, itemId);
       return row === undefined
         ? undefined
-        : { id: row.id, organizationId: row.organizationId, baseUnitId: row.baseUnitId };
+        : {
+            id: row.id,
+            organizationId: row.organizationId,
+            code: row.code,
+            name: row.name,
+            baseUnitId: row.baseUnitId,
+          };
     },
     findUnit: async (unitId) => {
       const row = await repo.findUnitById(db, unitId);
@@ -54,6 +147,12 @@ export function createPostgresReceivingStore(db: Database): ReceivingStore {
             packToBaseUnitFactor: row.packToBaseUnitFactor,
           };
     },
+    findOpenSupplierPrice: async (supplierItemId) => {
+      const row = await repo.findOpenSupplierPrice(db, supplierItemId);
+      return row === undefined
+        ? undefined
+        : { grossPackPrice: row.grossPackPrice, landedBaseUnitCost: row.landedBaseUnitCost };
+    },
     closeOpenSupplierPrices: (supplierItemId, at) =>
       repo.closeOpenSupplierPrices(db, supplierItemId, at),
     createSupplierPrice: async (input) => ({ id: (await repo.createSupplierPrice(db, input)).id }),
@@ -64,6 +163,24 @@ export function createPostgresReceivingStore(db: Database): ReceivingStore {
     createGoodsReceiptLine: async (input) => ({
       id: (await repo.createGoodsReceiptLine(db, input)).id,
     }),
+    listGoodsReceipts: async (query) =>
+      (await repo.listGoodsReceiptSummaries(db, query)).map(toGoodsReceiptSummary),
+    findGoodsReceipt: async (receiptId) => {
+      const row = await repo.findGoodsReceiptSummaryById(db, receiptId);
+      return row === undefined ? undefined : toGoodsReceiptSummary(row);
+    },
+    listGoodsReceiptLines: async (receiptId) =>
+      (await repo.listGoodsReceiptLines(db, receiptId)).map(toGoodsReceiptLine),
+    findLocation: async (locationId) => {
+      const row = await repo.findLocationById(db, locationId);
+      return row === undefined ? undefined : toLocation(row);
+    },
+    listLocations: async (organizationId) =>
+      (await repo.listLocationsForOrganization(db, organizationId)).map(toLocation),
+    listSuppliers: async (organizationId) =>
+      (await repo.listSuppliersForOrganization(db, organizationId)).map(toSupplierOption),
+    listSupplierItemOptions: async (organizationId) =>
+      (await repo.listReceivingSupplierItemOptions(db, organizationId)).map(toSupplierItemOption),
     writeAudit: async (input) => {
       await repo.writeAuditEvent(db, input);
     },

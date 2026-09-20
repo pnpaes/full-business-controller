@@ -1,15 +1,35 @@
+import {
+  MONEY_SCALE,
+  QUANTITY_SCALE,
+  formatDecimal,
+  parseDecimal,
+  rescale,
+} from "@aquarela/domain";
+
 import type { AuditInput } from "../auth";
 import type {
+  GoodsReceiptLineRecord,
+  GoodsReceiptSummaryRecord,
   NewCostObservationRecord,
   NewReceiptLineRecord,
   NewReceiptRecord,
   NewSupplierPriceRecord,
   ReceivingItem,
+  ReceivingLocationRecord,
   ReceivingStore,
   ReceivingSupplier,
   ReceivingSupplierItem,
+  ReceivingSupplierItemOption,
+  ReceivingSupplierOption,
   ReceivingUnit,
 } from "./types";
+
+/** One line's gross (price × received packs) rounded HALF_UP at money scale. */
+function lineGross(line: NewReceiptLineRecord): bigint {
+  const product =
+    parseDecimal(line.price, MONEY_SCALE) * parseDecimal(line.receivedPackQty, QUANTITY_SCALE);
+  return rescale(product, MONEY_SCALE + QUANTITY_SCALE, MONEY_SCALE);
+}
 
 /**
  * In-memory `ReceivingStore` for the unit suite. It mirrors the observable
@@ -26,9 +46,35 @@ export class FakeReceivingStore implements ReceivingStore {
   readonly supplierPrices: ({ id: string } & NewSupplierPriceRecord)[] = [];
   readonly costObservations: ({ id: string } & NewCostObservationRecord)[] = [];
   readonly audits: AuditInput[] = [];
+  readonly locations = new Map<string, ReceivingLocationRecord>();
+  readonly supplierOptions: ReceivingSupplierOption[] = [];
+  readonly supplierItemOptions: ReceivingSupplierItemOption[] = [];
 
   async withTransaction<T>(fn: (store: ReceivingStore) => Promise<T>): Promise<T> {
     return fn(this);
+  }
+
+  /** Projects a stored receipt to the read record, deriving the gross total. */
+  #toSummary(receipt: { id: string } & NewReceiptRecord): GoodsReceiptSummaryRecord {
+    const gross = this.lines
+      .filter((line) => line.goodsReceiptId === receipt.id)
+      .reduce((total, line) => total + lineGross(line), 0n);
+    return {
+      id: receipt.id,
+      organizationId: receipt.organizationId,
+      supplierId: receipt.supplierId,
+      storeName: receipt.storeName,
+      locationId: receipt.locationId,
+      purchaseOrderId: receipt.purchaseOrderId,
+      deliveryRef: receipt.deliveryRef,
+      receivedAt: receipt.receivedAt.toISOString(),
+      status: receipt.status,
+      acceptedBy: receipt.acceptedBy,
+      acceptedAt: receipt.acceptedAt.toISOString(),
+      reversalOfId: null,
+      evidenceFileId: receipt.evidenceFileId,
+      grossTotal: formatDecimal(gross, MONEY_SCALE),
+    };
   }
 
   findUnit(unitId: string): Promise<ReceivingUnit | undefined> {
@@ -45,6 +91,19 @@ export class FakeReceivingStore implements ReceivingStore {
 
   findSupplierItem(supplierItemId: string): Promise<ReceivingSupplierItem | undefined> {
     return Promise.resolve(this.supplierItems.get(supplierItemId));
+  }
+
+  findOpenSupplierPrice(
+    supplierItemId: string,
+  ): Promise<{ grossPackPrice: string; landedBaseUnitCost: string } | undefined> {
+    const open = this.supplierPrices.find(
+      (price) => price.supplierItemId === supplierItemId && price.effectiveTo === null,
+    );
+    return Promise.resolve(
+      open === undefined
+        ? undefined
+        : { grossPackPrice: open.grossPackPrice, landedBaseUnitCost: open.landedBaseUnitCost },
+    );
   }
 
   closeOpenSupplierPrices(supplierItemId: string, at: Date): Promise<number> {
@@ -84,6 +143,62 @@ export class FakeReceivingStore implements ReceivingStore {
     const id = `receipt-line-${this.lines.length + 1}`;
     this.lines.push({ id, ...input });
     return Promise.resolve({ id });
+  }
+
+  listGoodsReceipts(query: {
+    readonly organizationId: string;
+    readonly locationId?: string;
+    readonly supplierId?: string;
+    readonly limit: number;
+    readonly offset: number;
+  }): Promise<readonly GoodsReceiptSummaryRecord[]> {
+    const filtered = this.receipts
+      .filter((receipt) => receipt.organizationId === query.organizationId)
+      .filter(
+        (receipt) => query.locationId === undefined || receipt.locationId === query.locationId,
+      )
+      .filter(
+        (receipt) => query.supplierId === undefined || receipt.supplierId === query.supplierId,
+      )
+      .sort((a, b) => b.receivedAt.getTime() - a.receivedAt.getTime() || (a.id < b.id ? 1 : -1));
+    return Promise.resolve(
+      filtered
+        .slice(query.offset, query.offset + query.limit)
+        .map((receipt) => this.#toSummary(receipt)),
+    );
+  }
+
+  findGoodsReceipt(receiptId: string): Promise<GoodsReceiptSummaryRecord | undefined> {
+    const receipt = this.receipts.find((row) => row.id === receiptId);
+    return Promise.resolve(receipt === undefined ? undefined : this.#toSummary(receipt));
+  }
+
+  listGoodsReceiptLines(receiptId: string): Promise<readonly GoodsReceiptLineRecord[]> {
+    return Promise.resolve(
+      this.lines.filter((line) => line.goodsReceiptId === receiptId).map((line) => ({ ...line })),
+    );
+  }
+
+  findLocation(locationId: string): Promise<ReceivingLocationRecord | undefined> {
+    return Promise.resolve(this.locations.get(locationId));
+  }
+
+  listLocations(organizationId: string): Promise<readonly ReceivingLocationRecord[]> {
+    return Promise.resolve(
+      [...this.locations.values()].filter((row) => row.organizationId === organizationId),
+    );
+  }
+
+  listSuppliers(organizationId: string): Promise<readonly ReceivingSupplierOption[]> {
+    return Promise.resolve(
+      this.supplierOptions.filter((row) => row.organizationId === organizationId),
+    );
+  }
+
+  listSupplierItemOptions(organizationId: string): Promise<readonly ReceivingSupplierItemOption[]> {
+    return Promise.resolve(
+      this.supplierItemOptions.filter((row) => row.organizationId === organizationId),
+    );
   }
 
   writeAudit(input: AuditInput): Promise<void> {

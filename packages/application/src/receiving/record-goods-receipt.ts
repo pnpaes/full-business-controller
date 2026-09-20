@@ -71,6 +71,12 @@ export interface RecordedGoodsReceiptLine {
   readonly landedPackCost: string;
   readonly baseQtyAccepted: string;
   readonly landedBaseUnitCost: string;
+  /**
+   * The landed base-unit cost of the supplier-price window that was open before
+   * this receipt closed it; null on a first purchase or an ad-hoc observation.
+   * Feeds the §8.3 price-variance warning; never affects the recorded cost.
+   */
+  readonly previousLandedBaseUnitCost: string | null;
 }
 
 export interface RecordGoodsReceiptResult {
@@ -252,7 +258,11 @@ async function appendPriceHistory(
   line: ValidatedLine,
   cost: { netPackPrice: string; landedPackCost: string; landedBaseUnitCost: string },
   baseUnitId: string,
-): Promise<{ priceHistoryKind: "supplier_price" | "cost_observation"; priceHistoryId: string }> {
+): Promise<{
+  priceHistoryKind: "supplier_price" | "cost_observation";
+  priceHistoryId: string;
+  previousLandedBaseUnitCost: string | null;
+}> {
   const supplierItemId = line.input.supplierItemId ?? null;
 
   if (supplierItemId !== null) {
@@ -267,8 +277,9 @@ async function appendPriceHistory(
       throw new DomainError("supplier item does not belong to the receipt supplier");
     }
 
-    // Effective-dated history: close the previous open window before appending,
-    // so `supplier_price_no_overlap` can never reject the new row.
+    // Read the window that is about to close, for the §8.3 price variance, then
+    // close it before appending so `supplier_price_no_overlap` cannot reject us.
+    const previous = await tx.findOpenSupplierPrice(supplierItem.id);
     await tx.closeOpenSupplierPrices(supplierItem.id, ctx.receivedAt);
     const price = await tx.createSupplierPrice({
       organizationId: ctx.organizationId,
@@ -288,7 +299,11 @@ async function appendPriceHistory(
       effectiveFrom: ctx.receivedAt,
       effectiveTo: null,
     });
-    return { priceHistoryKind: "supplier_price", priceHistoryId: price.id };
+    return {
+      priceHistoryKind: "supplier_price",
+      priceHistoryId: price.id,
+      previousLandedBaseUnitCost: previous?.landedBaseUnitCost ?? null,
+    };
   }
 
   const observation = await tx.createCostObservation({
@@ -306,7 +321,11 @@ async function appendPriceHistory(
     receiptFileId: ctx.evidenceFileId,
     notes: `tax basis: ${line.input.taxBasis}`,
   });
-  return { priceHistoryKind: "cost_observation", priceHistoryId: observation.id };
+  return {
+    priceHistoryKind: "cost_observation",
+    priceHistoryId: observation.id,
+    previousLandedBaseUnitCost: null,
+  };
 }
 
 /**

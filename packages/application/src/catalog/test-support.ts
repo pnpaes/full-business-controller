@@ -1,27 +1,48 @@
 import type {
+  CatalogItemPage,
+  CatalogItemRecord,
   ConversionEdge,
+  ListItemsQuery,
   MasterDataStore,
   MasterItem,
   MasterSupplier,
   MasterUnit,
+  NewMasterItem,
+  NewMasterUnit,
   NewSupplierItem,
+  SupplierItemDetail,
   SupplierItemRecord,
 } from "./types";
 
 /**
  * In-memory `MasterDataStore` for the unit suite. It mirrors the observable
- * contract closely enough to exercise the commands without a database;
- * `catalog.postgres.test.ts` covers the real adapter.
+ * contract closely enough to exercise the commands and read services without a
+ * database; `catalog.postgres.test.ts` covers the real adapter.
+ *
+ * Two item stores coexist: `items` (the minimal identity record the commands
+ * use) and `catalogItems` (the full read projection the Products screens use),
+ * so a command can create an item without the read fixture having to spell out
+ * every display field. `addCatalogItem` seeds the read projection directly.
  */
 export class FakeMasterDataStore implements MasterDataStore {
   readonly units = new Map<string, MasterUnit>();
   readonly items = new Map<string, MasterItem>();
+  readonly catalogItems = new Map<string, CatalogItemRecord>();
+  readonly organizations = new Map<string, string>();
   readonly suppliers = new Map<string, MasterSupplier>();
   readonly supplierItems: SupplierItemRecord[] = [];
+  readonly supplierItemDetails: SupplierItemDetail[] = [];
   readonly conversions: ConversionEdge[] = [];
+
+  private unitSequence = 0;
+  private itemSequence = 0;
 
   addConversion(edge: ConversionEdge): void {
     this.conversions.push(edge);
+  }
+
+  addCatalogItem(record: CatalogItemRecord): void {
+    this.catalogItems.set(record.id, record);
   }
 
   async withTransaction<T>(fn: (store: MasterDataStore) => Promise<T>): Promise<T> {
@@ -32,8 +53,113 @@ export class FakeMasterDataStore implements MasterDataStore {
     return Promise.resolve(this.units.get(unitId));
   }
 
+  /**
+   * Codes are matched organization-agnostically, mirroring the fake's existing
+   * org-agnostic `findUnit`; the real repository scopes by organization.
+   */
+  findUnitByCode(_organizationId: string, code: string): Promise<MasterUnit | undefined> {
+    return Promise.resolve([...this.units.values()].find((row) => row.code === code));
+  }
+
+  createUnit(input: NewMasterUnit): Promise<MasterUnit> {
+    this.unitSequence += 1;
+    const record: MasterUnit = {
+      id: `unit-${this.unitSequence}`,
+      code: input.code,
+      dimension: input.dimension,
+      isBase: input.isBase ?? false,
+    };
+    this.units.set(record.id, record);
+    return Promise.resolve(record);
+  }
+
   findItem(itemId: string): Promise<MasterItem | undefined> {
     return Promise.resolve(this.items.get(itemId));
+  }
+
+  findItemByCode(organizationId: string, code: string): Promise<MasterItem | undefined> {
+    return Promise.resolve(
+      [...this.items.values()].find(
+        (row) => row.organizationId === organizationId && row.code === code,
+      ),
+    );
+  }
+
+  findItemBySku(organizationId: string, sku: string): Promise<MasterItem | undefined> {
+    return Promise.resolve(
+      [...this.items.values()].find(
+        (row) => row.organizationId === organizationId && row.sku === sku,
+      ),
+    );
+  }
+
+  createItem(input: NewMasterItem): Promise<MasterItem> {
+    this.itemSequence += 1;
+    const record: MasterItem = {
+      id: `item-${this.itemSequence}`,
+      organizationId: input.organizationId,
+      code: input.code,
+      sku: input.sku,
+      baseUnitId: input.baseUnitId,
+    };
+    this.items.set(record.id, record);
+    const baseUnit = this.units.get(input.baseUnitId);
+    this.catalogItems.set(record.id, {
+      id: record.id,
+      organizationId: input.organizationId,
+      code: input.code,
+      sku: input.sku,
+      name: input.name,
+      itemType: input.itemType,
+      baseUnitId: input.baseUnitId,
+      baseUnitCode: baseUnit?.code ?? "",
+      inventoryPolicy: input.inventoryPolicy,
+      lotTracked: input.lotTracked,
+      currentCost: null,
+      activeFrom: "2026-01-01",
+      activeTo: null,
+    });
+    return Promise.resolve(record);
+  }
+
+  listItems(query: ListItemsQuery): Promise<CatalogItemPage> {
+    const search = query.search?.trim().toLowerCase();
+    const matching = [...this.catalogItems.values()]
+      .filter((row) => row.organizationId === query.organizationId)
+      .filter((row) => query.itemType === undefined || row.itemType === query.itemType)
+      .filter(
+        (row) =>
+          search === undefined ||
+          search.length === 0 ||
+          row.code.toLowerCase().includes(search) ||
+          row.sku.toLowerCase().includes(search) ||
+          row.name.toLowerCase().includes(search),
+      )
+      .sort((a, b) => a.code.localeCompare(b.code));
+    return Promise.resolve({
+      items: matching.slice(query.offset, query.offset + query.limit),
+      total: matching.length,
+    });
+  }
+
+  findCatalogItem(itemId: string): Promise<CatalogItemRecord | undefined> {
+    return Promise.resolve(this.catalogItems.get(itemId));
+  }
+
+  listSupplierItemsForItem(
+    organizationId: string,
+    itemId: string,
+  ): Promise<readonly SupplierItemDetail[]> {
+    return Promise.resolve(
+      this.supplierItemDetails.filter(
+        (row) => row.organizationId === organizationId && row.itemId === itemId,
+      ),
+    );
+  }
+
+  findOrganization(organizationId: string): Promise<{ id: string; currency: string } | undefined> {
+    const currency = this.organizations.get(organizationId);
+    return Promise.resolve(currency === undefined ? undefined : { id: organizationId, currency });
   }
 
   findSupplier(supplierId: string): Promise<MasterSupplier | undefined> {
