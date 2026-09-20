@@ -13,41 +13,41 @@ This file is **updated at the end of every slice** — statuses and the "current
 line move with the work; `CONTEXT.md` keeps the narrative handoff and the immediate
 `Resume here` section.
 
-**Current position:** HEAD `7f6aa78` on `main` (nothing pushed); slice 0, auth
-slices 1a–1e, slices 2–10 `done` and committed; **row 11 (import framework +
-external mappings) `done` but uncommitted** on top of `7f6aa78`, together with a
-cross-cutting error-handling fix — about to land as three commits (row 11 + the
-error fix + docs). Row 11 delivered: migration `0022` (tables `import_run`,
-`import_staging_row`, `external_mapping`), vocabularies
-`IMPORT_STATUS`/`MAPPING_STATE`/`IMPORT_POSTING_POLICY`, domain
-`packages/domain/src/sales-mapping.ts` (`resolveExternalEntity` — SKU-first then
-external id, with both `DEC-033` conflict directions), application
-`packages/application/src/imports/**` (create/stage/validate/map/dispose/preview +
-list/get), web `/api/v1/imports/**` and `(app)/sales/**` (landing + import runs
-list + run detail with diagnostics, staging rows, dispositions and preview), and
-`apps/web/scripts/seed-imports.ts`. The import slice deliberately stops at
-`validated`/`needs_review` — **row 12 (sales + settlements + reconciliation) was
-NOT built and is now the next slice** (`ADR-0008` was **accepted 2026-09-20**,
-owner-delegated in-session, together with `ADR-0007`; only I1 channel/SKU
-confirmations remain as recorded inputs); the
-`/sales` page marks Reconciliation "not yet implemented — row 12 is owner-gated
-on ADR-0008" (stale text to update when row 12 lands). Row 13 is no longer
-ADR-gated (`ADR-0007` accepted 2026-09-20) and follows row 12. The cross-cutting fix:
-`apps/web/lib/http.ts` `jsonError` now takes a message and `mapErrors` maps
-`DomainError`→400 with the authored message; all ~40 non-auth `DomainError`
-branches pass `error.message`; auth routes stay generic (per `ADR-0003`) —
-verified live: a duplicate import hash returns `{"error":"duplicate import file
-hash …"}` instead of "Invalid email or password". Verification at the
-uncommitted tree: `typecheck`, `lint`, `build`, `format:check` clean; **1087/1087
-tests with `DATABASE_URL`** (880 passed / 207 skipped without); `npm audit
---omit=dev` 0; `db:migrate` through `0022` is a no-op; the `0022` down path was
-rehearsed. Programme direction: proceed autonomously, per task — parallel
-background agents → adversarial review + fixes → document status and next steps →
-commit → next task. Next: commit row 11 + the error fix + docs (three commits),
-then row 12 (`ADR-0008` accepted 2026-09-20, owner-delegated; only the I1
-channel/SKU inputs remain), then row 13 (`ADR-0007` accepted 2026-09-20);
-otherwise the price-version work (`DEC-064`) and the deployment
-rehearsal (parked on its owner inputs).
+**Current position:** HEAD `c324418` on `main` (nothing pushed; the ADR-acceptance
+commit — `ADR-0007` and `ADR-0008` accepted 2026-09-20, owner-delegated,
+revertible); slice 0, auth slices 1a–1e, slices 2–10 and row 11 (import framework
++ external mappings) `done` and committed; **row 12 (sales + settlements +
+reconciliation) `done` but uncommitted** on top of `c324418`. Row 12 delivered:
+migration `0023` (tables `sales_transaction`, `sales_line`, `settlement`,
+`reconciliation`; the `sales_line` branch added to the
+`stock_movement_source_guard`), vocabularies `RECONCILIATION_STATUS`/
+`OPTION_KIND`, domain `packages/domain/src/sales-consumption.ts` (recipe
+explosion + the `DEC-026` tolerance evaluator), application
+`packages/application/src/sales/**` (`postImportRun`,
+`postTheoreticalConsumption`, list/get) and
+`packages/application/src/reconciliation/**` (`reconcileImportRun`,
+`reconcileSettlement`, `resolveReconciliation`, list, `resolveTolerance`), web
+`/api/v1/sales/**` and `/api/v1/reconciliations/**` plus the `(app)/sales/**`
+screens (landing, transactions list/detail, reconciliation with resolve), and
+`apps/web/scripts/seed-sales.ts`. Verification at the uncommitted tree:
+`typecheck`, `lint`, `build`, `format:check` clean; **1186/1186 tests with
+`DATABASE_URL`** (127 files); `npm audit --omit=dev` 0; `db:migrate` through
+`0023` is a no-op; the `0023` down path was rehearsed; a pre-existing inventory
+test that posted a `sales_line` movement with a fake source id was fixed (the
+new guard correctly rejects it). Programme direction: proceed autonomously, per
+task — parallel background agents → adversarial review + fixes → document status
+and next steps → commit → next task. **Remaining roadmap after row 12:** row 13
+is now only **data-gated** on history/grain quality (I11); row 14 is
+**owner-gated** on a privacy review / access matrix; rows 15–18 remain blocked
+(data / `ADR-0009`–`0011`) — so no roadmap slice is buildable purely from code
+without owner inputs or real history. **Next unblocked task:** commit row 12,
+then resolve the recorded open owner questions as decisions (`DEC-072`+) and
+implement the low-risk ones — e.g. a tolerance-configuration table (`DEC-026`
+effective-dated config), sales-line reversal semantics (`DEC-028`), a typed
+not-found error to replace the brittle `/not found/i` message matching in
+`recipes/[id]`/`recipes/[id]/versions`, a `MAPPING_STATE` `conflict` value, and
+the `tax_rule_id`/`applied_tax_rate` naming question; next free decision id
+`DEC-072`.
 
 ## 2. The execution loop (per slice)
 
@@ -136,9 +136,9 @@ sequence). Requirement IDs are from `11_REQUIREMENTS_CATALOG.md`; decision IDs f
 | 9 | Counts + transfers + waste | P2 / epic 8 | `INV-004`–`007`, `INV-009`, `WASTE-001`, `WASTE-002`; `DEC-017`, `DEC-018`, `DEC-029`, `DEC-066`–`DEC-068` | 8 | none — I7 opening counts gate the pilot | done (counts/transfers/waste application + `/api/v1` + screens + seeds + tests; persistence in `b525f30`, migration `0020`; verified 989/989 with `DATABASE_URL`) |
 | 10 | Production planning + batches | P2 / epic 9 | `PROD-001`–`005`; `DEC-005`, `DEC-031`, `DEC-036`, `DEC-069`–`DEC-071` | 5, 8 | none | done (migration `0021`; domain `production.ts`; application `production/**` incl. atomic `completeProductionBatch`; web API + `/production` screens + seed; verified 1087/1087 with `DATABASE_URL` at the row-11 tree) |
 | 11 | Import framework + external mappings | P3 / epic 10 | `SALE-002`, `SALE-004`, `SALE-007`, `SALE-008`; `DEC-025`, `DEC-033`, `DEC-035`, `DEC-041`; `ADR-0008` (accepted 2026-09-20) | 3 | none — legacy I19 as reference; I1/I15 Frontline shapes gate real profiles | done (uncommitted — migration `0022` (`import_run`/`import_staging_row`/`external_mapping`), vocabularies `IMPORT_STATUS`/`MAPPING_STATE`/`IMPORT_POSTING_POLICY`, domain `sales-mapping.ts` (`resolveExternalEntity`, SKU-first then external id, both `DEC-033` conflict directions), application `imports/**` (create/stage/validate/map/dispose/preview + list/get), web `/api/v1/imports/**` + `(app)/sales/**` + `seed-imports.ts`; verified 1087/1087 with `DATABASE_URL`) |
-| 12 | Sales + settlements + reconciliation | P3 / epic 11 | `SALE-001`–`011`, `PRICE-006`, `REC-001`–`006`; `DEC-026`, `DEC-035`, `DEC-040`, `DEC-042`, `DEC-043`, `DEC-045`; `ADR-0008` (**Accepted** 2026-09-20) | 8, 11 | none — `ADR-0008` accepted 2026-09-20 (inputs: I1 channel/SKU) | todo — next slice; the import slice stops at `validated`/`needs_review` and the `/sales` page still marks Reconciliation "not yet implemented" (stale text to update when row 12 lands) |
-| 13 | Close + dashboards + menu engineering | P3 / epic 12 | `REC-003`, `REC-006`, `RPT-001`–`005`; `DEC-027`, `DEC-032`; `ADR-0007` (**Accepted** 2026-09-20) | 12 | none — `ADR-0007` accepted 2026-09-20; history/grain quality | todo (after row 12) |
-| 14 | Workforce: employees, shifts, worked hours, payroll-input report | P3 / epics 13–15 | `WF-001`–`006`; `DEC-012`, `DEC-037`, `DEC-038` | 1 | privacy review / access matrix approved (`SEC-003`) | blocked (owner) |
+| 12 | Sales + settlements + reconciliation | P3 / epic 11 | `SALE-001`–`011`, `PRICE-006`, `REC-001`–`006`; `DEC-026`, `DEC-035`, `DEC-040`, `DEC-042`, `DEC-043`, `DEC-045`; `ADR-0008` (**Accepted** 2026-09-20) | 8, 11 | none — `ADR-0008` accepted 2026-09-20 (inputs: I1 channel/SKU) | done (uncommitted — migration `0023` (`sales_transaction`/`sales_line`/`settlement`/`reconciliation` + the `sales_line` branch in `stock_movement_source_guard`), vocabularies `RECONCILIATION_STATUS`/`OPTION_KIND`, domain `sales-consumption.ts` (recipe explosion + the `DEC-026` tolerance evaluator), application `sales/**` (`postImportRun`, `postTheoreticalConsumption`, list/get) + `reconciliation/**` (`reconcileImportRun`, `reconcileSettlement`, `resolveReconciliation`, list, `resolveTolerance`), web `/api/v1/sales/**` + `/api/v1/reconciliations/**` + `(app)/sales/**` screens (landing, transactions list/detail, reconciliation with resolve) + `seed-sales.ts`; verified 1186/1186 with `DATABASE_URL`) |
+| 13 | Close + dashboards + menu engineering | P3 / epic 12 | `REC-003`, `REC-006`, `RPT-001`–`005`; `DEC-027`, `DEC-032`; `ADR-0007` (**Accepted** 2026-09-20) | 12 | data — history/grain quality (I11) | todo (data-gated — synthetic fixtures until real history) |
+| 14 | Workforce: employees, shifts, worked hours, payroll-input report | P3 / epics 13–15 | `WF-001`–`006`; `DEC-012`, `DEC-037`, `DEC-038` | 1 | privacy review / access matrix approved (`SEC-003`) | blocked (owner) — note: owner-gated on the privacy review / access matrix |
 | 15 | Forecasts / budgets / planning | P4 / epic 16 | `FCST-001`–`003`, `PLAN-001`–`003`; `DEC-011`, `DEC-019` | 12, 13 | clean history / grain measured (I11, `DEC-011`) | blocked (data) |
 | 16 | Publishing integrations | P3 / epic 17 | `INTG-001`–`003`; `DEC-002`, `DEC-015`, `DEC-041`, `DEC-044`; `ADR-0011` (**Proposed**), `ADR-0008` | 3, 7, 12 | `ADR-0011` acceptance; per-source approval + named credentials owner (I18) | blocked (owner) |
 | 17 | AI-assisted advisory | P4 / epic 18 | `FCST-004`; `DEC-039`; `ADR-0009` (**Proposed**), `ADR-0004` (**Proposed**), `ADR-0007` | 13, 15 | `ADR-0009` acceptance; provider privacy/DPA review (I16) | blocked (owner) |
@@ -443,6 +443,41 @@ dates assigned):
      `error` + `error_code=mapping_conflict`. owner/TECH.
   (Local note: a live-check left one dev `import_run` row in the local database —
   a local dev-data artefact, no repository impact.)
+- **Row-12 sales/reconciliation open points (deliberate; recorded not decided)** —
+  surfaced by the row-12 build (uncommitted working tree on top of HEAD
+  `c324418`); record each resolution in `12_OPEN_DECISIONS.md` (next free id
+  **`DEC-072`**); do not resolve silently:
+  1. Consumption grain A1: `DEC-009` daily-per-location vs a single `sales_line`
+     `source_id` — unresolved. owner/TECH.
+  2. No tolerance-configuration table exists; the `DEC-026` tolerance is
+     hardcoded in the domain evaluator (an effective-dated config table is the
+     natural home). owner/FIN.
+  3. `tax_code_id` vs `tax_rule_id` + `applied_tax_rate` authority (A4) — which
+     field is authoritative for the applied rate. owner/FIN+TECH.
+  4. `DEC-028` sales-line reversal semantics are not implemented (a sales-line
+     reversal path does not exist yet). owner/TECH.
+  5. `settlement.status` and `reconciliation.scope_type` have no vocabulary
+     (free status strings today). owner/TECH.
+  6. A pre-existing inventory test posted a `sales_line` movement with a fake
+     source id and was fixed — the new `sales_line` branch in
+     `stock_movement_source_guard` correctly rejects it. TECH (fixed).
+  7. The legacy I19 import carries no resolvable `location_id`, so the demo
+     theoretical consumption posts zero recipe-bearing lines. owner/TECH.
+  8. A local dev-DB side effect: the demo import run left a
+     `partially_posted` import run and a reconciliation reopened to `pending`
+     in the local database. Local dev-data artefact, no repository impact.
+- **Next unblocked task (after row 12, 2026-09-20):** with rows 13–18 gated
+  (row 13 data-gated on history/grain quality I11; row 14 owner-gated on the
+  privacy review / access matrix; rows 15–18 blocked on data /
+  `ADR-0009`–`0011`), no roadmap slice is buildable purely from code without
+  owner inputs or real history. The next unblocked work is to resolve the
+  recorded open owner questions as decisions (`DEC-072`+) and implement the
+  low-risk ones — e.g. a tolerance-configuration table (`DEC-026`
+  effective-dated config), sales-line reversal semantics (`DEC-028`), a typed
+  not-found error replacing the brittle `/not found/i` message matching in
+  `recipes/[id]`/`recipes/[id]/versions`, a `MAPPING_STATE` `conflict` value,
+  and the `tax_rule_id`/`applied_tax_rate` naming question. Next free decision
+  id **`DEC-072`**.
 - **Unit `m` vs the missing `length` dimension** — a dimension-vocabulary mismatch in
   `schemas/domain-enums.yaml` surfaced by slice 3; owner/TECH to resolve (FND-003).
 - **`numeric(19,6)` digit cap in `packages/domain/src/decimal.ts`** — the domain decimal

@@ -10,100 +10,93 @@ duplicate their content.
 **Say "resume the work" and start here.** A fresh session must be able to continue
 from this section alone.
 
-**Next task:** **commit the row-11 work + the cross-cutting error-handling fix +
-docs** (three commits), then take up **row 12** (sales + settlements +
-reconciliation — the next slice; `ADR-0008` is accepted 2026-09-20) — otherwise
-proceed to the **price-version work (`DEC-064`)** and the
-**deployment rehearsal**.
+**Next task:** **commit the row-12 work (sales + settlements + reconciliation)**,
+then resolve the recorded open owner questions as decisions (**`DEC-072`+**) and
+implement the low-risk ones — e.g. a tolerance-configuration table (`DEC-026`
+effective-dated config), sales-line reversal semantics (`DEC-028`), a typed
+not-found error to replace the brittle `/not found/i` message matching in
+`recipes/[id]`/`recipes/[id]/versions`, a `MAPPING_STATE` `conflict` value, and
+the `tax_rule_id`/`applied_tax_rate` naming question. Row 13 waits on
+history/grain quality (I11); row 14 on the privacy review.
 
-**State:** `main` HEAD `7f6aa78`; the working tree has uncommitted **row 11
-(import framework + external mappings)** work plus a cross-cutting error-handling
-fix, about to be committed as three commits. Row 11 is **complete**: migration
-`0022` (tables `import_run`, `import_staging_row`, `external_mapping`),
-vocabularies `IMPORT_STATUS`/`MAPPING_STATE`/`IMPORT_POSTING_POLICY`, domain
-`packages/domain/src/sales-mapping.ts` (`resolveExternalEntity` — SKU-first then
-external id, with both `DEC-033` conflict directions), application
-`packages/application/src/imports/**` (create/stage/validate/map/dispose/preview +
-list/get), web `/api/v1/imports/**` and `(app)/sales/**` (landing + import runs
-list + run detail with diagnostics, staging rows, dispositions and preview), and
-`apps/web/scripts/seed-imports.ts`. The import slice deliberately stops at
-`validated`/`needs_review` — **row 12 was NOT built** and is the next slice
-(`ADR-0008` accepted 2026-09-20, owner-delegated in-session, together with
-`ADR-0007`; the I1 channel/SKU confirmations remain recorded inputs; the
-`/sales` page marks Reconciliation "not yet implemented — row 12 is owner-gated
-on ADR-0008" — stale text to update when row 12 lands); row 13 is no longer
-ADR-gated and follows row 12.
-The cross-cutting fix: `apps/web/lib/http.ts` `jsonError` now takes a message and
-`mapErrors` maps `DomainError`→400 with the authored message; all ~40 non-auth
-`DomainError` branches pass `error.message`; auth routes stay generic
-(`ADR-0003`).
+**State:** `main` HEAD `c324418` (the ADR-acceptance commit; `ADR-0007` and
+`ADR-0008` accepted 2026-09-20, owner-delegated, revertible); the working tree
+has uncommitted **row 12** work, about to be committed. Row 12 is **complete**:
+migration `0023` (tables `sales_transaction`, `sales_line`, `settlement`,
+`reconciliation`; the `sales_line` branch added to the
+`stock_movement_source_guard`), vocabularies `RECONCILIATION_STATUS`/
+`OPTION_KIND`, domain `packages/domain/src/sales-consumption.ts` (recipe
+explosion + the `DEC-026` tolerance evaluator), application
+`packages/application/src/sales/**` (`postImportRun`,
+`postTheoreticalConsumption`, list/get) and
+`packages/application/src/reconciliation/**` (`reconcileImportRun`,
+`reconcileSettlement`, `resolveReconciliation`, list, `resolveTolerance`), web
+`/api/v1/sales/**` and `/api/v1/reconciliations/**` plus the `(app)/sales/**`
+screens (landing, transactions list/detail, reconciliation with resolve), and
+`apps/web/scripts/seed-sales.ts`.
 
 **Programme direction (standing user instruction):** proceed autonomously — per task:
 parallel background agents → adversarial review + fixes → document status and next
 steps → commit → next task.
 
-**Scope (do):** (1) commit in **three commits** — (a) the **row-11 import
-slice** (migration `0022` + vocabularies + domain `sales-mapping.ts` +
-application `imports/**` + web `/api/v1/imports/**` + `(app)/sales/**` +
-`seed-imports.ts`), (b) the **error-handling fix** (`apps/web/lib/http.ts` +
-the ~40 non-auth `DomainError` call sites; auth routes untouched), (c) the
-**docs update** (`CONTEXT.md`, `docs/BUILD_ROADMAP.md`) — each with verification
-evidence + rollback approach in the body (per `AGENTS.md` Rule 2); (2) start
-row 12 (sales + settlements + reconciliation, `docs/BUILD_ROADMAP.md` §4 row 12
-— `ADR-0008` accepted 2026-09-20; the I1 channel/SKU confirmations remain
-recorded inputs); otherwise proceed to the
-price-version work (`DEC-064`) and/or the deployment rehearsal (parked on its
-owner inputs).
+**Scope (do):** (1) commit the **row-12 slice** (migration `0023` + the
+vocabularies + domain `sales-consumption.ts` + application `sales/**` and
+`reconciliation/**` + web `/api/v1/sales/**`, `/api/v1/reconciliations/**` +
+`(app)/sales/**` + `seed-sales.ts`), with verification evidence + rollback
+approach in the body (per `AGENTS.md` Rule 2); (2) then take up the
+**next unblocked task**: resolve the recorded open owner questions as decisions
+from **`DEC-072`** (append them to `12_OPEN_DECISIONS.md`) and implement the
+low-risk ones (the list above).
 
-**Scope (do not):** do not build row 12 or touch reconciliation until the row-11
-commits land (`ADR-0008` is now accepted 2026-09-20; row 12 is the next slice
-after that); do not amend or rewrite history
-(nothing pushed); do not edit migrations `0000–0022`; do not deploy,
-`terraform apply`, or write externally (per-source approval remains `DEC-015`);
-invent no decision — append from **`DEC-072`** only if genuinely needed; do not
-rewrite the specification inputs (`00_README.md` … `13_`, `docs/phase0/`,
-`schemas/`, `samples/`).
+**Scope (do not):** do not start row 13 (close + dashboards + menu engineering —
+data-gated on history/grain quality, I11) or row 14 (workforce — owner-gated on
+the privacy review / access matrix); rows 15–18 remain blocked (data /
+`ADR-0009`–`0011`). Do not amend or rewrite history (nothing pushed); do not
+edit migrations `0000–0023`; do not deploy, `terraform apply`, or write
+externally (per-source approval remains `DEC-015`); invent no decision — append
+from **`DEC-072`** only if genuinely needed; do not rewrite the specification
+inputs (`00_README.md` … `13_`, `docs/phase0/`, `schemas/`, `samples/`).
 
 **Files/paths:** the working tree above (already written; commit it);
-`docs/BUILD_ROADMAP.md` §1/§4/§5 (already updated in the tree); `CONTEXT.md`
-(this file); `12_OPEN_DECISIONS.md` only if a new decision is needed, from
-`DEC-072`; `docs/runbooks/persistence-migrations.md` only if `0022`'s entry
-needs correction.
+`12_OPEN_DECISIONS.md` for the `DEC-072`+ entries; the low-risk fixes listed
+above (tolerance-config table, sales-line reversal, typed not-found error,
+`MAPPING_STATE` `conflict`, tax naming); `docs/runbooks/persistence-migrations.md`
+only if `0023`'s entry needs correction.
 
 **Authoritative docs to read first:** `docs/BUILD_ROADMAP.md` §1 (current
-position) and §4 rows 11–12; `12_OPEN_DECISIONS.md` (`DEC-033`, next free id
-`DEC-072`); `docs/adr/0008-*` (Proposed — the row-12 gate); this file's
-"Open decisions / inputs".
+position) and §4 rows 12–14; `12_OPEN_DECISIONS.md` (`DEC-026`, `DEC-028`,
+next free id `DEC-072`); `docs/adr/0007-*` and `docs/adr/0008-*` (both
+Accepted 2026-09-20); this file's "Open decisions / inputs".
 
 **Acceptance / verification:** `nvm use 22`, then `npm run lint`, `npm run
 typecheck`, `npm run test` (with `DATABASE_URL` — current baseline:
-**1087/1087**; without it 880 passed / 207 skipped), `npm run build`,
-`npm run format:check`, `npm audit --omit=dev` = 0; `db:migrate` through `0022`
-is a no-op on re-run; the `0022` down path was rehearsed; after committing,
-re-run the suite at the clean tree and confirm HEAD advanced by three commits.
+**1186/1186**, 127 files), `npm run build`, `npm run format:check`,
+`npm audit --omit=dev` = 0; `db:migrate` through `0023` is a no-op on re-run;
+the `0023` down path was rehearsed; after committing, re-run the suite at the
+clean tree and confirm HEAD advanced.
 
-**Open inputs (recorded, do not decide):** row 12's I1 channel/SKU
-confirmations (`ADR-0008` is accepted 2026-09-20); row 13's history/grain
-quality (`ADR-0007` is accepted 2026-09-20); the sales/consumption
-grain ambiguity (`DEC-009` daily-per-location vs a single `sales_line`
-`source_id`); no import-profile table; no tolerance-configuration table;
-`file_object` absent so `file_object_id` is a plain uuid; dispositions live in
-`diagnostics.dispositions` (no table); two routes return 404 by matching the
-text `/not found/i` on the `DomainError` message (`recipes/[id]`,
-`recipes/[id]/versions`) — a brittle pattern to replace with a typed not-found
-error; `MAPPING_STATE` has no `conflict` value (conflicts are `error` +
-`error_code=mapping_conflict`); a live-check left one dev `import_run` row in
-the local database. All tracked in `docs/BUILD_ROADMAP.md` §5 ("Row-11
-import-framework open points"); next free decision id `DEC-072`.
+**Open inputs (recorded, do not decide):** row 12's open points (see "Open
+decisions / inputs" and `docs/BUILD_ROADMAP.md` §5 "Row-12 sales/reconciliation
+open points"): consumption grain A1 (`DEC-009` daily-per-location vs a single
+`sales_line` source); no tolerance-config table; `tax_code_id` vs `tax_rule_id`
+
+- `applied_tax_rate` authority (A4); `DEC-028` sales-line reversal not
+  implemented; `settlement.status` and `reconciliation.scope_type` have no
+  vocabulary; the `sales_line`-guard test fix; the legacy I19 import carries no
+  resolvable `location_id` so the demo theoretical consumption posts zero
+  recipe-bearing lines; a local dev-DB side effect (the demo import run left
+  `partially_posted` and a reconciliation reopened to `pending`). Row 13 waits on
+  history/grain quality (I11); row 14 on the privacy review / access matrix;
+  next free decision id `DEC-072`.
 
 **Parallel owner action — golden-fixture sign-off:** the six golden fixtures are
 prepared as machine-readable JSON under `tests/fixtures/` (`DEC-065`) with the
 sign-off trail ready; finance + product owner sign. Until signed, no cost is
 "verified"; `I8`/`I9` still gate the real rates behind the fixtures.
 
-**After the row-11 commits:** row 12 (`ADR-0008` accepted 2026-09-20; the I1
-inputs remain), then row 13 (`ADR-0007` accepted 2026-09-20), then the remaining
-open owner questions.
+**After row 12 commits:** the `DEC-072`+ decisions + low-risk implementations,
+then row 13 when real history arrives (synthetic fixtures until then), row 14
+when the privacy review lands.
 
 ## What this is
 
@@ -117,9 +110,9 @@ landed cost), slice 5 (recipes), slice 6 (operating costs + labour + allocation)
 slice 7 (cost card + snapshots + price scenario + approval), slice 8 (stock
 ledger + balances + lots/storage) and the design system/app shell/screens — all
 committed — with slices 9 (counts + transfers + waste) and 10 (production
-planning + batches, including the web layer) complete and **row 11 (import
-framework + external mappings) complete but uncommitted**, together with a
-cross-cutting error-handling fix (both about to be committed as three commits).
+planning + batches, including the web layer) and row 11 (import framework +
+external mappings) complete and **row 12 (sales + settlements + reconciliation)
+complete but uncommitted**, about to be committed.
 
 ## Where things live
 
@@ -145,43 +138,38 @@ cross-cutting error-handling fix (both about to be committed as three commits).
 
 ## Current status
 
-- **As of:** 2026-09-20 — branch `main`; HEAD `7f6aa78`; nothing pushed.
-  **Row 11 (import framework + external mappings) is COMPLETE and UNCOMMITTED**
-  on top of the committed layer stack (slices 0–10, auth 1a–1e, all committed;
-  previous HEAD `2a5799e` was the docs commit before the slice-9/10
-  stock-ops/production-web commits landed).
-  **Row 11 delivered:** migration `0022` (tables `import_run`,
-  `import_staging_row`, `external_mapping`), vocabularies
-  `IMPORT_STATUS`/`MAPPING_STATE`/`IMPORT_POSTING_POLICY`, domain
-  `packages/domain/src/sales-mapping.ts` (`resolveExternalEntity` — SKU-first
-  then external id, with both `DEC-033` conflict directions), application
-  `packages/application/src/imports/**` (create/stage/validate/map/dispose/
-  preview + list/get), web `/api/v1/imports/**` and `(app)/sales/**` (landing +
-  import runs list + run detail with diagnostics, staging rows, dispositions and
-  preview), and `apps/web/scripts/seed-imports.ts`. **Row 12 (sales +
-  settlements + reconciliation) was deliberately NOT built** — it is the next
-  slice (`ADR-0008` accepted 2026-09-20, owner-delegated; the I1 channel/SKU
-  confirmations remain recorded inputs); the import slice stops at
-  `validated`/`needs_review` and the `/sales` page marks Reconciliation "not yet
-  implemented — row 12 is owner-gated on ADR-0008" (stale text to update when
-  row 12 lands). Row 13 is no longer ADR-gated (`ADR-0007` accepted
-  2026-09-20) and follows row 12.
-  **Cross-cutting fix (uncommitted, same tree):** `apps/web/lib/http.ts`
-  `jsonError` now takes a message and `mapErrors` maps `DomainError`→400 with
-  the authored message; all ~40 non-auth `DomainError` branches pass
-  `error.message`; auth routes stay generic (`ADR-0003`). Verified live: a
-  duplicate import hash returns `{"error":"duplicate import file hash …"}`
-  instead of "Invalid email or password".
+- **As of:** 2026-09-20 — branch `main`; HEAD `c324418` (the ADR-acceptance
+  commit); nothing pushed.
+  **Row 12 (sales + settlements + reconciliation) is COMPLETE and UNCOMMITTED**
+  on top of the committed layer stack (slices 0–10, auth 1a–1e, row 11, all
+  committed; `ADR-0007` and `ADR-0008` are accepted 2026-09-20, committed in
+  `c324418`).
+  **Row 12 delivered:** migration `0023` (tables `sales_transaction`,
+  `sales_line`, `settlement`, `reconciliation`; the `sales_line` branch added to
+  the `stock_movement_source_guard`), vocabularies `RECONCILIATION_STATUS`/
+  `OPTION_KIND`, domain `packages/domain/src/sales-consumption.ts` (recipe
+  explosion + the `DEC-026` tolerance evaluator), application
+  `packages/application/src/sales/**` (`postImportRun`,
+  `postTheoreticalConsumption`, list/get) and
+  `packages/application/src/reconciliation/**` (`reconcileImportRun`,
+  `reconcileSettlement`, `resolveReconciliation`, list, `resolveTolerance`), web
+  `/api/v1/sales/**` and `/api/v1/reconciliations/**` plus the `(app)/sales/**`
+  screens (landing, transactions list/detail, reconciliation with resolve), and
+  `apps/web/scripts/seed-sales.ts`.
   **Verification at the current working tree:** `typecheck`, `lint`, `build`,
-  `format:check` clean; **1087/1087 tests with `DATABASE_URL`** (880 passed /
-  207 skipped without); `npm audit --omit=dev` 0; `db:migrate` through `0022` is
-  a no-op; the `0022` down path was rehearsed.
-  **In flight: the three commits** — row 11, the error-handling fix, docs (see
-  "Resume here").
+  `format:check` clean; **1186/1186 tests with `DATABASE_URL`** (127 files);
+  `npm audit --omit=dev` 0; `db:migrate` through `0023` is a no-op; the `0023`
+  down path was rehearsed; a pre-existing inventory test that posted a
+  `sales_line` movement with a fake source id was fixed (the new guard correctly
+  rejects it).
+  **In flight: the row-12 commit** (see "Resume here"). Remaining roadmap:
+  row 13 is data-gated on history/grain quality (I11); row 14 owner-gated on the
+  privacy review / access matrix; rows 15–18 blocked (data /
+  `ADR-0009`–`0011`) — no roadmap slice is buildable purely from code without
+  owner inputs or real history; the next unblocked task is the `DEC-072`+
+  decisions + low-risk implementations.
   Programme direction (user instruction): proceed autonomously — review/fix,
-  document status + next steps, commit, then row 12 (`ADR-0008` accepted
-  2026-09-20; the I1 inputs remain; else the price-version work `DEC-064` /
-  the deployment rehearsal), then row 13 (`ADR-0007` accepted 2026-09-20).
+  document status + next steps, commit, then the next unblocked task.
   Nothing has been applied to DigitalOcean.
 - **Auth complete and security-reviewed (slices 1a–1e):** domain primitives (1a);
   persistence layer (1b-i); application flow (1b-ii); password reset + access
@@ -223,10 +211,10 @@ cross-cutting error-handling fix (both about to be committed as three commits).
 - **DEC-049 closed:** drizzle-orm 0.45.2 / drizzle-kit 0.31.10 upgrade (`cc86f13`);
   `npm audit --omit=dev` = 0.
 - **Tests:** without `DATABASE_URL` the integration tests skip; with it
-  **1087/1087 passed** (880 passed / 207 skipped without it) — recorded
-  2026-09-20 at the current uncommitted row-11 working tree (HEAD `7f6aa78`;
-  lint/typecheck/build/format:check pass; `db:migrate` through `0022` is a
-  no-op, and the `0022` down path was rehearsed). Re-verify with `npm run test`
+  **1186/1186 passed** (127 files) — recorded
+  2026-09-20 at the current uncommitted row-12 working tree (HEAD `c324418`;
+  lint/typecheck/build/format:check pass; `db:migrate` through `0023` is a
+  no-op, and the `0023` down path was rehearsed). Re-verify with `npm run test`
   and update if they differ.
   Open verification debt: the per-process rate limiter needs a shared
   store before multi-instance deployment; the reset-token delivery is a no-op stub
@@ -234,7 +222,7 @@ cross-cutting error-handling fix (both about to be committed as three commits).
   await owner sign-off (see "Open decisions / inputs"); the six golden fixtures
   remain unsigned and are the "verified" gate.
 - **Persistence core + deployment foundation (committed):** Drizzle schema,
-  migrations `0000_enable_extensions` → `0021` additive with tested down paths
+  migrations `0000_enable_extensions` → `0022` additive with tested down paths
   (`0011_cost_allocation.sql` adds the four slice-6 tables; `0014_cost_card_pricing`
   adds four deferred `price_scenario` columns + `snapshot_component_kind_check`;
   `0015` adds `calculation_snapshot_cost_card_index`; the hand-written `0016` adds
@@ -247,15 +235,20 @@ cross-cutting error-handling fix (both about to be committed as three commits).
   adds the slice-10 production tables (`production_plan`, `production_batch`,
   `production_batch_input`, `production_batch_output`,
   `waste_event.production_batch_id` FK) and extends the source guard to
-  `production_batch`; **`0022` (uncommitted)** adds the row-11 tables
+  `production_batch`; `0022` adds the row-11 tables
   `import_run`/`import_staging_row`/`external_mapping` and vocabularies
-  `IMPORT_STATUS`/`MAPPING_STATE`/`IMPORT_POSTING_POLICY`; ledger 22 rows
-  through `0022`; the `asset`
+  `IMPORT_STATUS`/`MAPPING_STATE`/`IMPORT_POSTING_POLICY`; **`0023`
+  (uncommitted)** adds the row-12 tables `sales_transaction`/`sales_line`/
+  `settlement`/`reconciliation`, vocabularies `RECONCILIATION_STATUS`/
+  `OPTION_KIND` and the `sales_line` branch in `stock_movement_source_guard`;
+  ledger 23 rows through `0023`; the `asset`
   register is deliberately deferred), the
   advisory-locked migrator, worker/scheduler
   stubs and the `infra/` Terraform scaffold validated offline. Not applied.
-- **Not yet built:** row 12 (sales + settlements + reconciliation —
-  owner-gated on `ADR-0008`) and rows 13+; also
+- **Not yet built:** row 13 (close + dashboards + menu engineering —
+  data-gated on history/grain quality, I11), row 14 (workforce — owner-gated
+  on the privacy review / access matrix) and rows 15–18
+  (blocked: data / `ADR-0009`–`0011`); also
   the deferred tables
   (workforce, integrations, competitor, AI, procurement, period close,
   platform job/file/approval — note the
@@ -267,28 +260,29 @@ cross-cutting error-handling fix (both about to be committed as three commits).
 ## Next up (prioritised)
 
 `docs/BUILD_ROADMAP.md` is the ordered execution tracker for these slices (slice 0,
-1a–1e and 2–10 done; **row 11 done (uncommitted)**; row 12 `todo` — the next
-slice, with row 13 `todo` after it).
+1a–1e and 2–10 and row 11 done; **row 12 done (uncommitted)**; further rows are
+gated — row 13 on data (I11), row 14 owner-only, rows 15–18 on data/ADRs).
 The list below is the short narrative form.
 
-1. **Commit the row-11 work + the error fix + docs** — three commits: (a) the
-   row-11 import slice (migration `0022`, domain `sales-mapping.ts`,
-   application `imports/**`, `/api/v1/imports/**`, `(app)/sales/**`,
-   `seed-imports.ts`); (b) the cross-cutting error-handling fix
-   (`apps/web/lib/http.ts` + the ~40 non-auth `DomainError` call sites); (c)
-   the docs update (`CONTEXT.md`, `docs/BUILD_ROADMAP.md`) — each with
+1. **Commit the row-12 work** — the sales + settlements + reconciliation slice
+   (migration `0023`, vocabularies, domain `sales-consumption.ts`, application
+   `sales/**` + `reconciliation/**`, web `/api/v1/sales/**` +
+   `/api/v1/reconciliations/**` + `(app)/sales/**`, `seed-sales.ts`), with
    verification evidence + rollback approach in the body (see "Resume here").
    Programme direction: proceed autonomously (agents → review/fix → document →
    commit → next task).
-2. **Row 12 — sales + settlements + reconciliation** (`docs/BUILD_ROADMAP.md`
-   §4 row 12) — **the next slice**: `ADR-0008` is accepted (2026-09-20,
-   owner-delegated); the remaining recorded inputs are the I1 channel/SKU
-   confirmations (they gate real profiles, not the start — see the roadmap
-   convention); then insights/month-close territory is row 13.
-   The import slice stops at `validated`/`needs_review` until then.
+2. **Resolve the open owner questions as `DEC-072`+ decisions and implement the
+   low-risk ones** — a tolerance-configuration table (`DEC-026` effective-dated
+   config), sales-line reversal semantics (`DEC-028`), a typed not-found error
+   replacing the brittle `/not found/i` matching in `recipes/[id]`/
+   `recipes/[id]/versions`, a `MAPPING_STATE` `conflict` value, and the
+   `tax_rule_id`/`applied_tax_rate` naming question. Next free decision id
+   `DEC-072`.
 3. **Row 13 — close + dashboards + menu engineering** — `ADR-0007` is accepted
-   (2026-09-20, owner-delegated); history/grain quality remains the data gate
-   (synthetic fixtures until real data).
+   (2026-09-20); **data-gated** on history/grain quality (I11) — synthetic
+   fixtures until real data. **Row 14 — workforce** is owner-gated on the
+   privacy review / access matrix; rows 15–18 remain blocked (data /
+   `ADR-0009`–`0011`).
 4. **Price versions + PRICE-002/003** (`DEC-064`) — the next pricing work while
    rows 12/13 are not yet built.
 5. **Test-deployment rehearsal** — per `docs/runbooks/deployment.md`, staging first
@@ -341,10 +335,11 @@ The list below is the short narrative form.
 - **Row-11 import-framework open points (2026-09-20; also tracked in
   `docs/BUILD_ROADMAP.md` §5 "Row-11 import-framework open points"; recorded,
   not decided — do not resolve silently):** row 12 (sales + settlements +
-  reconciliation) is no longer ADR-gated (`ADR-0008` accepted 2026-09-20,
-  owner-delegated) but still awaits the I1 channel/SKU confirmations (owner);
-  row 13 is no longer ADR-gated (`ADR-0007` accepted 2026-09-20) — history/grain
-  quality remains the data gate; the
+  reconciliation) is now **built but uncommitted** (`ADR-0008` accepted
+  2026-09-20, owner-delegated) and row 13 is no longer ADR-gated
+  (`ADR-0007` accepted 2026-09-20) — history/grain quality remains the data
+  gate; the I1 channel/SKU confirmations remain recorded owner inputs.
+  Remaining items: the
   sales/consumption grain ambiguity (`DEC-009` daily-per-location vs a single
   `sales_line` `source_id`, FIN+TECH); no import-profile table (TECH); no
   tolerance-configuration table (FIN); `file_object` is absent, so
@@ -353,10 +348,29 @@ The list below is the short narrative form.
   matching the text `/not found/i` on the `DomainError` message
   (`recipes/[id]`, `recipes/[id]/versions`) — a brittle pattern to replace with
   a typed not-found error (TECH); `MAPPING_STATE` has no `conflict` value —
-  conflicts are `error` + `error_code=mapping_conflict` (TECH). Also a live-check
-  left one dev `import_run` row in the local database (see "Local dev-DB
-  cleanup" below). Record each resolution in `12_OPEN_DECISIONS.md` (next free
-  id **`DEC-072`**); do not resolve silently.
+  conflicts are `error` + `error_code=mapping_conflict` (TECH); `tax_code_id`
+  vs `tax_rule_id` + `applied_tax_rate` authority (A4, FIN+TECH). Also a
+  live-check left one dev `import_run` row in the local database (see "Local
+  dev-DB cleanup" below). Record each resolution in `12_OPEN_DECISIONS.md`
+  (next free id **`DEC-072`**); do not resolve silently.
+- **Row-12 sales/reconciliation open points (2026-09-20; also tracked in
+  `docs/BUILD_ROADMAP.md` §5 "Row-12 sales/reconciliation open points";
+  recorded, not decided — do not resolve silently):** consumption grain A1
+  (`DEC-009` daily-per-location vs a single `sales_line` source); no
+  tolerance-configuration table (`DEC-026` tolerance is hardcoded — an
+  effective-dated config table is the natural home); `tax_code_id` vs
+  `tax_rule_id` + `applied_tax_rate` authority (A4); `DEC-028` sales-line
+  reversal semantics not implemented; `settlement.status` and
+  `reconciliation.scope_type` have no vocabulary; the `sales_line`-guard test
+  fix (a pre-existing inventory test posting a `sales_line` movement with a
+  fake source id was fixed — the new guard correctly rejects it); the legacy
+  I19 import carries no resolvable `location_id`, so the demo theoretical
+  consumption posts zero recipe-bearing lines; a local dev-DB side effect (the
+  demo import run left `partially_posted` and a reconciliation reopened to
+  `pending`). Row 13 is data-gated on history/grain quality (I11); row 14 is
+  owner-gated on the privacy review / access matrix; rows 15–18 remain blocked
+  (data / `ADR-0009`–`0011`). Record each resolution in
+  `12_OPEN_DECISIONS.md` (next free id **`DEC-072`**); do not resolve silently.
 - **Slice-9/10 open owner questions (2026-09-20; also tracked in
   `docs/BUILD_ROADMAP.md` §5 "Slice-9/10 open owner questions"):** output-cost
   allocation across multiple outputs/by-products (FIN); yield-variance tolerance
@@ -613,17 +627,27 @@ and Spaces credentials via `-backend-config` / `AWS_ACCESS_KEY_ID` +
   `stock_movement.transfer_id` + the extended source guard) are additive with
   rehearsed down paths (drop the added objects/tables/columns, delete the ledger
   row, re-migrate).
-- **Row 11 + the error-fix (UNCOMMITTED at HEAD `7f6aa78`)**: the row-11
-  import slice (migration `0022`, vocabularies `IMPORT_STATUS`/
-  `MAPPING_STATE`/`IMPORT_POSTING_POLICY`, domain `sales-mapping.ts`, application
-  `imports/**`, web `/api/v1/imports/**` + `(app)/sales/**` + seed) and the
-  cross-cutting `jsonError`/`mapErrors` error-handling fix live only in the
-  working tree, together with the `CONTEXT.md`/`docs/BUILD_ROADMAP.md` doc
-  update — recovery is `git checkout -- <paths>` / `git stash` until the three
-  planned commits land (row 11, the error fix, docs; then `git revert <sha>` per
-  commit). Migration `0022` is **additive with a rehearsed down path** (drop
-  the three added tables, delete the ledger row, re-migrate); the error fix
-  touches no migration or generated file, so it has no data-recovery concern.
+- **Row 12 (UNCOMMITTED on top of HEAD `c324418`)**: the row-12 sales +
+  settlements + reconciliation slice (migration `0023`, vocabularies
+  `RECONCILIATION_STATUS`/`OPTION_KIND`, domain `sales-consumption.ts`,
+  application `sales/**` and `reconciliation/**`, web `/api/v1/sales/**` +
+  `/api/v1/reconciliations/**` + `(app)/sales/**` + seed) and the
+  `CONTEXT.md`/`docs/BUILD_ROADMAP.md` doc update live only in the
+  working tree — recovery is `git checkout -- <paths>` / `git stash` until the
+  commit lands (then `git revert <sha>`). Migration `0023` is **additive with
+  a rehearsed down path** (drop the four added tables/vocabularies/
+  source-guard branch, delete the ledger row, re-migrate). Note: slices
+  9–12 shared barrel files, so reverting across the boundary may require
+  reverting the whole row-12 commit.
+- **Rows 11 + ADR acceptance + the error-fix (committed; HEAD `c324418`)**: the
+  row-11 import slice (migration `0022`, vocabularies, domain
+  `sales-mapping.ts`, application `imports/**`, web `/api/v1/imports/**` +
+  `(app)/sales/**` + seed), the cross-cutting `jsonError`/`mapErrors`
+  error-handling fix and the `ADR-0007`/`ADR-0008` acceptances landed on `main`;
+  each commit is revertible with `git revert <sha>`. Migration `0022` is
+  additive with a rehearsed down path (drop the three added tables, delete the
+  ledger row, re-migrate); the error fix touched no migration or generated
+  file.
 - **Slice 9 + slice-10 backend (committed as layer commits between `2a5799e`
   and `7f6aa78`)**: the counts/transfers/waste and production work (migration
   `0021`, domain `production.ts`, application `production/**`, the production
@@ -650,10 +674,11 @@ and Spaces credentials via `-backend-config` / `AWS_ACCESS_KEY_ID` +
   them with `git revert` if needed. **No cloud resource was created — only offline
   `fmt`/`validate`/`plan` ran, never `apply`; no Terraform state exists, and
   nothing has been applied to DigitalOcean.**
-- Migrations 0000–0022 are additive with tested down paths (`0011` down drops the
+- Migrations 0000–0023 are additive with tested down paths (`0011` down drops the
   four slice-6 tables; `0012` down drops the three EXCLUDE constraints; `0015`/
-  `0016` down drop their indexes/invariant — rehearsed; `0017`–`0022` down are
-  rehearsed — see the slice-8 bullet and the slice-9/10 and row-11 bullets
+  `0016` down drop their indexes/invariant — rehearsed; `0017`–`0023` down are
+  rehearsed — see the slice-8 bullet and the slice-9/10, row-11 and row-12
+  bullets
   above). While the
   database is
   empty the tested recovery is `DROP SCHEMA public CASCADE; DROP SCHEMA drizzle
@@ -664,6 +689,61 @@ CASCADE; CREATE SCHEMA public; npm run db:migrate` (see the runbook). Once data
   (`DEC-015`).
 
 ## Work log (append-only, newest first)
+
+### 2026-09-20 — Row 12 (sales + settlements + reconciliation) complete (uncommitted); handoff updated
+
+`main` HEAD `c324418` (the ADR-acceptance commit — `ADR-0007` and `ADR-0008`
+accepted 2026-09-20, owner-delegated, revertible); the working tree holds
+uncommitted **row 12** work plus this handoff update — about to be committed
+(nothing pushed; nothing applied to DigitalOcean). No handoff/code file outside
+`CONTEXT.md` and `docs/BUILD_ROADMAP.md` was touched by this update.
+
+- **Row 12 — complete.** Migration `0023` (tables `sales_transaction`,
+  `sales_line`, `settlement`, `reconciliation`; the `sales_line` branch added
+  to the `stock_movement_source_guard`), vocabularies
+  `RECONCILIATION_STATUS`/`OPTION_KIND`, domain
+  `packages/domain/src/sales-consumption.ts` (recipe explosion + the `DEC-026`
+  tolerance evaluator), application `packages/application/src/sales/**`
+  (`postImportRun`, `postTheoreticalConsumption`, list/get) and
+  `packages/application/src/reconciliation/**` (`reconcileImportRun`,
+  `reconcileSettlement`, `resolveReconciliation`, list, `resolveTolerance`),
+  web `/api/v1/sales/**` and `/api/v1/reconciliations/**` plus the
+  `(app)/sales/**` screens (landing, transactions list/detail, reconciliation
+  with resolve), and `apps/web/scripts/seed-sales.ts`. A pre-existing inventory
+  test that posted a `sales_line` movement with a fake source id was fixed
+  (the new guard correctly rejects it).
+- **Roadmap position.** Row 12 `done (uncommitted)` in `docs/BUILD_ROADMAP.md`
+  §4; row 13 is now only **data-gated** on history/grain quality (I11); row 14
+  is owner-gated on the privacy review / access matrix; rows 15–18 remain
+  blocked (data / `ADR-0009`–`0011`) — **no roadmap slice is buildable purely
+  from code** without owner inputs or real history. Next unblocked task:
+  resolve the recorded open owner questions as decisions (`DEC-072`+) and
+  implement the low-risk ones — e.g. a tolerance-configuration table
+  (`DEC-026` effective-dated config), sales-line reversal semantics
+  (`DEC-028`), a typed not-found error replacing the brittle `/not found/i`
+  matching in `recipes/[id]`/`recipes/[id]/versions`, a `MAPPING_STATE`
+  `conflict` value, and the `tax_rule_id`/`applied_tax_rate` naming question;
+  next free decision id `DEC-072`.
+- **Open points recorded, not decided** (see "Open decisions / inputs" and
+  `docs/BUILD_ROADMAP.md` §5 "Row-12 sales/reconciliation open points"):
+  consumption grain A1 (`DEC-009` daily-per-location vs a single `sales_line`
+  source); no tolerance-config table (`DEC-026` hardcoded); `tax_code_id` vs
+  `tax_rule_id` + `applied_tax_rate` authority (A4); `DEC-028` sales-line
+  reversal not implemented; `settlement.status` and
+  `reconciliation.scope_type` have no vocabulary; the `sales_line`-guard test
+  fix; the legacy I19 import carries no resolvable `location_id` (the demo
+  theoretical consumption posts zero recipe-bearing lines); a local dev-DB
+  side effect (the demo import run left `partially_posted` and a
+  reconciliation reopened to `pending`).
+- **Verification (exact, at the current working tree):** `typecheck`, `lint`,
+  `build`, `format:check` clean; **1186/1186 tests with `DATABASE_URL`**
+  (127 files); `npm audit --omit=dev` 0; `db:migrate` through `0023` is a
+  no-op; the `0023` down path was rehearsed.
+
+Rollback: the row-12 work is uncommitted — `git checkout -- <paths>` / discard
+the tree (or `git revert` the commit once it lands); migration `0023` is
+additive with a rehearsed down path. Next: commit row 12, then the `DEC-072`+
+decisions + low-risk implementations — see "Resume here".
 
 ### 2026-09-20 — Row 11 (import framework + external mappings) complete + cross-cutting error-handling fix (uncommitted); handoff updated
 
