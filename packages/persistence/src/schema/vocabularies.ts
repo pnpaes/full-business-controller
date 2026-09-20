@@ -77,6 +77,12 @@ export const TAX_TREATMENT = ["fixed", "channel_overridable"] as const;
 
 export const TAX_APPLIES_TO = ["product", "service", "fee", "cost"] as const;
 
+// Values from `schemas/domain-enums.yaml` (`scope_type`). Used by `allocation_rule`,
+// where the split is by driver: `organization`/`company_wide` are org-wide scopes and
+// `location`/`storage`/`channel` are narrower ones. The `equal_share` fallback is only
+// meaningful for an `organization`/`company_wide` rule, since a narrower scope would
+// need its own eligible-entity set; enforcing that structurally is deferred, so the
+// rule and the fallback are validated separately today.
 export const SCOPE_TYPE = [
   "organization",
   "location",
@@ -153,3 +159,34 @@ export type UserStatus = (typeof APP_USER_STATUS)[number];
 // Values from `schemas/domain-enums.yaml` (`price_scenario_state`): a subset of
 // `document_status`, minus `retired`.
 export const PRICE_SCENARIO_STATE = ["draft", "submitted", "approved", "rejected"] as const;
+
+// Slice 6 (operating costs + labour + allocation), from
+// `schemas/domain-enums.yaml`: how an operating cost behaves as volume changes,
+// how often it recurs, what an `allocation_rule` is driven by, and what happens
+// when the driver denominator is missing or zero.
+export const COST_BEHAVIOR = ["fixed", "variable", "mixed"] as const;
+
+export const OPERATING_COST_RECURRENCE = [
+  "one_off",
+  "daily",
+  "weekly",
+  "monthly",
+  "quarterly",
+  "annual",
+] as const;
+
+export const ALLOCATION_DRIVER = [
+  "direct_location_assignment",
+  "occupied_area",
+  "equipment_use",
+  "production_hours",
+  "production_minutes",
+  "operating_hours",
+  "transactions",
+  "revenue",
+  "recorded_time",
+  "eligible_products",
+  "equal_share",
+] as const;
+
+export const ALLOCATION_FALLBACK = ["stop", "equal_share"] as const;

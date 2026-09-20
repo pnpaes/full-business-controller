@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import type { Database, DatabaseTransaction, NodeDatabase } from "../client";
-import { item, location, organization, role, unit } from "../schema";
+import { costCenter, item, location, organization, role, unit } from "../schema";
 import { createUser, type NewUser, type User } from "./users";
 
 /**
@@ -100,6 +100,24 @@ export async function createTestUnit(
       code: uniqueName("unit"),
       dimension: "mass",
       isBase: true,
+      ...overrides,
+    })
+    .returning();
+  return rows[0]!;
+}
+
+export async function createTestCostCenter(
+  db: Database,
+  organizationId: string,
+  overrides: Partial<typeof costCenter.$inferInsert> = {},
+): Promise<typeof costCenter.$inferSelect> {
+  const rows = await db
+    .insert(costCenter)
+    .values({
+      organizationId,
+      code: uniqueName("cc"),
+      name: "Test Cost Center",
+      kind: "company_shared",
       ...overrides,
     })
     .returning();

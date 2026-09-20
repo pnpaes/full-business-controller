@@ -1,6 +1,30 @@
+export {
+  ALLOCATION_FALLBACKS,
+  allocatedPoolAmount,
+  allocatedUnitOverhead,
+  entityDriverShare,
+  fullCostMargin,
+  unitFullCost,
+} from "./allocation";
+export type { AllocatedUnitOverheadOptions, AllocationFallback } from "./allocation";
 export * from "./auth";
 export { DomainError } from "./errors";
+export { normalizeCurrency } from "./currency";
 export { computeLandedCost, type LandedCost, type LandedCostInput } from "./landed-cost";
+export {
+  LOADED_RATE_SCALE,
+  applyProductiveHoursPct,
+  computeLoadedHourlyRate,
+  contributionBeforeAndAfterDirectLabor,
+  directLaborCost,
+  labourCostViews,
+} from "./labour";
+export type {
+  ComputeLoadedRateInput,
+  LabourCostViews,
+  LabourCostViewsInput,
+  LoadedRateComponents,
+} from "./labour";
 export { MONEY_SCALE, Money } from "./money";
 export { QUANTITY_SCALE, Quantity } from "./quantity";
 export {
@@ -29,7 +53,7 @@ export {
   type ResolveConversionOptions,
   type UnitConversionEdge,
 } from "./unit-conversion";
-export { divideRoundHalfUp, formatDecimal, parseDecimal } from "./decimal";
+export { divideRoundHalfUp, formatDecimal, parseDecimal, rescale } from "./decimal";
 export {
   UNIT_DIMENSIONS,
   Unit,

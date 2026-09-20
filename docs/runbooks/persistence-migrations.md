@@ -61,7 +61,10 @@ functions/triggers (`stock_movement`, `calculation_snapshot`, `audit_event`)
 live only in `0002_invariants.sql`; the two `unit_conversion` exclusion
 constraints (`unit_conversion_global_no_overlap`, `unit_conversion_item_no_overlap`)
 and its `NULLS NOT DISTINCT` `unit_conversion_version_key` live only in
-`0005_unit_conversion_invariants.sql`; the
+`0005_unit_conversion_invariants.sql`; the three slice-6 cost-allocation
+exclusion constraints (`cost_pool_no_overlap`, `labor_rate_no_overlap`,
+`allocation_rule_no_overlap`) live only in
+`0012_cost_allocation_invariants.sql`; the
 `goods_receipt_line_accept_qty_guard` trigger/function (an accepted receipt's
 line must have `accepted_pack_qty > 0`; a plain CHECK cannot read the parent
 status) lives only in `0007_goods_receipt_line_checks.sql`; and the
@@ -82,11 +85,13 @@ them manually is invisible to the tool.
 > diffs the live database against the TypeScript schema and, because the raw
 > objects are invisible to it, will silently drop the exclusion constraints, the
 > two deferrable FKs, the append-only triggers, the `unit_conversion`
-> constraints, the state-gated `recipe_version_no_overlap` and the
-> `goods_receipt_line` guard. Those objects live only in
+> constraints, the state-gated `recipe_version_no_overlap`, the
+> `goods_receipt_line` guard and the three cost-allocation exclusion
+> constraints. Those objects live only in
 > `0002_invariants.sql`, `0005_unit_conversion_invariants.sql`,
-> `0007_goods_receipt_line_checks.sql` and
-> `0010_recipe_version_draft_overlap.sql`; use `generate` + `migrate` and the
+> `0007_goods_receipt_line_checks.sql`,
+> `0010_recipe_version_draft_overlap.sql` and
+> `0012_cost_allocation_invariants.sql`; use `generate` + `migrate` and the
 > guard below.
 
 **Guard:** before committing any future generated migration, diff the database
@@ -116,7 +121,7 @@ This applies to: `supplier_price.supplier_item_id`, `supplier_price.source_recei
 `recipe_allergen.verified_by`,
 `cost_card.approved_by`, `audit_event.actor_id`, `goods_receipt.purchase_order_id`,
 `goods_receipt.accepted_by`, `goods_receipt.evidence_file_id`,
-`goods_receipt_line.supplier_item_id`.
+`goods_receipt_line.supplier_item_id`, `operating_cost.evidence_file_id`.
 
 ## Once data exists, the destructive recovery is no longer permitted
 
@@ -207,6 +212,49 @@ only, so the down file is an explicit operator action, not an automatic one.
   `psql "$DATABASE_URL" -f packages/persistence/drizzle/0010_recipe_version_draft_overlap_down.sql`.
   It touches no table and no row, only the constraint, so it is safe once the
   draft overlaps are resolved.
+- **0011 adds the four slice-6 cost-allocation tables and follows the down
+  convention:** `0011_cost_allocation.sql` is generated DDL for `allocation_rule`,
+  `cost_pool`, `labor_rate` and `operating_cost` (checks, FKs and the
+  `allocation_rule_cost_pool_idx`, `cost_pool_organization_id_code_idx` and
+  `operating_cost_lookup_idx` indexes). `0011_cost_allocation_down.sql` drops only
+  the tables 0011 created (`allocation_rule` → `cost_pool` → `labor_rate` →
+  `operating_cost`, FK-safe order) inside one `BEGIN;`/`COMMIT;`, with
+  `DROP TABLE IF EXISTS` so a half-applied manual run cannot wedge. Its header
+  notes that the three `0012` exclusion constraints live on these tables and are
+  dropped with them (run `0012_cost_allocation_invariants_down.sql` first only to
+  drop them explicitly). Apply it manually with
+  `psql "$DATABASE_URL" -f packages/persistence/drizzle/0011_cost_allocation_down.sql`.
+  Only run it once no cost rows are needed: the drops are destructive and
+  financial facts are append-only, with operating-cost reversals rather than
+  edits (AGENTS.md Rule 2).
+- **0012 adds the cost-allocation invariants and follows the down convention:**
+  `0012_cost_allocation_invariants.sql` adds the three hand-written effective-dated
+  exclusions (`cost_pool_no_overlap`, `labor_rate_no_overlap`,
+  `allocation_rule_no_overlap`) that drizzle-kit cannot express; `operating_cost`
+  deliberately has no overlap exclusion, since concurrent overheads in one cost
+  centre/period are legitimate.
+  `0012_cost_allocation_invariants_down.sql` drops the three constraints (no
+  table, no row), so it is safe to run whenever the hand-written invariants must
+  be removed (for example before a data repair). Apply it manually with
+  `psql "$DATABASE_URL" -f packages/persistence/drizzle/0012_cost_allocation_invariants_down.sql`.
+  Apply 0012's down **before** 0011's down: its constraints live on tables 0011's
+  down drops.
+  The three slice-6 range checks (`cost_pool_effective_range_check`,
+  `labor_rate_effective_range_check`, `operating_cost_effective_range_check`)
+  stay strict (`effective_to > effective_from`), so an empty same-day window is
+  rejected on the slice-6 tables — unlike `supplier_price`, whose check 0008
+  relaxed to `effective_to >= effective_from` for a same-instant re-record.
+- **0013 adds the `labor_rate` lookup index and follows the down convention:**
+  `0013_labor_rate_lookup_index.sql` is generated DDL for
+  `labor_rate_lookup_idx` on
+  `(organization_id, cost_center_id, role_code, effective_from)`, covering the
+  `findEffectiveLaborRate` as-of query.
+  `0013_labor_rate_lookup_index_down.sql` drops the index (no table, no row), so
+  it is safe to run whenever the index must be removed (for example before a
+  data repair). Apply it manually with
+  `psql "$DATABASE_URL" -f packages/persistence/drizzle/0013_labor_rate_lookup_index_down.sql`.
+  Apply 0013's down **before** 0011's down: its index lives on `labor_rate`,
+  which 0011's down drops.
 
 **Re-applying after a manual down:** drizzle-kit tracks applied migrations in
 `drizzle.__drizzle_migrations`, not by comparing the schema, so a plain
@@ -217,11 +265,22 @@ row is identified by `created_at` (the `_journal.json` `when`):
 for 0003, `… = 1789850858806` for 0004, `… = 1789851925634` for 0005,
 `… = 1789853260355` for 0006, `… = 1789853887846` for 0007 and
 `… = 1789853918031` for 0008, `… = 1789854468899` for 0009,
-`… = 1789855382064` for 0010, then
+`… = 1789855382064` for 0010, `… = 1789862475550` for 0011 and
+`… = 1789862630158` for 0012, `… = 1789864504597` for 0013, then
 `npm run db:migrate` (0003 verified 2026-09-19; 0005 rehearsed in the slice-3
 review follow-up; 0006 rehearsed with the slice-4 receiving work; 0007 and
 0008 rehearsed with the slice-4 review follow-up; 0009 rehearsed with the
-slice-5 recipe work; 0010 rehearsed with the slice-5 review follow-up).
+slice-5 recipe work; 0010 rehearsed with the slice-5 review follow-up; 0011
+rehearsed with the slice-6 costing work; 0013 rehearsed with the slice-6
+code-review follow-up).
+A **full 0011 down** drops the tables the three 0012 constraints live on, so its
+replay must clear **both** ledger rows, not just 0011's:
+`DELETE FROM drizzle.__drizzle_migrations WHERE created_at IN (1789862475550, 1789862630158);`
+then `npm run db:migrate` re-applies 0011 (the four tables) followed by 0012 (the
+three exclusion constraints). Verified on the local dev database 2026-09-20:
+after the down the four tables are gone, and after the replay the database has
+all 47 tables with `cost_pool_no_overlap`, `labor_rate_no_overlap` and
+`allocation_rule_no_overlap` present.
 Re-applying is only safe
 while the removed objects carry no data that must be preserved — once real
 master data, TOTP counters or conversions exist, prefer the additive forward
@@ -304,6 +363,9 @@ session will not serialise against each other.
 | 0008 | `0008_supplier_price_effective_range.sql` | Generated: relaxes `supplier_price_effective_range_check` to `effective_to >= effective_from`, so the half-open `[)` history can represent a same-instant re-record as an empty window (non-overlapping under `supplier_price_no_overlap`). Down companion: `0008_supplier_price_effective_range_down.sql` (restores the strict `>`) |
 | 0009 | `0009_recipe_allergens.sql` | Generated: the two slice-5 allergen tables — `allergen` and `recipe_allergen` — with their checks, unique key, composite primary key, FKs and the `recipe_allergen_allergen_idx`. The recipe tables (`recipe`, `recipe_version`, `recipe_line`) already exist from the 0001 core (with `recipe_version_no_overlap` in 0002), so 0009 adds only the allergen declarations. Down companion: `0009_recipe_allergens_down.sql` (transactional `DROP TABLE IF EXISTS` in FK-safe order) |
 | 0010 | `0010_recipe_version_draft_overlap.sql` | Hand-written: drops the ungated `recipe_version_no_overlap` from `0002` and recreates it gated to `WHERE ("state" IN ('approved','submitted'))`, so two draft versions of one recipe may overlap while approved/submitted versions may not (`DEC-053`). Down companion: `0010_recipe_version_draft_overlap_down.sql` (restores the original ungated constraint; re-add validates existing rows) |
+| 0011 | `0011_cost_allocation.sql` | Generated: the four slice-6 cost-allocation tables — `allocation_rule`, `cost_pool`, `labor_rate`, `operating_cost` — with their checks, FKs and the `allocation_rule_cost_pool_idx`, `cost_pool_organization_id_code_idx` and `operating_cost_lookup_idx` indexes. Down companion: `0011_cost_allocation_down.sql` (transactional `DROP TABLE IF EXISTS` in FK-safe order) |
+| 0012 | `0012_cost_allocation_invariants.sql` | Hand-written: the three FND-004 effective-dated exclusions drizzle-kit cannot express — `cost_pool_no_overlap` on `(organization_id, code)`, `labor_rate_no_overlap` on `(organization_id, cost_center_id, role_code)` and `allocation_rule_no_overlap` on `(cost_pool_id)`, each a `[)` `daterange`. `operating_cost` deliberately has no overlap exclusion (concurrent overheads are legitimate). Down companion: `0012_cost_allocation_invariants_down.sql` (drops the three constraints) |
+| 0013 | `0013_labor_rate_lookup_index.sql` | Generated: adds `labor_rate_lookup_idx` on `(organization_id, cost_center_id, role_code, effective_from)`, covering the `findEffectiveLaborRate` as-of lookup. Down companion: `0013_labor_rate_lookup_index_down.sql` (drops the index) |
 
 Order matters: extensions before DDL that calls `gen_random_uuid()`, and before
 the exclusion constraints. Verify with:
@@ -333,12 +395,13 @@ DATABASE_URL=postgres://aquarela:aquarela@localhost:5432/aquarela npm run db:mig
 `public` alone leaves the ledger intact, so `db:migrate` reports success while
 restoring nothing. `DROP SCHEMA drizzle CASCADE` clears the ledger so all
 migrations replay from 0000. Verified: after this sequence `db:migrate`
-re-applies 0000–0010 and the database has all 43 tables plus both extensions
+re-applies 0000–0012 and the database has all 47 tables plus both extensions
 (0004 adds the four slice-3 master-data tables; 0006 adds the two slice-4
 receiving tables; 0007 adds the `goods_receipt_line` guard trigger — no table;
 0008 relaxes the `supplier_price` range check — no table; 0009 adds the two
 slice-5 allergen tables; 0010 replaces the `recipe_version` exclusion
-constraint — no table).
+constraint — no table; 0011 adds the four slice-6 cost-allocation tables; 0012
+adds the three cost-allocation exclusion constraints — no table).
 
 Once real data exists, this path is no longer acceptable: use small atomic
 commits, expand → migrate → contract for schema changes, and a tested
@@ -390,6 +453,21 @@ After applying to an empty database the following were verified with `psql`:
   rejected by the state-gated `recipe_version_no_overlap`. A draft may overlap an
   approved version; an approved overlapping another approved is the failure the
   constraint exists to catch.
+- `cost_pool` (0012): an overlapping `daterange(effective_from, effective_to)`
+  `[)` window for the same `(organization_id, code)` is rejected by
+  `cost_pool_no_overlap` (a pool that closes at `2026-06-01` and one that opens
+  the same day is not an overlap).
+- `labor_rate` (0012): an overlapping window for the same
+  `(organization_id, cost_center_id, role_code)` is rejected by
+  `labor_rate_no_overlap`; a different `role_code` in the same cost centre may
+  occupy the same window.
+- `labor_rate` (0013): the `labor_rate_lookup_idx` index on
+  `(organization_id, cost_center_id, role_code, effective_from)` covers the
+  `findEffectiveLaborRate` as-of lookup.
+- `allocation_rule` (0012): an overlapping window for the same `cost_pool_id` is
+  rejected by `allocation_rule_no_overlap`. `operating_cost` deliberately has
+  **no** overlap exclusion: two concurrent costs in one cost centre and period
+  (rent and insurance) are accepted.
 - Deferrable FKs: a `calculation_snapshot` and its `cost_card` can be inserted
   in the same transaction in either order and commit together.
 - `calculation_snapshot`: a plain `TRUNCATE` is blocked first by the FK from

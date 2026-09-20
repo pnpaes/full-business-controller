@@ -14,14 +14,17 @@ import * as schema from "./index";
 
 const tables = Object.values(schema).filter((value) => is(value, PgTable));
 
-/** The 43 in-scope Phase 1-2 tables: the 35 core tables, the slice-3
+/** The 47 in-scope Phase 1-2 tables: the 35 core tables, the slice-3
  * master-data additions (`unit_conversion`, `supplier`, `supplier_item`,
  * `cost_center`), the slice-4 receiving additions (`goods_receipt`,
- * `goods_receipt_line`) and the slice-5 allergen additions (`allergen`,
- * `recipe_allergen`) from `schemas/phase1_2_draft.sql` / `DATA_DICTIONARY`. */
+ * `goods_receipt_line`), the slice-5 allergen additions (`allergen`,
+ * `recipe_allergen`) and the slice-6 cost-allocation additions
+ * (`operating_cost`, `labor_rate`, `cost_pool`, `allocation_rule`) from
+ * `schemas/phase1_2_draft.sql` / `DATA_DICTIONARY`. */
 const EXPECTED_TABLES = [
   "addon_applicability",
   "allergen",
+  "allocation_rule",
   "app_user",
   "audit_event",
   "auth_session",
@@ -31,12 +34,15 @@ const EXPECTED_TABLES = [
   "cost_card",
   "cost_center",
   "cost_observation",
+  "cost_pool",
   "data_ownership",
   "exchange_rate",
   "goods_receipt",
   "goods_receipt_line",
   "item",
+  "labor_rate",
   "location",
+  "operating_cost",
   "organization",
   "outbox_event",
   "password_reset_token",
@@ -87,6 +93,9 @@ const NOT_EXPECTED_TABLES = [
   "purchase_order",
   "purchase_order_line",
   "reorder_policy",
+  // The fixed-asset register is deferred; depreciation is entered as an
+  // `operating_cost` (`DATA_DICTIONARY` §4 `asset`) until its slice lands.
+  "asset",
 ];
 
 /** New DB-enforced checks added to the generated core DDL (0001). */

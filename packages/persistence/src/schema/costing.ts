@@ -1,26 +1,36 @@
 import { sql } from "drizzle-orm";
-import { check, index, jsonb, pgTable, text, uuid } from "drizzle-orm/pg-core";
+import { check, index, jsonb, numeric, pgTable, text, uuid } from "drizzle-orm/pg-core";
 
 import { item, unit } from "./catalog";
 import {
   approvalCheck,
+  currency,
+  dateRange,
   enumCheck,
   jsonObject,
   money,
   orgId,
   quantity,
+  rangeCheck,
   tstz,
   uuidPk,
 } from "./columns";
-import { channel, location, organization } from "./organization";
+import { channel, costCenter, location, organization } from "./organization";
 import { productVariant } from "./products";
 import { recipeVersion } from "./recipes";
 import { exchangeRate } from "./tax";
 import {
+  ALLOCATION_DRIVER,
+  ALLOCATION_FALLBACK,
+  COST_BEHAVIOR,
   COST_CARD_STATE,
+  OPERATING_COST_RECURRENCE,
   PRICE_SCENARIO_STATE,
+  ROLE_CODE,
   ROUNDING_BOUNDARY,
   ROUNDING_METHOD,
+  SCOPE_TYPE,
+  TAX_BASIS,
 } from "./vocabularies";
 
 export const priceScenario = pgTable(
@@ -141,5 +151,154 @@ export const snapshotComponent = pgTable(
       enumCheck(t.roundingBoundary, ROUNDING_BOUNDARY),
     ),
     index("snapshot_component_snapshot_idx").on(t.snapshotId),
+  ],
+);
+
+/**
+ * `operating_cost` (`DATA_DICTIONARY` §4, COST-003): a dated overhead fact — rent,
+ * utilities, subscriptions — with its recurrence, cost behaviour and tax basis.
+ * Effective-dated with `date` columns; unlike `labor_rate`/`cost_pool`, two
+ * concurrent costs in one cost centre are legitimate (rent and insurance share a
+ * window), so there is deliberately **no** overlap exclusion here (see
+ * `0012_cost_allocation_invariants.sql`).
+ */
+export const operatingCost = pgTable(
+  "operating_cost",
+  {
+    id: uuidPk(),
+    organizationId: orgId().references(() => organization.id),
+    locationId: uuid("location_id").references(() => location.id),
+    costCenterId: uuid("cost_center_id")
+      .notNull()
+      .references(() => costCenter.id),
+    amount: money("amount").notNull(),
+    currency: currency().notNull(),
+    recurrence: text("recurrence").notNull(),
+    behavior: text("behavior").notNull(),
+    taxBasis: text("tax_basis").notNull(),
+    ...dateRange(),
+    vendor: text("vendor"),
+    // FK deferred: points at a platform file object, added when that slice lands
+    // (see the runbook's deferred-FK list and DATA_DICTIONARY §4).
+    evidenceFileId: uuid("evidence_file_id"),
+    createdAt: tstz("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    check("operating_cost_recurrence_check", enumCheck(t.recurrence, OPERATING_COST_RECURRENCE)),
+    check("operating_cost_behavior_check", enumCheck(t.behavior, COST_BEHAVIOR)),
+    check("operating_cost_tax_basis_check", enumCheck(t.taxBasis, TAX_BASIS)),
+    check("operating_cost_amount_check", sql`${t.amount} >= 0`),
+    check("operating_cost_effective_range_check", rangeCheck(t.effectiveFrom, t.effectiveTo)),
+    index("operating_cost_lookup_idx").on(t.organizationId, t.costCenterId, t.effectiveFrom),
+  ],
+);
+
+/**
+ * `labor_rate` (`DATA_DICTIONARY` §4, COST-004): the loaded hourly rate for a
+ * role in a cost centre, with a productive-hours percentage. Effective-dated
+ * with `date` columns and versioned by role, so
+ * `labor_rate_no_overlap` (hand-written in
+ * `0012_cost_allocation_invariants.sql` — drizzle-kit cannot express an
+ * exclusion constraint) rejects overlapping windows for one
+ * `(organization_id, cost_center_id, role_code)`.
+ */
+export const laborRate = pgTable(
+  "labor_rate",
+  {
+    id: uuidPk(),
+    organizationId: orgId().references(() => organization.id),
+    costCenterId: uuid("cost_center_id")
+      .notNull()
+      .references(() => costCenter.id),
+    roleCode: text("role_code").notNull(),
+    loadedHourlyRate: money("loaded_hourly_rate").notNull(),
+    productiveHoursPct: numeric("productive_hours_pct", { precision: 6, scale: 4 }),
+    ...dateRange(),
+    createdAt: tstz("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    check("labor_rate_role_code_check", enumCheck(t.roleCode, ROLE_CODE)),
+    check("labor_rate_loaded_hourly_rate_check", sql`${t.loadedHourlyRate} >= 0`),
+    check(
+      "labor_rate_productive_hours_pct_check",
+      sql`${t.productiveHoursPct} is null or (${t.productiveHoursPct} > 0 and ${t.productiveHoursPct} <= 1)`,
+    ),
+    check("labor_rate_effective_range_check", rangeCheck(t.effectiveFrom, t.effectiveTo)),
+    index("labor_rate_lookup_idx").on(
+      t.organizationId,
+      t.costCenterId,
+      t.roleCode,
+      t.effectiveFrom,
+    ),
+    // labor_rate_no_overlap (exclusion constraint) is emitted in the raw
+    // `0012_cost_allocation_invariants` migration, as in `tax.ts`.
+  ],
+);
+
+/**
+ * `cost_pool` (`DATA_DICTIONARY` §4, COST-007): a named pool of shared costs that
+ * allocation rules distribute across locations or products. Effective-dated with
+ * `date` columns; `code` is versioned rather than unique, so
+ * `cost_pool_no_overlap` (hand-written in
+ * `0012_cost_allocation_invariants.sql`) rejects overlapping windows for one
+ * `(organization_id, code)`.
+ */
+export const costPool = pgTable(
+  "cost_pool",
+  {
+    id: uuidPk(),
+    organizationId: orgId().references(() => organization.id),
+    code: text("code").notNull(),
+    name: text("name").notNull(),
+    ...dateRange(),
+    createdAt: tstz("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    check("cost_pool_effective_range_check", rangeCheck(t.effectiveFrom, t.effectiveTo)),
+    index("cost_pool_organization_id_code_idx").on(t.organizationId, t.code),
+    // cost_pool_no_overlap (exclusion constraint) is emitted in the raw
+    // `0012_cost_allocation_invariants` migration, as in `tax.ts`.
+  ],
+);
+
+/**
+ * `allocation_rule` (`DATA_DICTIONARY` §4, COST-007/011): how one cost pool is
+ * split — `driver` selects the basis, `scope_type` narrows the target,
+ * `denominator_source` names where the driver quantity comes from, and
+ * `fallback_behavior` decides what happens when that denominator is missing or
+ * zero (`stop` or `equal_share`). Effective-dated with `date` columns and
+ * scoped through `cost_pool` (no own `organization_id`), so
+ * `allocation_rule_no_overlap` (hand-written in
+ * `0012_cost_allocation_invariants.sql`) rejects overlapping windows per pool.
+ */
+export const allocationRule = pgTable(
+  "allocation_rule",
+  {
+    id: uuidPk(),
+    costPoolId: uuid("cost_pool_id")
+      .notNull()
+      .references(() => costPool.id),
+    driver: text("driver").notNull(),
+    scopeType: text("scope_type").notNull(),
+    denominatorSource: text("denominator_source").notNull(),
+    fallbackBehavior: text("fallback_behavior").notNull(),
+    ...dateRange(),
+    createdAt: tstz("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    check("allocation_rule_driver_check", enumCheck(t.driver, ALLOCATION_DRIVER)),
+    check("allocation_rule_scope_type_check", enumCheck(t.scopeType, SCOPE_TYPE)),
+    check(
+      "allocation_rule_denominator_source_check",
+      sql`length(btrim(${t.denominatorSource})) > 0`,
+    ),
+    check(
+      "allocation_rule_fallback_behavior_check",
+      enumCheck(t.fallbackBehavior, ALLOCATION_FALLBACK),
+    ),
+    check("allocation_rule_effective_range_check", rangeCheck(t.effectiveFrom, t.effectiveTo)),
+    index("allocation_rule_cost_pool_idx").on(t.costPoolId),
+    // allocation_rule_no_overlap (exclusion constraint) is emitted in the raw
+    // `0012_cost_allocation_invariants` migration, as in `tax.ts`.
   ],
 );

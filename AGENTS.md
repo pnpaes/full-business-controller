@@ -3,7 +3,7 @@
 This repo is a **documentation-first modular monolith** for Aquarela's business
 control system (products/SKUs, costs, inventory, sales, reconciliation and
 reporting). Phase 0 is complete: the specification package (`00_README.md` …
-`13_AGENT_BUILD_BRIEF.md`), the 54 accepted decisions (`12_OPEN_DECISIONS.md`)
+`13_AGENT_BUILD_BRIEF.md`), the 57 accepted decisions (`12_OPEN_DECISIONS.md`)
 and the Phase 0 artifacts/ADRs (`docs/phase0/`, `docs/adr/`) are the authority.
 The foundation scaffold and the Phase 1–2 persistence core are built (the latter
 uncommitted); no business slices yet. The living project context lives in
@@ -58,8 +58,8 @@ Changes must be revertible or carry a documented recovery path:
 
 ## Rule 3 — Decisions are the authority
 
-- The 54 accepted decisions in `12_OPEN_DECISIONS.md` govern. New decisions are
-  **appended there** (next id `DEC-055`) — never invented silently.
+- The 57 accepted decisions in `12_OPEN_DECISIONS.md` govern. New decisions are
+  **appended there** (next id `DEC-058`) — never invented silently.
 - Calculations follow `docs/phase0/CALCULATION_CONTRACT.md`: decimal only (never
   floats), HALF_UP, boundaries B0–B4, and the cost-source precedence.
 

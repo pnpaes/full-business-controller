@@ -6,6 +6,7 @@
 import { sql, type SQL } from "drizzle-orm";
 import {
   char,
+  date,
   integer,
   jsonb,
   numeric,
@@ -57,6 +58,12 @@ export const auditColumns = () => ({
 export const effectiveRange = () => ({
   effectiveFrom: tstz("effective_from").notNull(),
   effectiveTo: tstz("effective_to"),
+});
+
+/** Date-typed effective-dating pair (DATA_DICTIONARY §4 uses `date` for these). */
+export const dateRange = () => ({
+  effectiveFrom: date("effective_from").notNull(),
+  effectiveTo: date("effective_to"),
 });
 
 /**

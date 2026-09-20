@@ -1,0 +1,1 @@
+CREATE INDEX "labor_rate_lookup_idx" ON "labor_rate" USING btree ("organization_id","cost_center_id","role_code","effective_from");

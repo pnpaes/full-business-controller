@@ -76,6 +76,7 @@ allocation_driver:
   - recorded_time
   - eligible_products
   - equal_share
+allocation_fallback: [stop, equal_share]
 adjustment_reason:
   - count_variance
   - spoilage
