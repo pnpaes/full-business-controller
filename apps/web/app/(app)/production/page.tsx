@@ -1,65 +1,215 @@
 import {
-  Badge,
-  EmptyState,
-  PageHeader,
-  SectionCard,
-  color,
-  spacing,
-  typography,
-} from "@aquarela/ui";
+  createPostgresProductionStore,
+  createPostgresRecipeStore,
+  listProductionBatches,
+  listRecipes,
+} from "@aquarela/application";
+import { Alert, EmptyState, KpiCard, PageHeader, SectionCard, Tabs, spacing } from "@aquarela/ui";
+import { redirect } from "next/navigation";
 
-export const metadata = { title: "Production — Aquarela Business Control" };
+import { getDb } from "../../../lib/db";
+import { resolveOrganization } from "../../../lib/organization";
+import { getServerSession } from "../../../lib/server-session";
+import {
+  loadProductionRefs,
+  parseProductionBatchListQuery,
+  toProductionBatchRows,
+} from "../../api/v1/production/production-rows";
 
-const plannedScreens = ["Production board", "Batch entry", "Waste entry"];
+import { ProductionBoardTable } from "./board-table";
+import { CreateBatchForm, type RecipeVersionOption } from "./create-batch-form";
+import { hasYieldVariance, productionStatusView } from "./production-labels";
+
+export const dynamic = "force-dynamic";
+export const metadata = { title: "Production board — Aquarela Business Control" };
+
+/** The board shows a bounded working set; the read API pages beyond it. */
+const BOARD_LIMIT = 100;
+
+/** Board grouping order, the batch workflow (`PRODUCTION_STATUS`). */
+const STATUS_ORDER = ["planned", "released", "in_progress", "completed", "cancelled"] as const;
 
 const contentColumn = {
   display: "flex",
   flexDirection: "column",
   gap: spacing[6],
+  width: "100%",
+  maxWidth: 1120,
+  margin: "0 auto",
+  padding: `${spacing[8]}px ${spacing[4]}px`,
 } as const;
 
-const checklist = {
-  margin: 0,
-  paddingLeft: spacing[5],
-  display: "flex",
-  flexDirection: "column",
-  gap: spacing[2],
-  color: color.text.secondary,
-  fontSize: typography.fontSize.md,
-} as const;
+/**
+ * Production board (08_UI_UX.md §8.3): every batch grouped and filtered by
+ * status, with location, recipe version, planned vs actual output and the stored
+ * yield variance. Reads the same application service and row mapping as
+ * `GET /api/v1/production/batches`, so the screen and the API cannot drift.
+ *
+ * Yield variance is shown as a fact: `PROD-003` has no tolerance or exception
+ * store, so this screen does not invent a threshold — it flags any non-zero
+ * variance and says so.
+ */
+export default async function ProductionPage({
+  searchParams,
+}: {
+  readonly searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const session = await getServerSession();
+  if (session === undefined) {
+    redirect("/login");
+  }
 
-const backLink = {
-  color: color.brand.navy,
-  fontWeight: typography.fontWeight.semibold,
-} as const;
+  const rawParams = await searchParams;
+  const sp = new URLSearchParams();
+  for (const [key, value] of Object.entries(rawParams)) {
+    if (typeof value === "string") {
+      sp.set(key, value);
+    }
+  }
+  const parsed = parseProductionBatchListQuery(sp);
+  const filter = parsed.ok ? parsed.query : undefined;
 
-export default function ProductionPage() {
+  const organizationId = resolveOrganization();
+  const store = createPostgresProductionStore(getDb().db);
+  const page = await listProductionBatches(store, {
+    organizationId,
+    limit: BOARD_LIMIT,
+    ...(filter?.locationId === undefined ? {} : { locationId: filter.locationId }),
+    ...(filter?.status === undefined ? {} : { status: filter.status }),
+  });
+  const refs = await loadProductionRefs(store, organizationId, page.batches);
+  const rows = toProductionBatchRows(organizationId, page.batches, refs);
+
+  // The plan-a-batch form needs the approved recipe versions and the location's
+  // storage areas; only the latest approved version of each recipe is offered.
+  const [locations, areas, listed] = await Promise.all([
+    store.listLocations({ organizationId }),
+    store.listStorageAreas({ organizationId }),
+    listRecipes(createPostgresRecipeStore(getDb().db), { organizationId }),
+  ]);
+  const recipeVersions: RecipeVersionOption[] = listed.flatMap((entry) => {
+    const version = entry.latestVersion;
+    if (version === null || version.state !== "approved") {
+      return [];
+    }
+    return [
+      {
+        id: version.id,
+        recipeCode: entry.recipe.code,
+        recipeName: entry.recipe.name,
+        versionNo: version.versionNo,
+      },
+    ];
+  });
+
+  const counts = new Map<string, number>();
+  for (const row of rows) {
+    counts.set(row.status, (counts.get(row.status) ?? 0) + 1);
+  }
+  const completedWithVariance = rows.filter(
+    (row) => row.status === "completed" && hasYieldVariance(row.yieldVariancePct),
+  ).length;
+
+  const groups = STATUS_ORDER.map((status) => ({
+    status,
+    rows: rows.filter((row) => row.status === status),
+  })).filter((group) => group.rows.length > 0);
+
+  const tabItems = [
+    { label: "All", href: "/production", active: filter?.status === undefined },
+    ...STATUS_ORDER.map((status) => ({
+      label: productionStatusView(status).label,
+      href: `/production?status=${status}`,
+      active: filter?.status === status,
+    })),
+  ];
+
   return (
     <div style={contentColumn}>
       <PageHeader
-        title="Production"
-        scope="Aquarela Business Control"
-        description="Plan, release and complete batches, then record waste against the recipe and stock."
+        title="Production board"
+        scope="Production"
+        description="Plan and complete batches against an approved recipe version. Yield variance is stored per batch; there is no tolerance threshold configured yet (PROD-003 open point)."
       />
-      <SectionCard title="Planned screens" meta="08_UI_UX.md §8.3">
-        <ul style={checklist}>
-          {plannedScreens.map((screen) => (
-            <li key={screen}>{screen}</li>
-          ))}
-        </ul>
-      </SectionCard>
-      <EmptyState
-        title="Production is not wired to data yet"
-        action={
-          <a href="/inventory" style={backLink}>
-            Go to Inventory
-          </a>
-        }
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+          gap: spacing[4],
+        }}
       >
-        <Badge>Not yet implemented</Badge> The board, batch entry and waste entry need recipes,
-        stock availability and posted movements before they can show anything. Until then this area
-        explains what is missing rather than displaying invented figures.
-      </EmptyState>
+        <KpiCard
+          label="Planned"
+          value={String(counts.get("planned") ?? 0)}
+          meta="Waiting to be released"
+        />
+        <KpiCard
+          label="Released"
+          value={String(counts.get("released") ?? 0)}
+          meta="Queued for production"
+        />
+        <KpiCard
+          label="In progress"
+          value={String(counts.get("in_progress") ?? 0)}
+          meta="Started, not yet completed"
+        />
+        <KpiCard
+          label="Completed"
+          value={String(counts.get("completed") ?? 0)}
+          meta="Movements posted to the ledger"
+        />
+      </div>
+
+      <Tabs items={tabItems} ariaLabel="Filter batches by status" />
+
+      {completedWithVariance > 0 ? (
+        <Alert tone="warning" title="Yield variance">
+          {completedWithVariance}{" "}
+          {completedWithVariance === 1 ? "completed batch differs" : "completed batches differ"}{" "}
+          from its planned output. The variance is shown as a stored fact — `PROD-003` has no
+          tolerance/exception store, so no alert threshold is applied and none is invented here.
+        </Alert>
+      ) : null}
+
+      {rows.length === 0 ? (
+        <SectionCard title="Batches" meta="nothing yet">
+          <EmptyState title="No production batches yet">
+            A batch appears once one is planned against an approved recipe version. Planning
+            snapshots the recipe's planned inputs and output onto the batch; the ledger is untouched
+            until the batch is completed.
+          </EmptyState>
+        </SectionCard>
+      ) : (
+        groups.map((group) => {
+          const view = productionStatusView(group.status);
+          return (
+            <SectionCard
+              key={group.status}
+              title={view.label}
+              meta={`${group.rows.length} ${group.rows.length === 1 ? "batch" : "batches"}`}
+            >
+              <ProductionBoardTable rows={group.rows} />
+            </SectionCard>
+          );
+        })
+      )}
+
+      <CreateBatchForm
+        recipeVersions={recipeVersions}
+        locations={locations.map((location) => ({
+          id: location.id,
+          code: location.code,
+          name: location.name,
+        }))}
+        areas={areas.map((area) => ({
+          id: area.id,
+          locationId: area.locationId,
+          code: area.code,
+          name: area.name,
+        }))}
+        defaultLocationId={locations[0]?.id ?? ""}
+      />
     </div>
   );
 }
