@@ -277,12 +277,12 @@ tolerance, sales-line reversal, `MAPPING_STATE` `conflict`, typed recipe 404s).
   adds the row-12 tables `sales_transaction`/`sales_line`/
   `settlement`/`reconciliation`, vocabularies `RECONCILIATION_STATUS`/
   `OPTION_KIND` and the `sales_line` branch in `stock_movement_source_guard`
-   (all committed, `2104068`/`77d913e`); **`0024`–`0026`** add the
-   `reconciliation_tolerance` table + EXCLUDE constraint (`0024`), the
-   `MAPPING_STATE` `conflict` value (`0025`) and the
-   `sales_line_reversal_of_id_key` partial unique index (`0026`; committed in
-   `6ff5881`);
-   ledger 26 rows through `0026`; the `asset`
+  (all committed, `2104068`/`77d913e`); **`0024`–`0026`** add the
+  `reconciliation_tolerance` table + EXCLUDE constraint (`0024`), the
+  `MAPPING_STATE` `conflict` value (`0025`) and the
+  `sales_line_reversal_of_id_key` partial unique index (`0026`; committed in
+  `6ff5881`);
+  ledger 26 rows through `0026`; the `asset`
   register is deliberately deferred), the
   advisory-locked migrator, worker/scheduler
   stubs and the `infra/` Terraform scaffold validated offline. Not applied.
@@ -674,9 +674,9 @@ and Spaces credentials via `-backend-config` / `AWS_ACCESS_KEY_ID` +
   `jsonError`/`mapErrors` error-handling fix and the `ADR-0007`/`ADR-0008`
   acceptances landed on `main` (HEAD `77d913e`); each commit is revertible with
   `git revert <sha>`. Migrations `0022`/`0023` are additive with rehearsed down
-   paths (drop the added objects/tables, delete the ledger row, re-migrate); the
-   error fix touched no migration or generated file. Slices 9–12 shared barrel
-   files, so reverting across a boundary may require reverting the cohort.
+  paths (drop the added objects/tables, delete the ledger row, re-migrate); the
+  error fix touched no migration or generated file. Slices 9–12 shared barrel
+  files, so reverting across a boundary may require reverting the cohort.
 - **DEC-072–076 decisions + low-risk implementations (committed as seven
   commits since `bcb625a`; nothing pushed)**: six landed (`aaec400` the five
   decision entries; `dcec861` the eslint ignore for Agent Manager worktrees
