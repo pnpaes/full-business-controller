@@ -10,102 +10,90 @@ duplicate their content.
 **Say "resume the work" and start here.** A fresh session must be able to continue
 from this section alone.
 
-**Next task:** **slice 7 — cost card + snapshots + price scenario + approval**
-(per `docs/BUILD_ROADMAP.md`: `COST-005`, `COST-008`, `COST-009`,
-`PRICE-001`–`PRICE-005`; `DEC-021`–`DEC-024`; `docs/phase0/CALCULATION_CONTRACT.md`;
-`docs/phase0/GOLDEN_FIXTURES.md`; depends on slices 4, 5 and 6).
-`docs/BUILD_ROADMAP.md` tracks the loop and gates.
+**Next task:** **slice 8 — stock ledger + balances + lots/storage** — and it is
+**BLOCKED (owner)**: it depends on `ADR-0005`
+(`docs/adr/`, the stock-inventory model), whose status is still **`Proposed`**. It is
+gated by `ADR-0005` acceptance (finance) per `docs/BUILD_ROADMAP.md` §3/§4; slice 9
+also depends on slice 8. **There is no unblocked next business slice.** The unblocked
+work is owner decisions/sign-offs, not code:
 
-**First, before anything else:** slice 6 (operating costs + labour + allocation) is
-**implemented and verified but UNCOMMITTED** — the working tree is dirty at HEAD
-`15b9b68` on `main`. Commit it first (atomically, with the verification evidence and
-rollback in the body per Rule 2), or as the first act of the slice-7 session, before
-building slice 7 on top of it.
+1. **Accept or amend `ADR-0005`** (mark it `Accepted` with a date in `docs/adr/`) —
+   this unblocks slice 8 and, with it, slice 9.
+2. **Sign the six golden fixtures** in `docs/phase0/GOLDEN_FIXTURES.md` (finance +
+   product owner) — the gate for treating any cost as "verified". Until then no cost
+   is "verified".
+3. **Resolve the 16 slice-7 open (owner) points** recorded in
+   `docs/BUILD_ROADMAP.md` §5 ("Slice-7 cost-card / pricing open points") — do not
+   repeat them here; record each resolution in `12_OPEN_DECISIONS.md` (next free id
+   **`DEC-061`**).
+4. **Supply the I8 remainder and the I9 accountant ruling** (plus I4/I5/I7 as they
+   come) — see `docs/phase0/SOURCE_DATA_REQUEST.md` /
+   `docs/phase0/UNBLOCK_CHECKLIST.md`. These gate real loaded rates and the golden
+   fixtures, not the start of development.
 
-**Scope (do):**
+If the owner accepts `ADR-0005` in-session, snapshot 8 proceeds: read
+`docs/BUILD_ROADMAP.md` §4 row 8 (refs `INV-001`–`003`, `INV-008`, `PROD-002`,
+`WASTE-002`, `COST-008`; `DEC-008`, `DEC-009`, `DEC-010`, `DEC-028`, `DEC-034`) and run
+the §2 execution loop from step 1 (pre-flight → design → implement → verify → reviews
+→ reconcile → atomic commit).
 
-1. Read first: `docs/phase0/CALCULATION_CONTRACT.md` (the cost-card/snapshot/price
-   sections and the boundary rules B0–B4), `docs/phase0/GOLDEN_FIXTURES.md` (the six
-   fixtures and their sign-off format), `12_OPEN_DECISIONS.md` `DEC-021`–`DEC-024`
-   (cost-card versioning/approval and pricing decisions), and `COST-005`/`008`/`009`
-   and `PRICE-001`–`005` in the specification. Build on the slices 4/5/6 cost
-   primitives: landed cost (`computeLandedCost`), recipe cost (`computeRecipeCost`),
-   labour (`directLaborCost`, `labourCostViews`), allocation (`allocateCostPool`,
-   `unitFullCost`, `fullCostMargin`) and the `costing` repositories/store port.
-2. Implement the domain + application layer: the cost card (ingredients + labour +
-   allocated overhead → `unitFullCost`), cost-card snapshot/versioning and approval,
-   and the price scenarios (target margin / price-from-cost / break-even per
-   `PRICE-001`–`005`), decimal only, HALF_UP at the documented boundaries, reconciling
-   to the slice 4/5/6 cost primitives. Anything the contract does not pin down must be
-   raised for a decision, not invented (next free id `DEC-058`).
-3. Persistence: the cost-card/snapshot/price-scenario tables already exist from the
-   slice-0 core (`cost_card*`, `price_scenario*`, approval platform tables) — check
-   `packages/persistence/src/schema/` before adding anything; add only what is missing
-   as the next additive migration (next free number `0014_*`) with a documented down
-   path and a separate hand-written invariant migration, mirroring the slice 3–6
-   conventions; migrations `0000–0013` are not edited.
-4. Tests: unit tests with the in-memory fakes plus conditional PostgreSQL integration
-   tests (gated on `DATABASE_URL`, rolled back), covering snapshot/versioning, the
-   price-scenario maths and the approval gate.
-5. Verify, run the usual adversarial review per `docs/BUILD_ROADMAP.md` §2, reconcile
-   findings, commit atomically, and rewrite this section for slice 8.
+**Scope (do):** keep the git state clean and the working tree at
+`400c95b`; run only documentation/decision record-and-track work surfaced by the
+owner actions above; if the owner accepts `ADR-0005`, proceed with slice 8 per
+`docs/BUILD_ROADMAP.md` §2/§4 row 8 — never treating calculated costs as "verified"
+before the golden fixtures are signed.
 
-**Owner gate (from slice 7's definition):** the six golden fixtures in
-`docs/phase0/GOLDEN_FIXTURES.md` must be **signed by the owner** before any cost is
-treated as "verified". Build the surfaces and the sign-off trail, but do not mark
-costs verified on the basis of calculated numbers alone.
+**Scope (do not):** do not build slice 8 against the still-`Proposed` `ADR-0005` (no
+persistence work before acceptance); do not rework the committed auth/UI/master-data/
+receiving/recipe/costing workstreams or slice 7's application logic; invent no
+decision (append to `12_OPEN_DECISIONS.md` as `DEC-061` or later only if genuinely
+needed); no external writes; do not edit migrations `0000–0016`; do not deploy
+(`infra/` stays unapplied and gated on the owner inputs below).
 
-**Scope (do not):** do not rework the committed auth/UI/master-data/receiving/recipe
-workstreams or the slice-6 labour/allocation code; invent no decision (append to
-`12_OPEN_DECISIONS.md` as `DEC-058` or later only if genuinely needed); no external
-writes; do not edit migrations `0000–0013`; do not deploy (`infra/` stays unapplied).
-Do not treat calculated costs as "verified" before the golden fixtures are signed.
+**Files/paths:** `docs/adr/0005-*` (owner acceptance), `12_OPEN_DECISIONS.md`
+(`DEC-061`+), `docs/phase0/GOLDEN_FIXTURES.md` (sign-off trail), and — once slice 8
+unblocks — `packages/domain/src/`, `packages/application/src/`,
+`packages/persistence/src/` + `drizzle/` (`0017+`), `docs/BUILD_ROADMAP.md`,
+`CONTEXT.md`.
 
-**Files/paths:** `packages/domain/src/`, `packages/application/src/`,
-`packages/persistence/src/schema/` + `repositories/` + `drizzle/` (next free migration
-number, currently `0014_*`), the in-repo test-support fakes
-(`FakeCostingStore` exists), `docs/runbooks/persistence-migrations.md` (migration
-order), `docs/phase0/GOLDEN_FIXTURES.md` (sign-off trail), `CONTEXT.md` and
-`docs/BUILD_ROADMAP.md`.
+**Acceptance / verification (owner actions):** `ADR-0005` shows `Status: Accepted`
+with a date and the slice-8 "blocked (owner)" gate is lifted in
+`docs/BUILD_ROADMAP.md` §4; the six golden fixtures carry owner signatures (or the
+agreed storage format for them); slice-7 open points get decision IDs recorded in
+`12_OPEN_DECISIONS.md` starting at `DEC-061`. After any (code) change: `npm run
+lint`, `npm run typecheck`, `npm run test` (both with and without `DATABASE_URL`),
+`npm run build` and `npm run format:check` pass; `npm audit --omit=dev` = 0.
 
-**Acceptance / verification:** `npm run lint && npm run typecheck && npm run test &&
-npm run build && npm run format:check` pass with and without `DATABASE_URL` (format is
-`npm run format:check`; when running Prettier standalone use
-`npx prettier --check CONTEXT.md` — `docs/` is prettier-ignored); `npm audit
---omit=dev` stays 0; any new migration applies on an empty database (through `0012` +
-the new one, 47 tables today), re-runs as a no-op and its down path is rehearsed; the
-cost card reconciles `CALCULATION_CONTRACT.md` boundaries with decimal-only
-arithmetic, building on the slice 4/5/6 primitives; unapprove/approve and snapshot
-immutability are covered.
+**Open decisions / inputs that shape it:** the owner gates above (`ADR-0005`,
+golden fixtures, slice-7 points in `docs/BUILD_ROADMAP.md` §5, I8/I9) plus the five
+slice-6 open points (pool-amount derivation, `denominator_source`, `scope_type`
+reuse, the deferred `asset` register, imputation pending I8/I9), which touch
+overhead inputs for later slices. The slice-5 recipe ambiguities and the standing
+open items (`m`/`length` dimension, `numeric(19,6)` cap) still apply. The
+deployment foundation remains un-applied and gated on the owner decisions/inputs
+under "Deployment/apply gates" below.
 
-**Open decisions / inputs that shape it:** the five slice-6 open points (tracked under
-"Open decisions / inputs" — pool-amount derivation, `denominator_source`,
-`scope_type` reuse, the deferred `asset` register, imputation pending I8/I9) touch
-slice 7's overhead inputs — record findings rather than resolving silently. The I8
-remainder and the I9 accountant ruling still gate real loaded rates — build against
-`docs/phase0/LABOUR_ASSUMPTIONS.md` and synthetic fixtures per the roadmap
-convention. The slice-5 recipe ambiguities and the standing open items
-(`m`/`length` dimension, `numeric(19,6)` cap) still apply.
-
-**After this task:** slice 8 — the deferred acceptance-to-stock posting, gated on
-`ADR-0005` (Proposed), plus the workforce/integration slices per `docs/BUILD_ROADMAP.md`.
+**After this task:** if `ADR-0005` is accepted → slice 8 (stock ledger + balances +
+lots/storage); otherwise the session records owner progress and hands off unchanged.
+Subsequent: slice 9 (counts + transfers + waste) depends on slice 8; then the
+deployment/apply gates.
 
 ## What this is
 
 **Aquarela Business Control** — a secure, testable modular monolith for an Oslo
 café with two locations, covering costing, pricing, inventory, production,
 sales/imports, workforce and reporting. It is **documentation-first**: Phase 0 is
-complete (specification, 52 accepted decisions, artifacts and ADRs); the
+complete (specification, 60 accepted decisions, artifacts and ADRs); the
 foundation scaffold, the Phase 1–2 persistence core, the auth slices (1a–1e), the
 UI token foundation, master-data slices 2–3, slice 4 (receipt + price history +
-landed cost), slice 5 (recipes) and slice 6 (operating costs + labour + allocation)
-are built; slice 7 (cost card + snapshots + price scenario + approval) is next.
+landed cost), slice 5 (recipes), slice 6 (operating costs + labour + allocation)
+and slice 7 (cost card + snapshots + price scenario + approval) are built.
 
 ## Where things live
 
 - `00_README.md` … `13_AGENT_BUILD_BRIEF.md` — the specification package
   (inputs, rarely edited). Start with `00_README.md`.
-- `12_OPEN_DECISIONS.md` — the accepted decisions (DEC-001…DEC-057); the
+- `12_OPEN_DECISIONS.md` — the accepted decisions (DEC-001…DEC-060); the
   authority. New decisions are appended here.
 - `docs/phase0/` — close-out plan, calculation contract, data dictionary, golden
   fixtures, source-data request, notes. See `docs/phase0/PHASE0_CLOSEOUT_PLAN.md`
@@ -124,10 +112,10 @@ are built; slice 7 (cost card + snapshots + price scenario + approval) is next.
 
 ## Current status
 
-- **As of:** 2026-09-20 — branch `main`; HEAD `15b9b68` (slice 5 including its
-  review fixes and migration `0010`). **Slice 6 is implemented and verified but
-  UNCOMMITTED — the working tree is dirty. Nothing has been applied to
-  DigitalOcean.**
+- **As of:** 2026-09-20 — branch `main`; HEAD `400c95b` (slice 7 committed).
+  **Slice 7 (cost card + snapshots + price scenario + approval) is complete,
+  reviewed, verified and committed; the working tree is clean. Nothing has been
+  applied to DigitalOcean.**
 - **Auth complete and security-reviewed (slices 1a–1e):** domain primitives (1a);
   persistence layer (1b-i); application flow (1b-ii); password reset + access
   control (1b-iii, `2ce8847`; reset neutrality `5776914`); hardening (`60ac52e`:
@@ -142,13 +130,16 @@ are built; slice 7 (cost card + snapshots + price scenario + approval) is next.
   graph (`a869227`, migration `0004`), `unit_conversion` overlap invariants
   (migration `0005`) + conversion-graph hardening and `DEC-050`/`DEC-051`
   (`b8897bf`).
-- **Costing slices in progress:** slice 4 — receipt + price history + landed cost —
+- **Costing slices done:** slice 4 — receipt + price history + landed cost —
   done (`e3706c0`, including its review fixes and migrations `0007`/`0008`,
   `DEC-052`); slice 5 — recipes / sub-recipes / version / yield / allergens — done
   (`841da96`/`13a29b7`/`15b9b68`, migration `0009`, `DEC-052`–`DEC-054`; its two
   adversarial reviews were reconciled in `13a29b7`/`15b9b68`); slice 6 — operating
-  costs + labour + allocation — done but **uncommitted** (migrations `0011`/`0012`,
-  `DEC-055`–`DEC-057`; details in the work log and "Resume here").
+  costs + labour + allocation — **committed** (`8f3ac5d`, migrations `0011`–`0013`,
+  `DEC-055`–`DEC-057`); slice 7 — cost card + snapshot + price scenario + approval —
+  **committed** (`400c95b`, migrations `0014`–`0016`; domain `pricing.ts`/`cost-card.ts`,
+  application `CostCardStore`/`PriceScenarioStore`; `DEC-058`–`DEC-060`; its three
+  adversarial reviews were run and reconciled — see the work log).
 - **UI foundation:** design tokens package (`aa2eff5`), token-driven UI primitives
   (`a83a312`), layout reference note (`dad2ff0`), accessibility/form-wiring fixes
   (`74ac467`).
@@ -158,36 +149,47 @@ are built; slice 7 (cost card + snapshots + price scenario + approval) is next.
   (`bfc5f74`).
 - **DEC-049 closed:** drizzle-orm 0.45.2 / drizzle-kit 0.31.10 upgrade (`cc86f13`);
   `npm audit --omit=dev` = 0.
-- **Tests:** 404 passed / 88 skipped without `DATABASE_URL`; **492 passed / 492
-  (52 files)** with it (as verified by the slice-6 code-review follow-up;
-  re-verify on resume).
+- **Tests:** 466 passed / 112 skipped (578) without `DATABASE_URL`; **578 passed /
+  578 (60 files)** with it (verified 2026-09-20 at HEAD `400c95b`).
   Open verification debt: the per-process rate limiter needs a shared
   store before multi-instance deployment; the reset-token delivery is a no-op stub
   until the email slice; the palette hex values and data-viz palette semantics
-  await owner sign-off (see "Open decisions / inputs").
+  await owner sign-off (see "Open decisions / inputs"); the six golden fixtures
+  remain unsigned and are the "verified" gate.
 - **Persistence core + deployment foundation (committed):** Drizzle schema,
-  migrations `0000_enable_extensions` → `0012` additive with tested down paths
-  (`0011_cost_allocation.sql` adds the four slice-6 tables, 47 tables total; the
-  hand-written `0012` adds the three EXCLUDE overlap constraints; the `asset`
+  migrations `0000_enable_extensions` → `0016` additive with tested down paths
+  (`0011_cost_allocation.sql` adds the four slice-6 tables; `0014_cost_card_pricing`
+  adds four deferred `price_scenario` columns + `snapshot_component_kind_check`;
+  `0015` adds `calculation_snapshot_cost_card_index`; the hand-written `0016` adds
+  the `cost_card_approved_scope` invariant — a partial unique
+  `cost_card_approved_scope_key` (`NULLS NOT DISTINCT WHERE state = 'approved'`);
+  ledger 17 rows through `0016`; the `asset`
   register is deliberately deferred), the
   advisory-locked migrator, worker/scheduler
   stubs and the `infra/` Terraform scaffold validated offline. Not applied.
-- **Not yet built:** business slices 7+; the deferred tables
+- **Not yet built:** business slices 8+; the deferred tables
   (workforce, integrations, competitor, AI, sales, procurement, production,
-  counts/transfers, period close, platform job/file/approval, the `asset`
-  register).
+  counts/transfers, period close, platform job/file/approval — note the
+  `approval` platform table from DATA_DICTIONARY §9 does not exist yet — and the
+  `asset` register).
 
 ## Next up (prioritised)
 
 `docs/BUILD_ROADMAP.md` is the ordered execution tracker for these slices (slice 0 and
-1a–1e, 2, 3, 4, 5 and 6 done; **slice 7 next**). The list below is the short narrative form.
+1a–1e, 2, 3, 4, 5, 6 and 7 done; **slice 8 next but blocked (owner) on `ADR-0005`
+acceptance**). The list below is the short narrative form.
 
-1. **Commit slice 6 first** — the operating costs + labour + allocation work is
-   verified but uncommitted (dirty working tree at HEAD `15b9b68`; Rule 2). Atomic
-   commit with the verification evidence and rollback in the body.
-2. **Slice 7 — cost card + snapshots + price scenario + approval** (`COST-005`,
-   `COST-008`, `COST-009`, `PRICE-001`–`005`; `DEC-021`–`024`).
-   See "Resume here".
+1. **Slice 8 — stock ledger + balances + lots/storage** (`INV-001`–`003`, `INV-008`,
+   `PROD-002`, `WASTE-002`, `COST-008`; `DEC-008`/`009`/`010`/`028`/`034`;
+   `ADR-0005`) — **BLOCKED (owner): `ADR-0005` is still `Proposed`** and must be
+   accepted (or amended and accepted) by the owner before the slice starts (see
+   "Resume here"). Slice 9 depends on slice 8; there is no unblocked next business
+   slice.
+2. **Owner sign-offs and inputs** — what unblocks work now: accept `ADR-0005`; sign
+   the six golden fixtures (`docs/phase0/GOLDEN_FIXTURES.md`, the "verified" gate);
+   resolve the 16 slice-7 open (owner) points recorded in
+   `docs/BUILD_ROADMAP.md` **§5** (decisions from `DEC-061`); supply the I8/I9
+   inputs (and I4/I5/I7 as they come).
 3. **Deployment foundation — scaffolded and validated offline (committed); not
    applied.** `infra/` Terraform (project, database, spaces, networking,
    app-platform, monitoring, dns) + the App Platform app spec are done, and the
@@ -199,9 +201,7 @@ are built; slice 7 (cost card + snapshots + price scenario + approval) is next.
 4. **Costing verification** — against `docs/phase0/CALCULATION_CONTRACT.md` with
    synthetic fixtures, then real data; **owner sign-off of the six golden
    fixtures** (`docs/phase0/GOLDEN_FIXTURES.md`) is the gate for treating any cost
-   as "verified" (slice 7 surfaces the sign-off trail).
-5. **Load real data** (the I-gates under "Open decisions / inputs") and sign the
-   six golden fixtures.
+   as "verified" (slice 7 surfaces the sign-off trail). Still unsigned.
 
 ## Open decisions / inputs (do not block development)
 
@@ -231,11 +231,11 @@ are built; slice 7 (cost card + snapshots + price scenario + approval) is next.
     `current_cost` is accepted for an item — both need a policy decision; and
     cross-organization referential integrity on the recipe FKs stays
     application-guarded until the composite-FK/trigger invariants land;
-- Surfaced by slice 6 (uncommitted; deliberate deferrals for a decision — also
+- Surfaced by slice 6 (`8f3ac5d`; deliberate deferrals for a decision — also
   tracked in `docs/BUILD_ROADMAP.md` §5; do not resolve silently):
   1. how the `cost_pool` amount is derived from `operating_cost` rows is currently
      an application convention, not a documented derivation rule — needs an owner
-     decision (next free id `DEC-058`);
+     decision (next free id `DEC-061`);
   2. `allocation_rule.denominator_source` is accepted free-text (a closed
      vocabulary would have invented values) — the owner should enumerate the
      denominators later;
@@ -246,6 +246,11 @@ are built; slice 7 (cost card + snapshots + price scenario + approval) is next.
   5. imputed owner labour awaits the I8 remainder (productive-hours %, insurance,
      role→location) and the I9 accountant ruling — `DEC-055` records the
      provisional figures.
+- Surfaced by slice 7 (`400c95b`): the 16 slice-7 cost-card/pricing open (owner)
+  points are recorded in `docs/BUILD_ROADMAP.md` §5 ("Slice-7 cost-card / pricing
+  open points"); record each owner resolution in `12_OPEN_DECISIONS.md` (next free
+  id `DEC-061`); do not resolve silently. The golden fixtures remain unsigned and
+  are the gate for "verified".
 - Surfaced by slice 5 (`841da96`, deliberate ambiguities left for a decision —
   also tracked in `docs/BUILD_ROADMAP.md` §5; do not resolve silently):
   1. allergen roll-up from sub-recipes into the parent recipe is not implemented;
@@ -348,19 +353,21 @@ and Spaces credentials via `-backend-config` / `AWS_ACCESS_KEY_ID` +
 ## Reversibility
 
 - Revert any commit with `git revert <sha>`; no destructive git operations.
-- **Everything through `15b9b68` is committed** (slices 4 and 5 included, with
-  migrations `0006`–`0010` and additive down paths); `git revert` any commit.
-- **Slice 6 is uncommitted and purely additive** — revert by discarding the
-  working tree (`git checkout -- .` / `git restore` + removing untracked files),
-  not dropping any database table; once committed, `git revert` removes the code,
-  migrations `0011`/`0012` and the `DEC-055`–`DEC-057` entries together.
+- **Everything through `400c95b` is committed** (slices 4–7 included, with
+  migrations `0006`–`0016` and additive down paths); `git revert` any commit.
+- **Slice 7 (`400c95b`)**: `git revert 400c95b` removes the domain
+  (`pricing.ts`/`cost-card.ts`), application (`CostCardStore`/`PriceScenarioStore`),
+  migrations `0014`–`0016` and the `DEC-058`–`DEC-060` entries together;
+  migrations `0014`–`0016` are additive with unjournaled `_down.sql` companions —
+  the `0015`/`0016` down paths were rehearsed (drop the indexes/invariant, delete
+  the ledger rows, re-migrate).
 - The `infra/` scaffold, runtime stubs and persistence core are committed; revert
   them with `git revert` if needed. **No cloud resource was created — only offline
   `fmt`/`validate`/`plan` ran, never `apply`; no Terraform state exists, and
   nothing has been applied to DigitalOcean.**
-- Migrations 0000–0012 are additive with tested down paths (`0011` down drops the
-  four slice-6 tables; `0012` down drops the three EXCLUDE constraints — both
-  rehearsed). While the database is
+- Migrations 0000–0016 are additive with tested down paths (`0011` down drops the
+  four slice-6 tables; `0012` down drops the three EXCLUDE constraints; `0015`/
+  `0016` down drop their indexes/invariant — rehearsed). While the database is
   empty the tested recovery is `DROP SCHEMA public CASCADE; DROP SCHEMA drizzle
 CASCADE; CREATE SCHEMA public; npm run db:migrate` (see the runbook). Once data
   exists, migrations must be additive (expand → migrate → contract) with a tested
@@ -369,6 +376,102 @@ CASCADE; CREATE SCHEMA public; npm run db:migrate` (see the runbook). Once data
   (`DEC-015`).
 
 ## Work log (append-only, newest first)
+
+### 2026-09-20 — Slice 7 cost card + snapshots + price scenario + approval committed (`400c95b`)
+
+Implemented, verified and committed slice 7 per `docs/BUILD_ROADMAP.md` (§4 row 7) on
+`main`, at HEAD `8f3ac5d` (slice 6) beforehand:
+
+- **Domain:** new `packages/domain/src/pricing.ts` (the `CALCULATION_CONTRACT.md`
+  §10 price-scenario maths: required net price from the target contribution, unit
+  contribution before/after labour, break-even input helpers) and
+  `packages/domain/src/cost-card.ts` (the §3/§8 cost-card semantics with the
+  `DEC-047` cost-source precedence and `DEC-060` calculate/snapshot/approve flow),
+  both unit-tested and exported from the domain barrel.
+- **Application:** new `CostCardStore` and `PriceScenarioStore` ports and services
+  under `packages/application/src/costing/` (`calculateCostCard`,
+  `snapshotCostCard`, `approveCostCard` with the supersede rule, `calculatePriceScenario`,
+  `submitPriceScenario`, `approvePriceScenario`), plus audit actions and validation.
+- **Persistence:** generated migrations `0014_cost_card_pricing` (four deferred
+  `price_scenario` columns + `snapshot_component_kind_check`; journal `when`
+  `1789866859108`) and `0015_calculation_snapshot_cost_card_index` (the
+  `calculation_snapshot_cost_card_idx` covering
+  `calculation_snapshot(cost_card_id, created_at)`; `when` `1789867750326`);
+  hand-written `0016_cost_card_approved_scope` (the partial-unique
+  `cost_card_approved_scope_key`, `NULLS NOT DISTINCT WHERE state = 'approved'`,
+  preventing two approved cards in one
+  `(organization, product variant, location, channel)` scope — the approve-supersede
+  race fix; `when` `1789867797172`). Each has an unjournaled `_down.sql`; 0000–0013
+  untouched; ledger 17 rows through `0016`.
+- **Decisions:** `DEC-058` (closed `snapshot_component_kind` vocabulary),
+  `DEC-059` (the deferred `price_scenario` columns land here), `DEC-060`
+  (cost-card calculation/snapshot/approval semantics; "unapprove" deliberately
+  not implemented). Next free id is now `DEC-061`.
+
+Adversarial reviews ran and were reconciled, per `docs/BUILD_ROADMAP.md` §2:
+`reviewer-qwen` (the §7–§10 maths) — no blockers or majors;
+`reviewer-glm` (application code) — no blockers; accepted the approve-supersede race
+fix via `cost_card_approved_scope_key`, the missing rejection tests, boundary
+validation and the dead-surface removal (the dead `orderBy` documented in the prior
+work-log entry);
+`reviewer-minimax` (schema/migrations) — clean; accepted the missing
+`Calculation_snapshot(cost_card_id, created_at)` index (became `0015`) and a down-file
+note. **Declined with reasons:** further index re-shaping, and lifting the
+`channelId` "any channel" query limitation.
+
+Verified (exact): `npm run lint`, `npm run typecheck`, `npm run build` and
+`npm run format:check` pass; without `DATABASE_URL` **466 passed / 112 skipped
+(578)**; with `DATABASE_URL` **578 passed / 578 (60 files)**; `npm audit --omit=dev`
+= 0; `db:migrate` applies `0014`–`0016` and re-runs as a no-op; the `0015`/`0016`
+down paths were rehearsed. The six golden fixtures in
+`docs/phase0/GOLDEN_FIXTURES.md` remain **unsigned** — no cost is "verified" yet.
+The 16 slice-7 open (owner) points are recorded in `docs/BUILD_ROADMAP.md` §5.
+
+Rollback: `git revert 400c95b` removes the code, migrations `0014`–`0016` and the
+`DEC-058`–`DEC-060` entries together; the migrations are additive with tested down
+paths. Next: **slice 8 — stock ledger + balances + lots/storage — blocked (owner)
+on `ADR-0005` acceptance (Proposed)**; the unblocked work is owner decisions/sign-offs
+(see "Resume here").
+
+### 2026-09-20 — Slice 7 reconciliation: missing tests added, dead `orderBy` removed (uncommitted)
+
+Finished the incomplete slice-7 test surface in the still-uncommitted slice-7 working
+tree at HEAD `8f3ac5d`. No migration edits and no application behaviour change beyond
+removing the now-dead ordering in the repository read.
+
+- **Dead code:** `listApprovedCostCardsForScope`
+  (`packages/persistence/src/repositories/cost-card.ts`) no longer `.orderBy`s
+  `calculated_at` — the `cost_card_approved_scope_key` partial unique index
+  (`NULLS NOT DISTINCT`, `WHERE state = 'approved'`) guarantees at most one approved
+  card per `(organization, product variant, location, channel)`. The JSDoc now states
+  the index invariant. `desc` stays imported (still used by
+  `listCalculationSnapshotsForCostCard`).
+- **Persistence tests (`cost-card.test.ts`):** replaced the failing
+  "orders approved cards by calculated_at descending" (it seeded two approved cards in
+  one scope, now rejected by the index) with "returns the single approved card in
+  scope and excludes drafts"; added "rejects a second approved card in the same
+  channel scope" and "rejects a second company-wide approved card (null channel,
+  NULLS NOT DISTINCT)" — both assert the `cost_card_approved_scope_key` message via
+  `rejectionCause`; added "installs the 0015/0016 ... indexes" querying `pg_indexes`
+  for `cost_card_approved_scope_key` and `calculation_snapshot_cost_card_idx`
+  (mirroring `costing.test.ts`'s `pg_constraint` guard).
+- **Application tests:** `approveCostCard` not-found and cross-organization rejections
+  (`cost-card.test.ts`); `approvePriceScenario` from `submitted` succeeds and from
+  `rejected` is rejected, plus `calculatePriceScenario` rejecting a negative
+  `fixedCost` even when the unit contribution is non-positive
+  (`price-scenario.test.ts`).
+
+Verified (exact): `npm run lint`, `npm run typecheck`, `npm run build` and
+`npm run format:check` pass; without `DATABASE_URL` **466 passed / 112 skipped (578)**;
+with `DATABASE_URL` **578 passed / 578 (60 files)**; `npm audit --omit=dev` = 0.
+`DATABASE_MIGRATIONS_URL=… npm run db:migrate` is a no-op (ledger 17 rows through
+`0016`); `pg_indexes` confirms both indexes present. `npx prettier --write` run on all
+four touched files.
+
+Rollback: the whole slice-7 tree is uncommitted and purely additive — discard the
+working tree (or, once committed, `git revert`); migrations `0014`–`0016` are additive
+with down companions. Next: adversarial review and atomic commit of slice 7 (see
+"Resume here").
 
 ### 2026-09-20 — Slice 6 code-review follow-up (uncommitted)
 

@@ -13,10 +13,12 @@ This file is **updated at the end of every slice** — statuses and the "current
 line move with the work; `CONTEXT.md` keeps the narrative handoff and the immediate
 `Resume here` section.
 
-**Current position:** slice 0 `done`; auth slices 1a–1e and slices 2, 3, 4, 5 and 6
-`done` (slice 4 including its review fixes; the slice-5 adversarial reviews were
-reconciled in `13a29b7`); **slice 7 (cost card + snapshots + price scenario +
-approval) is in progress (uncommitted)**; its open points are recorded in §5.
+**Current position:** slice 0 `done`; auth slices 1a–1e and slices 2, 3, 4, 5, 6 and 7
+`done` (slice 7 — cost card + snapshots + price scenario + approval — committed as
+`400c95b` on `main`; its adversarial reviews were run and reconciled; its open points
+are recorded in §5); **slice 8 (stock ledger + balances + lots/storage) is next but
+blocked (owner) on `ADR-0005` acceptance (status `Proposed`)** — there is no unblocked
+next slice until the owner accepts it.
 
 ## 2. The execution loop (per slice)
 
@@ -73,7 +75,7 @@ Pause the loop and raise to the owner, recording it in `CONTEXT.md`, when any of
   approval in `DEC-015`, a named credentials owner, and a documented, tested rollback
   (`AGENTS.md` Rule 2). Never perform it without both.
 - **A decision would have to be invented.** *Needed from owner:* append the decision to
-  `12_OPEN_DECISIONS.md` (next id `DEC-058`) — never resolve accounting, tax, valuation,
+  `12_OPEN_DECISIONS.md` (next id `DEC-061`) — never resolve accounting, tax, valuation,
   privacy or system-of-record ambiguity in code (`13_AGENT_BUILD_BRIEF.md`).
 - **Slice budget reached.** The session has completed its agreed slice budget. *Needed from
   owner:* confirm the next slice (or that work pauses); hand off via `CONTEXT.md`.
@@ -99,7 +101,7 @@ sequence). Requirement IDs are from `11_REQUIREMENTS_CATALOG.md`; decision IDs f
 | 4 | Receipt + price history + landed cost | P1 / epic 3 | `PROC-002`–`005`, `PROC-008`, `COST-010`, `COST-012`; `DEC-047`; `CALCULATION_CONTRACT.md` §5 | 3 | none — I4 data gates real values | done |
 | 5 | Recipes / sub-recipes / version / yield / allergens | P1 / epic 4 | `COST-001`, `COST-002`, `PROD-005`; `DEC-005`, `DEC-030`, `DEC-036`; `CALCULATION_CONTRACT.md` §6 | 3 | none — I5 data gates real recipes | done |
 | 6 | Operating costs + labour + allocation | P1 / epic 5 | `COST-004`, `COST-006`, `COST-007`, `COST-011`, `COST-013`; `DEC-006`, `DEC-007`, `DEC-048`; `CALCULATION_CONTRACT.md` §7, §9 | 3 | none — I8 remainder + I9 ruling confirm loaded rates | done |
-| 7 | Cost card + snapshots + price scenario + approval | P1 / epic 6 | `COST-005`, `COST-008`, `COST-009`, `PRICE-001`–`005`; `DEC-021`–`024`; `CALCULATION_CONTRACT.md`; `GOLDEN_FIXTURES.md` | 4, 5, 6 | six golden fixtures signed (A5) before "verified" | todo |
+| 7 | Cost card + snapshots + price scenario + approval | P1 / epic 6 | `COST-005`, `COST-008`, `COST-009`, `PRICE-001`–`005`; `DEC-021`–`024`; `CALCULATION_CONTRACT.md`; `GOLDEN_FIXTURES.md` | 4, 5, 6 | six golden fixtures signed (A5) before "verified" | done |
 | 8 | Stock ledger + balances + lots / storage | P1–P2 / epic 7 | `INV-001`–`003`, `INV-008`, `PROD-002`, `WASTE-002`, `COST-008`; `DEC-008`, `DEC-009`, `DEC-010`, `DEC-028`, `DEC-034`; `ADR-0005` (**Proposed**) | 3, 4 | `ADR-0005` acceptance (finance) | blocked (owner) |
 | 9 | Counts + transfers + waste | P2 / epic 8 | `INV-004`–`007`, `INV-009`, `WASTE-001`, `WASTE-002`; `DEC-017`, `DEC-018`, `DEC-029` | 8 | none — I7 opening counts gate the pilot | todo |
 | 10 | Production planning + batches | P2 / epic 9 | `PROD-001`–`005`; `DEC-005`, `DEC-031`, `DEC-036` | 5, 8 | none | todo |
@@ -144,7 +146,7 @@ dates assigned):
   `docs/runbooks/deployment.md` ("Database privilege bootstrap", state-bucket bootstrap,
   proxy/dry-run notes); includes the **legacy instance-slug check** before apply.
 - **Slice-5 recipe ambiguities (eight, deliberate, from `841da96`)** — record each
-  owner resolution in `12_OPEN_DECISIONS.md` (next free id `DEC-058`; items 3 and 7
+  owner resolution in `12_OPEN_DECISIONS.md` (next free id `DEC-061`; items 3 and 7
   already resolved as `DEC-050` and `DEC-053`); do not resolve silently:
   1. allergen roll-up from sub-recipes into the parent recipe is not implemented;
   2. yield loss is applied per line and then once at recipe level, as §6 literally
@@ -159,7 +161,7 @@ dates assigned):
      cannot overlap in time;
   8. `planned_output_qty` is stored but unused by the §6 formula.
 - **Slice-6 cost/allocation open points (five, deliberate, recorded not decided)** —
-  record each owner resolution in `12_OPEN_DECISIONS.md` (next free id `DEC-058`);
+  record each owner resolution in `12_OPEN_DECISIONS.md` (next free id `DEC-061`);
   do not resolve silently:
   1. `operating_cost → cost_pool` linkage is not modelled: `DATA_DICTIONARY` defines
      `operating_cost` by cost centre and `cost_pool` separately with no join, so the
