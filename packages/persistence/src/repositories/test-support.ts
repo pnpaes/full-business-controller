@@ -4,6 +4,9 @@ import type { Database, DatabaseTransaction, NodeDatabase } from "../client";
 import {
   channel,
   costCenter,
+  externalMapping,
+  importRun,
+  importStagingRow,
   item,
   location,
   organization,
@@ -498,6 +501,64 @@ export async function createTestProductionBatchOutput(
       unitId: refs.unitId,
       kind: "finished",
       plannedQty: "1",
+      ...overrides,
+    })
+    .returning();
+  return rows[0]!;
+}
+
+export async function createTestImportRun(
+  db: Database,
+  organizationId: string,
+  overrides: Partial<typeof importRun.$inferInsert> = {},
+): Promise<typeof importRun.$inferSelect> {
+  const rows = await db
+    .insert(importRun)
+    .values({
+      organizationId,
+      source: "frontline",
+      profileVersion: "v1",
+      fileHash: uniqueName("hash"),
+      periodStart: "2026-03-01",
+      periodEnd: "2026-03-31",
+      ...overrides,
+    })
+    .returning();
+  return rows[0]!;
+}
+
+export async function createTestImportStagingRow(
+  db: Database,
+  importRunId: string,
+  overrides: Partial<typeof importStagingRow.$inferInsert> = {},
+): Promise<typeof importStagingRow.$inferSelect> {
+  const rows = await db
+    .insert(importStagingRow)
+    .values({
+      importRunId,
+      sourceRowNo: 1,
+      raw: { row: 1 },
+      ...overrides,
+    })
+    .returning();
+  return rows[0]!;
+}
+
+export async function createTestExternalMapping(
+  db: Database,
+  organizationId: string,
+  overrides: Partial<typeof externalMapping.$inferInsert> = {},
+): Promise<typeof externalMapping.$inferSelect> {
+  const rows = await db
+    .insert(externalMapping)
+    .values({
+      organizationId,
+      sourceSystem: "frontline",
+      entityType: "product",
+      externalId: uniqueName("ext"),
+      internalEntityType: "product_variant",
+      internalEntityId: randomUUID(),
+      effectiveFrom: new Date("2026-01-01T00:00:00.000Z"),
       ...overrides,
     })
     .returning();

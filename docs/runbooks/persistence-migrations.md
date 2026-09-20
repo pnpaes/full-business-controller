@@ -152,11 +152,19 @@ because its target table varies by `source_type`.
 
 ## Pre-apply preflight for validating constraints and indexes
 
-Migrations 0014, 0016, 0017, 0018, 0019, 0020 and 0021 add objects that
+Migrations 0014, 0016, 0017, 0018, 0019, 0020, 0021 and 0022 add objects that
 validate or build, so a failure aborts the whole transactional migration
 (drizzle-kit runs each file in one transaction). Run the matching preflight
 against the target database **before** applying and reconcile any hits;
 drizzle-kit cannot detect them because these files diff against existing data.
+
+- **`0022_row11_import_framework.sql`** — three new, empty tables
+  (`import_run`, `import_staging_row`, `external_mapping`) with their checks,
+  uniques, FKs and indexes. All are cheap at first apply because the tables are
+  empty (the uniques and FKs are non-concurrent, so on an already-populated
+  table they would take a write/`ShareLock` for the scan). No hand-written
+  statement, no trigger, no preflight: row 11 posts nothing and leaves
+  `stock_movement_source_guard` untouched. No duplicate preflight is needed.
 
 - **`0021_slice10_production.sql`** — four new, empty tables
   (`production_plan`, `production_batch`, `production_batch_input`,
@@ -529,6 +537,19 @@ only, so the down file is an explicit operator action, not an automatic one.
   only safe while those tables carry nothing that must be preserved. Apply it
   manually with
   `psql "$DATABASE_URL" -f packages/persistence/drizzle/0021_slice10_production_down.sql`.
+- **0022 adds the slice-11 import-framework tables and follows the down
+  convention:** `0022_row11_import_framework.sql` is generated DDL for the three
+  tables (`import_run`, `import_staging_row`, `external_mapping`, with their
+  status/mapping-state/period/effective-range checks, uniques, FKs — including
+  the staging→run `ON DELETE cascade` — and indexes). It adds no hand-written
+  statement and does not touch `stock_movement_source_guard`, because row 11
+  posts no stock movement (the `sales_line` guard branch belongs to row 12,
+  owner-gated on `ADR-0008`).
+  `0022_row11_import_framework_down.sql` is **destructive**: it drops the three
+  tables in FK-safe order (`import_staging_row`, `import_run`, `external_mapping`),
+  so it is only safe while those tables carry nothing that must be preserved.
+  Apply it manually with
+  `psql "$DATABASE_URL" -f packages/persistence/drizzle/0022_row11_import_framework_down.sql`.
 
 **Re-applying after a manual down:** drizzle-kit tracks applied migrations in
 `drizzle.__drizzle_migrations`, not by comparing the schema, so a plain
@@ -544,7 +565,8 @@ for 0003, `… = 1789850858806` for 0004, `… = 1789851925634` for 0005,
 `… = 1789866859108` for 0014, `… = 1789867750326` for 0015,
 `… = 1789867797172` for 0016, `… = 1789895339462` for 0017,
 `… = 1789902579323` for 0018, `… = 1789904976754` for 0019,
-`… = 1789911710033` for 0020 and `… = 1789913486015` for 0021, then
+`… = 1789911710033` for 0020, `… = 1789913486015` for 0021 and
+`… = 1789915583040` for 0022, then
 `npm run db:migrate` (0003 verified 2026-09-19; 0005 rehearsed in the slice-3
 review follow-up; 0006 rehearsed with the slice-4 receiving work; 0007 and
 0008 rehearsed with the slice-4 review follow-up; 0009 rehearsed with the
@@ -555,17 +577,18 @@ code-review follow-up; 0014 rehearsed with the slice-7 pricing work; 0015 and
 slice-8 stock-ledger work; 0018 rehearsed with the slice-8 finding-fix work;
 0019 rehearsed with the slice-8 review-fix work; 0020 rehearsed with the
 slice-9 counts/transfers/waste work; 0021 rehearsed with the slice-10
-production work).
+production work; 0022 rehearsed with the slice-11 import-framework work).
 A **full 0011 down** drops the tables the three 0012 constraints live on, so its
 replay must clear **both** ledger rows, not just 0011's:
 `DELETE FROM drizzle.__drizzle_migrations WHERE created_at IN (1789862475550, 1789862630158);`
 then `npm run db:migrate` re-applies 0011 (the four tables) followed by 0012 (the
 three exclusion constraints). Verified on the local dev database 2026-09-20:
 after the down the four tables are gone, and after the replay the database has
-all 55 tables with `cost_pool_no_overlap`, `labor_rate_no_overlap` and
-`allocation_rule_no_overlap` present (the count is 55 once `0020`'s four
-slice-9 tables and `0021`'s four slice-10 tables exist; it was 47 before
-`0020` and 51 before `0021`).
+all 58 tables with `cost_pool_no_overlap`, `labor_rate_no_overlap` and
+`allocation_rule_no_overlap` present (the count is 58 once `0020`'s four
+slice-9 tables, `0021`'s four slice-10 tables and `0022`'s three slice-11
+import-framework tables exist; it was 47 before `0020`, 51 before `0021` and
+55 before `0022`).
 Re-applying is only safe
 while the removed objects carry no data that must be preserved — once real
 master data, TOTP counters or conversions exist, prefer the additive forward
@@ -649,6 +672,23 @@ implements it:
   - **(f)** There is no exception table for transfer discrepancies
     (`data_quality_exception` is deferred); `discrepancy_note` is the only
     recorded difference today.
+- **Slice-11 import-framework open (owner/TECH) points — recorded, do not
+  resolve silently** (also in the `packages/persistence/src/schema/sales.ts`
+  comment block; append each resolution to `12_OPEN_DECISIONS.md`):
+  - **(a)** There is **no import/mapping profile table**. `import_run.source`
+    and `import_run.profile_version` are opaque text labels; the profiles are
+    static configuration in this slice, not rows. No profile DDL is authored.
+  - **(b)** **`file_object` does not exist yet**, so `import_run.file_object_id`
+    is a plain `uuid` with no FK. The platform slice that models `file_object`
+    closes it later.
+  - **(c)** The **posting step is row 12 and owner-gated on `ADR-0008`**. The
+    three row-11 tables are created now, but no
+    `sales_transaction`/`sales_line`/`settlement`/`reconciliation` table is, so
+    `import_staging_row.linked_sales_line_id` is a plain `uuid` with no FK and
+    `IMPORT_POSTING_POLICY` (`vocabularies.ts`) backs no check yet.
+  - **(d)** **Tolerance configuration (A3) has no table**; nothing stores the
+    tolerance a future `reconciliation` row would compare against, and no
+    tolerance column or table is invented.
 
 ## Extensions are idempotent
 
@@ -723,6 +763,7 @@ session will not serialise against each other.
 | 0019 | `0019_stock_movement_asof_index.sql` | Generated: adds `stock_movement_org_occurred_idx` on `(organization_id, occurred_at, posted_at, id)`, covering the bounded as-of aggregation (`sumStockMovementsAsOf`). No table. Down companion: `0019_stock_movement_asof_index_down.sql` (drops the index) |
 | 0020 | `0020_slice9_counts_transfers_waste.sql` | Generated + hand-written: the four slice-9 tables — `stock_count`, `stock_count_line`, `stock_transfer`, `waste_event` — with their status/timestamp/quantity checks and indexes, plus `stock_movement.transfer_id` (column, FK and partial `stock_movement_transfer_idx`). Hand-written: `CREATE OR REPLACE FUNCTION stock_movement_source_guard` extending the `0017` guard to the `stock_count`/`transfer`/`waste_event` sources. Down companion: `0020_slice9_counts_transfers_waste_down.sql` (restores the `0017` guard, drops `transfer_id`, drops the four tables — destructive) |
 | 0021 | `0021_slice10_production.sql` | Generated + hand-written: the four slice-10 tables — `production_plan`, `production_batch`, `production_batch_input`, `production_batch_output` — with their status/quantity/kind checks, FKs (including the batch→line cascade and the batch self-reversal FK) and indexes (the `production_batch_org_location_status_idx` plus the FK/line indexes). Hand-written: the deferred `waste_event.production_batch_id` FK (`NOT VALID` → `VALIDATE`) and `CREATE OR REPLACE FUNCTION stock_movement_source_guard` adding the `production_batch` branch. Down companion: `0021_slice10_production_down.sql` (restores the `0020` guard, drops the `waste_event` FK, drops the four tables — destructive) |
+| 0022 | `0022_row11_import_framework.sql` | Generated: the three slice-11 import-framework tables — `import_run`, `import_staging_row`, `external_mapping` — with their status (`import_run_status_check`), mapping-state (`import_staging_row_mapping_state_check`), period and effective-range checks, the uniques (`import_run_file_hash_key`, `import_staging_row_run_row_no_key`, `external_mapping_key`), the FKs (both org tables; the staging→run `ON DELETE cascade`) and the `import_run_org_source_idx` / `import_run_org_status_idx` indexes. No hand-written invariants: row 11 posts no stock movement, so `stock_movement_source_guard` is untouched (the `sales_line` guard branch belongs to row 12, owner-gated on `ADR-0008`). Down companion: `0022_row11_import_framework_down.sql` (transactional `DROP TABLE IF EXISTS` in FK-safe order — destructive) |
 
 Order matters: extensions before DDL that calls `gen_random_uuid()`, and before
 the exclusion constraints. Verify with:
@@ -752,7 +793,7 @@ DATABASE_URL=postgres://aquarela:aquarela@localhost:5432/aquarela npm run db:mig
 `public` alone leaves the ledger intact, so `db:migrate` reports success while
 restoring nothing. `DROP SCHEMA drizzle CASCADE` clears the ledger so all
 migrations replay from 0000. Verified: after this sequence `db:migrate`
-re-applies 0000–0021 and the database has all 55 tables plus both extensions
+re-applies 0000–0022 and the database has all 58 tables plus both extensions
 (0004 adds the four slice-3 master-data tables; 0006 adds the two slice-4
 receiving tables; 0007 adds the `goods_receipt_line` guard trigger — no table;
 0008 relaxes the `supplier_price` range check — no table; 0009 adds the two
@@ -770,12 +811,15 @@ as-of aggregation index — no table; 0020 adds the four slice-9
 count/transfer/waste tables, the `stock_movement.transfer_id` column/FK/index
 and replaces the `stock_movement_source_guard` body — four tables; 0021 adds the
 four slice-10 production tables, the deferred `waste_event.production_batch_id`
-FK and replaces the `stock_movement_source_guard` body again — four tables).
+FK and replaces the `stock_movement_source_guard` body again — four tables;
+0022 adds the three slice-11 import-framework tables — `import_run`,
+`import_staging_row`, `external_mapping` — and no hand-written invariant).
 0013–0019 were added after this replay was verified; all are additive and
-table-count-neutral. `0020` and `0021` are the only migrations after the replay
-was written to add tables (four each), so the 55-table figure above is the
-expected post-`0021` count (51 after `0020`); `0014`–`0021`'s
-apply/re-run/down/re-apply was rehearsed on the local dev database 2026-09-20.
+table-count-neutral. `0020`, `0021` and `0022` are the only migrations after the
+replay was written to add tables (four, four and three respectively), so the
+58-table figure above is the expected post-`0022` count (51 after `0020`, 55
+after `0021`); `0014`–`0022`'s apply/re-run/down/re-apply was rehearsed on the
+local dev database 2026-09-20.
 
 Once real data exists, this path is no longer acceptable: use small atomic
 commits, expand → migrate → contract for schema changes, and a tested

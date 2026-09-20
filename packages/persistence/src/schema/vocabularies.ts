@@ -251,6 +251,27 @@ export const PRODUCTION_STATUS = [
   "cancelled",
 ] as const;
 
+// Slice 11 (import framework + external mappings), from
+// `schemas/domain-enums.yaml`: the `import_run` workflow state
+// (`uploaded` → `superseded`, `05_WORKFLOWS.md` §5.9) and the
+// `import_staging_row` mapping state. `IMPORT_POSTING_POLICY` is the posting
+// policy (`DEC-035`); it is exported here but backs no `check` in this slice —
+// the posting step is row 12 and owner-gated on `ADR-0008`.
+export const IMPORT_STATUS = [
+  "uploaded",
+  "parsed",
+  "needs_review",
+  "validated",
+  "posted",
+  "partially_posted",
+  "failed",
+  "superseded",
+] as const;
+
+export const MAPPING_STATE = ["unmapped", "mapped", "ignored", "error"] as const;
+
+export const IMPORT_POSTING_POLICY = ["all_or_nothing", "allow_partial"] as const;
+
 // `stock_movement.reason_code` for count/adjustment postings (`adjustment_reason`
 // in `schemas/domain-enums.yaml`). Exported here because the count-adjustment
 // and waste slices need a closed vocabulary for the reason code.

@@ -72,6 +72,19 @@ export type {
   RecipeVersionState,
 } from "./recipe";
 export {
+  IMPORT_RUN_STATUSES,
+  IMPORT_RUN_STATUS_TRANSITIONS,
+  assertImportRunStatusTransition,
+  canTransitionImportRunStatus,
+  resolveExternalEntity,
+} from "./sales-mapping";
+export type {
+  ExternalMappingCandidate,
+  ImportRunStatus,
+  ResolveExternalEntityInput,
+  ResolveExternalEntityResult,
+} from "./sales-mapping";
+export {
   STOCK_QUANTITY_SCALE,
   STOCK_VALUE_SCALE,
   applyStockMovement,
