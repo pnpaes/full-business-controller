@@ -1,8 +1,8 @@
-import { PageHeader, spacing } from "@aquarela/ui";
+import { PageHeader } from "@aquarela/ui";
 import { redirect } from "next/navigation";
 
-import { getAuthStore } from "../../../lib/auth";
-import { getServerSession } from "../../../lib/server-session";
+import { getAuthStore } from "../../../../lib/auth";
+import { getServerSession } from "../../../../lib/server-session";
 
 import { MfaSecurityPanel } from "./mfa-security";
 
@@ -25,22 +25,15 @@ export default async function AccountSecurityPage() {
   }
 
   return (
-    <main
-      style={{
-        display: "flex",
-        justifyContent: "center",
-        alignItems: "flex-start",
-        padding: `${spacing[12]}px ${spacing[4]}px`,
-      }}
-    >
-      <div style={{ width: "100%", maxWidth: 720 }}>
-        <PageHeader
-          title="Account security"
-          scope="Aquarela Business Control"
-          description="Two-factor authentication (authenticator app / TOTP) for your account."
-        />
-        <MfaSecurityPanel mfaEnabled={user.totpEnabled} />
-      </div>
-    </main>
+    // Rendered inside the `(app)` shell, which owns the `<main>` landmark and
+    // page padding; this only constrains the reading column.
+    <div style={{ width: "100%", maxWidth: 720 }}>
+      <PageHeader
+        title="Account security"
+        scope="Aquarela Business Control"
+        description="Two-factor authentication (authenticator app / TOTP) for your account."
+      />
+      <MfaSecurityPanel mfaEnabled={user.totpEnabled} />
+    </div>
   );
 }

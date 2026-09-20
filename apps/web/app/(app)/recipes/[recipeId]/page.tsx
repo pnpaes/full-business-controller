@@ -1,0 +1,515 @@
+import {
+  createPostgresRecipeStore,
+  getRecipe,
+  type RecipeAllergenRecordView,
+  type RecipeCostComponent,
+  type RecipeDetail,
+  type RecipeItemRecord,
+  type RecipeStore,
+} from "@aquarela/application";
+import { DomainError, MONEY_SCALE, formatDecimal, parseDecimal, rescale } from "@aquarela/domain";
+import {
+  Alert,
+  Badge,
+  EmptyState,
+  KpiCard,
+  PageHeader,
+  SectionCard,
+  StatusPill,
+  Table,
+  Td,
+  Th,
+  color,
+  spacing,
+  typography,
+} from "@aquarela/ui";
+import { notFound, redirect } from "next/navigation";
+
+import { getDb } from "../../../../lib/db";
+import { resolveOrganization } from "../../../../lib/organization";
+import { uuidOrNotFound } from "../../../../lib/route-params";
+import { getServerSession } from "../../../../lib/server-session";
+
+export const dynamic = "force-dynamic";
+
+const STATE_TONES = { approved: "success", rejected: "danger", submitted: "warning" } as const;
+
+function stateTone(state: string): "success" | "warning" | "danger" | "info" {
+  if (state === "approved" || state === "rejected" || state === "submitted") {
+    return STATE_TONES[state];
+  }
+  return "info";
+}
+
+/** Monetary numeric(19,4) string → 2dp display string, HALF_UP (DEC-024). */
+function formatMoneyAmount(value: string): string {
+  return formatDecimal(rescale(parseDecimal(value, MONEY_SCALE), MONEY_SCALE, 2), 2);
+}
+
+/** Trims trailing zeros from a canonical decimal string without changing its value. */
+function trimDecimal(value: string): string {
+  if (!value.includes(".")) {
+    return value === "-0" ? "0" : value;
+  }
+  const trimmed = value.replace(/\.?0+$/, "");
+  const result = trimmed.length === 0 ? "0" : trimmed;
+  return result === "-0" ? "0" : result;
+}
+
+function instantDay(value: Date): string {
+  return value.toISOString().slice(0, 10);
+}
+
+function effectiveWindow(effectiveFrom: Date, effectiveTo: Date | null): string {
+  return effectiveTo === null
+    ? `from ${instantDay(effectiveFrom)}`
+    : `${instantDay(effectiveFrom)} → ${instantDay(effectiveTo)}`;
+}
+
+/** The labels the detail view needs, resolved through the recipe port only. */
+interface Refs {
+  readonly items: ReadonlyMap<string, RecipeItemRecord>;
+  readonly units: ReadonlyMap<string, { readonly code: string }>;
+  readonly subRecipes: ReadonlyMap<string, { readonly code: string; readonly name: string }>;
+}
+
+async function loadRefs(store: RecipeStore, detail: RecipeDetail): Promise<Refs> {
+  const itemIds = [
+    ...new Set([
+      ...(detail.recipe.outputItemId === null ? [] : [detail.recipe.outputItemId]),
+      ...detail.versions.flatMap((entry) =>
+        entry.lines.flatMap((line) => (line.itemId === null ? [] : [line.itemId])),
+      ),
+    ]),
+  ];
+  const unitIds = [
+    ...new Set(detail.versions.flatMap((entry) => entry.lines.map((line) => line.unitId))),
+  ];
+  const subRecipeIds = [
+    ...new Set(
+      detail.versions.flatMap((entry) =>
+        entry.lines.flatMap((line) => (line.subRecipeId === null ? [] : [line.subRecipeId])),
+      ),
+    ),
+  ];
+
+  const [items, units, subRecipes, outputItem] = await Promise.all([
+    Promise.all(itemIds.map((id) => store.findItem(id))),
+    Promise.all(unitIds.map((id) => store.findUnit(id))),
+    Promise.all(subRecipeIds.map((id) => store.findRecipe(id))),
+    detail.recipe.outputItemId === null
+      ? Promise.resolve(undefined)
+      : store.findItem(detail.recipe.outputItemId),
+  ]);
+
+  // The output item's base unit is resolved too, so the portion can carry a unit.
+  const outputUnit =
+    outputItem === undefined ? undefined : await store.findUnit(outputItem.baseUnitId);
+
+  const itemMap = new Map<string, RecipeItemRecord>();
+  for (const item of [...items, outputItem]) {
+    if (item !== undefined) {
+      itemMap.set(item.id, item);
+    }
+  }
+  const unitMap = new Map<string, { readonly code: string }>();
+  for (const unit of [...units, outputUnit]) {
+    if (unit !== undefined) {
+      unitMap.set(unit.id, { code: unit.code });
+    }
+  }
+  const subRecipeMap = new Map<string, { readonly code: string; readonly name: string }>();
+  for (const subRecipe of subRecipes) {
+    if (subRecipe !== undefined) {
+      subRecipeMap.set(subRecipe.id, { code: subRecipe.code, name: subRecipe.name });
+    }
+  }
+  return { items: itemMap, units: unitMap, subRecipes: subRecipeMap };
+}
+
+function componentLabel(
+  component: RecipeCostComponent,
+  refs: Refs,
+): { readonly primary: string; readonly secondary: string | null } {
+  if (component.subRecipeId !== null) {
+    const sub = refs.subRecipes.get(component.subRecipeId);
+    return { primary: sub?.name ?? component.subRecipeId, secondary: sub?.code ?? "sub-recipe" };
+  }
+  if (component.itemId !== null) {
+    const item = refs.items.get(component.itemId);
+    return { primary: item?.name ?? component.itemId, secondary: item?.code ?? null };
+  }
+  return { primary: component.componentKind, secondary: null };
+}
+
+function AllergenBadges({ allergens }: { allergens: readonly RecipeAllergenRecordView[] }) {
+  if (allergens.length === 0) {
+    return <span style={{ color: color.text.muted }}>None declared</span>;
+  }
+  return (
+    <span style={{ display: "flex", flexWrap: "wrap", gap: spacing[2] }}>
+      {allergens.map((allergen) => (
+        <span key={allergen.allergenId} style={{ display: "inline-flex", gap: spacing[1] }}>
+          <Badge>{allergen.code}</Badge>
+          <span style={{ fontSize: typography.fontSize.sm, color: color.text.secondary }}>
+            {allergen.name} · {allergen.source}
+          </span>
+        </span>
+      ))}
+    </span>
+  );
+}
+
+/**
+ * Recipe editor detail: version/state, nested lines with quantities and units,
+ * yield and portion, allergens and the cost preview (`08_UI_UX.md` §8.3). Read
+ * only for now — versions are registered through the API; no edits are faked.
+ */
+export default async function RecipeDetailPage({
+  params,
+}: {
+  params: Promise<{ recipeId: string }>;
+}) {
+  const session = await getServerSession();
+  if (session === undefined) {
+    redirect("/login");
+  }
+
+  const { recipeId: rawRecipeId } = await params;
+  const recipeId = uuidOrNotFound(rawRecipeId);
+  const organizationId = resolveOrganization();
+  const store = createPostgresRecipeStore(getDb().db);
+
+  let detail: RecipeDetail;
+  try {
+    detail = await getRecipe(store, { organizationId, recipeId, asOf: new Date() });
+  } catch (error) {
+    if (error instanceof DomainError && /not found/i.test(error.message)) {
+      notFound();
+    }
+    throw error;
+  }
+
+  const refs = await loadRefs(store, detail);
+  const latest = detail.versions[0];
+  const outputItem =
+    detail.recipe.outputItemId === null ? undefined : refs.items.get(detail.recipe.outputItemId);
+  const outputUnitCode =
+    outputItem === undefined ? null : (refs.units.get(outputItem.baseUnitId)?.code ?? null);
+  const preview = detail.costPreview;
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: spacing[6],
+        width: "100%",
+        maxWidth: 1120,
+        margin: "0 auto",
+        padding: `${spacing[8]}px ${spacing[4]}px`,
+      }}
+    >
+      <PageHeader
+        title={`${detail.recipe.code} — ${detail.recipe.name}`}
+        scope="Aquarela Business Control · Recipes"
+        description={
+          outputItem === undefined
+            ? "Made-to-order recipe (no output item, DEC-030)."
+            : `Output item ${outputItem.name} (${outputItem.code}).`
+        }
+        actions={
+          <a
+            href="/recipes"
+            style={{
+              color: color.brand.navy,
+              fontWeight: typography.fontWeight.semibold,
+              fontSize: typography.fontSize.sm,
+            }}
+          >
+            All recipes
+          </a>
+        }
+      />
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+          gap: spacing[4],
+        }}
+      >
+        <KpiCard
+          label="Versions"
+          value={String(detail.versions.length)}
+          meta="Newest first · any state"
+        />
+        <KpiCard
+          label="Latest state"
+          value={latest === undefined ? "—" : latest.version.state}
+          meta={latest === undefined ? "No version registered yet" : `v${latest.version.versionNo}`}
+        />
+        <KpiCard
+          label="Yield rate"
+          value={
+            latest === undefined
+              ? "—"
+              : trimDecimal(preview.available ? preview.yieldRate : latest.version.yieldRate)
+          }
+          meta="Approved usable output ÷ planned input (§6)"
+        />
+        <KpiCard
+          label="Cost / usable unit"
+          value={preview.available ? formatMoneyAmount(preview.costPerUsableOutputUnit) : "—"}
+          meta={
+            preview.available
+              ? `${preview.currency} · v${preview.versionNo} · preview, not verified`
+              : preview.reason
+          }
+        />
+      </div>
+
+      <SectionCard
+        title="Cost preview"
+        meta={
+          preview.available
+            ? `v${preview.versionNo} · ${preview.currency} · ${formatMoneyAmount(
+                preview.recipeInputCost,
+              )} batch input`
+            : "Not costed"
+        }
+      >
+        {CostPreviewBody(preview, refs, outputUnitCode)}
+      </SectionCard>
+
+      <SectionCard
+        title="Versions"
+        meta={`${detail.versions.length} ${detail.versions.length === 1 ? "version" : "versions"}`}
+      >
+        {detail.versions.length === 0 ? (
+          <EmptyState title="No versions yet">
+            Register a version with its lines, yield and allergens to enable the cost preview. Use
+            <code> POST /api/v1/recipes/{detail.recipe.id}/versions</code>.
+          </EmptyState>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: spacing[6] }}>
+            {detail.versions.map((entry) => (
+              <div
+                key={entry.version.id}
+                style={{ display: "flex", flexDirection: "column", gap: spacing[3] }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "baseline",
+                    flexWrap: "wrap",
+                    gap: spacing[3],
+                  }}
+                >
+                  <span
+                    style={{
+                      fontFamily: typography.fontFamily.display,
+                      fontSize: typography.fontSize.lg,
+                      fontWeight: typography.fontWeight.semibold,
+                    }}
+                  >
+                    v{entry.version.versionNo}
+                  </span>
+                  <StatusPill tone={stateTone(entry.version.state)}>
+                    {entry.version.state}
+                  </StatusPill>
+                  <span style={{ fontSize: typography.fontSize.sm, color: color.text.muted }}>
+                    {effectiveWindow(entry.version.effectiveFrom, entry.version.effectiveTo)} ·
+                    planned output {trimDecimal(entry.version.plannedOutputQty)} · approved usable{" "}
+                    {trimDecimal(entry.version.approvedUsableOutput)}
+                    {outputUnitCode === null ? "" : ` ${outputUnitCode}`}
+                    {entry.version.preparationMinutes === null
+                      ? ""
+                      : ` · prep ${entry.version.preparationMinutes} min`}
+                  </span>
+                </div>
+
+                <div>
+                  <span
+                    style={{
+                      fontSize: typography.fontSize.sm,
+                      fontWeight: typography.fontWeight.semibold,
+                      color: color.text.secondary,
+                    }}
+                  >
+                    Lines
+                  </span>
+                  <Table
+                    caption={`Nested lines for version ${entry.version.versionNo}. Quantities pair with each line's unit.`}
+                    columnCount={5}
+                    emptyMessage="This version has no lines."
+                  >
+                    <thead>
+                      <tr>
+                        <Th>Component</Th>
+                        <Th>Item / sub-recipe</Th>
+                        <Th style={{ textAlign: "right" }}>Quantity</Th>
+                        <Th>Unit</Th>
+                        <Th style={{ textAlign: "right" }}>Loss factor</Th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {entry.lines.map((line) => {
+                        const item = line.itemId === null ? undefined : refs.items.get(line.itemId);
+                        const sub =
+                          line.subRecipeId === null
+                            ? undefined
+                            : refs.subRecipes.get(line.subRecipeId);
+                        return (
+                          <tr key={line.id}>
+                            <Td>{line.componentKind}</Td>
+                            <Td>
+                              {line.subRecipeId !== null ? (
+                                <a
+                                  href={`/recipes/${line.subRecipeId}`}
+                                  style={{ color: color.brand.navy }}
+                                >
+                                  {sub?.name ?? line.subRecipeId}
+                                </a>
+                              ) : (
+                                <span title={line.itemId ?? undefined}>
+                                  {item?.name ?? line.itemId ?? "—"}
+                                </span>
+                              )}
+                            </Td>
+                            <Td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                              {trimDecimal(line.quantity)}
+                            </Td>
+                            <Td>
+                              <Badge>{refs.units.get(line.unitId)?.code ?? line.unitId}</Badge>
+                            </Td>
+                            <Td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                              {trimDecimal(line.lossFactor)}
+                            </Td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </Table>
+                </div>
+
+                <div style={{ display: "flex", gap: spacing[2], alignItems: "baseline" }}>
+                  <span
+                    style={{
+                      fontSize: typography.fontSize.sm,
+                      fontWeight: typography.fontWeight.semibold,
+                      color: color.text.secondary,
+                    }}
+                  >
+                    Allergens
+                  </span>
+                  <AllergenBadges allergens={entry.allergens} />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </SectionCard>
+    </div>
+  );
+}
+
+/** The cost-preview body: totals plus the per-component breakdown. */
+function CostPreviewBody(
+  preview: RecipeDetail["costPreview"],
+  refs: Refs,
+  outputUnitCode: string | null,
+) {
+  if (!preview.available) {
+    return (
+      <Alert tone="info" title="Cost preview unavailable">
+        {preview.reason}
+      </Alert>
+    );
+  }
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: spacing[4] }}>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+          gap: spacing[4],
+        }}
+      >
+        <KpiCard
+          label="Batch input cost"
+          value={`${formatMoneyAmount(preview.recipeInputCost)} ${preview.currency}`}
+          meta="Sum of line costs at required purchase quantities (B2)"
+        />
+        <KpiCard
+          label="Batch output cost"
+          value={`${formatMoneyAmount(preview.recipeOutputCost)} ${preview.currency}`}
+          meta="Batch input plus any batch variable cost (§6)"
+        />
+        <KpiCard
+          label="Cost per usable unit"
+          value={`${formatMoneyAmount(preview.costPerUsableOutputUnit)} ${preview.currency}`}
+          meta={`Divided by approved usable output${
+            outputUnitCode === null ? "" : ` (${outputUnitCode})`
+          } (B3)`}
+        />
+      </div>
+      <Table
+        caption={`Cost components for version ${preview.versionNo}. Required quantity is grossed up for the line loss factor and recipe yield; each source follows the DEC-047 precedence.`}
+        columnCount={5}
+        emptyMessage="This version has no costed components."
+      >
+        <thead>
+          <tr>
+            <Th>Component</Th>
+            <Th style={{ textAlign: "right" }}>Required qty</Th>
+            <Th style={{ textAlign: "right" }}>Unit cost</Th>
+            <Th style={{ textAlign: "right" }}>Line cost</Th>
+            <Th>Source</Th>
+          </tr>
+        </thead>
+        <tbody>
+          {preview.components.map((component, index) => {
+            const label = componentLabel(component, refs);
+            return (
+              <tr key={`${component.subRecipeId ?? component.itemId ?? index}`}>
+                <Td>
+                  <span style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                    <span>{label.primary}</span>
+                    <span
+                      style={{
+                        fontFamily: typography.fontFamily.mono,
+                        fontSize: typography.fontSize.xs,
+                        color: color.text.muted,
+                      }}
+                    >
+                      {component.componentKind}
+                      {label.secondary === null ? "" : ` · ${label.secondary}`}
+                    </span>
+                  </span>
+                </Td>
+                <Td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                  {trimDecimal(component.requiredPurchaseQuantity)}{" "}
+                  <Badge>{refs.units.get(component.unitId)?.code ?? component.unitId}</Badge>
+                </Td>
+                <Td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                  {formatMoneyAmount(component.unitCost)}
+                </Td>
+                <Td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                  {formatMoneyAmount(component.lineCost)}
+                </Td>
+                <Td>
+                  <Badge>{component.sourceType}</Badge>
+                </Td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </Table>
+      <p style={{ margin: 0, fontSize: typography.fontSize.xs, color: color.text.muted }}>
+        Preview only. This is not the signed-off verified cost until the golden fixtures are signed
+        (DEC-065); labour, packaging and allocation from slice 6 are not folded in here.
+      </p>
+    </div>
+  );
+}
