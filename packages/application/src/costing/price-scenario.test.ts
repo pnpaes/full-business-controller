@@ -50,6 +50,10 @@ describe("calculatePriceScenario", () => {
       unitContribution: "24.5782",
       contributionMarginPct: "72.474272",
       requiredNetPrice: null,
+      requiredGrossPrice: null,
+      includedTax: "5.0870",
+      presentedNetPrice: "33.91",
+      presentedGrossPrice: "39.00",
       breakEvenUnits: null,
     });
 
@@ -82,6 +86,34 @@ describe("calculatePriceScenario", () => {
         after: { state: "draft", net_price: "33.9130", gross_price: "39.00" },
       }),
     ]);
+  });
+
+  it("derives tax, presented money and the gross for a target net price", async () => {
+    const store = new FakePriceScenarioStore();
+    seedVariant(store);
+
+    const result = await calculatePriceScenario(
+      store,
+      cheeseBunInput({ targetContributionRate: "0.500000" }),
+    );
+
+    expect(result.outcome.includedTax).toBe("5.0870");
+    expect(result.outcome.presentedNetPrice).toBe("33.91");
+    expect(result.outcome.presentedGrossPrice).toBe("39.00");
+    expect(result.outcome.requiredNetPrice).toBe("18.6696");
+    expect(result.outcome.requiredGrossPrice).toBe("21.4700");
+  });
+
+  it("leaves the derived tax, presented and gross fields null without a price", async () => {
+    const store = new FakePriceScenarioStore();
+    seedVariant(store);
+
+    const result = await calculatePriceScenario(store, cheeseBunInput({ grossPrice: null }));
+
+    expect(result.outcome.includedTax).toBeNull();
+    expect(result.outcome.presentedNetPrice).toBeNull();
+    expect(result.outcome.presentedGrossPrice).toBeNull();
+    expect(result.outcome.requiredGrossPrice).toBeNull();
   });
 
   it("computes a wolt-style channel fee and records the fee breakdown", async () => {

@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
 import type { Database } from "../client";
 import { priceScenario } from "../schema";
@@ -33,28 +33,6 @@ export async function findPriceScenario(
 ): Promise<PriceScenario | undefined> {
   const rows = await db.select().from(priceScenario).where(eq(priceScenario.id, id)).limit(1);
   return rows[0];
-}
-
-export interface PriceScenarioViewQuery {
-  readonly organizationId: string;
-  readonly productVariantId: string;
-}
-
-/** All scenarios for a variant, newest first. */
-export async function listPriceScenariosForVariant(
-  db: Database,
-  query: PriceScenarioViewQuery,
-): Promise<readonly PriceScenario[]> {
-  return db
-    .select()
-    .from(priceScenario)
-    .where(
-      and(
-        eq(priceScenario.organizationId, query.organizationId),
-        eq(priceScenario.productVariantId, query.productVariantId),
-      ),
-    )
-    .orderBy(desc(priceScenario.createdAt));
 }
 
 export interface PriceScenarioPatch {

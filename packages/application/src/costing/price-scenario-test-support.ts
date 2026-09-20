@@ -76,21 +76,6 @@ export class FakePriceScenarioStore implements PriceScenarioStore {
     return Promise.resolve(this.priceScenarios.get(priceScenarioId));
   }
 
-  listPriceScenariosForVariant(query: {
-    readonly organizationId: string;
-    readonly productVariantId: string;
-  }): Promise<readonly PriceScenarioRecord[]> {
-    return Promise.resolve(
-      [...this.priceScenarios.values()]
-        .filter(
-          (scenario) =>
-            scenario.organizationId === query.organizationId &&
-            scenario.productVariantId === query.productVariantId,
-        )
-        .sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0)),
-    );
-  }
-
   updatePriceScenario(
     priceScenarioId: string,
     patch: {

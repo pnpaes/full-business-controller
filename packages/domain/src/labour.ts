@@ -1,6 +1,7 @@
 import { divideRoundHalfUp, formatDecimal, parseDecimal } from "./decimal";
 import { DomainError } from "./errors";
 import { MONEY_SCALE } from "./money";
+import { unitContribution } from "./pricing";
 import { QUANTITY_SCALE } from "./quantity";
 
 /**
@@ -170,6 +171,10 @@ export function labourCostViews(input: LabourCostViewsInput): LabourCostViews {
  * CALCULATION_CONTRACT §7): before and after standard direct labour, both at
  * 4 dp. `unitNetSales` may be negative (a loss-making unit is still a valid
  * figure); the cost components must not be.
+ *
+ * Both views delegate to `unitContribution` (§8) so the contribution boundary
+ * has a single authority; the after-labour variable cost is the exact 4 dp sum
+ * of the before-labour cost and the direct labour cost.
  */
 export function contributionBeforeAndAfterDirectLabor(input: {
   readonly unitNetSales: string;
@@ -179,7 +184,6 @@ export function contributionBeforeAndAfterDirectLabor(input: {
   readonly contributionBeforeDirectLabor: string;
   readonly contributionAfterDirectLabor: string;
 } {
-  const netSales = parseDecimal(input.unitNetSales, MONEY_SCALE);
   const variableCost = parseDecimal(input.variableCostBeforeLabor, MONEY_SCALE);
   const labor = parseDecimal(input.directLaborCost, MONEY_SCALE);
   if (variableCost < 0n) {
@@ -188,9 +192,12 @@ export function contributionBeforeAndAfterDirectLabor(input: {
   if (labor < 0n) {
     throw new DomainError("directLaborCost must not be negative");
   }
-  const before = netSales - variableCost;
+  const variableCostAfterLabor = formatDecimal(variableCost + labor, MONEY_SCALE);
   return {
-    contributionBeforeDirectLabor: formatDecimal(before, MONEY_SCALE),
-    contributionAfterDirectLabor: formatDecimal(before - labor, MONEY_SCALE),
+    contributionBeforeDirectLabor: unitContribution(
+      input.unitNetSales,
+      input.variableCostBeforeLabor,
+    ),
+    contributionAfterDirectLabor: unitContribution(input.unitNetSales, variableCostAfterLabor),
   };
 }

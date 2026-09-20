@@ -128,6 +128,50 @@ This applies to: `supplier_price.supplier_item_id`, `supplier_price.source_recei
 `goods_receipt.accepted_by`, `goods_receipt.evidence_file_id`,
 `goods_receipt_line.supplier_item_id`, `operating_cost.evidence_file_id`.
 
+## Pre-apply preflight for validating constraints and indexes
+
+Migrations 0014 and 0016 add objects that validate or build, so a failure aborts
+the whole transactional migration (drizzle-kit runs each file in one
+transaction). Run the matching preflight against the target database **before**
+applying and reconcile any hits; drizzle-kit cannot detect them because neither
+file diffs against existing data.
+
+- **`0016_cost_card_approved_scope.sql`** — the non-concurrent
+  `CREATE UNIQUE INDEX cost_card_approved_scope_key` is journaled, so it cannot
+  use `CONCURRENTLY` and takes a write lock, and it fails if duplicate
+  `state = 'approved'` rows already exist for a scope:
+
+  ```sql
+  SELECT organization_id, product_variant_id, location_id, channel_id, count(*)
+  FROM cost_card
+  WHERE state = 'approved'
+  GROUP BY 1, 2, 3, 4
+  HAVING count(*) > 1;
+  ```
+
+  Any hit must be reconciled before the index is built: keep the row with the
+  newest `calculated_at` and supersede the rest (the same rule `approveCostCard`
+  applies, `DEC-060`).
+
+- **`0014_cost_card_pricing.sql`** — `snapshot_component_kind_check` is added with
+  a plain, validating `ADD CONSTRAINT … CHECK`. `snapshot_component` is populated
+  only by this slice, so at first apply the table is empty and the validate is
+  cheap. If the table may already hold rows, preflight for out-of-vocabulary
+  values first:
+
+  ```sql
+  SELECT DISTINCT component_kind
+  FROM snapshot_component
+  WHERE component_kind NOT IN
+    ('ingredient', 'packaging', 'direct_labor', 'channel_variable',
+     'other_variable', 'allocated_overhead');
+  ```
+
+  Any hit must be repaired before the check is added; prefer the
+  `NOT VALID` → `VALIDATE CONSTRAINT` pattern above rather than a validating
+  `ADD CONSTRAINT` in that case, so the first apply never holds a full-table
+  validation lock.
+
 ## Once data exists, the destructive recovery is no longer permitted
 
 `DROP SCHEMA public CASCADE; DROP SCHEMA drizzle CASCADE; CREATE SCHEMA public;`

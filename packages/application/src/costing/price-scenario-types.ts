@@ -53,10 +53,6 @@ export interface PriceScenarioStore {
   ): Promise<{ readonly id: string; readonly organizationId: string } | undefined>;
   createPriceScenario(input: NewPriceScenarioRecord): Promise<PriceScenarioRecord>;
   findPriceScenario(priceScenarioId: string): Promise<PriceScenarioRecord | undefined>;
-  listPriceScenariosForVariant(query: {
-    readonly organizationId: string;
-    readonly productVariantId: string;
-  }): Promise<readonly PriceScenarioRecord[]>;
   updatePriceScenario(
     priceScenarioId: string,
     patch: {

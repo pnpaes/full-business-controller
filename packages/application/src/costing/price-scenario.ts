@@ -5,7 +5,10 @@ import {
   channelVariableCost as channelVariableCostFn,
   contributionMarginPct as contributionMarginPctFn,
   DomainError,
+  grossFromNet as grossFromNetFn,
+  includedTax as includedTaxFn,
   parseDecimal,
+  presentedMoney,
   requiredNetPrice as requiredNetPriceFn,
   unitContribution as unitContributionFn,
   unitNetSales,
@@ -76,6 +79,10 @@ export interface PriceScenarioOutcome {
   readonly unitContribution: string | null;
   readonly contributionMarginPct: string | null;
   readonly requiredNetPrice: string | null;
+  readonly requiredGrossPrice: string | null;
+  readonly includedTax: string | null;
+  readonly presentedNetPrice: string | null;
+  readonly presentedGrossPrice: string | null;
   readonly breakEvenUnits: string | null;
 }
 
@@ -212,6 +219,16 @@ export async function calculatePriceScenario(
     parseDecimal(unitContribution, MONEY_SCALE) > 0n
       ? breakEvenUnitsFn(input.fixedCost, unitContribution)
       : null;
+  const requiredGrossPrice =
+    requiredNetPrice !== null
+      ? grossFromNetFn(requiredNetPrice, input.taxBasis === "inclusive" ? input.taxRate : "0")
+      : null;
+  const includedTaxAmount =
+    input.grossPrice != null && input.taxBasis === "inclusive"
+      ? includedTaxFn(input.grossPrice, input.taxRate)
+      : null;
+  const presentedNetPrice = netPrice !== null ? presentedMoney(netPrice) : null;
+  const presentedGrossPrice = input.grossPrice != null ? presentedMoney(input.grossPrice) : null;
 
   const outcome: PriceScenarioOutcome = {
     grossPrice: input.grossPrice ?? null,
@@ -221,6 +238,10 @@ export async function calculatePriceScenario(
     unitContribution,
     contributionMarginPct,
     requiredNetPrice,
+    requiredGrossPrice,
+    includedTax: includedTaxAmount,
+    presentedNetPrice,
+    presentedGrossPrice,
     breakEvenUnits,
   };
 

@@ -9,6 +9,7 @@ import {
   directLaborCost,
   labourCostViews,
 } from "./labour";
+import { unitContribution } from "./pricing";
 
 describe("computeLoadedHourlyRate", () => {
   it("computes the front-of-house loaded rate (base 210, LABOUR_ASSUMPTIONS §3)", () => {
@@ -165,6 +166,17 @@ describe("contributionBeforeAndAfterDirectLabor", () => {
 
     expect(result.contributionBeforeDirectLabor).toBe("27.1330");
     expect(result.contributionAfterDirectLabor).toBe("24.5782");
+  });
+
+  it("agrees with two direct unitContribution calls (§8 single authority)", () => {
+    const result = contributionBeforeAndAfterDirectLabor({
+      unitNetSales: "33.9130",
+      variableCostBeforeLabor: "6.7800",
+      directLaborCost: "2.5548",
+    });
+
+    expect(result.contributionBeforeDirectLabor).toBe(unitContribution("33.9130", "6.7800"));
+    expect(result.contributionAfterDirectLabor).toBe(unitContribution("33.9130", "9.3348"));
   });
 
   it("does not reject negative net sales", () => {

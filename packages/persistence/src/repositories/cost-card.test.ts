@@ -19,7 +19,6 @@ import {
   findCalculationSnapshot,
   findCostCard,
   listApprovedCostCardsForScope,
-  listCalculationSnapshotsForCostCard,
   listSnapshotComponents,
   updateCostCard,
 } from "./cost-card";
@@ -325,9 +324,6 @@ describe.skipIf(!databaseUrl)("cost-card repository", () => {
       ]);
 
       expect((await findCalculationSnapshot(tx, snapshot.id))?.id).toBe(snapshot.id);
-      expect(
-        (await listCalculationSnapshotsForCostCard(tx, card.id)).map((row) => row.id),
-      ).toContain(snapshot.id);
     });
   });
 

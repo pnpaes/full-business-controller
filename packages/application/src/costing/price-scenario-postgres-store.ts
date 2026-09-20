@@ -71,8 +71,6 @@ export function createPostgresPriceScenarioStore(db: Database): PriceScenarioSto
       const row = await repo.findPriceScenario(db, priceScenarioId);
       return row === undefined ? undefined : toPriceScenario(row);
     },
-    listPriceScenariosForVariant: async (query) =>
-      (await repo.listPriceScenariosForVariant(db, query)).map(toPriceScenario),
     updatePriceScenario: async (priceScenarioId, patch) =>
       toPriceScenario(await repo.updatePriceScenario(db, priceScenarioId, patch)),
     createCalculationSnapshot: async (input) => {

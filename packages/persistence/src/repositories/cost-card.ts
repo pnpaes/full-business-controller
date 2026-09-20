@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 
 import type { Database } from "../client";
 import { calculationSnapshot, costCard, snapshotComponent } from "../schema";
@@ -114,17 +114,6 @@ export async function findCalculationSnapshot(
     .where(eq(calculationSnapshot.id, id))
     .limit(1);
   return rows[0];
-}
-
-export async function listCalculationSnapshotsForCostCard(
-  db: Database,
-  costCardId: string,
-): Promise<readonly CalculationSnapshot[]> {
-  return db
-    .select()
-    .from(calculationSnapshot)
-    .where(eq(calculationSnapshot.costCardId, costCardId))
-    .orderBy(desc(calculationSnapshot.createdAt));
 }
 
 export interface NewSnapshotComponent {

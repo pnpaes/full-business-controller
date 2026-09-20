@@ -3,12 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createDb, type DbClient } from "../client";
 import { organization, product, productVariant } from "../schema";
-import {
-  createPriceScenario,
-  findPriceScenario,
-  listPriceScenariosForVariant,
-  updatePriceScenario,
-} from "./price-scenario";
+import { createPriceScenario, findPriceScenario, updatePriceScenario } from "./price-scenario";
 import {
   createTestOrganization,
   createTestProduct,
@@ -101,32 +96,6 @@ describe.skipIf(!databaseUrl)("price-scenario repository", () => {
       expect(updated.outcome).toEqual({ breakEven: "8.10" });
       expect(updated.grossPrice).toBe("13.5000");
       expect(updated.netPrice).toBe("11.4750");
-    });
-  });
-
-  it("lists scenarios for one organization's variant only", async () => {
-    await inRollback(client.db, async (tx) => {
-      const mine = await createPriceScenario(tx, {
-        organizationId: orgId,
-        productVariantId: variantId,
-        grossPrice: "10",
-      });
-
-      const otherOrgId = await createTestOrganization(tx, uniqueSuffix());
-      const otherProduct = await createTestProduct(tx, otherOrgId);
-      const otherVariant = await createTestProductVariant(tx, otherOrgId, otherProduct.id);
-      const foreign = await createPriceScenario(tx, {
-        organizationId: otherOrgId,
-        productVariantId: otherVariant.id,
-        grossPrice: "20",
-      });
-
-      const listed = await listPriceScenariosForVariant(tx, {
-        organizationId: orgId,
-        productVariantId: variantId,
-      });
-      expect(listed.map((scenario) => scenario.id)).toContain(mine.id);
-      expect(listed.map((scenario) => scenario.id)).not.toContain(foreign.id);
     });
   });
 });
