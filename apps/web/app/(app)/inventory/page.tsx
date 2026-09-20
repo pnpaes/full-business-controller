@@ -13,7 +13,16 @@ import {
   rescale,
 } from "@aquarela/domain";
 import { STORAGE_AREA_KIND } from "@aquarela/persistence";
-import { Alert, KpiCard, PageHeader, SectionCard, spacing } from "@aquarela/ui";
+import {
+  Alert,
+  KpiCard,
+  PageHeader,
+  SectionCard,
+  color,
+  radius,
+  spacing,
+  typography,
+} from "@aquarela/ui";
 import { redirect } from "next/navigation";
 
 import { getDb } from "../../../lib/db";
@@ -210,6 +219,37 @@ export default async function InventoryPage() {
         title="Inventory"
         scope="Aquarela Business Control"
         description="On-hand stock by location, storage area and lot, valued at moving weighted average cost."
+        actions={
+          <>
+            {(
+              [
+                ["Counts", "/inventory/counts"],
+                ["Transfers", "/inventory/transfers"],
+                ["Waste", "/inventory/waste"],
+              ] as const
+            ).map(([label, href]) => (
+              <a
+                key={href}
+                href={href}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  minHeight: 44,
+                  padding: `0 ${spacing[3]}px`,
+                  borderRadius: radius.sm,
+                  border: `1px solid ${color.border.default}`,
+                  backgroundColor: color.background.surface,
+                  color: color.text.primary,
+                  fontFamily: typography.fontFamily.sans,
+                  fontSize: typography.fontSize.md,
+                  textDecoration: "none",
+                }}
+              >
+                {label}
+              </a>
+            ))}
+          </>
+        }
       />
 
       <div
