@@ -88,10 +88,11 @@ and slice 7 (cost card + snapshots + price scenario + approval) are built.
 
 ## Current status
 
-- **As of:** 2026-09-20 — branch `main`; HEAD `083106a`. **Slice 7 (cost card +
+- **As of:** 2026-09-20 — branch `main`; HEAD `aa4ab29`. **Slice 7 (cost card +
   snapshots + price scenario + approval) is complete, reviewed, verified and
   committed (`400c95b`, with its review fixes in `60f3ec5`, `c82a30f` and
-  `083106a`).** This session the owner accepted **`ADR-0005`** (stock
+  `083106a`, and the decisions/ADR acceptance and fixture trail in
+  `aa4ab29`).** This session the owner accepted **`ADR-0005`** (stock
   valuation/consumption — unblocking slice 8) and made five decisions:
   `DEC-061` (multi-tenancy: shared schema with `organization_id` row scoping; RLS
   possible later, no schema/DB-per-tenant), `DEC-062` (background jobs runtime:
@@ -144,7 +145,7 @@ and slice 7 (cost card + snapshots + price scenario + approval) are built.
   `npm audit --omit=dev` = 0.
 - **Tests:** 475 passed / 113 skipped (588) without `DATABASE_URL`; **588 passed /
   588 (60 files + the new golden-fixture test)** with it (recorded 2026-09-20 at
-  HEAD `083106a`; re-verify with `npm run test` and update if they differ).
+  HEAD `aa4ab29`; re-verify with `npm run test` and update if they differ).
   Open verification debt: the per-process rate limiter needs a shared
   store before multi-instance deployment; the reset-token delivery is a no-op stub
   until the email slice; the palette hex values and data-viz palette semantics
@@ -359,7 +360,7 @@ and Spaces credentials via `-backend-config` / `AWS_ACCESS_KEY_ID` +
 ## Reversibility
 
 - Revert any commit with `git revert <sha>`; no destructive git operations.
-- **Everything through `083106a` is committed** (slices 4–7 and their review fixes
+- **Everything through `aa4ab29` is committed** (slices 4–7 and their review fixes
   included, with migrations `0006`–`0016` and additive down paths); `git revert`
   any commit.
 - **Slice 7 (`400c95b`)**: `git revert 400c95b` removes the domain
@@ -375,6 +376,11 @@ and Spaces credentials via `-backend-config` / `AWS_ACCESS_KEY_ID` +
   scenario outcome, the two dead read-API removals, the contribution-boundary
   de-duplication and the `0014`/`0016` pre-apply preflight notes. Neither touched
   a migration or a generated file, so neither has a data-recovery concern.
+- **Decisions + fixture trail (`aa4ab29`)**: documentation only — the five
+  `DEC-061`–`DEC-065` entries, the `ADR-0005` acceptance and the additive golden
+  fixture trail/test (`tests/fixtures/`,
+  `packages/domain/src/golden-fixtures.test.ts`). No migration or production
+  code; `git revert aa4ab29` restores the prior state.
 - The `infra/` scaffold, runtime stubs and persistence core are committed; revert
   them with `git revert` if needed. **No cloud resource was created — only offline
   `fmt`/`validate`/`plan` ran, never `apply`; no Terraform state exists, and
@@ -395,7 +401,7 @@ CASCADE; CREATE SCHEMA public; npm run db:migrate` (see the runbook). Once data
 
 Two atomic commits on `main` since the last handoff update (which recorded the
 slice-7 review fixes as an uncommitted working tree at HEAD `60f3ec5`; the tree is
-now clean at HEAD `083106a`; nothing applied to DigitalOcean):
+now clean at HEAD `aa4ab29`; nothing applied to DigitalOcean):
 
 - **`c82a30f` — cross-organization reference guards + runbook `0015`/`0016`.**
   Committed the two accepted slice-7 review fixes: `calculateCostCard` and
