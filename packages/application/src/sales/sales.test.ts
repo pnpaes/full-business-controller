@@ -6,6 +6,7 @@ import { getSalesTransaction } from "./get-sales-transaction";
 import { DEFAULT_SALES_LIMIT, listSalesTransactions } from "./list-sales-transactions";
 import { postImportRun } from "./post-import-run";
 import { postTheoreticalConsumption } from "./post-theoretical-consumption";
+import { reverseSalesLine } from "./reverse-sales-line";
 import {
   FakeConsumptionStore,
   FakeSalesStore,
@@ -15,7 +16,7 @@ import {
   stagingRow,
 } from "./test-support";
 import type { ConsumptionFixture } from "./test-support";
-import type { NewSalesLineRecord, NewSalesTransactionRecord } from "./types";
+import type { NewSalesLineRecord, NewSalesTransactionRecord, SalesLineRecord } from "./types";
 
 const ORG = "org-1";
 const OTHER_ORG = "org-2";
@@ -159,7 +160,7 @@ describe("postImportRun", () => {
           {
             sourceRowNo: 2,
             normalized: normalized({ external_line_id: "line-2" }),
-            mappingState: "error",
+            mappingState: "conflict",
             errorCode: "mapping_conflict",
           },
         ],
@@ -674,5 +675,162 @@ describe("sales transaction reads", () => {
     await expect(
       getSalesTransaction(store, { organizationId: ORG, salesTransactionId: "  " }),
     ).rejects.toThrow(DomainError);
+  });
+});
+
+describe("reverseSalesLine", () => {
+  async function seedReversibleLine(store: FakeSalesStore): Promise<SalesLineRecord> {
+    const transaction = await store.createSalesTransaction(transactionInput("txn-1", OCCURRED_AT));
+    return store.createSalesLine({
+      organizationId: ORG,
+      salesTransactionId: transaction.id,
+      productVariantId: "variant-1",
+      externalProductRef: "ext-ref",
+      sku: "SKU-1",
+      externalLineId: "line-1",
+      quantity: "2.500000",
+      unitPrice: "10.0000",
+      grossAmount: "25.0000",
+      netAmount: "20.0000",
+      taxAmount: "5.0000",
+      appliedTaxRate: "0.250000",
+      discountAmount: "1.0000",
+      refundAmount: "0.5000",
+      channelId: "channel-1",
+      taxRuleId: "tax-rule-1",
+      parentLineId: null,
+      optionKind: "standalone",
+      channelFeeBasis: "net",
+      mappingState: "mapped",
+      reversalOfId: null,
+    });
+  }
+
+  it("writes a new negated line in the same transaction and never edits the original (DEC-073)", async () => {
+    const store = new FakeSalesStore();
+    const line = await seedReversibleLine(store);
+
+    const result = await reverseSalesLine(store, {
+      organizationId: ORG,
+      actorId: ACTOR,
+      salesLineId: line.id,
+      reasonCode: "customer-refund",
+    });
+
+    expect(store.salesLines.size).toBe(2);
+    // The original is untouched: the same object identity and exact values.
+    expect(store.salesLines.get(line.id)).toEqual(line);
+
+    const reversal = store.salesLines.get(result.reversalSalesLineId)!;
+    expect(reversal.salesTransactionId).toBe(line.salesTransactionId);
+    expect(reversal.reversalOfId).toBe(line.id);
+    // Null so the unique `(transaction, external_line_id)` key is not violated.
+    expect(reversal.externalLineId).toBeNull();
+    // Every quantity/money field is mirrored exactly and negative.
+    expect(reversal).toMatchObject({
+      quantity: "-2.500000",
+      unitPrice: "-10.0000",
+      grossAmount: "-25.0000",
+      netAmount: "-20.0000",
+      taxAmount: "-5.0000",
+      discountAmount: "-1.0000",
+      refundAmount: "-0.5000",
+      // Identity/classification fields are copied verbatim, never negated.
+      productVariantId: line.productVariantId,
+      externalProductRef: line.externalProductRef,
+      sku: line.sku,
+      appliedTaxRate: line.appliedTaxRate,
+      channelId: line.channelId,
+      taxRuleId: line.taxRuleId,
+      parentLineId: line.parentLineId,
+      optionKind: line.optionKind,
+      channelFeeBasis: line.channelFeeBasis,
+      mappingState: line.mappingState,
+    });
+
+    const audit = store.auditEvents.find((event) => event.action === "sales.sales_line.reversed");
+    expect(audit).toMatchObject({
+      entityType: "sales_line",
+      entityId: result.reversalSalesLineId,
+      after: {
+        reversal_of_id: line.id,
+        reason_code: "customer-refund",
+        sales_line_id: result.reversalSalesLineId,
+      },
+    });
+  });
+
+  it("rejects a second reversal of the same line", async () => {
+    const store = new FakeSalesStore();
+    const line = await seedReversibleLine(store);
+    const input = {
+      organizationId: ORG,
+      actorId: ACTOR,
+      salesLineId: line.id,
+      reasonCode: "customer-refund",
+    };
+
+    await reverseSalesLine(store, input);
+    await expect(reverseSalesLine(store, input)).rejects.toThrow(/already reversed/);
+    expect(store.salesLines.size).toBe(2);
+  });
+
+  it("rejects reversing a reversal line", async () => {
+    const store = new FakeSalesStore();
+    const line = await seedReversibleLine(store);
+    const result = await reverseSalesLine(store, {
+      organizationId: ORG,
+      actorId: ACTOR,
+      salesLineId: line.id,
+      reasonCode: "customer-refund",
+    });
+
+    await expect(
+      reverseSalesLine(store, {
+        organizationId: ORG,
+        actorId: ACTOR,
+        salesLineId: result.reversalSalesLineId,
+        reasonCode: "customer-refund",
+      }),
+    ).rejects.toThrow(/cannot itself be reversed/);
+    expect(store.salesLines.size).toBe(2);
+  });
+
+  it("rejects a missing or blank reasonCode and writes nothing", async () => {
+    const store = new FakeSalesStore();
+    const line = await seedReversibleLine(store);
+
+    await expect(
+      reverseSalesLine(store, {
+        organizationId: ORG,
+        actorId: ACTOR,
+        salesLineId: line.id,
+        reasonCode: "   ",
+      }),
+    ).rejects.toThrow(/reasonCode is required/);
+    expect(store.salesLines.size).toBe(1);
+  });
+
+  it("hides a line that is missing or in another organization", async () => {
+    const store = new FakeSalesStore();
+    const line = await seedReversibleLine(store);
+
+    await expect(
+      reverseSalesLine(store, {
+        organizationId: ORG,
+        actorId: ACTOR,
+        salesLineId: "missing",
+        reasonCode: "customer-refund",
+      }),
+    ).rejects.toThrow(/sales line not found in organization/);
+    await expect(
+      reverseSalesLine(store, {
+        organizationId: OTHER_ORG,
+        actorId: ACTOR,
+        salesLineId: line.id,
+        reasonCode: "customer-refund",
+      }),
+    ).rejects.toThrow(/sales line not found in organization/);
+    expect(store.salesLines.size).toBe(1);
   });
 });

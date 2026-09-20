@@ -1,4 +1,4 @@
-import { MONEY_SCALE, formatDecimal, parseDecimal } from "@aquarela/domain";
+import { MONEY_SCALE, formatDecimal, parseDecimal, type ToleranceKind } from "@aquarela/domain";
 import * as repo from "@aquarela/persistence";
 import type { Database, NodeDatabase } from "@aquarela/persistence";
 
@@ -6,9 +6,11 @@ import { createPostgresImportStore } from "../imports";
 
 import type {
   NewReconciliationRecord,
+  NewReconciliationToleranceRecord,
   ReconciliationPatch,
   ReconciliationRecord,
   ReconciliationStore,
+  ReconciliationToleranceRecord,
   SettlementRecord,
 } from "./types";
 
@@ -51,6 +53,18 @@ function toReconciliation(row: repo.Reconciliation): ReconciliationRecord {
     dueDate: row.dueDate,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt === null ? null : row.updatedAt.toISOString(),
+  };
+}
+
+function toTolerance(row: repo.ReconciliationTolerance): ReconciliationToleranceRecord {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    kind: row.kind as ToleranceKind,
+    rate: row.rate,
+    floorAmount: row.floorAmount,
+    effectiveFrom: row.effectiveFrom,
+    effectiveTo: row.effectiveTo,
   };
 }
 
@@ -136,6 +150,30 @@ export function createPostgresReconciliationStore(db: Database): ReconciliationS
           ...(query.offset === undefined ? {} : { offset: query.offset }),
         })
       ).map(toReconciliation),
+    findReconciliationTolerance: async (query) => {
+      const row = await repo.findReconciliationTolerance(db, query);
+      return row === undefined ? undefined : toTolerance(row);
+    },
+    listReconciliationTolerances: async (query) =>
+      (
+        await repo.listReconciliationTolerances(db, {
+          organizationId: query.organizationId,
+          ...(query.kind === undefined ? {} : { kind: query.kind }),
+          ...(query.limit === undefined ? {} : { limit: query.limit }),
+          ...(query.offset === undefined ? {} : { offset: query.offset }),
+        })
+      ).map(toTolerance),
+    createReconciliationTolerance: async (input: NewReconciliationToleranceRecord) =>
+      toTolerance(
+        await repo.createReconciliationTolerance(db, {
+          organizationId: input.organizationId,
+          kind: input.kind,
+          rate: input.rate,
+          floorAmount: input.floorAmount,
+          effectiveFrom: input.effectiveFrom,
+          ...(input.effectiveTo === undefined ? {} : { effectiveTo: input.effectiveTo }),
+        }),
+      ),
     createReconciliation: async (input: NewReconciliationRecord) =>
       toReconciliation(await repo.createReconciliation(db, { ...input })),
     updateReconciliation: async (query, patch: ReconciliationPatch) => {

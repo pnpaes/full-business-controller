@@ -13,7 +13,7 @@ import { readMoneyOrNull } from "../sales/validation";
 
 import { RECONCILIATION_AUDIT_ACTIONS } from "./actions";
 import type { ReconciliationStore } from "./types";
-import { resolveTolerance } from "./validation";
+import { resolveEffectiveTolerance } from "./validation";
 
 export interface ReconcileImportRunInput {
   readonly organizationId: string;
@@ -21,9 +21,12 @@ export interface ReconcileImportRunInput {
   readonly importRunId: string;
   /** `reconciliation.scope_type`; defaults to the slice-owned `import_run`. */
   readonly scopeType?: string;
-  /** Explicit tolerance override; see `DEC-026` and `resolveTolerance`. */
+  /** Explicit tolerance override; wins over the `DEC-072` config. */
   readonly tolerance?: string;
-  /** Explicit opt-in to the `DEC-026` published default. */
+  /**
+   * Explicit opt-in to the published `DEC-026` default, used only when no
+   * effective `DEC-072` config row covers the run's period end.
+   */
   readonly useDecisionDefaultTolerance?: boolean;
   readonly ownerId?: string | null;
   /** `yyyy-mm-dd`. */
@@ -63,9 +66,11 @@ function grossOf(row: ImportStagingRowRecord): bigint {
  * - **Close is blocked while a non-posted row lacks an approved disposition**
  *   (`DEC-035`): the command throws before writing anything, so an import
  *   cannot close with an unreviewed row.
- * - The tolerance is the caller's explicit override or an explicit opt-in to
- *   the published `DEC-026` default; there is no tolerance table, so a missing
- *   tolerance never defaults silently (open point (b)).
+ * - The tolerance precedence is `DEC-072`: an explicit override wins, else the
+ *   `reconciliation_tolerance` config effective at the run's period end (`run.periodEnd`)
+ *   is applied as `max(rate × |expected|, floorAmount)`, else an explicit opt-in
+ *   to the published `DEC-026` default; a missing tolerance blocks close and is
+ *   never defaulted silently.
  * - The result is one `reconciliation` row (scope `import_run`) with status
  *   `within_tolerance` or `exception`; re-running for the same scope/period
  *   updates the existing row's status rather than creating a duplicate.
@@ -148,8 +153,10 @@ export async function reconcileImportRun(
     const expected = parseDecimal(sourceTotal, MONEY_SCALE);
     const actualUnits = postedTotal + dispositionTotal;
     const actual = formatDecimal(actualUnits, MONEY_SCALE);
-    const tolerance = resolveTolerance({
+    const tolerance = await resolveEffectiveTolerance(tx, {
+      organizationId: input.organizationId,
       kind: "sales_settlement",
+      asOf: run.periodEnd,
       expected: sourceTotal,
       ...(input.tolerance === undefined ? {} : { tolerance: input.tolerance }),
       ...(input.useDecisionDefaultTolerance === undefined

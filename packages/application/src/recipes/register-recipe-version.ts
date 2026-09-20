@@ -3,6 +3,7 @@ import {
   assertNoSubRecipeCycles,
   assertRecipeVersionState,
   DomainError,
+  NotFoundError,
   parseDecimal,
   QUANTITY_SCALE,
   selectEffectiveRecipeVersion,
@@ -188,7 +189,8 @@ export async function registerRecipeVersion(
   return store.withTransaction(async (tx) => {
     const recipe = await tx.findRecipe(input.recipeId);
     if (recipe === undefined || recipe.organizationId !== input.organizationId) {
-      throw new DomainError("recipe not found in organization");
+      // Top-level lookup miss: a typed 404 (`DEC-076`), not a validation error.
+      throw new NotFoundError("recipe not found in organization");
     }
 
     const existingVersions = await tx.listRecipeVersions(input.recipeId);

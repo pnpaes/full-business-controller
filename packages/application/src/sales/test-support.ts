@@ -114,6 +114,24 @@ export class FakeSalesStore extends FakeImportStore implements SalesStore {
     this.salesLines.set(record.id, record);
     return record;
   }
+
+  async findSalesLine(query: {
+    readonly organizationId: string;
+    readonly salesLineId: string;
+  }): Promise<SalesLineRecord | undefined> {
+    const row = this.salesLines.get(query.salesLineId);
+    return row !== undefined && row.organizationId === query.organizationId ? row : undefined;
+  }
+
+  async findSalesLineReversal(query: {
+    readonly organizationId: string;
+    readonly salesLineId: string;
+  }): Promise<SalesLineRecord | undefined> {
+    return [...this.salesLines.values()].find(
+      (row) =>
+        row.organizationId === query.organizationId && row.reversalOfId === query.salesLineId,
+    );
+  }
 }
 
 /**

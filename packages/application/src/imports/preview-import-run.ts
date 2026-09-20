@@ -58,9 +58,8 @@ function isUndecided(row: ImportStagingRowRecord, dispositioned: ReadonlySet<str
  * disposition** (`DEC-035`): `canClose` is false whenever `undecidedRowIds` is
  * non-empty. Slice 11 posts nothing, so `postedTotals` is `{}` and the residual
  * is `source - dispositions`; that residual is reported for visibility only —
- * the amount-level tolerance (`DEC-026`) has no configuration table yet
- * (recorded open point) and the residual is closed by slice 12's posting, so it
- * does not gate `canClose` here.
+ * the amount-level tolerance (`DEC-026`, effective-dated config per `DEC-072`) is
+ * applied by slice 12's reconcile commands, so it does not gate `canClose` here.
  *
  * Pure read: no writes and no transaction.
  */
@@ -97,7 +96,7 @@ export async function previewImportRun(
       unmappedCount += 1;
     } else if (row.mappingState === "ignored") {
       ignoredCount += 1;
-    } else if (row.mappingState === "error" && row.errorCode === "mapping_conflict") {
+    } else if (row.mappingState === "conflict") {
       conflictCount += 1;
     } else {
       erroredCount += 1;

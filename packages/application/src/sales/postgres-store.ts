@@ -168,6 +168,14 @@ export function createPostgresSalesStore(db: Database): SalesStore {
       ).map(toSalesLine),
     createSalesLine: async (input) =>
       toSalesLine(await repo.createSalesLine(db, newLineValues(input))),
+    findSalesLine: async (query) => {
+      const row = await repo.findSalesLine(db, query);
+      return row === undefined ? undefined : toSalesLine(row);
+    },
+    findSalesLineReversal: async (query) => {
+      const row = await repo.findSalesLineReversal(db, query);
+      return row === undefined ? undefined : toSalesLine(row);
+    },
   };
 }
 

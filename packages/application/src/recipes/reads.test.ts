@@ -1,4 +1,4 @@
-import { DomainError, type UnitDimension } from "@aquarela/domain";
+import { DomainError, NotFoundError, type UnitDimension } from "@aquarela/domain";
 import { describe, expect, it } from "vitest";
 
 import { getRecipe, getRecipeCostPreview, listRecipes } from "./reads";
@@ -195,6 +195,16 @@ describe("getRecipe", () => {
     await expect(
       getRecipe(store, { organizationId: ORG, recipeId: "recipe-other" }),
     ).rejects.toThrow(/not found in organization/);
+  });
+
+  it("throws a typed NotFoundError for the top-level lookup (DEC-076)", async () => {
+    const store = new FakeRecipeStore();
+    const error = await getRecipe(store, { organizationId: ORG, recipeId: "missing" }).catch(
+      (caught: unknown) => caught,
+    );
+    expect(error).toBeInstanceOf(NotFoundError);
+    // A NotFoundError is still a DomainError, so existing 400 handling is safe.
+    expect(error).toBeInstanceOf(DomainError);
   });
 });
 

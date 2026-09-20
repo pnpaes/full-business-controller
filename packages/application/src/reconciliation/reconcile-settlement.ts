@@ -8,7 +8,7 @@ import {
 
 import { RECONCILIATION_AUDIT_ACTIONS } from "./actions";
 import type { ReconciliationStore } from "./types";
-import { resolveTolerance } from "./validation";
+import { resolveEffectiveTolerance } from "./validation";
 
 export interface ReconcileSettlementInput {
   readonly organizationId: string;
@@ -16,7 +16,12 @@ export interface ReconcileSettlementInput {
   readonly settlementId: string;
   /** `reconciliation.scope_type`; defaults to the slice-owned `settlement`. */
   readonly scopeType?: string;
+  /** Explicit tolerance override; wins over the `DEC-072` config. */
   readonly tolerance?: string;
+  /**
+   * Explicit opt-in to the published `DEC-026` default, used only when no
+   * effective `DEC-072` config row covers the settlement's period end.
+   */
   readonly useDecisionDefaultTolerance?: boolean;
   readonly ownerId?: string | null;
   /** `yyyy-mm-dd`. */
@@ -46,9 +51,12 @@ export interface ReconcileSettlementResult {
  * applied to the difference and the outcome is `within_tolerance` or
  * `exception`.
  *
- * As with `reconcileImportRun`, the tolerance is an explicit override or an
- * explicit opt-in to the published default; there is no tolerance table, so a
- * missing tolerance never defaults silently. `settlement.status` has no
+ * As with `reconcileImportRun`, the tolerance precedence is `DEC-072`: an
+ * explicit override wins, else the `reconciliation_tolerance` config effective
+ * at the settlement's period end (`settlement.periodEnd`) is applied as
+ * `max(rate × |expected|, floorAmount)`, else an explicit opt-in to the
+ * published `DEC-026` default; a missing tolerance blocks close and is never
+ * defaulted silently. `settlement.status` has no
  * vocabulary (open point (i)), so it is stored facts only and the reconciliation
  * is the judgement.
  */
@@ -78,8 +86,10 @@ export async function reconcileSettlement(
     // `paid_amount` is numeric(19,4); normalizing keeps the format path
     // identical to the import-run reconciliation.
     const expected = formatDecimal(parseDecimal(settlement.paidAmount, MONEY_SCALE), MONEY_SCALE);
-    const tolerance = resolveTolerance({
+    const tolerance = await resolveEffectiveTolerance(tx, {
+      organizationId: input.organizationId,
       kind: "sales_settlement",
+      asOf: settlement.periodEnd,
       expected,
       ...(input.tolerance === undefined ? {} : { tolerance: input.tolerance }),
       ...(input.useDecisionDefaultTolerance === undefined

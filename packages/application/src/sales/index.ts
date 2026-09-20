@@ -14,10 +14,13 @@ export type {
   PostTheoreticalConsumptionInput,
   PostTheoreticalConsumptionResult,
 } from "./post-theoretical-consumption";
+export { reverseSalesLine } from "./reverse-sales-line";
+export type { ReverseSalesLineInput, ReverseSalesLineResult } from "./reverse-sales-line";
 export { createPostgresConsumptionStore, createPostgresSalesStore } from "./postgres-store";
 export type {
   ConsumptionSalesLineRecord,
   ConsumptionStore,
+  FindSalesLineQuery,
   FindSalesTransactionByExternalKeyQuery,
   FindSalesTransactionQuery,
   FindVariantRecipeQuery,

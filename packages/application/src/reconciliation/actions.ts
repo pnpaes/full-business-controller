@@ -7,4 +7,5 @@ export const RECONCILIATION_AUDIT_ACTIONS = {
   importRunReconciled: "sales.import_run.reconciled",
   settlementReconciled: "sales.settlement.reconciled",
   reconciliationResolved: "sales.reconciliation.resolved",
+  toleranceRegistered: "sales.reconciliation_tolerance.registered",
 } as const;

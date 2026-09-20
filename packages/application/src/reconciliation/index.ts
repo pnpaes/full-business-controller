@@ -10,6 +10,11 @@ export { reconcileImportRun } from "./reconcile-import-run";
 export type { ReconcileImportRunInput, ReconcileImportRunResult } from "./reconcile-import-run";
 export { reconcileSettlement } from "./reconcile-settlement";
 export type { ReconcileSettlementInput, ReconcileSettlementResult } from "./reconcile-settlement";
+export { registerReconciliationTolerance } from "./register-reconciliation-tolerance";
+export type {
+  RegisterReconciliationToleranceInput,
+  RegisterReconciliationToleranceResult,
+} from "./register-reconciliation-tolerance";
 export { resolveReconciliation } from "./resolve-reconciliation";
 export type { ResolveReconciliationInput } from "./resolve-reconciliation";
 export type {
@@ -18,11 +23,13 @@ export type {
   FindSettlementQuery,
   ListReconciliationsQuery,
   NewReconciliationRecord,
+  NewReconciliationToleranceRecord,
   ReconciliationPatch,
   ReconciliationRecord,
   ReconciliationStore,
+  ReconciliationToleranceRecord,
   SettlementRecord,
   SumSalesForChannelPeriodQuery,
 } from "./types";
-export { resolveTolerance } from "./validation";
-export type { ResolveToleranceInput } from "./validation";
+export { resolveEffectiveTolerance, resolveTolerance } from "./validation";
+export type { ResolveEffectiveToleranceInput, ResolveToleranceInput } from "./validation";

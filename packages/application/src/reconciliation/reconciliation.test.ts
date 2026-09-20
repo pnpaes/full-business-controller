@@ -6,10 +6,11 @@ import type { ToleranceKind } from "@aquarela/domain";
 import { listReconciliations } from "./list-reconciliations";
 import { reconcileImportRun } from "./reconcile-import-run";
 import { reconcileSettlement } from "./reconcile-settlement";
+import { registerReconciliationTolerance } from "./register-reconciliation-tolerance";
 import { resolveReconciliation } from "./resolve-reconciliation";
 import { FakeReconciliationStore, salesTotalKey, seedReconciliationFixture } from "./test-support";
 import type { ReconciliationRecord } from "./types";
-import { resolveTolerance } from "./validation";
+import { resolveEffectiveTolerance, resolveTolerance } from "./validation";
 
 const ORG = "org-1";
 const OTHER_ORG = "org-2";
@@ -172,6 +173,8 @@ describe("reconcileImportRun", () => {
 
   it("does not default a missing tolerance silently and blocks close", async () => {
     const store = new FakeReconciliationStore();
+    // No effective DEC-072 config for this organization: the close must block.
+    store.tolerances.clear();
     const { importRunId } = await seedRun(store, {
       totals: { NOK: "100.0000" },
       rows: [{ grossAmount: "100.0000", linkedSalesLineId: "sales-line-1" }],
@@ -364,6 +367,8 @@ describe("reconcileSettlement", () => {
 
   it("does not default a missing tolerance and accepts an explicit one", async () => {
     const { store, settlementId } = storeWithSalesTotal("9000.0000");
+    // No effective DEC-072 config for this organization: the close must block.
+    store.tolerances.clear();
 
     await expect(
       reconcileSettlement(store, { organizationId: ORG, actorId: ACTOR, settlementId }),
@@ -694,5 +699,246 @@ describe("resolveTolerance (DEC-026)", () => {
         useDecisionDefaultTolerance: true,
       }),
     ).toThrow(/unknown tolerance kind/);
+  });
+});
+
+describe("resolveEffectiveTolerance (DEC-072)", () => {
+  it("selects the config row effective at asOf on a half-open window", async () => {
+    const store = new FakeReconciliationStore();
+    store.tolerances.clear();
+    store.addTolerance({
+      organizationId: ORG,
+      kind: "sales_settlement",
+      rate: "0.02",
+      floorAmount: "0",
+      effectiveFrom: "2026-01-01",
+      effectiveTo: "2026-02-01",
+    });
+    store.addTolerance({
+      organizationId: ORG,
+      kind: "sales_settlement",
+      rate: "0.01",
+      floorAmount: "0",
+      effectiveFrom: "2026-02-01",
+      effectiveTo: null,
+    });
+
+    expect(
+      await resolveEffectiveTolerance(store, {
+        organizationId: ORG,
+        kind: "sales_settlement",
+        asOf: "2026-01-31",
+        expected: "100.0000",
+      }),
+    ).toBe("2.0000");
+    // The `to` boundary is exclusive: the first row's `effective_to = 2026-02-01`
+    // is NOT effective at that date, which belongs to the later window, so
+    // 2026-02-01 selects the later row.
+    expect(
+      await resolveEffectiveTolerance(store, {
+        organizationId: ORG,
+        kind: "sales_settlement",
+        asOf: "2026-02-01",
+        expected: "100.0000",
+      }),
+    ).toBe("1.0000");
+  });
+
+  it("prefers the effective config over the published default, but an explicit tolerance wins", async () => {
+    const store = new FakeReconciliationStore();
+    store.tolerances.clear();
+    // The published DEC-026 default for sales_settlement would be 5.0000 here.
+    expect(
+      await resolveEffectiveTolerance(store, {
+        organizationId: ORG,
+        kind: "sales_settlement",
+        asOf: "2026-01-31",
+        expected: "100.0000",
+        useDecisionDefaultTolerance: true,
+      }),
+    ).toBe("5.0000");
+
+    store.addTolerance({
+      organizationId: ORG,
+      kind: "sales_settlement",
+      rate: "0.02",
+      floorAmount: "0",
+      effectiveFrom: "2026-01-01",
+      effectiveTo: null,
+    });
+    expect(
+      await resolveEffectiveTolerance(store, {
+        organizationId: ORG,
+        kind: "sales_settlement",
+        asOf: "2026-01-31",
+        expected: "100.0000",
+        useDecisionDefaultTolerance: true,
+      }),
+    ).toBe("2.0000");
+    expect(
+      await resolveEffectiveTolerance(store, {
+        organizationId: ORG,
+        kind: "sales_settlement",
+        asOf: "2026-01-31",
+        expected: "100.0000",
+        tolerance: "7.5",
+      }),
+    ).toBe("7.5000");
+  });
+
+  it("blocks close with no config and no override/opt-in", async () => {
+    const store = new FakeReconciliationStore();
+    store.tolerances.clear();
+    await expect(
+      resolveEffectiveTolerance(store, {
+        organizationId: ORG,
+        kind: "sales_settlement",
+        asOf: "2026-01-31",
+        expected: "100.0000",
+      }),
+    ).rejects.toThrow(/tolerance is required/);
+  });
+
+  it("makes the command prefer the effective config over the published default", async () => {
+    const store = new FakeReconciliationStore();
+    store.tolerances.clear();
+    store.addTolerance({
+      organizationId: ORG,
+      kind: "sales_settlement",
+      rate: "0.02",
+      floorAmount: "0",
+      effectiveFrom: "2026-01-01",
+      effectiveTo: null,
+    });
+    const { importRunId } = await seedRun(store, {
+      totals: { NOK: "100.0000" },
+      rows: [{ grossAmount: "100.0000", linkedSalesLineId: "sales-line-1" }],
+    });
+
+    const result = await reconcileImportRun(store, {
+      organizationId: ORG,
+      actorId: ACTOR,
+      importRunId,
+      useDecisionDefaultTolerance: true,
+    });
+
+    // 0.02 × 100 vs the published 5.0000 floor: the config wins.
+    expect(result.tolerance).toBe("2.0000");
+  });
+});
+
+describe("registerReconciliationTolerance (DEC-072)", () => {
+  async function freshStore(): Promise<FakeReconciliationStore> {
+    const store = new FakeReconciliationStore();
+    store.tolerances.clear();
+    return store;
+  }
+
+  it("registers a window, writes an audit fact and resolves it", async () => {
+    const store = await freshStore();
+
+    const result = await registerReconciliationTolerance(store, {
+      organizationId: ORG,
+      actorId: ACTOR,
+      kind: "sales_settlement",
+      rate: "0.005",
+      floorAmount: "5",
+      effectiveFrom: "2026-01-01",
+    });
+
+    expect(result).toMatchObject({
+      kind: "sales_settlement",
+      rate: "0.005000",
+      floorAmount: "5.0000",
+      effectiveFrom: "2026-01-01",
+      effectiveTo: null,
+    });
+    expect(store.auditEvents.map((event) => event.action)).toContain(
+      "sales.reconciliation_tolerance.registered",
+    );
+    expect(
+      await resolveEffectiveTolerance(store, {
+        organizationId: ORG,
+        kind: "sales_settlement",
+        asOf: "2026-03-01",
+        expected: "100.0000",
+      }),
+    ).toBe("5.0000");
+  });
+
+  it("rejects an overlapping window for the same organization and kind", async () => {
+    const store = await freshStore();
+    const base = {
+      organizationId: ORG,
+      actorId: ACTOR,
+      rate: "0.005",
+      floorAmount: "5",
+    } as const;
+
+    await registerReconciliationTolerance(store, {
+      ...base,
+      kind: "sales_settlement",
+      effectiveFrom: "2026-01-01",
+      effectiveTo: "2026-07-01",
+    });
+
+    await expect(
+      registerReconciliationTolerance(store, {
+        ...base,
+        kind: "sales_settlement",
+        effectiveFrom: "2026-06-01",
+        effectiveTo: "2026-12-31",
+      }),
+    ).rejects.toThrow(/overlaps an existing sales_settlement window/);
+
+    // Adjacent windows do not overlap; another kind is a separate key.
+    await expect(
+      registerReconciliationTolerance(store, {
+        ...base,
+        kind: "sales_settlement",
+        effectiveFrom: "2026-07-01",
+      }),
+    ).resolves.toBeDefined();
+    await expect(
+      registerReconciliationTolerance(store, {
+        ...base,
+        kind: "supplier_invoice",
+        effectiveFrom: "2026-06-01",
+        effectiveTo: "2026-12-31",
+      }),
+    ).resolves.toBeDefined();
+  });
+
+  it("rejects a negative rate, a negative floor, an unknown kind and an empty window", async () => {
+    const store = await freshStore();
+    const base = {
+      organizationId: ORG,
+      actorId: ACTOR,
+      kind: "sales_settlement",
+      effectiveFrom: "2026-01-01",
+    } as const;
+
+    await expect(
+      registerReconciliationTolerance(store, { ...base, rate: "-0.01", floorAmount: "5" }),
+    ).rejects.toThrow(/rate must not be negative/);
+    await expect(
+      registerReconciliationTolerance(store, { ...base, rate: "0.005", floorAmount: "-1" }),
+    ).rejects.toThrow(/floorAmount must not be negative/);
+    await expect(
+      registerReconciliationTolerance(store, {
+        ...base,
+        kind: "bogus" as ToleranceKind,
+        rate: "0.005",
+        floorAmount: "5",
+      }),
+    ).rejects.toThrow(/unknown tolerance kind/);
+    await expect(
+      registerReconciliationTolerance(store, {
+        ...base,
+        rate: "0.005",
+        floorAmount: "5",
+        effectiveTo: "2026-01-01",
+      }),
+    ).rejects.toThrow(/effectiveTo must be after effectiveFrom/);
   });
 });

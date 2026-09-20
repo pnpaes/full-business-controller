@@ -28,7 +28,10 @@ import type { InventoryStore } from "../inventory";
  * (c) `tax_code_id` vs `tax_rule_id` naming and the `applied_tax_rate`
  *     authority (A4); `applied_tax_rate` is captured verbatim, never re-derived
  *     (`DEC-045`);
- * (d) sales-line reversal (`DEC-028`) is not implemented;
+ * (d) sales-line reversal (`DEC-028`/`DEC-073`) is implemented: `reverseSalesLine`
+ *     creates a new negated `sales_line` in the same transaction, never edits or
+ *     deletes the original; linked theoretical-consumption movements are reversed
+ *     separately through the inventory `reverseStockMovement` primitive;
  * (h) the normalized import-row shape is owned by the row-11 slice; this slice
  *     reads the keys documented on `NORMALIZED_SALES_FIELDS` and nothing else.
  */
@@ -196,6 +199,11 @@ export interface FindSalesTransactionQuery {
   readonly salesTransactionId: string;
 }
 
+export interface FindSalesLineQuery {
+  readonly organizationId: string;
+  readonly salesLineId: string;
+}
+
 export interface ListSalesTransactionsQuery {
   readonly organizationId: string;
   readonly sourceSystem?: string;
@@ -251,6 +259,10 @@ export interface SalesStore extends Omit<ImportStore, "withTransaction"> {
   createSalesTransaction(input: NewSalesTransactionRecord): Promise<SalesTransactionRecord>;
   listSalesLines(query: ListSalesLinesQuery): Promise<readonly SalesLineRecord[]>;
   createSalesLine(input: NewSalesLineRecord): Promise<SalesLineRecord>;
+  /** One sales line by id, organization-scoped (`DEC-061`), or `undefined`. */
+  findSalesLine(query: FindSalesLineQuery): Promise<SalesLineRecord | undefined>;
+  /** The line whose `reversal_of_id` is `salesLineId`, or `undefined` (`DEC-073`). */
+  findSalesLineReversal(query: FindSalesLineQuery): Promise<SalesLineRecord | undefined>;
   /** Append-only audit fact; the caller must not pass secrets (ADR-0003 convention). */
   writeAudit(input: AuditInput): Promise<void>;
 }

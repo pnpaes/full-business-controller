@@ -1,4 +1,4 @@
-import { DomainError, selectEffectiveRecipeVersion } from "@aquarela/domain";
+import { DomainError, NotFoundError, selectEffectiveRecipeVersion } from "@aquarela/domain";
 
 import { computeRecipeCost, type RecipeCostComponent } from "./compute-recipe-cost";
 import type {
@@ -194,7 +194,8 @@ async function requireRecipe(
 ): Promise<RecipeRecord> {
   const recipe = await store.findRecipe(recipeId);
   if (recipe === undefined || recipe.organizationId !== organizationId) {
-    throw new DomainError("recipe not found in organization");
+    // Top-level lookup miss: a typed 404 (`DEC-076`), not a validation error.
+    throw new NotFoundError("recipe not found in organization");
   }
   return recipe;
 }

@@ -48,11 +48,12 @@ export interface MapImportRowsResult {
  * type plus, when the row carries a SKU, the internal entity resolved by that
  * SKU (`DEC-041`: SKU is the primary key, the external mapping is the
  * fallback). The resolver's `conflict` outcome is **flagged and blocked**
- * (`DEC-033`): the row gets `mapping_state = error` with `error_code =
- * mapping_conflict`, the conflict is recorded in `diagnostics.conflicts`, and
- * the row is never remapped in place. Rows already dispositioned `ignored` or
- * carrying a validation error are skipped, so mapping cannot silently overwrite
- * a human decision.
+ * (`DEC-033`): the row gets the first-class `mapping_state = conflict` with
+ * `error_code = mapping_conflict` retained as detail (`DEC-074`), the conflict
+ * is recorded in `diagnostics.conflicts`, and the row is never remapped in
+ * place. A genuine mapping failure keeps `mapping_state = error`. Rows already
+ * dispositioned `ignored` or carrying a non-conflict validation error are
+ * skipped, so mapping cannot silently overwrite a human decision.
  *
  * There is no column for the resolved internal id, so it is recorded in the
  * row's `normalized` jsonb under `mapped_internal_entity_id`/`mapping_match`
@@ -161,7 +162,7 @@ export async function mapImportRows(
       }
 
       await tx.updateImportStagingRow(row.id, {
-        mappingState: "error",
+        mappingState: "conflict",
         errorCode: "mapping_conflict",
       });
       conflicts.push({

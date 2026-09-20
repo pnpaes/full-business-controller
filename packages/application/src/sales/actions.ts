@@ -10,4 +10,5 @@ export const SALES_AUDIT_ACTIONS = {
   settlementReconciled: "sales.settlement.reconciled",
   reconciliationResolved: "sales.reconciliation.resolved",
   consumptionPosted: "sales.consumption.posted",
+  salesLineReversed: "sales.sales_line.reversed",
 } as const;

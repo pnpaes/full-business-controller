@@ -136,9 +136,10 @@ function validateRow(
  * mark an unmapped run `validated`).
  *
  * Per-currency `gross_amount` totals are recorded in `diagnostics.totals` for
- * `previewImportRun`. There is no tolerance configuration table (recorded open
- * point), so validation does no tolerance comparison; residual tolerance is
- * slice 12 (`DEC-026`/`DEC-035`).
+ * `previewImportRun`. Validation does no tolerance comparison; the residual
+ * tolerance is slice 12 (`DEC-026`/`DEC-035`) and since `DEC-072` resolves from
+ * the effective-dated `reconciliation_tolerance` config in the reconcile
+ * commands, not here.
  */
 export async function validateImportRun(
   store: ImportStore,

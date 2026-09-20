@@ -1,12 +1,16 @@
+import type { ToleranceKind } from "@aquarela/domain";
+
 import type { AuditInput } from "../auth";
 import { FakeImportStore } from "../imports/test-support";
 
 import type {
   FindReconciliationQuery,
   NewReconciliationRecord,
+  NewReconciliationToleranceRecord,
   ReconciliationPatch,
   ReconciliationRecord,
   ReconciliationStore,
+  ReconciliationToleranceRecord,
   SettlementRecord,
 } from "./types";
 
@@ -33,14 +37,54 @@ export class FakeReconciliationStore implements ReconciliationStore {
   readonly imports = new FakeImportStore();
   readonly settlements = new Map<string, SettlementRecord>();
   readonly reconciliations = new Map<string, ReconciliationRecord>();
+  /** `DEC-072` tolerance config rows, keyed by id. */
+  readonly tolerances = new Map<string, ReconciliationToleranceRecord>();
   /** Settlement-vs-sales totals, keyed by `salesTotalKey`. */
   readonly salesTotals = new Map<string, string>();
   readonly auditEvents: AuditInput[] = [];
   private sequence = 0;
 
+  constructor() {
+    // The `DEC-026` published values seeded as the `org-1` config (`DEC-072`:
+    // the published values are the seed config, not a hidden fallback) so the
+    // effective config and the opt-in default yield identical numbers. Tests
+    // that need a config-free organization clear `tolerances`.
+    this.addTolerance({
+      organizationId: "org-1",
+      kind: "sales_settlement",
+      rate: "0.005",
+      floorAmount: "5",
+      effectiveFrom: "2026-01-01",
+      effectiveTo: null,
+    });
+    this.addTolerance({
+      organizationId: "org-1",
+      kind: "supplier_invoice",
+      rate: "0.01",
+      floorAmount: "10",
+      effectiveFrom: "2026-01-01",
+      effectiveTo: null,
+    });
+  }
+
   private nextId(prefix: string): string {
     this.sequence += 1;
     return `${prefix}-${this.sequence}`;
+  }
+
+  /** Seeds one tolerance config row into the in-memory map. */
+  addTolerance(input: NewReconciliationToleranceRecord): ReconciliationToleranceRecord {
+    const record: ReconciliationToleranceRecord = {
+      id: this.nextId("tolerance"),
+      organizationId: input.organizationId,
+      kind: input.kind,
+      rate: input.rate,
+      floorAmount: input.floorAmount,
+      effectiveFrom: input.effectiveFrom,
+      effectiveTo: input.effectiveTo ?? null,
+    };
+    this.tolerances.set(record.id, record);
+    return record;
   }
 
   async withTransaction<T>(fn: (store: ReconciliationStore) => Promise<T>): Promise<T> {
@@ -207,6 +251,52 @@ export class FakeReconciliationStore implements ReconciliationStore {
     };
     this.reconciliations.set(record.id, record);
     return record;
+  }
+
+  async findReconciliationTolerance(query: {
+    readonly organizationId: string;
+    readonly kind: ToleranceKind;
+    readonly asOf: string;
+  }): Promise<ReconciliationToleranceRecord | undefined> {
+    const matches = [...this.tolerances.values()]
+      .filter(
+        (row) =>
+          row.organizationId === query.organizationId &&
+          row.kind === query.kind &&
+          row.effectiveFrom <= query.asOf &&
+          (row.effectiveTo === null || row.effectiveTo > query.asOf),
+      )
+      .sort((a, b) => (a.effectiveFrom < b.effectiveFrom ? 1 : -1));
+    return matches[0];
+  }
+
+  async listReconciliationTolerances(query: {
+    readonly organizationId: string;
+    readonly kind?: ToleranceKind;
+    readonly limit?: number;
+    readonly offset?: number;
+  }): Promise<readonly ReconciliationToleranceRecord[]> {
+    let rows = [...this.tolerances.values()]
+      .filter((row) => row.organizationId === query.organizationId)
+      .filter((row) => query.kind === undefined || row.kind === query.kind)
+      .sort((a, b) => {
+        if (a.effectiveFrom !== b.effectiveFrom) {
+          return a.effectiveFrom < b.effectiveFrom ? 1 : -1;
+        }
+        return a.id < b.id ? 1 : -1;
+      });
+    const offset = query.offset ?? 0;
+    rows = rows.slice(offset);
+    if (query.limit !== undefined) {
+      rows = rows.slice(0, query.limit);
+    }
+    return rows;
+  }
+
+  async createReconciliationTolerance(
+    input: NewReconciliationToleranceRecord,
+  ): Promise<ReconciliationToleranceRecord> {
+    return this.addTolerance(input);
   }
 
   async writeAudit(input: AuditInput): Promise<void> {

@@ -1,3 +1,5 @@
+import type { ToleranceKind } from "@aquarela/domain";
+
 import type { AuditInput } from "../auth";
 import type { ImportStore } from "../imports";
 
@@ -12,14 +14,14 @@ import type { ImportStore } from "../imports";
  *
  * `timestamptz` columns are ISO strings; `date` columns are `yyyy-mm-dd`.
  *
+ * `DEC-072` (accepted 2026-09-20) added the effective-dated FIN-owned
+ * `reconciliation_tolerance` config table: the tolerance effective at the
+ * period end is resolved from it (`findReconciliationTolerance`), and
+ * `reconciliation.tolerance` remains the **per-row snapshot** of what was
+ * applied.
+ *
  * Recorded open points — deliberately **not** resolved (see
  * `packages/persistence/src/schema/sales.ts`):
- * (b) there is **no tolerance-configuration table** (`DEC-026`'s effective-dated
- *     FIN-owned config), so the command takes an explicit tolerance or an
- *     explicit opt-in to the published `DEC-026` default and a missing tolerance
- *     is never applied silently;
- * (d) `reconciliation.tolerance` is a per-row snapshot, not effective-dated
- *     configuration;
  * (e) `settlement.source_file_id` is a plain uuid (`file_object` absent);
  * (i) there is no `settlement_status` vocabulary, so `settlement.status` is
  *     unconstrained text;
@@ -91,6 +93,36 @@ export interface ReconciliationPatch {
   readonly updatedBy?: string;
 }
 
+/**
+ * One effective-dated `reconciliation_tolerance` config row (`DEC-072`). The
+ * window is half-open `[effectiveFrom, effectiveTo)`: a row is effective at
+ * `asOf` when `effectiveFrom <= asOf` and `effectiveTo` is null or `> asOf`.
+ * `rate` is a `numeric(9,6)` fraction, `floorAmount` a `numeric(19,4)` NOK floor.
+ */
+export interface ReconciliationToleranceRecord {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly kind: ToleranceKind;
+  readonly rate: string;
+  readonly floorAmount: string;
+  /** `date` (`yyyy-mm-dd`). */
+  readonly effectiveFrom: string;
+  /** `date` (`yyyy-mm-dd`), or null while the window is open. */
+  readonly effectiveTo: string | null;
+}
+
+/** A new tolerance config row; the id and audit columns are store-assigned. */
+export interface NewReconciliationToleranceRecord {
+  readonly organizationId: string;
+  readonly kind: ToleranceKind;
+  readonly rate: string;
+  readonly floorAmount: string;
+  /** `date` (`yyyy-mm-dd`). */
+  readonly effectiveFrom: string;
+  /** `date` (`yyyy-mm-dd`), or null for an open-ended window. */
+  readonly effectiveTo?: string | null;
+}
+
 export interface FindReconciliationQuery {
   readonly organizationId: string;
   readonly reconciliationId: string;
@@ -153,6 +185,27 @@ export interface ReconciliationStore extends Omit<ImportStore, "withTransaction"
     query: FindReconciliationQuery,
     patch: ReconciliationPatch,
   ): Promise<ReconciliationRecord | undefined>;
+  /**
+   * The effective-dated tolerance config for `(organizationId, kind)` at `asOf`
+   * (`DEC-072`), or `undefined` when no row covers that date. The window is
+   * half-open `[effectiveFrom, effectiveTo)`.
+   */
+  findReconciliationTolerance(query: {
+    readonly organizationId: string;
+    readonly kind: ToleranceKind;
+    /** `date` (`yyyy-mm-dd`). */
+    readonly asOf: string;
+  }): Promise<ReconciliationToleranceRecord | undefined>;
+  /** Tolerance config rows for one organization, newest effective first. */
+  listReconciliationTolerances(query: {
+    readonly organizationId: string;
+    readonly kind?: ToleranceKind;
+    readonly limit?: number;
+    readonly offset?: number;
+  }): Promise<readonly ReconciliationToleranceRecord[]>;
+  createReconciliationTolerance(
+    input: NewReconciliationToleranceRecord,
+  ): Promise<ReconciliationToleranceRecord>;
   /** Append-only audit fact; the caller must not pass secrets (ADR-0003 convention). */
   writeAudit(input: AuditInput): Promise<void>;
 }

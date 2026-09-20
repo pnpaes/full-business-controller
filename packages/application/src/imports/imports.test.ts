@@ -429,7 +429,10 @@ describe("mapImportRows", () => {
       organizationId: fixture.organizationId,
       importRunId,
     });
-    expect(detail?.rows[0]).toMatchObject({ mappingState: "error", errorCode: "mapping_conflict" });
+    expect(detail?.rows[0]).toMatchObject({
+      mappingState: "conflict",
+      errorCode: "mapping_conflict",
+    });
     expect(detail?.rows[0]?.normalized).not.toHaveProperty("mapped_internal_entity_id");
     expect(detail?.conflicts).toHaveLength(1);
   });
