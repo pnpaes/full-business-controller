@@ -1,0 +1,87 @@
+{
+  "id": "coffee_drink",
+  "version": 1,
+  "status": "illustrative",
+  "signed_by": [],
+  "signed_at": null,
+  "source_refs": [],
+  "tax_basis": "inclusive",
+  "currency": "NOK",
+  "supplier_packs": [],
+  "recipe": {
+    "kind": "batch",
+    "planned_input_qty": "0",
+    "approved_usable_output": "1",
+    "planned_output_qty": "1",
+    "lines": []
+  },
+  "labor": {
+    "loaded_hourly_rate": "268.25",
+    "productive_minutes_per_unit": "0.4"
+  },
+  "packaging": [],
+  "channel": [
+    {
+      "channel": "dine_in",
+      "gross_price": "49.00",
+      "tax_rate_pct": "0.150000",
+      "fee_basis": "net_price",
+      "commission_pct": "0.000000",
+      "packaging_cost": "0.0000"
+    },
+    {
+      "channel": "takeaway",
+      "gross_price": "52.00",
+      "tax_rate_pct": "0.150000",
+      "fee_basis": "net_price",
+      "commission_pct": "0.000000",
+      "packaging_cost": "1.5000"
+    },
+    {
+      "channel": "wolt",
+      "gross_price": "62.00",
+      "tax_rate_pct": "0.150000",
+      "fee_basis": "net_price",
+      "commission_pct": "0.300000",
+      "packaging_cost": "1.5000"
+    }
+  ],
+  "expected": {
+    "ingredient_cost": "4.5000",
+    "direct_labor_cost": "1.7883",
+    "unit_net_sales": {
+      "dine_in": "42.6087",
+      "takeaway": "45.2174",
+      "wolt": "53.9130"
+    },
+    "channel_fee": {
+      "dine_in": "0.0000",
+      "takeaway": "0.0000",
+      "wolt": "16.1739"
+    },
+    "unit_variable_cost_before_labor": {
+      "dine_in": "4.5000",
+      "takeaway": "6.0000",
+      "wolt": "22.1739"
+    },
+    "unit_variable_cost_after_labor": {
+      "dine_in": "6.2883",
+      "takeaway": "7.7883",
+      "wolt": "23.9622"
+    },
+    "contribution_after_direct_labor": {
+      "dine_in": "36.3204",
+      "takeaway": "37.4291",
+      "wolt": "29.9508"
+    },
+    "contribution_margin_pct": {
+      "dine_in": "85.241746",
+      "takeaway": "82.775878",
+      "wolt": "55.553948"
+    }
+  },
+  "rounding": {
+    "method": "HALF_UP",
+    "scales": { "qty": 6, "money": 4, "presented": 2 }
+  }
+}

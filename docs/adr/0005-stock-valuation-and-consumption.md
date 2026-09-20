@@ -1,7 +1,7 @@
 # ADR-0005 — Stock valuation and theoretical sale-consumption policy
 
-- **Status:** Proposed (needs finance acceptance)
-- This ADR is a proposal; implementation must not rely on it until status is `Accepted`.
+- **Status:** Accepted (2026-09-20)
+- Accepted on 2026-09-20 by the owner; unblocks slice 8 (stock ledger + balances + lots/storage) and, behind it, slice 9.
 - Sub-decisions **DEC-009** (theoretical consumption) and **DEC-010** (negative stock) are **accepted** as of 2026-09-14; the ADR's own acceptance is separate.
 - **Date:** 2026-09-13
 - **Deciders:** FIN, OPS, ACC
@@ -55,4 +55,8 @@ a moving average unless a revaluation rule exists.
 - ACC confirms statutory export treatment (DEC-008).
 
 DEC-009 (theoretical consumption posting) and DEC-010 (negative stock) are accepted as of
-2026-09-14 and are no longer open; this ADR's own acceptance remains separate (status `Proposed`).
+2026-09-14 and are no longer open; this ADR's own acceptance remains separate (status `Accepted`
+as of 2026-09-20).
+
+Accepted by the owner on 2026-09-20. This unblocks slice 8 (stock ledger + balances + lots/storage)
+and, behind it, slice 9.

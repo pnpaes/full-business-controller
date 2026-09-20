@@ -16,9 +16,11 @@ line move with the work; `CONTEXT.md` keeps the narrative handoff and the immedi
 **Current position:** slice 0 `done`; auth slices 1a–1e and slices 2, 3, 4, 5, 6 and 7
 `done` (slice 7 — cost card + snapshots + price scenario + approval — committed as
 `400c95b` on `main`; its adversarial reviews were run and reconciled; its open points
-are recorded in §5); **slice 8 (stock ledger + balances + lots/storage) is next but
-blocked (owner) on `ADR-0005` acceptance (status `Proposed`)** — there is no unblocked
-next slice until the owner accepts it.
+are recorded in §5); **slice 8 (stock ledger + balances + lots/storage) is now the next
+unblocked task** — `ADR-0005` was accepted (2026-09-20) and the owner recorded `DEC-061`
+(multi-tenancy: shared schema with `organization_id` row scoping), `DEC-062` (jobs
+runtime: pg-boss), `DEC-063` (target semantics), `DEC-064` (`price_version` deferred to
+the next pricing slice) and `DEC-065` (golden fixtures as JSON).
 
 ## 2. The execution loop (per slice)
 
@@ -57,7 +59,7 @@ next slice until the owner accepts it.
 Pause the loop and raise to the owner, recording it in `CONTEXT.md`, when any of these is hit:
 
 - **Proposed ADR required by the slice.** The slice cites an ADR whose status is `Proposed`
-  (e.g. `0003`, `0004`, `0005`, `0007`–`0011`). *Needed from owner:* the named decider
+  (e.g. `0007`–`0011`). *Needed from owner:* the named decider
   accepts or amends it in `docs/adr/` (`Accepted` with date) before the slice is treated as
   settled. Slice 1 is the owner-directed exception: proceed and accept `ADR-0003` in
   parallel, without treating it as settled (`CONTEXT.md`).
@@ -75,7 +77,7 @@ Pause the loop and raise to the owner, recording it in `CONTEXT.md`, when any of
   approval in `DEC-015`, a named credentials owner, and a documented, tested rollback
   (`AGENTS.md` Rule 2). Never perform it without both.
 - **A decision would have to be invented.** *Needed from owner:* append the decision to
-  `12_OPEN_DECISIONS.md` (next id `DEC-061`) — never resolve accounting, tax, valuation,
+  `12_OPEN_DECISIONS.md` (next id `DEC-066`) — never resolve accounting, tax, valuation,
   privacy or system-of-record ambiguity in code (`13_AGENT_BUILD_BRIEF.md`).
 - **Slice budget reached.** The session has completed its agreed slice budget. *Needed from
   owner:* confirm the next slice (or that work pauses); hand off via `CONTEXT.md`.
@@ -102,7 +104,7 @@ sequence). Requirement IDs are from `11_REQUIREMENTS_CATALOG.md`; decision IDs f
 | 5 | Recipes / sub-recipes / version / yield / allergens | P1 / epic 4 | `COST-001`, `COST-002`, `PROD-005`; `DEC-005`, `DEC-030`, `DEC-036`; `CALCULATION_CONTRACT.md` §6 | 3 | none — I5 data gates real recipes | done |
 | 6 | Operating costs + labour + allocation | P1 / epic 5 | `COST-004`, `COST-006`, `COST-007`, `COST-011`, `COST-013`; `DEC-006`, `DEC-007`, `DEC-048`; `CALCULATION_CONTRACT.md` §7, §9 | 3 | none — I8 remainder + I9 ruling confirm loaded rates | done |
 | 7 | Cost card + snapshots + price scenario + approval | P1 / epic 6 | `COST-005`, `COST-008`, `COST-009`, `PRICE-001`–`005`; `DEC-021`–`024`; `CALCULATION_CONTRACT.md`; `GOLDEN_FIXTURES.md` | 4, 5, 6 | six golden fixtures signed (A5) before "verified" | done |
-| 8 | Stock ledger + balances + lots / storage | P1–P2 / epic 7 | `INV-001`–`003`, `INV-008`, `PROD-002`, `WASTE-002`, `COST-008`; `DEC-008`, `DEC-009`, `DEC-010`, `DEC-028`, `DEC-034`; `ADR-0005` (**Proposed**) | 3, 4 | `ADR-0005` acceptance (finance) | blocked (owner) |
+| 8 | Stock ledger + balances + lots / storage | P1–P2 / epic 7 | `INV-001`–`003`, `INV-008`, `PROD-002`, `WASTE-002`, `COST-008`; `DEC-008`, `DEC-009`, `DEC-010`, `DEC-028`, `DEC-034`; `ADR-0005` (accepted 2026-09-20) | 3, 4 | none — `ADR-0005` **Accepted** (2026-09-20) | todo |
 | 9 | Counts + transfers + waste | P2 / epic 8 | `INV-004`–`007`, `INV-009`, `WASTE-001`, `WASTE-002`; `DEC-017`, `DEC-018`, `DEC-029` | 8 | none — I7 opening counts gate the pilot | todo |
 | 10 | Production planning + batches | P2 / epic 9 | `PROD-001`–`005`; `DEC-005`, `DEC-031`, `DEC-036` | 5, 8 | none | todo |
 | 11 | Import framework + external mappings | P3 / epic 10 | `SALE-002`, `SALE-004`, `SALE-007`, `SALE-008`; `DEC-025`, `DEC-033`, `DEC-035`, `DEC-041`; `ADR-0008` (**Proposed**) | 3 | none — legacy I19 as reference; I1/I15 Frontline shapes gate real profiles | todo |
@@ -130,14 +132,14 @@ dates assigned):
   slices 1a–1e are done. Its open items (final access matrix / shared-device login,
   Argon2id parameters against the ~250 ms target, admin-assisted password reset) are still
   open and tracked here.
-- **`ADR-0004` acceptance + jobs runtime (Graphile Worker vs pg-boss)** —
-  `docs/adr/0004-jobs-and-outbox.md` (`Proposed`); gates the job/outbox runtime used by
-  imports, summaries, forecasts, publishing and AI. The jobs-runtime comparison
-  (`3505aa8`) **recommends pg-boss**; the acceptance decision remains with the owner.
-- **`ADR-0005`, `ADR-0007`–`0011` acceptance** — the remaining `Proposed` ADRs; they gate
-  slices 8, 12, 13, 16, 17, 18.
-- **Multi-tenancy posture** (shared-schema vs schema/DB-per-tenant) — owner decision
-  recorded in `CONTEXT.md` "Open decisions / inputs".
+- **~~`ADR-0004` jobs runtime~~ resolved (2026-09-20, `DEC-062`)** — pg-boss selected as
+  the jobs runtime (`3505aa8` comparison). `ADR-0004` acceptance itself is still tracked
+  with the remaining `Proposed` ADRs below.
+- **`ADR-0005` accepted (2026-09-20); `ADR-0007`–`0011` acceptance** — `ADR-0005` is
+  settled (slice 8 unblocked); the remaining `Proposed` ADRs gate
+  slices 12, 13, 16, 17, 18.
+- **~~Multi-tenancy posture~~ resolved (2026-09-20, `DEC-061`)** — shared schema with
+  `organization_id` row scoping.
 - **Component cost estimate** — `docs/phase0/PHASE0_CLOSEOUT_PLAN.md` §9 (P0-008);
   needed for the Phase 1–3 estimate reassessment after `DEC-037`/`DEC-039`/`DEC-015`.
 - **Staging data-sanitization owner** — `CONTEXT.md` "Open decisions / inputs";
@@ -146,7 +148,7 @@ dates assigned):
   `docs/runbooks/deployment.md` ("Database privilege bootstrap", state-bucket bootstrap,
   proxy/dry-run notes); includes the **legacy instance-slug check** before apply.
 - **Slice-5 recipe ambiguities (eight, deliberate, from `841da96`)** — record each
-  owner resolution in `12_OPEN_DECISIONS.md` (next free id `DEC-061`; items 3 and 7
+  owner resolution in `12_OPEN_DECISIONS.md` (next free id `DEC-066`; items 3 and 7
   already resolved as `DEC-050` and `DEC-053`); do not resolve silently:
   1. allergen roll-up from sub-recipes into the parent recipe is not implemented;
   2. yield loss is applied per line and then once at recipe level, as §6 literally
@@ -161,7 +163,7 @@ dates assigned):
      cannot overlap in time;
   8. `planned_output_qty` is stored but unused by the §6 formula.
 - **Slice-6 cost/allocation open points (five, deliberate, recorded not decided)** —
-  record each owner resolution in `12_OPEN_DECISIONS.md` (next free id `DEC-061`);
+  record each owner resolution in `12_OPEN_DECISIONS.md` (next free id `DEC-066`);
   do not resolve silently:
   1. `operating_cost → cost_pool` linkage is not modelled: `DATA_DICTIONARY` defines
      `operating_cost` by cost centre and `cost_pool` separately with no join, so the
@@ -180,7 +182,7 @@ dates assigned):
      imputed owner labour at the effective role rate; `cashView` = paid only),
       pending the I8/I9 inputs.
 - **Slice-7 cost-card / pricing open points (deliberate; recorded not decided)** —
-  record each owner resolution in `12_OPEN_DECISIONS.md` (next free id `DEC-061`);
+  record each owner resolution in `12_OPEN_DECISIONS.md` (next free id `DEC-066`);
   do not resolve silently:
   1. `target_contribution_pct` semantics — `CALCULATION_CONTRACT.md` §10 solves
      `required_net_price = unit_variable_cost / (1 − target_contribution_pct)`
@@ -205,10 +207,11 @@ dates assigned):
   7. Contribution before vs after labour — both are mandatory outputs but which
      one drives the target/margin/approval is not pinned. owner/FIN.
   8. `price_version` is not created (deferred) — PRICE-002 ("approve price
-     versions by product/location/channel/effective date") and PRICE-003
-     ("prevent unapproved scenarios from becoming effective prices") are only
-     partially served by scenario state; blocked pending the `price_version`
-     table and its "no overlap per scope" key. owner/TECH.
+      versions by product/location/channel/effective date") and PRICE-003
+      ("prevent unapproved scenarios from becoming effective prices") are only
+      partially served by scenario state; blocked pending the `price_version`
+      table and its "no overlap per scope" key. owner/TECH; `DEC-064` defers
+      it to the next pricing slice.
   9. The `approval` platform table (`DATA_DICTIONARY.md` §9, FND-005) does **not**
      exist — `packages/persistence/src/schema/platform.ts` has only
      `outbox_event` and `audit_event`; a `CONTEXT.md` claim that approval

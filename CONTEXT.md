@@ -10,85 +10,55 @@ duplicate their content.
 **Say "resume the work" and start here.** A fresh session must be able to continue
 from this section alone.
 
-**Next task:** **commit the slice-7 review-fix working tree** (cross-org
-reference guards + the `0015`/`0016` runbook entries) as one atomic, revertible
-commit — it is applied and fully verified but uncommitted at HEAD `60f3ec5`
-(see the newest work log entry). After that, the next business slice is **slice
-8 — stock ledger + balances + lots/storage** — and it is **BLOCKED (owner)**: it
-depends on `ADR-0005`
-(`docs/adr/`, the stock-inventory model), whose status is still **`Proposed`**. It is
-gated by `ADR-0005` acceptance (finance) per `docs/BUILD_ROADMAP.md` §3/§4; slice 9
-also depends on slice 8. **There is no unblocked next business slice.** The unblocked
-work is owner decisions/sign-offs, not code:
+**Next task:** **slice 8 — stock ledger + balances + lots/storage** — now
+**UNBLOCKED**: the owner accepted `ADR-0005` (`docs/adr/`, the
+stock-inventory/valuation model) on 2026-09-20, lifting the slice-8 gate from
+`docs/BUILD_ROADMAP.md` §3/§4. Read `docs/BUILD_ROADMAP.md` §4 row 8 (refs
+`INV-001`–`003`, `INV-008`, `PROD-002`, `WASTE-002`, `COST-008`; `DEC-008`,
+`DEC-009`, `DEC-010`, `DEC-028`, `DEC-034`) and run the §2 execution loop from
+step 1 (pre-flight → design → implement → verify → reviews → reconcile → atomic
+commit).
 
-1. **Accept or amend `ADR-0005`** (mark it `Accepted` with a date in `docs/adr/`) —
-   this unblocks slice 8 and, with it, slice 9.
-2. **Sign the six golden fixtures** in `docs/phase0/GOLDEN_FIXTURES.md` (finance +
-   product owner) — the gate for treating any cost as "verified". Until then no cost
-   is "verified".
-3. **Resolve the 16 slice-7 open (owner) points** recorded in
-   `docs/BUILD_ROADMAP.md` §5 ("Slice-7 cost-card / pricing open points") — do not
-   repeat them here; record each resolution in `12_OPEN_DECISIONS.md` (next free id
-   **`DEC-061`**).
-4. **Supply the I8 remainder and the I9 accountant ruling** (plus I4/I5/I7 as they
-   come) — see `docs/phase0/SOURCE_DATA_REQUEST.md` /
-   `docs/phase0/UNBLOCK_CHECKLIST.md`. These gate real loaded rates and the golden
-   fixtures, not the start of development.
+**Scope (do):** implement slice 8 per `docs/BUILD_ROADMAP.md` §2/§4 row 8 —
+domain, application and persistence work plus migration `0017+` — never treating
+calculated costs as "verified" before the golden fixtures are signed; record any
+genuinely new decision in `12_OPEN_DECISIONS.md` from **`DEC-066`**.
 
-If the owner accepts `ADR-0005` in-session, snapshot 8 proceeds: read
-`docs/BUILD_ROADMAP.md` §4 row 8 (refs `INV-001`–`003`, `INV-008`, `PROD-002`,
-`WASTE-002`, `COST-008`; `DEC-008`, `DEC-009`, `DEC-010`, `DEC-028`, `DEC-034`) and run
-the §2 execution loop from step 1 (pre-flight → design → implement → verify → reviews
-→ reconcile → atomic commit).
+**Scope (do not):** do not rework the committed auth/UI/master-data/receiving/
+recipe/costing workstreams or slice 7's application logic; do not edit migrations
+`0000–0016`; invent no decision (append from `DEC-066` only if genuinely needed);
+no external writes; do not deploy (`infra/` stays unapplied and gated on the
+owner inputs below).
 
-**Scope (do):** commit the slice-7 review-fix working tree (verify with the
-commands below first); then keep the git state clean and run only
-documentation/decision record-and-track work surfaced by the
-owner actions above; if the owner accepts `ADR-0005`, proceed with slice 8 per
-`docs/BUILD_ROADMAP.md` §2/§4 row 8 — never treating calculated costs as "verified"
-before the golden fixtures are signed.
-
-**Scope (do not):** do not build slice 8 against the still-`Proposed` `ADR-0005` (no
-persistence work before acceptance); do not rework the committed auth/UI/master-data/
-receiving/recipe/costing workstreams or slice 7's application logic; invent no
-decision (append to `12_OPEN_DECISIONS.md` as `DEC-061` or later only if genuinely
-needed); no external writes; do not edit migrations `0000–0016`; do not deploy
-(`infra/` stays unapplied and gated on the owner inputs below).
-
-**Files/paths:** `docs/adr/0005-*` (owner acceptance), `12_OPEN_DECISIONS.md`
-(`DEC-061`+), `docs/phase0/GOLDEN_FIXTURES.md` (sign-off trail), and — once slice 8
-unblocks — `packages/domain/src/`, `packages/application/src/`,
+**Files/paths:** `packages/domain/src/`, `packages/application/src/`,
 `packages/persistence/src/` + `drizzle/` (`0017+`), `docs/BUILD_ROADMAP.md`,
+`12_OPEN_DECISIONS.md` (only if a new decision is needed, from `DEC-066`),
 `CONTEXT.md`.
 
-**Acceptance / verification (owner actions):** `ADR-0005` shows `Status: Accepted`
-with a date and the slice-8 "blocked (owner)" gate is lifted in
-`docs/BUILD_ROADMAP.md` §4; the six golden fixtures carry owner signatures (or the
-agreed storage format for them); slice-7 open points get decision IDs recorded in
-`12_OPEN_DECISIONS.md` starting at `DEC-061`. After any (code) change: `npm run
-lint`, `npm run typecheck`, `npm run test` (both with and without `DATABASE_URL`),
-`npm run build` and `npm run format:check` pass; `npm audit --omit=dev` = 0.
+**Acceptance / verification:** the slice-8 requirements of `docs/BUILD_ROADMAP.md`
+§4 row 8 are met. After any (code) change: `npm run lint`, `npm run typecheck`,
+`npm run test` (both with and without `DATABASE_URL`), `npm run build` and
+`npm run format:check` pass; `npm audit --omit=dev` = 0; migration `0017+` applies,
+re-runs as a no-op and has a rehearsed down path.
 
-**Open decisions / inputs that shape it:** the owner gates above (`ADR-0005`,
-golden fixtures, slice-7 points in `docs/BUILD_ROADMAP.md` §5, I8/I9) plus the five
-slice-6 open points (pool-amount derivation, `denominator_source`, `scope_type`
-reuse, the deferred `asset` register, imputation pending I8/I9), which touch
-overhead inputs for later slices. The slice-5 recipe ambiguities and the standing
-open items (`m`/`length` dimension, `numeric(19,6)` cap) still apply. The
-deployment foundation remains un-applied and gated on the owner decisions/inputs
-under "Deployment/apply gates" below.
+**Parallel owner action — golden-fixture sign-off:** the six golden fixtures are
+now prepared as machine-readable JSON under `tests/fixtures/` (`DEC-065`) with the
+sign-off trail ready (six files, the reconciliation test
+`packages/domain/src/golden-fixtures.test.ts`, and the sign-off mechanics — see
+`docs/phase0/GOLDEN_FIXTURES.md`); finance + product owner sign. Until signed, no
+cost is "verified"; `I8`/`I9` still gate the real rates behind the fixtures.
 
-**After this task:** if `ADR-0005` is accepted → slice 8 (stock ledger + balances +
-lots/storage); otherwise the session records owner progress and hands off unchanged.
-Subsequent: slice 9 (counts + transfers + waste) depends on slice 8; then the
-deployment/apply gates.
+**After this task:** per `DEC-064`, **price versions + PRICE-002/003** are the next
+pricing slice after slice 8. Subsequent: slice 9 (counts + transfers + waste)
+depends on slice 8; then the deployment/apply gates (jobs runtime and
+multi-tenancy are now decided — `DEC-062`/`DEC-061`).
 
 ## What this is
 
 **Aquarela Business Control** — a secure, testable modular monolith for an Oslo
 café with two locations, covering costing, pricing, inventory, production,
 sales/imports, workforce and reporting. It is **documentation-first**: Phase 0 is
-complete (specification, 60 accepted decisions, artifacts and ADRs); the
+complete (specification, 65 accepted decisions, artifacts and ADRs); the
 foundation scaffold, the Phase 1–2 persistence core, the auth slices (1a–1e), the
 UI token foundation, master-data slices 2–3, slice 4 (receipt + price history +
 landed cost), slice 5 (recipes), slice 6 (operating costs + labour + allocation)
@@ -98,12 +68,13 @@ and slice 7 (cost card + snapshots + price scenario + approval) are built.
 
 - `00_README.md` … `13_AGENT_BUILD_BRIEF.md` — the specification package
   (inputs, rarely edited). Start with `00_README.md`.
-- `12_OPEN_DECISIONS.md` — the accepted decisions (DEC-001…DEC-060); the
+- `12_OPEN_DECISIONS.md` — the accepted decisions (DEC-001…DEC-065); the
   authority. New decisions are appended here.
 - `docs/phase0/` — close-out plan, calculation contract, data dictionary, golden
   fixtures, source-data request, notes. See `docs/phase0/PHASE0_CLOSEOUT_PLAN.md`
   and `docs/phase0/CALCULATION_CONTRACT.md`.
-- `docs/adr/` — architecture decision records `0001`–`0012`.
+- `docs/adr/` — architecture decision records `0001`–`0012` (`ADR-0005` accepted
+  2026-09-20).
 - `docs/runbooks/` — operator runbooks (`persistence-migrations.md`, `deployment.md`).
 - `docs/BUILD_ROADMAP.md` — the ordered slice backlog and per-slice execution loop (a
   derived execution tracker; decisions and accepted ADRs stay the authority).
@@ -117,12 +88,21 @@ and slice 7 (cost card + snapshots + price scenario + approval) are built.
 
 ## Current status
 
-- **As of:** 2026-09-20 — branch `main`; HEAD `60f3ec5` (slice 7 + its handoff
-  committed). **Slice 7 (cost card + snapshots + price scenario + approval) is
-  complete, reviewed, verified and committed, and its two accepted code-review
-  follow-up fixes (cross-organization reference guards + the `0015`/`0016`
-  runbook entries) are applied in the working tree (uncommitted). Nothing has
-  been applied to DigitalOcean.**
+- **As of:** 2026-09-20 — branch `main`; HEAD `083106a`. **Slice 7 (cost card +
+  snapshots + price scenario + approval) is complete, reviewed, verified and
+  committed (`400c95b`, with its review fixes in `60f3ec5`, `c82a30f` and
+  `083106a`).** This session the owner accepted **`ADR-0005`** (stock
+  valuation/consumption — unblocking slice 8) and made five decisions:
+  `DEC-061` (multi-tenancy: shared schema with `organization_id` row scoping; RLS
+  possible later, no schema/DB-per-tenant), `DEC-062` (background jobs runtime:
+  **pg-boss** over the existing PostgreSQL, worker/scheduler long-lived),
+  `DEC-063` (price-scenario target is contribution over net price — a 6 dp
+  fraction, not gross margin, not markup), `DEC-064` (`price_version` +
+  PRICE-002/003 are the next pricing slice after slice 8) and `DEC-065` (golden
+  fixtures are machine-readable JSON under `tests/fixtures/`, with the sign-off
+  trail prepared: six files, the reconciliation test
+  `packages/domain/src/golden-fixtures.test.ts`, and the sign-off mechanics).
+  Nothing has been applied to DigitalOcean.
 - **Auth complete and security-reviewed (slices 1a–1e):** domain primitives (1a);
   persistence layer (1b-i); application flow (1b-ii); password reset + access
   control (1b-iii, `2ce8847`; reset neutrality `5776914`); hardening (`60ac52e`:
@@ -144,9 +124,15 @@ and slice 7 (cost card + snapshots + price scenario + approval) are built.
   adversarial reviews were reconciled in `13a29b7`/`15b9b68`); slice 6 — operating
   costs + labour + allocation — **committed** (`8f3ac5d`, migrations `0011`–`0013`,
   `DEC-055`–`DEC-057`); slice 7 — cost card + snapshot + price scenario + approval —
-  **committed** (`400c95b`, migrations `0014`–`0016`; domain `pricing.ts`/`cost-card.ts`,
+  **committed and reviewed** (`400c95b` + review-fix commits `60f3ec5`, `c82a30f`,
+  `083106a`; migrations `0014`–`0016`; domain `pricing.ts`/`cost-card.ts`,
   application `CostCardStore`/`PriceScenarioStore`; `DEC-058`–`DEC-060`; its three
-  adversarial reviews were run and reconciled — see the work log).
+  adversarial reviews were run and reconciled — see the work log). `c82a30f` added
+  cross-organization guards to `calculateCostCard`/`calculatePriceScenario` and
+  documented `0015`/`0016` in the migration runbook; `083106a` wired the pinned
+  pricing primitives into the scenario outcome, removed two dead read APIs,
+  de-duplicated the contribution boundary and added the `0014`/`0016` pre-apply
+  preflight notes.
 - **UI foundation:** design tokens package (`aa2eff5`), token-driven UI primitives
   (`a83a312`), layout reference note (`dad2ff0`), accessibility/form-wiring fixes
   (`74ac467`).
@@ -156,9 +142,9 @@ and slice 7 (cost card + snapshots + price scenario + approval) are built.
   (`bfc5f74`).
 - **DEC-049 closed:** drizzle-orm 0.45.2 / drizzle-kit 0.31.10 upgrade (`cc86f13`);
   `npm audit --omit=dev` = 0.
-- **Tests:** 472 passed / 114 skipped (586) without `DATABASE_URL`; **586 passed /
-  586 (60 files)** with it (verified 2026-09-20 on the slice-7 review-fix working
-  tree at HEAD `60f3ec5`).
+- **Tests:** 475 passed / 113 skipped (588) without `DATABASE_URL`; **588 passed /
+  588 (60 files + the new golden-fixture test)** with it (recorded 2026-09-20 at
+  HEAD `083106a`; re-verify with `npm run test` and update if they differ).
   Open verification debt: the per-process rate limiter needs a shared
   store before multi-instance deployment; the reset-token delivery is a no-op stub
   until the email slice; the palette hex values and data-viz palette semantics
@@ -184,35 +170,47 @@ and slice 7 (cost card + snapshots + price scenario + approval) are built.
 ## Next up (prioritised)
 
 `docs/BUILD_ROADMAP.md` is the ordered execution tracker for these slices (slice 0 and
-1a–1e, 2, 3, 4, 5, 6 and 7 done; **slice 8 next but blocked (owner) on `ADR-0005`
+1a–1e, 2, 3, 4, 5, 6 and 7 done; **slice 8 next and unblocked by the `ADR-0005`
 acceptance**). The list below is the short narrative form.
 
 1. **Slice 8 — stock ledger + balances + lots/storage** (`INV-001`–`003`, `INV-008`,
    `PROD-002`, `WASTE-002`, `COST-008`; `DEC-008`/`009`/`010`/`028`/`034`;
-   `ADR-0005`) — **BLOCKED (owner): `ADR-0005` is still `Proposed`** and must be
-   accepted (or amended and accepted) by the owner before the slice starts (see
-   "Resume here"). Slice 9 depends on slice 8; there is no unblocked next business
-   slice.
-2. **Owner sign-offs and inputs** — what unblocks work now: accept `ADR-0005`; sign
-   the six golden fixtures (`docs/phase0/GOLDEN_FIXTURES.md`, the "verified" gate);
-   resolve the 16 slice-7 open (owner) points recorded in
-   `docs/BUILD_ROADMAP.md` **§5** (decisions from `DEC-061`); supply the I8/I9
-   inputs (and I4/I5/I7 as they come).
-3. **Deployment foundation — scaffolded and validated offline (committed); not
+   `ADR-0005`) — **UNBLOCKED: the owner accepted `ADR-0005` (2026-09-20)**. This is
+   the next task (see "Resume here").
+2. **Price versions + PRICE-002/003** (`DEC-064`) — the next pricing slice after
+   slice 8.
+3. **Golden-fixture sign-off** — the six fixtures are prepared as machine-readable
+   JSON under `tests/fixtures/` (`DEC-065`); finance + product owner sign (the
+   "verified" gate); `I8`/`I9` still gate the real rates behind them.
+4. **Deployment foundation — scaffolded and validated offline (committed); not
    applied.** `infra/` Terraform (project, database, spaces, networking,
    app-platform, monitoring, dns) + the App Platform app spec are done, and the
-   `apps/worker` / `apps/scheduler` stubs exist. Before any `apply`: the owner
+   `apps/worker` / `apps/scheduler` stubs exist. The jobs runtime (`DEC-062`,
+   pg-boss) and the multi-tenancy posture (`DEC-061`) are now decided. Before any
+   `apply`: real DO credentials and a provisioned Spaces state bucket, and a
+   single-runner apply. See `docs/adr/0012-deployment-topology-and-service-runtimes.md`
+   and `docs/runbooks/deployment.md`.
    decisions under "Open decisions / inputs", real DO credentials and a
    provisioned Spaces state bucket, and a single-runner apply. See
    `docs/adr/0012-deployment-topology-and-service-runtimes.md` and
    `docs/runbooks/deployment.md`.
-4. **Costing verification** — against `docs/phase0/CALCULATION_CONTRACT.md` with
+5. **Costing verification** — against `docs/phase0/CALCULATION_CONTRACT.md` with
    synthetic fixtures, then real data; **owner sign-off of the six golden
-   fixtures** (`docs/phase0/GOLDEN_FIXTURES.md`) is the gate for treating any cost
-   as "verified" (slice 7 surfaces the sign-off trail). Still unsigned.
+   fixtures** (`docs/phase0/GOLDEN_FIXTURES.md`, prepared per `DEC-065`) is the
+   gate for treating any cost as "verified" (slice 7 surfaces the sign-off trail).
+   Still unsigned.
 
 ## Open decisions / inputs (do not block development)
 
+- **Resolved this session (2026-09-20):** `ADR-0005` is **Accepted** (stock
+  valuation/consumption — slice 8 unblocked); **`DEC-061`** multi-tenancy = shared
+  schema with `organization_id` row scoping (RLS possible later; no schema/DB per
+  tenant); **`DEC-062`** background jobs runtime = **pg-boss** over the existing
+  PostgreSQL, worker/scheduler long-lived; **`DEC-063`** the price-scenario target
+  is contribution over net price (a 6 dp fraction, not gross margin, not markup);
+  **`DEC-064`** `price_version` + PRICE-002/003 are the next pricing slice after
+  slice 8; **`DEC-065`** golden fixtures are machine-readable JSON under
+  `tests/fixtures/` with the sign-off trail prepared.
 - External inputs still outstanding: supplier costs/receipts (I4), recipes +
   yields (I5), productive-hours % (I8 remainder), opening counts (I7), and the
   Frontline data-shape confirmations (item-level sales lines, per-line
@@ -243,7 +241,7 @@ acceptance**). The list below is the short narrative form.
   tracked in `docs/BUILD_ROADMAP.md` §5; do not resolve silently):
   1. how the `cost_pool` amount is derived from `operating_cost` rows is currently
      an application convention, not a documented derivation rule — needs an owner
-     decision (next free id `DEC-061`);
+     decision (next free id `DEC-066`);
   2. `allocation_rule.denominator_source` is accepted free-text (a closed
      vocabulary would have invented values) — the owner should enumerate the
      denominators later;
@@ -257,8 +255,8 @@ acceptance**). The list below is the short narrative form.
 - Surfaced by slice 7 (`400c95b`): the 16 slice-7 cost-card/pricing open (owner)
   points are recorded in `docs/BUILD_ROADMAP.md` §5 ("Slice-7 cost-card / pricing
   open points"); record each owner resolution in `12_OPEN_DECISIONS.md` (next free
-  id `DEC-061`); do not resolve silently. The golden fixtures remain unsigned and
-  are the gate for "verified".
+  id **`DEC-066`**); do not resolve silently. The golden fixtures remain unsigned
+  and are the gate for "verified".
 - Surfaced by slice 5 (`841da96`, deliberate ambiguities left for a decision —
   also tracked in `docs/BUILD_ROADMAP.md` §5; do not resolve silently):
   1. allergen roll-up from sub-recipes into the parent recipe is not implemented;
@@ -276,15 +274,15 @@ acceptance**). The list below is the short narrative form.
 - `DEC-049` is **closed** (2026-09-19): the drizzle-orm 0.45.2 /
   drizzle-kit 0.31.10 upgrade is committed (`cc86f13`) and `npm audit --omit=dev`
   reports 0; it is no longer an open security regression.
-- Deployment/apply gates (2026-09-19): **ADR-0004 acceptance** and the
-  **Graphile Worker vs pg-boss** choice (the jobs-runtime comparison `3505aa8`
-  recommends **pg-boss**; the worker/scheduler design depends on the outcome); the
+- Deployment/apply gates (updated 2026-09-20): **ADR-0004 acceptance**; the jobs
+  runtime is now decided (**`DEC-062`**: pg-boss, worker/scheduler long-lived) and
+  the multi-tenancy posture is decided (**`DEC-061`**: shared schema +
+  `organization_id` row scoping); the
   **scheduler `SCHEDULED` provider gap** (DO provider v2.101.1 has no `SCHEDULED`
   job kind, so `scheduler` is a long-lived worker + tick loop until the
   provider/API exposes it or ADR-0004 picks a scheduler); Terraform state locking
   (**Spaces has none** — a single-runner apply is the serialization) plus the
-  **out-of-band state-bucket bootstrap**; **multi-tenancy posture** (`018930d`,
-  shared-schema vs schema/DB-per-tenant, an **owner decision**); **component cost
+  **out-of-band state-bucket bootstrap**; **component cost
   estimate** (`21e9c72`); staging data-sanitization owner; the **legacy
   instance-slug check** before apply; **real DO credentials** and a provisioned
   state bucket. Dockerfile/migrator packaging is **resolved** (one parameterized
@@ -361,14 +359,22 @@ and Spaces credentials via `-backend-config` / `AWS_ACCESS_KEY_ID` +
 ## Reversibility
 
 - Revert any commit with `git revert <sha>`; no destructive git operations.
-- **Everything through `400c95b` is committed** (slices 4–7 included, with
-  migrations `0006`–`0016` and additive down paths); `git revert` any commit.
+- **Everything through `083106a` is committed** (slices 4–7 and their review fixes
+  included, with migrations `0006`–`0016` and additive down paths); `git revert`
+  any commit.
 - **Slice 7 (`400c95b`)**: `git revert 400c95b` removes the domain
   (`pricing.ts`/`cost-card.ts`), application (`CostCardStore`/`PriceScenarioStore`),
   migrations `0014`–`0016` and the `DEC-058`–`DEC-060` entries together;
   migrations `0014`–`0016` are additive with unjournaled `_down.sql` companions —
   the `0015`/`0016` down paths were rehearsed (drop the indexes/invariant, delete
   the ledger rows, re-migrate).
+- **Slice-7 review fixes (`c82a30f`, `083106a`)**: each is an independent commit —
+  `git revert c82a30f` removes the cross-organization reference guards on
+  `calculateCostCard`/`calculatePriceScenario` plus the `0015`/`0016` runbook
+  entries; `git revert 083106a` removes the pricing-primitive wiring into the
+  scenario outcome, the two dead read-API removals, the contribution-boundary
+  de-duplication and the `0014`/`0016` pre-apply preflight notes. Neither touched
+  a migration or a generated file, so neither has a data-recovery concern.
 - The `infra/` scaffold, runtime stubs and persistence core are committed; revert
   them with `git revert` if needed. **No cloud resource was created — only offline
   `fmt`/`validate`/`plan` ran, never `apply`; no Terraform state exists, and
@@ -384,6 +390,49 @@ CASCADE; CREATE SCHEMA public; npm run db:migrate` (see the runbook). Once data
   (`DEC-015`).
 
 ## Work log (append-only, newest first)
+
+### 2026-09-20 — Slice-7 review-fix commits (`c82a30f`, `083106a`); five owner decisions + `ADR-0005` accepted; handoff updated
+
+Two atomic commits on `main` since the last handoff update (which recorded the
+slice-7 review fixes as an uncommitted working tree at HEAD `60f3ec5`; the tree is
+now clean at HEAD `083106a`; nothing applied to DigitalOcean):
+
+- **`c82a30f` — cross-organization reference guards + runbook `0015`/`0016`.**
+  Committed the two accepted slice-7 review fixes: `calculateCostCard` and
+  `calculatePriceScenario` now org-check every reference (not just
+  `productVariantId`) inside `withTransaction`, throwing
+  `DomainError("<ref> belongs to another organization")` / `"<ref> not found"`;
+  ports gained `findLocation`/`findChannel`/`findRecipeVersion`; and
+  `docs/runbooks/persistence-migrations.md` documents migrations `0015`/`0016`
+  (order, bullets, down companions, ledger keys, corrected recovery range
+  `0000–0016`).
+- **`083106a` — pricing-primitive wiring + preflight notes.** Wired the pinned
+  domain pricing primitives into the price-scenario outcome, removed two dead
+  read APIs, de-duplicated the contribution boundary onto the domain primitive,
+  and added the `0014`/`0016` pre-apply preflight notes to the deployment
+  runbook. No migration touched.
+
+Owner actions this session: **`ADR-0005` (stock valuation/consumption) is
+Accepted** — slice 8 (stock ledger + balances + lots/storage) is unblocked and is
+the next task. Five new decisions in `12_OPEN_DECISIONS.md`: `DEC-061`
+(multi-tenancy: shared schema with `organization_id` row scoping, RLS possible
+later, no schema/DB-per-tenant), `DEC-062` (jobs runtime: pg-boss over the existing
+PostgreSQL, worker/scheduler long-lived), `DEC-063` (price-scenario target =
+contribution over net price, 6 dp fraction), `DEC-064` (`price_version` +
+PRICE-002/003 are the next pricing slice after slice 8), `DEC-065` (golden
+fixtures are machine-readable JSON under `tests/fixtures/`; the sign-off trail is
+prepared — six files, the reconciliation test
+`packages/domain/src/golden-fixtures.test.ts`, and the sign-off mechanics).
+Decision count is now 65; next free id `DEC-066`.
+
+Verified (exact): `npm run lint`, `npm run typecheck`, `npm run build` and
+`npm run format:check` pass; without `DATABASE_URL` **475 passed / 113 skipped
+(588)**; with it **588 passed / 588 (60 files + the new golden-fixture test)**;
+`npm audit --omit=dev` = 0.
+
+Rollback: `git revert c82a30f` or `git revert 083106a` independently — neither
+touched a migration or generated file. Next: **slice 8 — stock ledger + balances +
+lots/storage** (see "Resume here").
 
 ### 2026-09-20 — Slice 7 review fixes: cross-org reference guards + runbook 0015/0016 (uncommitted)
 

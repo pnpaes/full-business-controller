@@ -1,0 +1,159 @@
+{
+  "id": "cheese_bun",
+  "version": 1,
+  "status": "illustrative",
+  "signed_by": [],
+  "signed_at": null,
+  "source_refs": [],
+  "tax_basis": "inclusive",
+  "currency": "NOK",
+  "supplier_packs": [
+    {
+      "item_code": "FLOUR",
+      "pack_unit": "bag",
+      "base_unit": "g",
+      "pack_to_base_factor": "10000",
+      "gross_pack_price": "250.00",
+      "discount": "0.00",
+      "recoverable_tax": "0.00",
+      "freight": "0.00",
+      "import_fee": "0.00",
+      "tax_basis": "inclusive"
+    },
+    {
+      "item_code": "MILK",
+      "pack_unit": "carton",
+      "base_unit": "ml",
+      "pack_to_base_factor": "1000",
+      "gross_pack_price": "24.00",
+      "discount": "0.00",
+      "recoverable_tax": "0.00",
+      "freight": "0.00",
+      "import_fee": "0.00",
+      "tax_basis": "inclusive"
+    },
+    {
+      "item_code": "CHEESE",
+      "pack_unit": "block",
+      "base_unit": "g",
+      "pack_to_base_factor": "2000",
+      "gross_pack_price": "240.00",
+      "discount": "0.00",
+      "recoverable_tax": "0.00",
+      "freight": "0.00",
+      "import_fee": "0.00",
+      "tax_basis": "inclusive"
+    },
+    {
+      "item_code": "BUTTER",
+      "pack_unit": "pack",
+      "base_unit": "g",
+      "pack_to_base_factor": "500",
+      "gross_pack_price": "45.00",
+      "discount": "0.00",
+      "recoverable_tax": "0.00",
+      "freight": "0.00",
+      "import_fee": "0.00",
+      "tax_basis": "inclusive"
+    },
+    {
+      "item_code": "YEAST",
+      "pack_unit": "pack",
+      "base_unit": "g",
+      "pack_to_base_factor": "500",
+      "gross_pack_price": "25.00",
+      "discount": "0.00",
+      "recoverable_tax": "0.00",
+      "freight": "0.00",
+      "import_fee": "0.00",
+      "tax_basis": "inclusive"
+    },
+    {
+      "item_code": "PAPER_BAG",
+      "pack_unit": "pack",
+      "base_unit": "pc",
+      "pack_to_base_factor": "1000",
+      "gross_pack_price": "850.00",
+      "discount": "0.00",
+      "recoverable_tax": "0.00",
+      "freight": "0.00",
+      "import_fee": "0.00",
+      "tax_basis": "inclusive"
+    },
+    {
+      "item_code": "NAPKIN",
+      "pack_unit": "pack",
+      "base_unit": "pc",
+      "pack_to_base_factor": "5000",
+      "gross_pack_price": "250.00",
+      "discount": "0.00",
+      "recoverable_tax": "0.00",
+      "freight": "0.00",
+      "import_fee": "0.00",
+      "tax_basis": "inclusive"
+    }
+  ],
+  "recipe": {
+    "kind": "batch",
+    "planned_input_qty": "6.65",
+    "approved_usable_output": "50",
+    "planned_output_qty": "50",
+    "lines": [
+      { "component": "FLOUR", "qty": "3000", "unit": "g", "loss_factor": "1.000000" },
+      { "component": "MILK", "qty": "1500", "unit": "ml", "loss_factor": "1.000000" },
+      { "component": "CHEESE", "qty": "1200", "unit": "g", "loss_factor": "1.000000" },
+      { "component": "BUTTER", "qty": "400", "unit": "g", "loss_factor": "1.000000" },
+      { "component": "YEAST", "qty": "60", "unit": "g", "loss_factor": "1.000000" }
+    ]
+  },
+  "labor": {
+    "loaded_hourly_rate": "306.57",
+    "productive_minutes_per_unit": "0.5"
+  },
+  "packaging": [
+    { "component": "PAPER_BAG", "qty": "1", "unit": "piece" },
+    { "component": "NAPKIN", "qty": "1", "unit": "piece" }
+  ],
+  "channel": [
+    {
+      "channel": "takeaway",
+      "gross_price": "39.00",
+      "tax_rate_pct": "0.150000",
+      "fee_basis": "net_price",
+      "commission_pct": "0.000000"
+    }
+  ],
+  "expected": {
+    "B1_landed_base_unit_cost": {
+      "FLOUR": "0.0250",
+      "MILK": "0.0240",
+      "CHEESE": "0.1200",
+      "BUTTER": "0.0900",
+      "YEAST": "0.0500",
+      "PAPER_BAG": "0.8500",
+      "NAPKIN": "0.0500"
+    },
+    "B2_line_cost": {
+      "FLOUR": "75.0000",
+      "MILK": "36.0000",
+      "CHEESE": "144.0000",
+      "BUTTER": "36.0000",
+      "YEAST": "3.0000"
+    },
+    "B3_cost_per_usable_output_unit": "5.8800",
+    "ingredient_cost": "5.8800",
+    "packaging_cost": "0.9000",
+    "direct_labor_cost": "2.5548",
+    "unit_variable_cost_before_labor": "6.7800",
+    "unit_variable_cost_after_labor": "9.3348",
+    "unit_net_sales": "33.9130",
+    "contribution_before_direct_labor": "27.1330",
+    "contribution_after_direct_labor": "24.5782",
+    "contribution_margin_pct": "72.474272",
+    "contribution_margin_pct_before_labor": "80.007667"
+  },
+  "rounding": {
+    "method": "HALF_UP",
+    "scales": { "qty": 6, "money": 4, "presented": 2 }
+  }
+}

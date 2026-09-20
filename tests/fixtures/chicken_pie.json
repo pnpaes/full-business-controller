@@ -1,0 +1,29 @@
+{
+  "id": "chicken_pie",
+  "version": 1,
+  "status": "unsigned",
+  "signed_by": [],
+  "signed_at": null,
+  "source_refs": [],
+  "tax_basis": null,
+  "currency": "NOK",
+  "supplier_packs": [],
+  "recipe": {
+    "kind": null,
+    "planned_input_qty": null,
+    "approved_usable_output": null,
+    "planned_output_qty": null,
+    "lines": []
+  },
+  "labor": {
+    "loaded_hourly_rate": null,
+    "productive_minutes_per_unit": null
+  },
+  "packaging": [],
+  "channel": [],
+  "expected": {},
+  "rounding": {
+    "method": "HALF_UP",
+    "scales": { "qty": 6, "money": 4, "presented": 2 }
+  }
+}

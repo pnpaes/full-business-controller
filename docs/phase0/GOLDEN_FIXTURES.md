@@ -174,3 +174,24 @@ rates in `docs/phase0/LABOUR_ASSUMPTIONS.md`: front of house 268.25, kitchen 306
 and recoverability (I9), and packaging costs (I4). Owner production time is included at the kitchen
 loaded rate (306.57) and both the economic (imputed owner included) and cash (excluded) views are
 reported (DEC-048, COST-013). Without DEC-003/021/022/024 signed, fixtures remain illustrative.
+
+## 7. Machine-readable fixtures and the sign-off trail
+
+The six fixtures are stored as **JSON** under `tests/fixtures/` (`cheese_bun.json`,
+`coffee_drink.json`, `acai_medium_takeaway.json`, `cake_slice.json`, `quiche_slice.json`,
+`chicken_pie.json`) rather than YAML, so no YAML dependency is introduced (`DEC-065`). Each file follows
+the schema in §1; `tests/fixtures/README.md` describes the shape and the two machine-readable additions
+(`supplier_packs[].base_unit` and a per-channel `channel[].packaging_cost`).
+
+- `status` vocabulary: `unsigned | illustrative | signed`. The two worked examples in §2–§3 are
+  `illustrative`; the remaining four are `unsigned` with an **empty `expected` object**, so a calculated
+  number can never be mistaken for a signed one.
+- Signing fills `signed_by` (finance + product owner) and `signed_at` and flips `status` to `signed`; an
+  `unsigned` or `illustrative` fixture must not claim signatories. Signed fixtures are versioned and
+  changing an approved fixture requires a **new version** and fresh re-sign-off.
+- `packages/domain/src/golden-fixtures.test.ts` loads all six files and reconciles them: required keys,
+  positive-integer `version`, the `status`/sign-off invariant, the empty `expected` of `unsigned`
+  fixtures, and the domain-computable `expected` values of the two `illustrative` fixtures through the
+  `@aquarela/domain` primitives. Supplier-pack prices and ingredient costs that a signed fixture resolves
+  through the application-layer cost-source precedence (`DEC-047`) are treated as fixture inputs by that
+  test (a `ponytail:` note records the ceiling).
