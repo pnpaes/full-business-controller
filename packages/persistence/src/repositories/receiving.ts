@@ -1,12 +1,16 @@
-import { and, eq, gt, isNull, lte, or } from "drizzle-orm";
+import { and, asc, desc, eq, getTableColumns, gt, isNull, lte, or, sql } from "drizzle-orm";
 
 import type { Database } from "../client";
 import {
   costObservation,
   goodsReceipt,
   goodsReceiptLine,
+  item,
+  location,
+  supplier,
   supplierItem,
   supplierPrice,
+  unit,
 } from "../schema";
 
 export type GoodsReceipt = typeof goodsReceipt.$inferSelect;
@@ -134,4 +138,149 @@ export async function createCostObservation(
 ): Promise<CostObservation> {
   const rows = await db.insert(costObservation).values(input).returning();
   return rows[0]!;
+}
+
+/* --------------------------- receiving read model --------------------------- */
+
+/**
+ * One receipt plus the derived gross total (Σ line `price × received_pack_qty`,
+ * each product rounded HALF_UP to money scale so it matches the application's
+ * `Money.multiply`). The total is computed in SQL rather than stored: the
+ * dictionary has no total column and the lines are the append-only facts.
+ */
+export interface GoodsReceiptSummary extends GoodsReceipt {
+  /** numeric(19,4) text. */
+  readonly grossTotal: string;
+}
+
+export interface ListGoodsReceiptSummariesQuery {
+  readonly organizationId: string;
+  readonly locationId?: string;
+  readonly supplierId?: string;
+  readonly limit: number;
+  readonly offset: number;
+}
+
+/**
+ * Receipts for one organization, newest first (`received_at`, then `id`), with
+ * their gross total. Every filter is optional except the organization, so the
+ * caller never sees another tenant's rows.
+ */
+export async function listGoodsReceiptSummaries(
+  db: Database,
+  query: ListGoodsReceiptSummariesQuery,
+): Promise<GoodsReceiptSummary[]> {
+  const grossTotal = sql<string>`cast(coalesce(sum(round(${goodsReceiptLine.price} * ${goodsReceiptLine.receivedPackQty}, 4)), 0) as numeric(19, 4))::text`;
+  return db
+    .select({ ...getTableColumns(goodsReceipt), grossTotal })
+    .from(goodsReceipt)
+    .leftJoin(goodsReceiptLine, eq(goodsReceiptLine.goodsReceiptId, goodsReceipt.id))
+    .where(
+      and(
+        eq(goodsReceipt.organizationId, query.organizationId),
+        query.locationId === undefined ? undefined : eq(goodsReceipt.locationId, query.locationId),
+        query.supplierId === undefined ? undefined : eq(goodsReceipt.supplierId, query.supplierId),
+      ),
+    )
+    .groupBy(goodsReceipt.id)
+    .orderBy(desc(goodsReceipt.receivedAt), desc(goodsReceipt.id))
+    .limit(query.limit)
+    .offset(query.offset);
+}
+
+/** One receipt summary by id, with its gross total; org-checked by the caller. */
+export async function findGoodsReceiptSummaryById(
+  db: Database,
+  goodsReceiptId: string,
+): Promise<GoodsReceiptSummary | undefined> {
+  const grossTotal = sql<string>`cast(coalesce(sum(round(${goodsReceiptLine.price} * ${goodsReceiptLine.receivedPackQty}, 4)), 0) as numeric(19, 4))::text`;
+  const rows = await db
+    .select({ ...getTableColumns(goodsReceipt), grossTotal })
+    .from(goodsReceipt)
+    .leftJoin(goodsReceiptLine, eq(goodsReceiptLine.goodsReceiptId, goodsReceipt.id))
+    .where(eq(goodsReceipt.id, goodsReceiptId))
+    .groupBy(goodsReceipt.id)
+    .limit(1);
+  return rows[0];
+}
+
+/** The currently-open effective `supplier_price` for a supplier item, if any. */
+export async function findOpenSupplierPrice(
+  db: Database,
+  supplierItemId: string,
+): Promise<SupplierPrice | undefined> {
+  const rows = await db
+    .select()
+    .from(supplierPrice)
+    .where(and(eq(supplierPrice.supplierItemId, supplierItemId), isNull(supplierPrice.effectiveTo)))
+    .orderBy(desc(supplierPrice.effectiveFrom))
+    .limit(1);
+  return rows[0];
+}
+
+/** Suppliers for an organization, ordered by code (the receiving picker). */
+export async function listSuppliersForOrganization(
+  db: Database,
+  organizationId: string,
+): Promise<(typeof supplier.$inferSelect)[]> {
+  return db
+    .select()
+    .from(supplier)
+    .where(eq(supplier.organizationId, organizationId))
+    .orderBy(asc(supplier.code));
+}
+
+/** Locations for an organization, ordered by code (the receiving picker). */
+export async function listLocationsForOrganization(
+  db: Database,
+  organizationId: string,
+): Promise<(typeof location.$inferSelect)[]> {
+  return db
+    .select()
+    .from(location)
+    .where(eq(location.organizationId, organizationId))
+    .orderBy(asc(location.code));
+}
+
+/**
+ * One receivable pack option: a `supplier_item` joined to its item (code, name,
+ * base unit) and pack unit, so the receiving form can pick a pack and derive the
+ * item, the pack unit and the conversion factor without extra lookups.
+ */
+export interface ReceivingSupplierItemOption {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly supplierId: string;
+  readonly itemId: string;
+  readonly itemCode: string;
+  readonly itemName: string;
+  readonly baseUnitId: string;
+  readonly packUnitId: string;
+  readonly packUnitCode: string;
+  /** numeric(19,6) text. */
+  readonly packToBaseUnitFactor: string;
+}
+
+export async function listReceivingSupplierItemOptions(
+  db: Database,
+  organizationId: string,
+): Promise<ReceivingSupplierItemOption[]> {
+  return db
+    .select({
+      id: supplierItem.id,
+      organizationId: supplierItem.organizationId,
+      supplierId: supplierItem.supplierId,
+      itemId: supplierItem.itemId,
+      itemCode: item.code,
+      itemName: item.name,
+      baseUnitId: item.baseUnitId,
+      packUnitId: supplierItem.packUnitId,
+      packUnitCode: unit.code,
+      packToBaseUnitFactor: supplierItem.packToBaseUnitFactor,
+    })
+    .from(supplierItem)
+    .innerJoin(item, eq(item.id, supplierItem.itemId))
+    .innerJoin(unit, eq(unit.id, supplierItem.packUnitId))
+    .where(eq(supplierItem.organizationId, organizationId))
+    .orderBy(asc(item.name), asc(supplierItem.supplierSku));
 }

@@ -11,4 +11,7 @@ export * from "./products";
 export * from "./costing";
 export * from "./inventory";
 export * from "./receiving";
+export * from "./counts";
+export * from "./transfers";
+export * from "./waste";
 export * from "./platform";

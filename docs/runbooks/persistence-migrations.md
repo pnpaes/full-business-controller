@@ -67,7 +67,13 @@ exclusion constraints (`cost_pool_no_overlap`, `labor_rate_no_overlap`,
 `0012_cost_allocation_invariants.sql`; the slice-7
 `cost_card_approved_scope_key` partial unique index (`NULLS NOT DISTINCT` on
 `(organization_id, product_variant_id, location_id, channel_id)` `WHERE state =
-'approved'`) lives only in `0016_cost_card_approved_scope.sql`; the
+'approved'`) lives only in `0016_cost_card_approved_scope.sql`; the slice-8
+`stock_movement_source_guard` trigger/function (the per-`source_type`
+validation of `stock_movement.source_id`) lives only in
+`0017_stock_ledger_invariants.sql`, and its **body is replaced** by
+`0020_slice9_counts_transfers_waste.sql` to also validate the slice-9
+`stock_count`, `transfer` and `waste_event` sources (the `goods_receipt` branch
+is kept; the remaining source types stay documented no-ops); the
 `goods_receipt_line_accept_qty_guard` trigger/function (an accepted receipt's
 line must have `accepted_pack_qty > 0`; a plain CHECK cannot read the parent
 status) lives only in `0007_goods_receipt_line_checks.sql`; and the
@@ -90,13 +96,16 @@ them manually is invisible to the tool.
 > two deferrable FKs, the append-only triggers, the `unit_conversion`
 > constraints, the state-gated `recipe_version_no_overlap`, the
 > `goods_receipt_line` guard, the three cost-allocation exclusion
-> constraints and the `cost_card_approved_scope_key` approval index. Those
+> constraints, the `cost_card_approved_scope_key` approval index and the
+> `stock_movement_source_guard` validation trigger (extended in `0020`). Those
 > objects live only in
 > `0002_invariants.sql`, `0005_unit_conversion_invariants.sql`,
 > `0007_goods_receipt_line_checks.sql`,
 > `0010_recipe_version_draft_overlap.sql`,
-> `0012_cost_allocation_invariants.sql` and
-> `0016_cost_card_approved_scope.sql`; use `generate` + `migrate` and the
+> `0012_cost_allocation_invariants.sql`,
+> `0016_cost_card_approved_scope.sql`,
+> `0017_stock_ledger_invariants.sql` and
+> `0020_slice9_counts_transfers_waste.sql`; use `generate` + `migrate` and the
 > guard below.
 
 **Guard:** before committing any future generated migration, diff the database
@@ -128,13 +137,79 @@ This applies to: `supplier_price.supplier_item_id`, `supplier_price.source_recei
 `goods_receipt.accepted_by`, `goods_receipt.evidence_file_id`,
 `goods_receipt_line.supplier_item_id`, `operating_cost.evidence_file_id`.
 
+`stock_lot.source_movement_id` was closed by `0017_stock_ledger_invariants.sql`
+as an ordinary validating FK (drizzle-kit generated it) because `stock_lot` is
+empty at first apply; the rest of the list still stands. `stock_movement.source_id`
+is guarded by the `0017` `stock_movement_source_guard` trigger rather than an FK,
+because its target table varies by `source_type`.
+
 ## Pre-apply preflight for validating constraints and indexes
 
-Migrations 0014 and 0016 add objects that validate or build, so a failure aborts
-the whole transactional migration (drizzle-kit runs each file in one
-transaction). Run the matching preflight against the target database **before**
-applying and reconcile any hits; drizzle-kit cannot detect them because neither
-file diffs against existing data.
+Migrations 0014, 0016, 0017, 0018, 0019 and 0020 add objects that validate or
+build, so a failure aborts the whole transactional migration (drizzle-kit runs
+each file in one transaction). Run the matching preflight against the target
+database **before** applying and reconcile any hits; drizzle-kit cannot detect
+them because these files diff against existing data.
+
+- **`0020_slice9_counts_transfers_waste.sql`** — four new, empty tables
+  (`stock_count`, `stock_count_line`, `stock_transfer`, `waste_event`) with
+  their checks and indexes, plus the `ALTER TABLE "stock_movement" ADD COLUMN
+  "transfer_id" uuid`. `ADD COLUMN` with no `DEFAULT` is metadata-only in
+  PostgreSQL 11+, and the column is null on every existing row, so the
+  generated `stock_movement_transfer_id_stock_transfer_id_fk` validates cheaply
+  (a plain, validating FK takes a `ShareLock` on `stock_movement` for the
+  duration of the scan, which is proportional to the table size). The
+  `CREATE OR REPLACE FUNCTION "stock_movement_source_guard"` that extends the
+  `0017` guard to the slice-9 sources is metadata-only and scans nothing. No
+  duplicate preflight is needed; on a large `stock_movement` table the FK
+  validation is the only lock to schedule.
+
+- **`0019_stock_movement_asof_index.sql`** — the journaled, non-concurrent
+  `CREATE INDEX "stock_movement_org_occurred_idx" ON "stock_movement"
+  USING btree ("organization_id","occurred_at","posted_at","id")` builds the
+  whole table and takes a write lock, so it cannot use `CONCURRENTLY`. It adds
+  no constraint and cannot fail on existing data, but on a large `stock_movement`
+  table it blocks writes for the duration of the build; schedule it accordingly.
+  No duplicate preflight is needed.
+
+- **`0018_stock_movement_org_idempotency_key.sql`** — the generated
+  `ADD CONSTRAINT "stock_movement_org_idempotency_key_key" UNIQUE
+  ("organization_id","idempotency_key")` validates existing rows and fails if two
+  movements in one organization already share an idempotency key (the pre-0018
+  global unique made that impossible across orgs, but the migration is safe only
+  after checking). Preflight before applying:
+
+  ```sql
+  SELECT organization_id, idempotency_key, count(*)
+  FROM stock_movement
+  WHERE idempotency_key IS NOT NULL
+  GROUP BY 1, 2
+  HAVING count(*) > 1;
+  ```
+
+  Any hit must be reconciled first. The `DROP CONSTRAINT
+  "stock_movement_idempotency_key_key"` is metadata-only.
+
+- **`0017_stock_ledger_invariants.sql`** — the generated
+  `ALTER TABLE "stock_lot" ADD CONSTRAINT
+  "stock_lot_source_movement_id_stock_movement_id_fk" …` is a plain, validating
+  FK. `stock_lot` is populated only by this slice, so at first apply the table
+  is empty and the validate is cheap. A plain `ADD CONSTRAINT … FOREIGN KEY`
+  validation takes a `ShareLock` on `stock_lot` (blocking writes while it scans);
+  if the table may already hold rows, use the `NOT VALID` → `VALIDATE` form
+  documented above instead of the generated statement. If `stock_lot` may already
+  hold rows, preflight for orphans before applying:
+
+  ```sql
+  SELECT id, source_movement_id
+  FROM stock_lot
+  WHERE source_movement_id IS NOT NULL
+    AND source_movement_id NOT IN (SELECT id FROM stock_movement);
+  ```
+
+  Any hit must be repaired (or the FK added `NOT VALID` per the pattern above)
+  before the first apply. The `stock_movement_source_guard` trigger creation is
+  metadata-only and does not scan either table.
 
 - **`0016_cost_card_approved_scope.sql`** — the non-concurrent
   `CREATE UNIQUE INDEX cost_card_approved_scope_key` is journaled, so it cannot
@@ -343,6 +418,69 @@ only, so the down file is an explicit operator action, not an automatic one.
   data repair); the application supersede rule remains the only guard while it is
   dropped. Apply it manually with
   `psql "$DATABASE_URL" -f packages/persistence/drizzle/0016_cost_card_approved_scope_down.sql`.
+- **0017 adds the slice-8 stock-ledger invariants and follows the down
+  convention:** `0017_stock_ledger_invariants.sql` is the generated FK
+  `stock_lot_source_movement_id_stock_movement_id_fk`
+  (`stock_lot.source_movement_id` → `stock_movement.id`, closing that deferred
+  FK) plus a hand-written `stock_movement_source_guard` BEFORE INSERT trigger
+  that asserts, for `source_type = 'goods_receipt'`, that a matching
+  `goods_receipt` row in the same organization exists and rejects the movement
+  otherwise. Every other `source_type` is a documented no-op until its source
+  table is modelled (production/sales/transfer/count are their own slices). It
+  adds no table and no row.
+  `0017_stock_ledger_invariants_down.sql` drops the trigger, its function and
+  the `stock_lot` FK (no table, no row), so it is safe to run whenever the
+  invariants must be removed (for example before a data repair); while dropped,
+  `stock_movement.source_id` is validated only by the application and the lot's
+  source-movement link is unenforced. Apply it manually with
+  `psql "$DATABASE_URL" -f packages/persistence/drizzle/0017_stock_ledger_invariants_down.sql`.
+- **0018 scopes the idempotency key per organization and follows the down
+  convention:** `0018_stock_movement_org_idempotency_key.sql` is generated DDL
+  that drops the global `stock_movement_idempotency_key_key` and adds the
+  composite `stock_movement_org_idempotency_key_key` unique on
+  `(organization_id, idempotency_key)`, so one organization's key no longer
+  blocks another's posting while a retry within an organization still collides.
+  It adds no table. This **narrows** `DATA_DICTIONARY` §6's global "unique where
+  not null" wording to an organization-scoped namespace; that deviation is
+  recorded as a slice-8 open point in `docs/BUILD_ROADMAP.md` §5 (do not silently
+  ignore it).
+  `0018_stock_movement_org_idempotency_key_down.sql` drops the composite unique
+  and restores the global one inside one `BEGIN;`/`COMMIT;`. No table is touched,
+  but the restored global constraint **validates existing rows**, so the down
+  fails (and rolls back, leaving 0018 in place) if two organizations already
+  share an idempotency key — resolve those duplicates first. Apply it manually
+  with
+  `psql "$DATABASE_URL" -f packages/persistence/drizzle/0018_stock_movement_org_idempotency_key_down.sql`.
+- **0019 adds the stock-movement as-of index and follows the down convention:**
+  `0019_stock_movement_asof_index.sql` is generated DDL for
+  `stock_movement_org_occurred_idx` on
+  `(organization_id, occurred_at, posted_at, id)`, covering the bounded as-of
+  aggregation (`sumStockMovementsAsOf`) behind `getStockBalanceAsOf`. It adds no
+  table and no row.
+  `0019_stock_movement_asof_index_down.sql` drops the index (no table, no row),
+  so it is safe to run whenever the index must be removed (for example before a
+  data repair); while dropped, `sumStockMovementsAsOf` falls back to a
+  sequential scan. Apply it manually with
+  `psql "$DATABASE_URL" -f packages/persistence/drizzle/0019_stock_movement_asof_index_down.sql`.
+- **0020 adds the slice-9 count/transfer/waste tables and follows the down
+  convention:** `0020_slice9_counts_transfers_waste.sql` is generated DDL for
+  the four tables (`stock_count`, `stock_count_line`, `stock_transfer`,
+  `waste_event`, with their status/timestamp/quantity checks and indexes) plus
+  the `stock_movement.transfer_id` column, its FK and its partial index, and a
+  hand-written `CREATE OR REPLACE FUNCTION "stock_movement_source_guard"` that
+  extends the `0017` guard so `source_type in ('stock_count', 'transfer',
+  'waste_event')` is validated against the matching table (same organization),
+  keeping the `goods_receipt` branch. The status-consistency checks
+  (`stock_count_approved_check`,
+  `stock_transfer_dispatched_check`/`stock_transfer_received_check`) are
+  generated in the `CREATE TABLE` statements.
+  `0020_slice9_counts_transfers_waste_down.sql` is **destructive**: it restores
+  the `0017` guard body, drops `stock_movement.transfer_id` (with its FK and
+  partial index) and drops the four tables (FK-safe order: `waste_event`,
+  `stock_count_line`, `stock_count`, `stock_transfer`), so it is only safe
+  while those tables carry nothing that must be preserved. Apply it manually
+  with
+  `psql "$DATABASE_URL" -f packages/persistence/drizzle/0020_slice9_counts_transfers_waste_down.sql`.
 
 **Re-applying after a manual down:** drizzle-kit tracks applied migrations in
 `drizzle.__drizzle_migrations`, not by comparing the schema, so a plain
@@ -355,23 +493,29 @@ for 0003, `… = 1789850858806` for 0004, `… = 1789851925634` for 0005,
 `… = 1789853918031` for 0008, `… = 1789854468899` for 0009,
 `… = 1789855382064` for 0010, `… = 1789862475550` for 0011 and
 `… = 1789862630158` for 0012, `… = 1789864504597` for 0013,
-`… = 1789866859108` for 0014, `… = 1789867750326` for 0015 and
-`… = 1789867797172` for 0016, then
+`… = 1789866859108` for 0014, `… = 1789867750326` for 0015,
+`… = 1789867797172` for 0016, `… = 1789895339462` for 0017,
+`… = 1789902579323` for 0018, `… = 1789904976754` for 0019 and
+`… = 1789911710033` for 0020, then
 `npm run db:migrate` (0003 verified 2026-09-19; 0005 rehearsed in the slice-3
 review follow-up; 0006 rehearsed with the slice-4 receiving work; 0007 and
 0008 rehearsed with the slice-4 review follow-up; 0009 rehearsed with the
 slice-5 recipe work; 0010 rehearsed with the slice-5 review follow-up; 0011
 rehearsed with the slice-6 costing work; 0013 rehearsed with the slice-6
 code-review follow-up; 0014 rehearsed with the slice-7 pricing work; 0015 and
-0016 rehearsed with the slice-7 review follow-up).
+0016 rehearsed with the slice-7 review follow-up; 0017 rehearsed with the
+slice-8 stock-ledger work; 0018 rehearsed with the slice-8 finding-fix work;
+0019 rehearsed with the slice-8 review-fix work; 0020 rehearsed with the
+slice-9 counts/transfers/waste work).
 A **full 0011 down** drops the tables the three 0012 constraints live on, so its
 replay must clear **both** ledger rows, not just 0011's:
 `DELETE FROM drizzle.__drizzle_migrations WHERE created_at IN (1789862475550, 1789862630158);`
 then `npm run db:migrate` re-applies 0011 (the four tables) followed by 0012 (the
 three exclusion constraints). Verified on the local dev database 2026-09-20:
 after the down the four tables are gone, and after the replay the database has
-all 47 tables with `cost_pool_no_overlap`, `labor_rate_no_overlap` and
-`allocation_rule_no_overlap` present.
+all 51 tables with `cost_pool_no_overlap`, `labor_rate_no_overlap` and
+`allocation_rule_no_overlap` present (the count is 51 once `0020`'s four
+slice-9 tables exist; it was 47 before `0020`).
 Re-applying is only safe
 while the removed objects carry no data that must be preserved — once real
 master data, TOTP counters or conversions exist, prefer the additive forward
@@ -382,9 +526,17 @@ path over re-running the down.
 Tracked here so they are not forgotten; each is owned by the slice that
 implements it:
 
-- `stock_movement.source_id` needs a **per-`source_type` validation trigger**
+- ~~`stock_movement.source_id` needs a **per-`source_type` validation trigger**
   (the draft's "validated by trigger per slice"); the check constraint today
-  only enumerates allowed `source_type` values.
+  only enumerates allowed `source_type` values.~~
+  **Closed in `0017_stock_ledger_invariants.sql`:** `stock_movement_source_guard`
+  validates `source_type = 'goods_receipt'` against `goods_receipt` (same
+  organization) and is a documented no-op for every other `source_type` until
+  its source table is modelled; those slices extend the same trigger.
+  **Extended in `0020_slice9_counts_transfers_waste.sql`:** the same function
+  body now also validates the `stock_count`, `transfer` and `waste_event`
+  sources; `production_batch`, `sales_line`, `adjustment`, `revaluation` and
+  `correction` remain documented no-ops until their slices land.
 - ~~`snapshot_component.component_kind` needs a **controlled vocabulary**
   (`vocabularies.ts` + check constraint) to be defined in the costing slice.~~
   **Closed in `0014_cost_card_pricing.sql`:** `SNAPSHOT_COMPONENT_KIND`
@@ -396,6 +548,29 @@ implements it:
   rebuild process. The database deliberately does not block writes to it
   (a rebuild must write it); the append-only ledger (`stock_movement`) is the
   enforcement point, not a trigger on `stock_balance`.
+- **Slice-9 open (owner/TECH) points — recorded, do not resolve silently**
+  (also in the `packages/persistence/src/schema/transfers.ts` /
+  `waste.ts` comment blocks; record each resolution in `12_OPEN_DECISIONS.md`,
+  next free id `DEC-066`):
+  - **(a)** No transfer **line** table exists in any authority; the model is the
+    `stock_transfer` header plus paired `stock_movement` rows linked by
+    `stock_movement.transfer_id`, so per-item dispatched-vs-received
+    discrepancies live on the movements (and `discrepancy_note`), not on lines.
+  - **(b)** A positive/open count variance needs a `unit_cost` to be valued and
+    its source is undecided; no valuation column is stored on
+    `stock_count_line`.
+  - **(c)** `waste_event.value_method`/`value` may contradict the ledger's
+    moving-average outbound `value_delta` for the linked waste movement; which
+    wins (and whether the difference is booked) is undecided.
+  - **(d)** The `stock_count.scope` jsonb shape and the recount thresholds are
+    undefined; `scope` is stored as opaque jsonb.
+  - **(e)** Per-source reversal semantics (`DEC-028`) are not implemented in
+    `reverseStockMovement` for the slice-9 sources (count adjustment, transfer,
+    waste); the downstream-sales reconciliation gate is deferred to the sales
+    slice.
+  - **(f)** There is no exception table for transfer discrepancies
+    (`data_quality_exception` is deferred); `discrepancy_note` is the only
+    recorded difference today.
 
 ## Extensions are idempotent
 
@@ -465,6 +640,10 @@ session will not serialise against each other.
 | 0014 | `0014_cost_card_pricing.sql` | Generated: adds the four slice-7 `price_scenario` columns (`target_contribution_pct` numeric(9,6), `volume_assumption` numeric(19,6), `fee_breakdown` jsonb not null default `'{}'`, `outcome` jsonb not null default `'{}'`) and `snapshot_component_kind_check` on `snapshot_component.component_kind`. No table. Down companion: `0014_cost_card_pricing_down.sql` (drops the four columns and the constraint; destructive — the columns carry data) |
 | 0015 | `0015_calculation_snapshot_cost_card_index.sql` | Generated: adds `calculation_snapshot_cost_card_idx` on `(cost_card_id, created_at)`, covering the cost-card snapshot history read. No table. Down companion: `0015_calculation_snapshot_cost_card_index_down.sql` (drops the index) |
 | 0016 | `0016_cost_card_approved_scope.sql` | Hand-written: adds `cost_card_approved_scope_key`, a partial unique index (`NULLS NOT DISTINCT` on `(organization_id, product_variant_id, location_id, channel_id)` `WHERE state = 'approved'`) so at most one approved card exists per scope — the database backstop for `approveCostCard`'s supersede rule (`DEC-060`). No table. Down companion: `0016_cost_card_approved_scope_down.sql` (drops the index) |
+| 0017 | `0017_stock_ledger_invariants.sql` | Generated + hand-written: the `stock_lot_source_movement_id_stock_movement_id_fk` FK (`stock_lot.source_movement_id` → `stock_movement.id`) plus the `stock_movement_source_guard` BEFORE INSERT trigger validating `source_type = 'goods_receipt'` against `goods_receipt` (same organization), a no-op for the source types whose tables are not modelled yet. No table. Down companion: `0017_stock_ledger_invariants_down.sql` (drops the trigger, its function and the FK) |
+| 0018 | `0018_stock_movement_org_idempotency_key.sql` | Generated: replaces the global `stock_movement_idempotency_key_key` unique with the per-organization composite `stock_movement_org_idempotency_key_key` on `(organization_id, idempotency_key)`, so one organization's key does not block another's posting while a retry within an organization still collides. No table. Down companion: `0018_stock_movement_org_idempotency_key_down.sql` (restores the global unique; re-add validates existing rows) |
+| 0019 | `0019_stock_movement_asof_index.sql` | Generated: adds `stock_movement_org_occurred_idx` on `(organization_id, occurred_at, posted_at, id)`, covering the bounded as-of aggregation (`sumStockMovementsAsOf`). No table. Down companion: `0019_stock_movement_asof_index_down.sql` (drops the index) |
+| 0020 | `0020_slice9_counts_transfers_waste.sql` | Generated + hand-written: the four slice-9 tables — `stock_count`, `stock_count_line`, `stock_transfer`, `waste_event` — with their status/timestamp/quantity checks and indexes, plus `stock_movement.transfer_id` (column, FK and partial `stock_movement_transfer_idx`). Hand-written: `CREATE OR REPLACE FUNCTION stock_movement_source_guard` extending the `0017` guard to the `stock_count`/`transfer`/`waste_event` sources. Down companion: `0020_slice9_counts_transfers_waste_down.sql` (restores the `0017` guard, drops `transfer_id`, drops the four tables — destructive) |
 
 Order matters: extensions before DDL that calls `gen_random_uuid()`, and before
 the exclusion constraints. Verify with:
@@ -494,7 +673,7 @@ DATABASE_URL=postgres://aquarela:aquarela@localhost:5432/aquarela npm run db:mig
 `public` alone leaves the ledger intact, so `db:migrate` reports success while
 restoring nothing. `DROP SCHEMA drizzle CASCADE` clears the ledger so all
 migrations replay from 0000. Verified: after this sequence `db:migrate`
-re-applies 0000–0016 and the database has all 47 tables plus both extensions
+re-applies 0000–0020 and the database has all 51 tables plus both extensions
 (0004 adds the four slice-3 master-data tables; 0006 adds the two slice-4
 receiving tables; 0007 adds the `goods_receipt_line` guard trigger — no table;
 0008 relaxes the `supplier_price` range check — no table; 0009 adds the two
@@ -504,10 +683,18 @@ adds the three cost-allocation exclusion constraints — no table; 0013 adds the
 `labor_rate` lookup index — no table; 0014 adds the four slice-7
 `price_scenario` columns and the `snapshot_component` kind check — no table;
 0015 adds the `calculation_snapshot_cost_card_idx` index — no table; 0016 adds
-the `cost_card_approved_scope_key` approval index — no table).
-0013–0016 were added after this replay was verified; all are additive and
-table-count-neutral, and 0014–0016's apply/re-run/down/re-apply was rehearsed on
-the local dev database 2026-09-20.
+the `cost_card_approved_scope_key` approval index — no table; 0017 adds the
+`stock_lot` source-movement FK and the `stock_movement_source_guard` trigger —
+no table; 0018 replaces the global `stock_movement` idempotency unique with the
+per-organization composite one — no table; 0019 adds the `stock_movement`
+as-of aggregation index — no table; 0020 adds the four slice-9
+count/transfer/waste tables, the `stock_movement.transfer_id` column/FK/index
+and replaces the `stock_movement_source_guard` body — four tables).
+0013–0019 were added after this replay was verified; all are additive and
+table-count-neutral. `0020` is the first migration after the replay was written
+to add tables (four), so the 51-table figure above is the expected post-`0020`
+count; `0014`–`0020`'s apply/re-run/down/re-apply was rehearsed on the local dev
+database 2026-09-20.
 
 Once real data exists, this path is no longer acceptable: use small atomic
 commits, expand → migrate → contract for schema changes, and a tested
@@ -581,6 +768,41 @@ After applying to an empty database the following were verified with `psql`:
   rejected by `cost_card_approved_scope_key`; a `NULL` `channel_id` is **not**
   treated as distinct (`NULLS NOT DISTINCT`), so a second company-wide approved
   card is also rejected.
+- `stock_lot` (0017): a `source_movement_id` that does not name an existing
+  `stock_movement` row is rejected by
+  `stock_lot_source_movement_id_stock_movement_id_fk`.
+- `stock_movement` (0017): a `source_type = 'goods_receipt'` movement whose
+  `source_id` is not a `goods_receipt` in the same `organization_id` is rejected
+  by `stock_movement_source_guard`; a matching receipt is accepted, and every
+  other `source_type` is a no-op.
+- `stock_movement` (0018): two movements in the **same** organization with the
+  same `idempotency_key` are rejected by
+  `stock_movement_org_idempotency_key_key`; the same key in **different**
+  organizations is accepted (two rows, each returned by the org-scoped
+  `findStockMovementByIdempotencyKey`).
+- `stock_movement` (0019): the `stock_movement_org_occurred_idx` index on
+  `(organization_id, occurred_at, posted_at, id)` covers the bounded
+  `sumStockMovementsAsOf` aggregation behind `getStockBalanceAsOf`.
+- `stock_movement` (0020): a `source_type = 'stock_count'`, `'transfer'` or
+  `'waste_event'` movement whose `source_id` is not the matching row in the
+  same `organization_id` is rejected by `stock_movement_source_guard`; a
+  matching row is accepted. A `transfer_id` that does not name a
+  `stock_transfer` is rejected by
+  `stock_movement_transfer_id_stock_transfer_id_fk`; the
+  `stock_movement_transfer_idx` partial index covers the paired-leg read.
+- `stock_count` / `stock_count_line` (0020): an `approved` count without
+  `approved_by`/`approved_at` is rejected by `stock_count_approved_check`; a
+  duplicate `(stock_count_id, item_id, storage_area_id, lot_id)` is rejected by
+  the `NULLS NOT DISTINCT` `stock_count_line_key`, including two lot-less lines
+  (null `lot_id`) for the same key.
+- `stock_transfer` (0020): a `dispatched` transfer without `dispatched_at`, or a
+  `received` transfer without both `dispatched_at` and `received_at`, is
+  rejected by `stock_transfer_dispatched_check` /
+  `stock_transfer_received_check`.
+- `waste_event` (0020): a row with neither `item_id` nor `product_variant_id`
+  is rejected by `waste_event_item_or_variant_check`, `quantity <= 0` by
+  `waste_event_quantity_check`, and a negative `value` by
+  `waste_event_value_check`.
 - Deferrable FKs: a `calculation_snapshot` and its `cost_card` can be inserted
   in the same transaction in either order and commit together.
 - `calculation_snapshot`: a plain `TRUNCATE` is blocked first by the FK from

@@ -1,4 +1,4 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 
 import type { Database } from "../client";
 import { calculationSnapshot, costCard, snapshotComponent } from "../schema";
@@ -24,6 +24,48 @@ export async function createCostCard(db: Database, input: NewCostCard): Promise<
 export async function findCostCard(db: Database, id: string): Promise<CostCard | undefined> {
   const rows = await db.select().from(costCard).where(eq(costCard.id, id)).limit(1);
   return rows[0];
+}
+
+/**
+ * Every cost card for the organization, most recently calculated first. The read
+ * surface behind the Costs area's cost-cards list; all states.
+ */
+export async function listCostCards(
+  db: Database,
+  organizationId: string,
+): Promise<readonly CostCard[]> {
+  return db
+    .select()
+    .from(costCard)
+    .where(eq(costCard.organizationId, organizationId))
+    .orderBy(desc(costCard.calculatedAt));
+}
+
+/**
+ * Every cost card (any state) for one exact scope, newest first. The detail
+ * page uses it as the historical series: later calculations for the same
+ * product/location/channel line up for comparison.
+ */
+export async function listCostCardsForScope(
+  db: Database,
+  query: ApprovedCostCardScopeQuery,
+): Promise<readonly CostCard[]> {
+  const channelFilter =
+    query.channelId === undefined || query.channelId === null
+      ? isNull(costCard.channelId)
+      : eq(costCard.channelId, query.channelId);
+  return db
+    .select()
+    .from(costCard)
+    .where(
+      and(
+        eq(costCard.organizationId, query.organizationId),
+        eq(costCard.productVariantId, query.productVariantId),
+        eq(costCard.locationId, query.locationId),
+        channelFilter,
+      ),
+    )
+    .orderBy(desc(costCard.calculatedAt));
 }
 
 export interface ApprovedCostCardScopeQuery {

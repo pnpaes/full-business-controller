@@ -27,6 +27,22 @@ export async function createOperatingCost(
   return rows[0]!;
 }
 
+/**
+ * Every operating-cost fact for the organization, newest effective window first.
+ * Unlike `listEffectiveOperatingCosts` this is not date-scoped: it is the read
+ * surface behind the Costs area's operating-costs table (all rows, any state).
+ */
+export async function listOperatingCosts(
+  db: Database,
+  organizationId: string,
+): Promise<OperatingCost[]> {
+  return db
+    .select()
+    .from(operatingCost)
+    .where(eq(operatingCost.organizationId, organizationId))
+    .orderBy(desc(operatingCost.effectiveFrom), operatingCost.costCenterId);
+}
+
 export interface EffectiveOperatingCostQuery {
   readonly organizationId: string;
   readonly asOf: Date;
@@ -102,6 +118,18 @@ export async function findEffectiveLaborRate(
   return rows[0];
 }
 
+/**
+ * Every labour rate for the organization, newest effective window first. The
+ * read surface behind the Costs area's labour-rates table; not date-scoped.
+ */
+export async function listLaborRates(db: Database, organizationId: string): Promise<LaborRate[]> {
+  return db
+    .select()
+    .from(laborRate)
+    .where(eq(laborRate.organizationId, organizationId))
+    .orderBy(desc(laborRate.effectiveFrom), laborRate.roleCode);
+}
+
 export async function findCostPool(
   db: Database,
   costPoolId: string,
@@ -130,6 +158,19 @@ export async function listCostPoolsByCode(
 export async function createCostPool(db: Database, input: NewCostPool): Promise<CostPool> {
   const rows = await db.insert(costPool).values(input).returning();
   return rows[0]!;
+}
+
+/**
+ * Every cost pool for the organization, grouped by code and newest version
+ * first. The read surface behind the Costs area's cost-pools table; unlike
+ * `listCostPoolsByCode` it spans all codes and is not date-scoped.
+ */
+export async function listCostPools(db: Database, organizationId: string): Promise<CostPool[]> {
+  return db
+    .select()
+    .from(costPool)
+    .where(eq(costPool.organizationId, organizationId))
+    .orderBy(costPool.code, desc(costPool.effectiveFrom));
 }
 
 export async function createAllocationRule(
@@ -182,4 +223,37 @@ export async function listEffectiveAllocationRules(
     )
     .orderBy(desc(allocationRule.effectiveFrom));
   return rows;
+}
+
+/** An allocation rule joined to its pool's code (the pool carries the org scope). */
+export interface AllocationRuleReadRow extends AllocationRule {
+  readonly costPoolCode: string;
+}
+
+/**
+ * Every allocation rule for the organization's cost pools, grouped by pool code
+ * and newest version first, with the pool's code for display. Not date-scoped:
+ * the read surface behind the Costs area's allocation-rules table.
+ */
+export async function listAllocationRules(
+  db: Database,
+  organizationId: string,
+): Promise<AllocationRuleReadRow[]> {
+  return db
+    .select({
+      id: allocationRule.id,
+      costPoolId: allocationRule.costPoolId,
+      driver: allocationRule.driver,
+      scopeType: allocationRule.scopeType,
+      denominatorSource: allocationRule.denominatorSource,
+      fallbackBehavior: allocationRule.fallbackBehavior,
+      effectiveFrom: allocationRule.effectiveFrom,
+      effectiveTo: allocationRule.effectiveTo,
+      createdAt: allocationRule.createdAt,
+      costPoolCode: costPool.code,
+    })
+    .from(allocationRule)
+    .innerJoin(costPool, eq(allocationRule.costPoolId, costPool.id))
+    .where(eq(costPool.organizationId, organizationId))
+    .orderBy(costPool.code, desc(allocationRule.effectiveFrom));
 }

@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 
 import type { Database } from "../client";
 import { priceScenario } from "../schema";
@@ -33,6 +33,21 @@ export async function findPriceScenario(
 ): Promise<PriceScenario | undefined> {
   const rows = await db.select().from(priceScenario).where(eq(priceScenario.id, id)).limit(1);
   return rows[0];
+}
+
+/**
+ * Every price scenario for the organization, newest first. The read surface
+ * behind the Costs area's price-scenarios list; all states.
+ */
+export async function listPriceScenarios(
+  db: Database,
+  organizationId: string,
+): Promise<readonly PriceScenario[]> {
+  return db
+    .select()
+    .from(priceScenario)
+    .where(eq(priceScenario.organizationId, organizationId))
+    .orderBy(desc(priceScenario.createdAt));
 }
 
 export interface PriceScenarioPatch {

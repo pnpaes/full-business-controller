@@ -1,0 +1,1 @@
+CREATE INDEX "stock_movement_org_occurred_idx" ON "stock_movement" USING btree ("organization_id","occurred_at","posted_at","id");

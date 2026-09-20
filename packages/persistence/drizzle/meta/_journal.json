@@ -120,6 +120,34 @@
       "when": 1789867797172,
       "tag": "0016_cost_card_approved_scope",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1789895339462,
+      "tag": "0017_stock_ledger_invariants",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1789902579323,
+      "tag": "0018_stock_movement_org_idempotency_key",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1789904976754,
+      "tag": "0019_stock_movement_asof_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1789911710033,
+      "tag": "0020_slice9_counts_transfers_waste",
+      "breakpoints": true
     }
   ]
 }

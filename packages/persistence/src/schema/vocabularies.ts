@@ -203,3 +203,53 @@ export const ALLOCATION_DRIVER = [
 ] as const;
 
 export const ALLOCATION_FALLBACK = ["stop", "equal_share"] as const;
+
+// Slice 9 (counts + transfers + waste), from `schemas/domain-enums.yaml`: the
+// stock-count workflow state, the transfer workflow state, the nine
+// blame-free waste stages (DEC-018) and the waste valuation method. These were
+// present in the yaml but deliberately unexported until a table needed them;
+// `vocabularies.test.ts`'s `UNEXPORTED_YAML_KEYS` guard shrinks accordingly.
+export const COUNT_STATUS = ["draft", "counting", "submitted", "approved", "cancelled"] as const;
+
+export const TRANSFER_STATUS = [
+  "draft",
+  "requested",
+  "approved",
+  "dispatched",
+  "received",
+  "cancelled",
+] as const;
+
+export const WASTE_STAGE = [
+  "receiving",
+  "storage_expiry",
+  "preparation",
+  "production",
+  "display",
+  "unsold_finished_goods",
+  "customer_return",
+  "count_discovered",
+  "other",
+] as const;
+
+export const WASTE_VALUE_METHOD = [
+  "cost_selection",
+  "moving_average",
+  "latest_price",
+  "manual",
+] as const;
+
+// `stock_movement.reason_code` for count/adjustment postings (`adjustment_reason`
+// in `schemas/domain-enums.yaml`). Exported here because the count-adjustment
+// and waste slices need a closed vocabulary for the reason code.
+export const ADJUSTMENT_REASON = [
+  "count_variance",
+  "spoilage",
+  "breakage",
+  "staff_meal",
+  "supplier_credit",
+  "data_correction",
+  "revaluation",
+  "transfer_discrepancy",
+  "other",
+] as const;

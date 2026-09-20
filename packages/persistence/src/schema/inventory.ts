@@ -14,6 +14,7 @@ import {
 import { item, unit } from "./catalog";
 import { enumCheck, money, orgId, quantity, tstz, uuidPk } from "./columns";
 import { location, organization, storageArea } from "./organization";
+import { stockTransfer } from "./transfers";
 import { MOVEMENT_SOURCE_TYPE, STOCK_MOVEMENT_TYPE } from "./vocabularies";
 
 export const stockLot = pgTable(
@@ -31,8 +32,9 @@ export const stockLot = pgTable(
     expiryDate: date("expiry_date"),
     openedDate: date("opened_date"),
     receivedAt: tstz("received_at"),
-    // FK stock_movement when the receipt slice posts the originating movement.
-    sourceMovementId: uuid("source_movement_id"),
+    // The originating receipt movement; a lot is created by the receipt slice
+    // (slice 8) once that movement is posted. Deferred to migration `0017`.
+    sourceMovementId: uuid("source_movement_id").references((): AnyPgColumn => stockMovement.id),
   },
   (t) => [
     unique("stock_lot_item_id_location_id_lot_number_key").on(t.itemId, t.locationId, t.lotNumber),
@@ -65,6 +67,10 @@ export const stockMovement = pgTable(
     sourceType: text("source_type").notNull(),
     // Polymorphic source; validated by trigger per slice (deferred tables).
     sourceId: uuid("source_id").notNull(),
+    // The transfer header this movement is one leg of (DEC-029). Nullable for
+    // every non-transfer movement; `0020` adds the FK and the source guard
+    // validates the `source_type = 'transfer'` header reference.
+    transferId: uuid("transfer_id").references((): AnyPgColumn => stockTransfer.id),
     reversalOfId: uuid("reversal_of_id").references((): AnyPgColumn => stockMovement.id),
     occurredAt: tstz("occurred_at").notNull(),
     postedAt: tstz("posted_at").notNull().defaultNow(),
@@ -80,7 +86,11 @@ export const stockMovement = pgTable(
       sql`${t.quantityDelta} <> 0 or coalesce(${t.valueDelta}, 0) <> 0`,
     ),
     check("stock_movement_unit_cost_check", sql`${t.unitCost} is null or ${t.unitCost} >= 0`),
-    unique("stock_movement_idempotency_key_key").on(t.idempotencyKey),
+    // Per-organization namespace: two organizations may reuse one key; a retry
+    // within an organization still collides. `DATA_DICTIONARY` §6's
+    // "unique where not null" is global — this narrows it per DEC-028's
+    // org-scoped replay (open point, see docs/BUILD_ROADMAP.md §5).
+    unique("stock_movement_org_idempotency_key_key").on(t.organizationId, t.idempotencyKey),
     index("stock_movement_balance_idx").on(
       t.organizationId,
       t.itemId,
@@ -91,9 +101,17 @@ export const stockMovement = pgTable(
       t.postedAt,
     ),
     index("stock_movement_source_idx").on(t.sourceType, t.sourceId),
+    // Pairs a transfer's dispatch/receipt legs for consolidation elimination
+    // (DEC-029); partial because it is null for every non-transfer movement.
+    index("stock_movement_transfer_idx")
+      .on(t.transferId)
+      .where(sql`${t.transferId} is not null`),
     index("stock_movement_reversal_idx")
       .on(t.reversalOfId)
       .where(sql`${t.reversalOfId} is not null`),
+    // Covers the bounded as-of aggregation (`sumStockMovementsAsOf`): filter by
+    // organization, range on `occurred_at`, tie-break in ledger order.
+    index("stock_movement_org_occurred_idx").on(t.organizationId, t.occurredAt, t.postedAt, t.id),
     // Append-only enforcement (reject_posted_movement_change + row/truncate
     // triggers) is emitted in the raw `invariants` migration.
   ],

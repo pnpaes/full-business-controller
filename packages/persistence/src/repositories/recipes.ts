@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, isNotNull, isNull, lte, or } from "drizzle-orm";
+import { and, asc, desc, eq, gt, ilike, isNotNull, isNull, lte, or } from "drizzle-orm";
 
 import type { Database } from "../client";
 import {
@@ -45,6 +45,54 @@ export async function findRecipeByCode(
     .where(and(eq(recipe.organizationId, organizationId), eq(recipe.code, code)))
     .limit(1);
   return rows[0];
+}
+
+/** Default page size for `listRecipesForOrganization` when the caller omits `limit`. */
+export const DEFAULT_RECIPE_LIST_LIMIT = 50;
+
+export interface ListRecipesQuery {
+  readonly organizationId: string;
+  /** Case-insensitive substring match on `code` or `name`. */
+  readonly search?: string;
+  readonly limit?: number;
+  readonly offset?: number;
+}
+
+/**
+ * Escapes the LIKE metacharacters in a user-supplied search term. PostgreSQL's
+ * default `LIKE`/`ILIKE` escape character is `\`, so no explicit `ESCAPE` clause
+ * is needed; drizzle still binds the pattern as a parameter, so this only stops
+ * a literal `%`/`_` acting as a wildcard.
+ */
+function escapeLikeTerm(value: string): string {
+  return value.replace(/[\\%_]/g, "\\$&");
+}
+
+/**
+ * Recipes in one organization, ordered by `code`, with an optional
+ * case-insensitive substring filter and bounded pagination. Scoped by
+ * `organization_id` so a caller never sees another tenant's recipes.
+ */
+export async function listRecipesForOrganization(
+  db: Database,
+  query: ListRecipesQuery,
+): Promise<Recipe[]> {
+  const term = query.search?.trim();
+  const pattern = term === undefined || term.length === 0 ? undefined : `%${escapeLikeTerm(term)}%`;
+  return db
+    .select()
+    .from(recipe)
+    .where(
+      and(
+        eq(recipe.organizationId, query.organizationId),
+        pattern === undefined
+          ? undefined
+          : or(ilike(recipe.code, pattern), ilike(recipe.name, pattern)),
+      ),
+    )
+    .orderBy(asc(recipe.code))
+    .limit(query.limit ?? DEFAULT_RECIPE_LIST_LIMIT)
+    .offset(query.offset ?? 0);
 }
 
 export async function createRecipeVersion(

@@ -1,0 +1,2 @@
+ALTER TABLE "stock_movement" DROP CONSTRAINT "stock_movement_idempotency_key_key";--> statement-breakpoint
+ALTER TABLE "stock_movement" ADD CONSTRAINT "stock_movement_org_idempotency_key_key" UNIQUE("organization_id","idempotency_key");

@@ -10,7 +10,14 @@ import {
   product,
   productVariant,
   role,
+  stockCount,
+  stockCountLine,
+  stockLot,
+  stockMovement,
+  stockTransfer,
+  storageArea,
   unit,
+  wasteEvent,
 } from "../schema";
 import { createUser, type NewUser, type User } from "./users";
 
@@ -203,6 +210,175 @@ export async function createTestItem(
       name: "Test Item",
       itemType: "ingredient",
       baseUnitId,
+      ...overrides,
+    })
+    .returning();
+  return rows[0]!;
+}
+
+export async function createTestStorageArea(
+  db: Database,
+  organizationId: string,
+  locationId: string,
+  overrides: Partial<typeof storageArea.$inferInsert> = {},
+): Promise<typeof storageArea.$inferSelect> {
+  const rows = await db
+    .insert(storageArea)
+    .values({
+      organizationId,
+      locationId,
+      code: uniqueName("area"),
+      name: "Test Storage Area",
+      kind: "dry_store",
+      ...overrides,
+    })
+    .returning();
+  return rows[0]!;
+}
+
+export async function createTestStockLot(
+  db: Database,
+  organizationId: string,
+  itemId: string,
+  locationId: string,
+  overrides: Partial<typeof stockLot.$inferInsert> = {},
+): Promise<typeof stockLot.$inferSelect> {
+  const rows = await db
+    .insert(stockLot)
+    .values({
+      organizationId,
+      itemId,
+      locationId,
+      lotNumber: uniqueName("lot"),
+      ...overrides,
+    })
+    .returning();
+  return rows[0]!;
+}
+
+/**
+ * A ledger movement with a non-zero quantity delta, defaulting to an
+ * `adjustment` source. That default deliberately relies on the documented
+ * `0017` `stock_movement_source_guard` no-op: the guard validates only
+ * `source_type = 'goods_receipt'` and returns `NEW` unchanged for every other
+ * source type (adjustment's source table is not modelled yet). Override
+ * `sourceType`/`sourceId` to exercise `goods_receipt` validation.
+ */
+export async function createTestStockMovement(
+  db: Database,
+  organizationId: string,
+  refs: {
+    readonly itemId: string;
+    readonly locationId: string;
+    readonly storageAreaId: string;
+    readonly unitId: string;
+  },
+  overrides: Partial<typeof stockMovement.$inferInsert> = {},
+): Promise<typeof stockMovement.$inferSelect> {
+  const rows = await db
+    .insert(stockMovement)
+    .values({
+      organizationId,
+      locationId: refs.locationId,
+      storageAreaId: refs.storageAreaId,
+      itemId: refs.itemId,
+      movementType: "count_adjustment",
+      quantityDelta: "1",
+      unitId: refs.unitId,
+      sourceType: "adjustment",
+      sourceId: randomUUID(),
+      occurredAt: new Date("2026-03-01T00:00:00.000Z"),
+      postedBy: randomUUID(),
+      ...overrides,
+    })
+    .returning();
+  return rows[0]!;
+}
+
+export async function createTestStockCount(
+  db: Database,
+  organizationId: string,
+  locationId: string,
+  overrides: Partial<typeof stockCount.$inferInsert> = {},
+): Promise<typeof stockCount.$inferSelect> {
+  const rows = await db
+    .insert(stockCount)
+    .values({
+      organizationId,
+      locationId,
+      cutoff: new Date("2026-03-01T00:00:00.000Z"),
+      ...overrides,
+    })
+    .returning();
+  return rows[0]!;
+}
+
+export async function createTestStockCountLine(
+  db: Database,
+  stockCountId: string,
+  refs: { readonly itemId: string; readonly storageAreaId: string },
+  overrides: Partial<typeof stockCountLine.$inferInsert> = {},
+): Promise<typeof stockCountLine.$inferSelect> {
+  const rows = await db
+    .insert(stockCountLine)
+    .values({
+      stockCountId,
+      itemId: refs.itemId,
+      storageAreaId: refs.storageAreaId,
+      expectedQty: "0",
+      ...overrides,
+    })
+    .returning();
+  return rows[0]!;
+}
+
+export async function createTestStockTransfer(
+  db: Database,
+  organizationId: string,
+  refs: {
+    readonly fromLocationId: string;
+    readonly fromStorageAreaId: string;
+    readonly toLocationId: string;
+    readonly toStorageAreaId: string;
+  },
+  overrides: Partial<typeof stockTransfer.$inferInsert> = {},
+): Promise<typeof stockTransfer.$inferSelect> {
+  const rows = await db
+    .insert(stockTransfer)
+    .values({
+      organizationId,
+      ...refs,
+      ...overrides,
+    })
+    .returning();
+  return rows[0]!;
+}
+
+export async function createTestWasteEvent(
+  db: Database,
+  organizationId: string,
+  refs: {
+    readonly locationId: string;
+    readonly storageAreaId: string;
+    readonly itemId: string;
+    readonly unitId: string;
+  },
+  overrides: Partial<typeof wasteEvent.$inferInsert> = {},
+): Promise<typeof wasteEvent.$inferSelect> {
+  const rows = await db
+    .insert(wasteEvent)
+    .values({
+      organizationId,
+      locationId: refs.locationId,
+      storageAreaId: refs.storageAreaId,
+      itemId: refs.itemId,
+      quantity: "1",
+      unitId: refs.unitId,
+      stage: "other",
+      reasonCode: "test",
+      valueMethod: "moving_average",
+      occurredAt: new Date("2026-03-01T00:00:00.000Z"),
+      actorId: randomUUID(),
       ...overrides,
     })
     .returning();
