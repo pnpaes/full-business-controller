@@ -11,8 +11,9 @@ duplicate their content.
 from this section alone.
 
 **Next task:** **commit the row-11 work + the cross-cutting error-handling fix +
-docs** (three commits), then take up **row 12** once the owner accepts
-`ADR-0008` — otherwise proceed to the **price-version work (`DEC-064`)** and the
+docs** (three commits), then take up **row 12** (sales + settlements +
+reconciliation — the next slice; `ADR-0008` is accepted 2026-09-20) — otherwise
+proceed to the **price-version work (`DEC-064`)** and the
 **deployment rehearsal**.
 
 **State:** `main` HEAD `7f6aa78`; the working tree has uncommitted **row 11
@@ -26,9 +27,12 @@ external id, with both `DEC-033` conflict directions), application
 list/get), web `/api/v1/imports/**` and `(app)/sales/**` (landing + import runs
 list + run detail with diagnostics, staging rows, dispositions and preview), and
 `apps/web/scripts/seed-imports.ts`. The import slice deliberately stops at
-`validated`/`needs_review` — **row 12 was NOT built** (owner-gated on `ADR-0008`,
-still Proposed; the `/sales` page marks Reconciliation "not yet implemented —
-row 12 is owner-gated on ADR-0008"); `ADR-0007` (Proposed) still gates row 13.
+`validated`/`needs_review` — **row 12 was NOT built** and is the next slice
+(`ADR-0008` accepted 2026-09-20, owner-delegated in-session, together with
+`ADR-0007`; the I1 channel/SKU confirmations remain recorded inputs; the
+`/sales` page marks Reconciliation "not yet implemented — row 12 is owner-gated
+on ADR-0008" — stale text to update when row 12 lands); row 13 is no longer
+ADR-gated and follows row 12.
 The cross-cutting fix: `apps/web/lib/http.ts` `jsonError` now takes a message and
 `mapErrors` maps `DomainError`→400 with the authored message; all ~40 non-auth
 `DomainError` branches pass `error.message`; auth routes stay generic
@@ -44,14 +48,16 @@ application `imports/**` + web `/api/v1/imports/**` + `(app)/sales/**` +
 `seed-imports.ts`), (b) the **error-handling fix** (`apps/web/lib/http.ts` +
 the ~40 non-auth `DomainError` call sites; auth routes untouched), (c) the
 **docs update** (`CONTEXT.md`, `docs/BUILD_ROADMAP.md`) — each with verification
-evidence + rollback approach in the body (per `AGENTS.md` Rule 2); (2) if the
-owner has accepted `ADR-0008` by then, start row 12 (sales + settlements +
-reconciliation, `docs/BUILD_ROADMAP.md` §4 row 12); otherwise proceed to the
+evidence + rollback approach in the body (per `AGENTS.md` Rule 2); (2) start
+row 12 (sales + settlements + reconciliation, `docs/BUILD_ROADMAP.md` §4 row 12
+— `ADR-0008` accepted 2026-09-20; the I1 channel/SKU confirmations remain
+recorded inputs); otherwise proceed to the
 price-version work (`DEC-064`) and/or the deployment rehearsal (parked on its
 owner inputs).
 
-**Scope (do not):** do not build row 12 or touch reconciliation — it stays
-owner-gated on `ADR-0008` (still Proposed); do not amend or rewrite history
+**Scope (do not):** do not build row 12 or touch reconciliation until the row-11
+commits land (`ADR-0008` is now accepted 2026-09-20; row 12 is the next slice
+after that); do not amend or rewrite history
 (nothing pushed); do not edit migrations `0000–0022`; do not deploy,
 `terraform apply`, or write externally (per-source approval remains `DEC-015`);
 invent no decision — append from **`DEC-072`** only if genuinely needed; do not
@@ -76,8 +82,9 @@ typecheck`, `npm run test` (with `DATABASE_URL` — current baseline:
 is a no-op on re-run; the `0022` down path was rehearsed; after committing,
 re-run the suite at the clean tree and confirm HEAD advanced by three commits.
 
-**Open inputs (recorded, do not decide):** row 12 gated on `ADR-0008` + I1
-channel/SKU confirmations; row 13 gated on `ADR-0007`; the sales/consumption
+**Open inputs (recorded, do not decide):** row 12's I1 channel/SKU
+confirmations (`ADR-0008` is accepted 2026-09-20); row 13's history/grain
+quality (`ADR-0007` is accepted 2026-09-20); the sales/consumption
 grain ambiguity (`DEC-009` daily-per-location vs a single `sales_line`
 `source_id`); no import-profile table; no tolerance-configuration table;
 `file_object` absent so `file_object_id` is a plain uuid; dispositions live in
@@ -94,9 +101,9 @@ prepared as machine-readable JSON under `tests/fixtures/` (`DEC-065`) with the
 sign-off trail ready; finance + product owner sign. Until signed, no cost is
 "verified"; `I8`/`I9` still gate the real rates behind the fixtures.
 
-**After the row-11 commits:** row 12 when `ADR-0008` is accepted (else the
-price-version work `DEC-064` / the deployment rehearsal), then row 13 (close/
-dashboards) when `ADR-0007` is accepted, then the remaining open owner questions.
+**After the row-11 commits:** row 12 (`ADR-0008` accepted 2026-09-20; the I1
+inputs remain), then row 13 (`ADR-0007` accepted 2026-09-20), then the remaining
+open owner questions.
 
 ## What this is
 
@@ -123,8 +130,8 @@ cross-cutting error-handling fix (both about to be committed as three commits).
 - `docs/phase0/` — close-out plan, calculation contract, data dictionary, golden
   fixtures, source-data request, notes. See `docs/phase0/PHASE0_CLOSEOUT_PLAN.md`
   and `docs/phase0/CALCULATION_CONTRACT.md`.
-- `docs/adr/` — architecture decision records `0001`–`0012` (`ADR-0005` accepted
-  2026-09-20).
+- `docs/adr/` — architecture decision records `0001`–`0012` (`ADR-0005`,
+  `ADR-0007` and `ADR-0008` accepted 2026-09-20).
 - `docs/runbooks/` — operator runbooks (`persistence-migrations.md`, `deployment.md`).
 - `docs/BUILD_ROADMAP.md` — the ordered slice backlog and per-slice execution loop (a
   derived execution tracker; decisions and accepted ADRs stay the authority).
@@ -152,11 +159,13 @@ cross-cutting error-handling fix (both about to be committed as three commits).
   preview + list/get), web `/api/v1/imports/**` and `(app)/sales/**` (landing +
   import runs list + run detail with diagnostics, staging rows, dispositions and
   preview), and `apps/web/scripts/seed-imports.ts`. **Row 12 (sales +
-  settlements + reconciliation) was deliberately NOT built** — it remains
-  `blocked (owner)` on `ADR-0008` (still Proposed); the import slice stops at
+  settlements + reconciliation) was deliberately NOT built** — it is the next
+  slice (`ADR-0008` accepted 2026-09-20, owner-delegated; the I1 channel/SKU
+  confirmations remain recorded inputs); the import slice stops at
   `validated`/`needs_review` and the `/sales` page marks Reconciliation "not yet
-  implemented — row 12 is owner-gated on ADR-0008". `ADR-0007` (Proposed) still
-  gates row 13.
+  implemented — row 12 is owner-gated on ADR-0008" (stale text to update when
+  row 12 lands). Row 13 is no longer ADR-gated (`ADR-0007` accepted
+  2026-09-20) and follows row 12.
   **Cross-cutting fix (uncommitted, same tree):** `apps/web/lib/http.ts`
   `jsonError` now takes a message and `mapErrors` maps `DomainError`→400 with
   the authored message; all ~40 non-auth `DomainError` branches pass
@@ -170,9 +179,9 @@ cross-cutting error-handling fix (both about to be committed as three commits).
   **In flight: the three commits** — row 11, the error-handling fix, docs (see
   "Resume here").
   Programme direction (user instruction): proceed autonomously — review/fix,
-  document status + next steps, commit, then row 12 when the owner accepts
-  `ADR-0008` (else the price-version work `DEC-064` / the deployment rehearsal),
-  then row 13 when `ADR-0007` is accepted.
+  document status + next steps, commit, then row 12 (`ADR-0008` accepted
+  2026-09-20; the I1 inputs remain; else the price-version work `DEC-064` /
+  the deployment rehearsal), then row 13 (`ADR-0007` accepted 2026-09-20).
   Nothing has been applied to DigitalOcean.
 - **Auth complete and security-reviewed (slices 1a–1e):** domain primitives (1a);
   persistence layer (1b-i); application flow (1b-ii); password reset + access
@@ -258,7 +267,8 @@ cross-cutting error-handling fix (both about to be committed as three commits).
 ## Next up (prioritised)
 
 `docs/BUILD_ROADMAP.md` is the ordered execution tracker for these slices (slice 0,
-1a–1e and 2–10 done; **row 11 done (uncommitted)**; row 12 `blocked (owner)`).
+1a–1e and 2–10 done; **row 11 done (uncommitted)**; row 12 `todo` — the next
+slice, with row 13 `todo` after it).
 The list below is the short narrative form.
 
 1. **Commit the row-11 work + the error fix + docs** — three commits: (a) the
@@ -271,13 +281,16 @@ The list below is the short narrative form.
    Programme direction: proceed autonomously (agents → review/fix → document →
    commit → next task).
 2. **Row 12 — sales + settlements + reconciliation** (`docs/BUILD_ROADMAP.md`
-   §4 row 12) — **owner-gated**: start only once `ADR-0008` is accepted plus the
-   I1 channel/SKU confirmations; then insights/month-close territory is row 13.
+   §4 row 12) — **the next slice**: `ADR-0008` is accepted (2026-09-20,
+   owner-delegated); the remaining recorded inputs are the I1 channel/SKU
+   confirmations (they gate real profiles, not the start — see the roadmap
+   convention); then insights/month-close territory is row 13.
    The import slice stops at `validated`/`needs_review` until then.
-3. **Row 13 — close + dashboards + menu engineering** — gated on `ADR-0007`
-   acceptance (still Proposed).
+3. **Row 13 — close + dashboards + menu engineering** — `ADR-0007` is accepted
+   (2026-09-20, owner-delegated); history/grain quality remains the data gate
+   (synthetic fixtures until real data).
 4. **Price versions + PRICE-002/003** (`DEC-064`) — the next pricing work while
-   rows 12/13 are owner-gated.
+   rows 12/13 are not yet built.
 5. **Test-deployment rehearsal** — per `docs/runbooks/deployment.md`, staging first
    with sanitized/synthetic data only; blocked on the deployment prerequisite inputs
    (see "Open decisions / inputs"); proceeds after the current slices in the
@@ -307,7 +320,12 @@ The list below is the short narrative form.
 ## Open decisions / inputs (do not block development)
 
 - **Resolved this session (2026-09-20):** `ADR-0005` is **Accepted** (stock
-  valuation/consumption — slice 8 unblocked); **`DEC-061`** multi-tenancy = shared
+  valuation/consumption — slice 8 unblocked); `ADR-0007` (reporting aggregates)
+  and `ADR-0008` (integration ownership) are **Accepted** (2026-09-20,
+  owner-delegated in-session, revertible) — rows 12 and 13 are no longer
+  ADR-gated; their ADR **open items** remain recorded inputs (row 12's I1
+  channel/SKU confirmations; per-integration ownership records, POS/Wolt API
+  availability, allowed-operations approval); **`DEC-061`** multi-tenancy = shared
   schema with `organization_id` row scoping (RLS possible later; no schema/DB per
   tenant); **`DEC-062`** background jobs runtime = **pg-boss** over the existing
   PostgreSQL, worker/scheduler long-lived; **`DEC-063`** the price-scenario target
@@ -323,8 +341,10 @@ The list below is the short narrative form.
 - **Row-11 import-framework open points (2026-09-20; also tracked in
   `docs/BUILD_ROADMAP.md` §5 "Row-11 import-framework open points"; recorded,
   not decided — do not resolve silently):** row 12 (sales + settlements +
-  reconciliation) is gated on `ADR-0008` acceptance + the I1 channel/SKU
-  confirmations (owner); row 13 is gated on `ADR-0007` (still Proposed); the
+  reconciliation) is no longer ADR-gated (`ADR-0008` accepted 2026-09-20,
+  owner-delegated) but still awaits the I1 channel/SKU confirmations (owner);
+  row 13 is no longer ADR-gated (`ADR-0007` accepted 2026-09-20) — history/grain
+  quality remains the data gate; the
   sales/consumption grain ambiguity (`DEC-009` daily-per-location vs a single
   `sales_line` `source_id`, FIN+TECH); no import-profile table (TECH); no
   tolerance-configuration table (FIN); `file_object` is absent, so

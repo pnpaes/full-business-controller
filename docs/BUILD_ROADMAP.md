@@ -27,9 +27,12 @@ list/get), web `/api/v1/imports/**` and `(app)/sales/**` (landing + import runs
 list + run detail with diagnostics, staging rows, dispositions and preview), and
 `apps/web/scripts/seed-imports.ts`. The import slice deliberately stops at
 `validated`/`needs_review` — **row 12 (sales + settlements + reconciliation) was
-NOT built and remains `blocked (owner)` on `ADR-0008` (still Proposed)**; the
+NOT built and is now the next slice** (`ADR-0008` was **accepted 2026-09-20**,
+owner-delegated in-session, together with `ADR-0007`; only I1 channel/SKU
+confirmations remain as recorded inputs); the
 `/sales` page marks Reconciliation "not yet implemented — row 12 is owner-gated
-on ADR-0008". `ADR-0007` (Proposed) still gates row 13. The cross-cutting fix:
+on ADR-0008" (stale text to update when row 12 lands). Row 13 is no longer
+ADR-gated (`ADR-0007` accepted 2026-09-20) and follows row 12. The cross-cutting fix:
 `apps/web/lib/http.ts` `jsonError` now takes a message and `mapErrors` maps
 `DomainError`→400 with the authored message; all ~40 non-auth `DomainError`
 branches pass `error.message`; auth routes stay generic (per `ADR-0003`) —
@@ -41,8 +44,9 @@ tests with `DATABASE_URL`** (880 passed / 207 skipped without); `npm audit
 rehearsed. Programme direction: proceed autonomously, per task — parallel
 background agents → adversarial review + fixes → document status and next steps →
 commit → next task. Next: commit row 11 + the error fix + docs (three commits),
-then row 12 when the owner accepts `ADR-0008` (row 13 stays gated on
-`ADR-0007`); otherwise the price-version work (`DEC-064`) and the deployment
+then row 12 (`ADR-0008` accepted 2026-09-20, owner-delegated; only the I1
+channel/SKU inputs remain), then row 13 (`ADR-0007` accepted 2026-09-20);
+otherwise the price-version work (`DEC-064`) and the deployment
 rehearsal (parked on its owner inputs).
 
 ## 2. The execution loop (per slice)
@@ -81,8 +85,9 @@ rehearsal (parked on its owner inputs).
 
 Pause the loop and raise to the owner, recording it in `CONTEXT.md`, when any of these is hit:
 
-- **Proposed ADR required by the slice.** The slice cites an ADR whose status is `Proposed`
-  (e.g. `0007`–`0011`). *Needed from owner:* the named decider
+- **Proposed ADR required by the slice.** The slice cites an ADR whose status is `Proposed`.
+  (As of 2026-09-20 only `ADR-0009`/`ADR-0010`/`ADR-0011` remain `Proposed`; `ADR-0007` and
+  `ADR-0008` are **accepted** 2026-09-20.) *Needed from owner:* the named decider
   accepts or amends it in `docs/adr/` (`Accepted` with date) before the slice is treated as
   settled. Slice 1 is the owner-directed exception: proceed and accept `ADR-0003` in
   parallel, without treating it as settled (`CONTEXT.md`).
@@ -130,9 +135,9 @@ sequence). Requirement IDs are from `11_REQUIREMENTS_CATALOG.md`; decision IDs f
 | 8 | Stock ledger + balances + lots / storage | P1–P2 / epic 7 | `INV-001`–`003`, `INV-008`, `PROD-002`, `WASTE-002`, `COST-008`; `DEC-008`, `DEC-009`, `DEC-010`, `DEC-028`, `DEC-034`; `ADR-0005` (accepted 2026-09-20) | 3, 4 | none — `ADR-0005` **Accepted** (2026-09-20) | done (committed `b525f30`/`40e736b`/`c91e512`/`6c69f7f` with migrations `0017`–`0019`; verified 842/842 with `DATABASE_URL`) |
 | 9 | Counts + transfers + waste | P2 / epic 8 | `INV-004`–`007`, `INV-009`, `WASTE-001`, `WASTE-002`; `DEC-017`, `DEC-018`, `DEC-029`, `DEC-066`–`DEC-068` | 8 | none — I7 opening counts gate the pilot | done (counts/transfers/waste application + `/api/v1` + screens + seeds + tests; persistence in `b525f30`, migration `0020`; verified 989/989 with `DATABASE_URL`) |
 | 10 | Production planning + batches | P2 / epic 9 | `PROD-001`–`005`; `DEC-005`, `DEC-031`, `DEC-036`, `DEC-069`–`DEC-071` | 5, 8 | none | done (migration `0021`; domain `production.ts`; application `production/**` incl. atomic `completeProductionBatch`; web API + `/production` screens + seed; verified 1087/1087 with `DATABASE_URL` at the row-11 tree) |
-| 11 | Import framework + external mappings | P3 / epic 10 | `SALE-002`, `SALE-004`, `SALE-007`, `SALE-008`; `DEC-025`, `DEC-033`, `DEC-035`, `DEC-041`; `ADR-0008` (**Proposed**) | 3 | none — legacy I19 as reference; I1/I15 Frontline shapes gate real profiles | done (uncommitted — migration `0022` (`import_run`/`import_staging_row`/`external_mapping`), vocabularies `IMPORT_STATUS`/`MAPPING_STATE`/`IMPORT_POSTING_POLICY`, domain `sales-mapping.ts` (`resolveExternalEntity`, SKU-first then external id, both `DEC-033` conflict directions), application `imports/**` (create/stage/validate/map/dispose/preview + list/get), web `/api/v1/imports/**` + `(app)/sales/**` + `seed-imports.ts`; verified 1087/1087 with `DATABASE_URL`) |
-| 12 | Sales + settlements + reconciliation | P3 / epic 11 | `SALE-001`–`011`, `PRICE-006`, `REC-001`–`006`; `DEC-026`, `DEC-035`, `DEC-040`, `DEC-042`, `DEC-043`, `DEC-045`; `ADR-0008` (**Proposed**) | 8, 11 | `ADR-0008` acceptance (owner + tech); I1 channel/SKU confirmations | blocked (owner) — deliberately NOT built; the import slice stops at `validated`/`needs_review` and the `/sales` page marks Reconciliation "not yet implemented — row 12 is owner-gated on ADR-0008" |
-| 13 | Close + dashboards + menu engineering | P3 / epic 12 | `REC-003`, `REC-006`, `RPT-001`–`005`; `DEC-027`, `DEC-032`; `ADR-0007` (**Proposed**) | 12 | `ADR-0007` acceptance (tech); history/grain quality | blocked (owner) |
+| 11 | Import framework + external mappings | P3 / epic 10 | `SALE-002`, `SALE-004`, `SALE-007`, `SALE-008`; `DEC-025`, `DEC-033`, `DEC-035`, `DEC-041`; `ADR-0008` (accepted 2026-09-20) | 3 | none — legacy I19 as reference; I1/I15 Frontline shapes gate real profiles | done (uncommitted — migration `0022` (`import_run`/`import_staging_row`/`external_mapping`), vocabularies `IMPORT_STATUS`/`MAPPING_STATE`/`IMPORT_POSTING_POLICY`, domain `sales-mapping.ts` (`resolveExternalEntity`, SKU-first then external id, both `DEC-033` conflict directions), application `imports/**` (create/stage/validate/map/dispose/preview + list/get), web `/api/v1/imports/**` + `(app)/sales/**` + `seed-imports.ts`; verified 1087/1087 with `DATABASE_URL`) |
+| 12 | Sales + settlements + reconciliation | P3 / epic 11 | `SALE-001`–`011`, `PRICE-006`, `REC-001`–`006`; `DEC-026`, `DEC-035`, `DEC-040`, `DEC-042`, `DEC-043`, `DEC-045`; `ADR-0008` (**Accepted** 2026-09-20) | 8, 11 | none — `ADR-0008` accepted 2026-09-20 (inputs: I1 channel/SKU) | todo — next slice; the import slice stops at `validated`/`needs_review` and the `/sales` page still marks Reconciliation "not yet implemented" (stale text to update when row 12 lands) |
+| 13 | Close + dashboards + menu engineering | P3 / epic 12 | `REC-003`, `REC-006`, `RPT-001`–`005`; `DEC-027`, `DEC-032`; `ADR-0007` (**Accepted** 2026-09-20) | 12 | none — `ADR-0007` accepted 2026-09-20; history/grain quality | todo (after row 12) |
 | 14 | Workforce: employees, shifts, worked hours, payroll-input report | P3 / epics 13–15 | `WF-001`–`006`; `DEC-012`, `DEC-037`, `DEC-038` | 1 | privacy review / access matrix approved (`SEC-003`) | blocked (owner) |
 | 15 | Forecasts / budgets / planning | P4 / epic 16 | `FCST-001`–`003`, `PLAN-001`–`003`; `DEC-011`, `DEC-019` | 12, 13 | clean history / grain measured (I11, `DEC-011`) | blocked (data) |
 | 16 | Publishing integrations | P3 / epic 17 | `INTG-001`–`003`; `DEC-002`, `DEC-015`, `DEC-041`, `DEC-044`; `ADR-0011` (**Proposed**), `ADR-0008` | 3, 7, 12 | `ADR-0011` acceptance; per-source approval + named credentials owner (I18) | blocked (owner) |
@@ -158,9 +163,12 @@ dates assigned):
 - **~~`ADR-0004` jobs runtime~~ resolved (2026-09-20, `DEC-062`)** — pg-boss selected as
   the jobs runtime (`3505aa8` comparison). `ADR-0004` acceptance itself is still tracked
   with the remaining `Proposed` ADRs below.
-- **`ADR-0005` accepted (2026-09-20); `ADR-0007`–`0011` acceptance** — `ADR-0005` is
-  settled (slice 8 unblocked); the remaining `Proposed` ADRs gate
-  slices 12, 13, 16, 17, 18.
+- **`ADR-0005` accepted (2026-09-20); `ADR-0007` + `ADR-0008` accepted (2026-09-20);
+  `ADR-0009`/`0010`/`0011` acceptance** — `ADR-0005`, `ADR-0007` and `ADR-0008` are
+  settled (2026-09-20; `ADR-0007`/`ADR-0008` owner-delegated in-session, revertible;
+  slices 8 unblocked and rows 12/13 unblocked, with row 12 the next slice); the
+  remaining `Proposed` ADRs (`0009`/`0010`/`0011`) gate
+  slices 16, 17, 18.
 - **~~Multi-tenancy posture~~ resolved (2026-09-20, `DEC-061`)** — shared schema with
   `organization_id` row scoping.
 - **Component cost estimate** — `docs/phase0/PHASE0_CLOSEOUT_PLAN.md` §9 (P0-008);
@@ -412,10 +420,13 @@ dates assigned):
   surfaced by the row-11 build (uncommitted working tree at HEAD `7f6aa78`);
   record each resolution in `12_OPEN_DECISIONS.md` (next free id **`DEC-072`**);
   do not resolve silently:
-  1. Row 12 is gated on `ADR-0008` acceptance plus the I1 channel/SKU
-     confirmations; the import slice deliberately stops at
-     `validated`/`needs_review`. owner.
-  2. Row 13 (close/dashboards) is gated on `ADR-0007` (still Proposed). owner/TECH.
+  1. ~~Row 12 is gated on `ADR-0008` acceptance~~ resolved 2026-09-20:
+     `ADR-0008` is accepted (owner-delegated in-session); the I1 channel/SKU
+     confirmations remain recorded inputs and the import slice still stops at
+     `validated`/`needs_review` until row 12 lands.
+  2. ~~Row 13 (close/dashboards) is gated on `ADR-0007` (still Proposed)~~
+     resolved 2026-09-20: `ADR-0007` is accepted (owner-delegated); history/grain
+     quality remains the data gate.
   3. Sales/consumption grain ambiguity: `DEC-009` daily-per-location vs a single
      `sales_line` `source_id` — unresolved. owner/TECH.
   4. No import-profile table exists (profiles are implicit in the run payload).

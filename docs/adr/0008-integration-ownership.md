@@ -1,7 +1,7 @@
 # ADR-0008 — Integration ownership and system-of-record boundaries
 
-- **Status:** Proposed (needs owner + tech-lead acceptance)
-- This ADR is a proposal; implementation must not rely on it until status is `Accepted`.
+- **Status:** Accepted (2026-09-20)
+- Accepted 2026-09-20 (owner-delegated in-session; revertible). The open items below (per-integration ownership records, POS/Wolt API availability, allowed-operations approval) remain recorded inputs.
 - **Date:** 2026-09-13
 - **Deciders:** BUS, TECH, FIN
 - **Related:** DEC-001, DEC-002, DEC-015, DEC-016; ADR-0011; `06:79-97`

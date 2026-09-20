@@ -1,7 +1,7 @@
 # ADR-0007 — Reporting aggregate strategy
 
-- **Status:** Proposed (needs tech-lead acceptance)
-- This ADR is a proposal; implementation must not rely on it until status is `Accepted`.
+- **Status:** Accepted (2026-09-20)
+- Accepted 2026-09-20 (owner-delegated in-session; revertible). Aggregates are PostgreSQL-only, disposable and rebuildable; the open items below remain.
 - **Date:** 2026-09-13
 - **Deciders:** TECH, FIN
 - **Related:** `02:71`, `07:73`; RPT-001..005, FND-006
