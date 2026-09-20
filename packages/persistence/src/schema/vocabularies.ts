@@ -268,7 +268,7 @@ export const IMPORT_STATUS = [
   "superseded",
 ] as const;
 
-export const MAPPING_STATE = ["unmapped", "mapped", "ignored", "error"] as const;
+export const MAPPING_STATE = ["unmapped", "mapped", "ignored", "error", "conflict"] as const;
 
 export const IMPORT_POSTING_POLICY = ["all_or_nothing", "allow_partial"] as const;
 
@@ -287,6 +287,12 @@ export const RECONCILIATION_STATUS = [
 ] as const;
 
 export const OPTION_KIND = ["standalone", "attached", "included"] as const;
+
+// `DEC-072`: the `reconciliation_tolerance.kind` an effective-dated tolerance
+// config applies to — a settlement reconciliation (`sales_settlement`) or a
+// supplier-invoice reconciliation (`supplier_invoice`). From
+// `schemas/domain-enums.yaml` (`reconciliation_tolerance_kind`).
+export const RECONCILIATION_TOLERANCE_KIND = ["sales_settlement", "supplier_invoice"] as const;
 
 // `stock_movement.reason_code` for count/adjustment postings (`adjustment_reason`
 // in `schemas/domain-enums.yaml`). Exported here because the count-adjustment

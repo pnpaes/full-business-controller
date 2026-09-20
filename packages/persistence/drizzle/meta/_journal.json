@@ -169,6 +169,27 @@
       "when": 1789917983755,
       "tag": "0023_row12_sales_settlements_reconciliation",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1789938630318,
+      "tag": "0024_reconciliation_tolerance",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1789938645539,
+      "tag": "0025_mapping_state_conflict",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1789940067864,
+      "tag": "0026_sales_line_reversal_unique",
+      "breakpoints": true
     }
   ]
 }

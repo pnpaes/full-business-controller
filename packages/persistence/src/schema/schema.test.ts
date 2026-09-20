@@ -24,10 +24,10 @@ const tables = Object.values(schema).filter((value) => is(value, PgTable));
  * `stock_transfer`, `waste_event`), the slice-10 production additions
  * (`production_plan`, `production_batch`, `production_batch_input`,
  * `production_batch_output`), the slice-11 import-framework additions
- * (`import_run`, `import_staging_row`, `external_mapping`) and the slice-12
+ * (`import_run`, `import_staging_row`, `external_mapping`), the slice-12
  * sales/settlement/reconciliation additions (`sales_transaction`, `sales_line`,
- * `settlement`, `reconciliation`) from `schemas/phase1_2_draft.sql` /
- * `DATA_DICTIONARY`. */
+ * `settlement`, `reconciliation`) and the `DEC-072` `reconciliation_tolerance`
+ * config table, from `schemas/phase1_2_draft.sql` / `DATA_DICTIONARY`. */
 const EXPECTED_TABLES = [
   "addon_applicability",
   "allergen",
@@ -69,6 +69,7 @@ const EXPECTED_TABLES = [
   "recipe_line",
   "recipe_version",
   "reconciliation",
+  "reconciliation_tolerance",
   "role",
   "sales_line",
   "sales_transaction",

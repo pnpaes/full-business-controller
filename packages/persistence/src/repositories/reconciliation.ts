@@ -1,21 +1,25 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, gt, isNull, lte, or } from "drizzle-orm";
 
 import type { Database } from "../client";
-import { reconciliation } from "../schema";
+import { reconciliation, reconciliationTolerance } from "../schema";
 
 export type Reconciliation = typeof reconciliation.$inferSelect;
 export type NewReconciliation = typeof reconciliation.$inferInsert;
+export type ReconciliationTolerance = typeof reconciliationTolerance.$inferSelect;
+export type NewReconciliationTolerance = typeof reconciliationTolerance.$inferInsert;
 
 /*
  * Slice-12 reconciliation reads/writes (`REC-001`, `REC-005`; `DEC-026`,
- * `DEC-035`).
+ * `DEC-035`) plus the `DEC-072` effective-dated tolerance config.
  *
  * `reconciliation` carries `organization_id` directly, so every read and write
- * is organization-scoped (`DEC-061`). `tolerance` is a per-row snapshot: there
- * is no tolerance-configuration table (A3, open point (d)), so nothing here
- * resolves an effective-dated tolerance and a missing tolerance does not block
- * close. `scope_type` is unconstrained text (open point (j)) and `scope_id` is a
- * polymorphic plain uuid. Only the status/resolution trail is mutable; the
+ * is organization-scoped (`DEC-061`). `tolerance` is a per-row snapshot of what
+ * was applied; the effective-dated FIN-owned config now lives in
+ * `reconciliation_tolerance` (`DEC-072`, migration `0024`), read here by
+ * `findReconciliationTolerance`. Resolving the effective config and blocking
+ * close on a missing tolerance are application concerns, not enforced in this
+ * module. `scope_type` is unconstrained text (open point (j)) and `scope_id` is
+ * a polymorphic plain uuid. Only the status/resolution trail is mutable; the
  * amounts and period are creation-time facts.
  */
 
@@ -122,4 +126,99 @@ export async function updateReconciliation(
     )
     .returning();
   return rows[0];
+}
+
+/*
+ * `DEC-072` effective-dated tolerance configuration (`reconciliation_tolerance`,
+ * migration `0024`). The table carries `organization_id` directly, so every read
+ * and write is organization-scoped (`DEC-061`). The non-overlapping
+ * `[effective_from, effective_to)` window is enforced by the
+ * `reconciliation_tolerance_no_overlap` EXCLUDE constraint in `0024`; this
+ * module stores and reads the config rows, it does not compute the applied
+ * tolerance (`max(rate × |expected|, floor_amount)` is the application's job).
+ */
+
+export async function createReconciliationTolerance(
+  db: Database,
+  input: NewReconciliationTolerance,
+): Promise<ReconciliationTolerance> {
+  const rows = await db.insert(reconciliationTolerance).values(input).returning();
+  return rows[0]!;
+}
+
+export interface FindReconciliationToleranceQuery {
+  readonly organizationId: string;
+  readonly kind: string;
+  /** As-of date, `yyyy-mm-dd`; the effective row is the one containing it. */
+  readonly asOf: string;
+}
+
+/**
+ * The tolerance config for `(organizationId, kind)` effective at `asOf`, or
+ * `undefined` when no row covers that date. The window is half-open
+ * `[effective_from, effective_to)`: `effective_from <= asOf` and
+ * `(effective_to IS NULL OR effective_to > asOf)`. The `effective_to` boundary
+ * is **exclusive**: a row with `effective_to = X` is NOT effective at `X`; that
+ * date belongs to the next window, so a same-day boundary belongs to the later
+ * row only. The EXCLUDE constraint guarantees at most one match;
+ * `effective_from` descending is a defensive tie-break.
+ */
+export async function findReconciliationTolerance(
+  db: Database,
+  query: FindReconciliationToleranceQuery,
+): Promise<ReconciliationTolerance | undefined> {
+  const rows = await db
+    .select()
+    .from(reconciliationTolerance)
+    .where(
+      and(
+        eq(reconciliationTolerance.organizationId, query.organizationId),
+        eq(reconciliationTolerance.kind, query.kind),
+        lte(reconciliationTolerance.effectiveFrom, query.asOf),
+        or(
+          isNull(reconciliationTolerance.effectiveTo),
+          gt(reconciliationTolerance.effectiveTo, query.asOf),
+        ),
+      ),
+    )
+    .orderBy(desc(reconciliationTolerance.effectiveFrom), desc(reconciliationTolerance.id))
+    .limit(1);
+  return rows[0];
+}
+
+export interface ListReconciliationTolerancesQuery {
+  readonly organizationId: string;
+  readonly kind?: string;
+  readonly limit?: number;
+  readonly offset?: number;
+}
+
+/**
+ * Tolerance config rows for one organization, newest effective first
+ * (`effective_from`, then `id`), with an optional `kind` filter. Every filter is
+ * optional except the organization, so the caller never sees another tenant's
+ * rows. Paging is applied after the ordering.
+ */
+export async function listReconciliationTolerances(
+  db: Database,
+  query: ListReconciliationTolerancesQuery,
+): Promise<ReconciliationTolerance[]> {
+  const statement = db
+    .select()
+    .from(reconciliationTolerance)
+    .where(
+      and(
+        eq(reconciliationTolerance.organizationId, query.organizationId),
+        query.kind === undefined ? undefined : eq(reconciliationTolerance.kind, query.kind),
+      ),
+    )
+    .orderBy(desc(reconciliationTolerance.effectiveFrom), desc(reconciliationTolerance.id))
+    .$dynamic();
+  if (query.limit !== undefined) {
+    statement.limit(query.limit);
+  }
+  if (query.offset !== undefined) {
+    statement.offset(query.offset);
+  }
+  return statement;
 }

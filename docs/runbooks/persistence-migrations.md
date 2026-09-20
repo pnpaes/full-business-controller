@@ -47,9 +47,11 @@ npm run db:generate -- --custom --name=<name>   # empty file for hand-written SQ
 - `drizzle-kit generate` never touches the database; it diffs the TypeScript
   schema against `drizzle/meta/` snapshots.
 - Hand-written SQL is only for what drizzle-kit cannot express: extensions,
-  exclusion constraints, expression/partial indexes, deferrable FKs, triggers.
-  The columns those constraints reference are modelled as plain `uuid` in the
-  TypeScript schema so `generate` never fights them.
+  exclusion constraints, expression indexes, deferrable FKs, triggers. A
+  **partial** index is expressible — `uniqueIndex(...).on(...).where(sql\`…\`)`
+  is generated (see `0026_sales_line_reversal_unique.sql`) — while an
+  expression index is not. The columns raw constraints reference are modelled as
+  plain `uuid` in the TypeScript schema so `generate` never fights them.
 - Review the generated SQL before committing; migrations are schema code.
 
 ## Raw-SQL objects are invisible to drizzle-kit
@@ -64,7 +66,9 @@ and its `NULLS NOT DISTINCT` `unit_conversion_version_key` live only in
 `0005_unit_conversion_invariants.sql`; the three slice-6 cost-allocation
 exclusion constraints (`cost_pool_no_overlap`, `labor_rate_no_overlap`,
 `allocation_rule_no_overlap`) live only in
-`0012_cost_allocation_invariants.sql`; the slice-7
+`0012_cost_allocation_invariants.sql`; the `DEC-072` tolerance exclusion
+(`reconciliation_tolerance_no_overlap`) lives only in
+`0024_reconciliation_tolerance.sql`; the slice-7
 `cost_card_approved_scope_key` partial unique index (`NULLS NOT DISTINCT` on
 `(organization_id, product_variant_id, location_id, channel_id)` `WHERE state =
 'approved'`) lives only in `0016_cost_card_approved_scope.sql`; the slice-8
@@ -85,7 +89,7 @@ status) lives only in `0007_goods_receipt_line_checks.sql`; and the
 a state-gated version in `0010_recipe_version_draft_overlap.sql` (approved /
 submitted only, so drafts may overlap; `DEC-053`). This is the
 **hand-written invariants convention**: anything drizzle-kit cannot express
-(extensions, exclusion constraints, expression/partial indexes, deferrable FKs,
+(extensions, exclusion constraints, expression indexes, deferrable FKs,
 triggers, `NULLS NOT DISTINCT` keys) goes in a hand-written `*_invariants.sql`
 or `*_checks.sql` file that mirrors `0002`, and its columns stay plain
 `uuid`/`text` in the TypeScript schema so `generate` never fights it. All of
@@ -100,7 +104,8 @@ them manually is invisible to the tool.
 > two deferrable FKs, the append-only triggers, the `unit_conversion`
 > constraints, the state-gated `recipe_version_no_overlap`, the
 > `goods_receipt_line` guard, the three cost-allocation exclusion
-> constraints, the `cost_card_approved_scope_key` approval index and the
+> constraints, the `reconciliation_tolerance_no_overlap` exclusion, the
+> `cost_card_approved_scope_key` approval index and the
 > `stock_movement_source_guard` validation trigger (extended in `0020`, `0021`
 > and `0023`). Those
 > objects live only in
@@ -111,8 +116,9 @@ them manually is invisible to the tool.
 > `0016_cost_card_approved_scope.sql`,
 > `0017_stock_ledger_invariants.sql`,
 > `0020_slice9_counts_transfers_waste.sql`,
-> `0021_slice10_production.sql` and
-> `0023_row12_sales_settlements_reconciliation.sql`; use `generate` + `migrate`
+> `0021_slice10_production.sql`,
+> `0023_row12_sales_settlements_reconciliation.sql` and
+> `0024_reconciliation_tolerance.sql`; use `generate` + `migrate`
 > and the guard below.
 
 **Guard:** before committing any future generated migration, diff the database
@@ -155,11 +161,50 @@ because its target table varies by `source_type`.
 
 ## Pre-apply preflight for validating constraints and indexes
 
-Migrations 0014, 0016, 0017, 0018, 0019, 0020, 0021, 0022 and 0023 add objects
-that validate or build, so a failure aborts the whole transactional migration
-(drizzle-kit runs each file in one transaction). Run the matching preflight
-against the target database **before** applying and reconcile any hits;
-drizzle-kit cannot detect them because these files diff against existing data.
+Migrations 0014, 0016, 0017, 0018, 0019, 0020, 0021, 0022, 0023, 0024, 0025 and
+0026 add objects that validate or build, so a failure aborts the whole
+transactional migration (drizzle-kit runs each file in one transaction). Run the
+matching preflight against the target database **before** applying and
+reconcile any hits; drizzle-kit cannot detect them because these files diff
+against existing data.
+
+- **`0026_sales_line_reversal_unique.sql`** — the non-concurrent
+  `CREATE UNIQUE INDEX sales_line_reversal_of_id_key ON sales_line
+  ("reversal_of_id") WHERE "reversal_of_id" is not null` is journaled, so it
+  cannot use `CONCURRENTLY` and takes a write lock, and it fails if two lines
+  already share a non-null `reversal_of_id`. At first apply `sales_line` is empty
+  or reversal-free, so it is cheap; on a populated table, preflight before
+  applying:
+
+  ```sql
+  SELECT reversal_of_id, count(*)
+  FROM sales_line
+  WHERE reversal_of_id IS NOT NULL
+  GROUP BY 1
+  HAVING count(*) > 1;
+  ```
+
+  Any hit must be reconciled first: at most one reversal per line is legal
+  (`DEC-073`), so keep the intended reversal and resolve the duplicate before the
+  index is built. It adds no table and no row; the index is the database-level
+  backstop for `reverseSalesLine`, so two concurrent reversals cannot both post.
+
+- **`0025_mapping_state_conflict.sql`** — the two `DROP CONSTRAINT` /
+  `ADD CONSTRAINT` pairs recreate `import_staging_row_mapping_state_check` and
+  `sales_line_mapping_state_check` with the fifth value `conflict`. The re-added
+  checks are a **superset** of the four-value ones, so they never reject an
+  existing row and need no preflight; the `ALTER TABLE … ADD CONSTRAINT CHECK`
+  recreate takes an **`AccessExclusiveLock`** on the two tables and scans every
+  row to validate it, so schedule it on a large
+  `sales_line`/`import_staging_row` table.
+
+- **`0024_reconciliation_tolerance.sql`** — one new, empty table
+  (`reconciliation_tolerance`) with its checks, FK and
+  `reconciliation_tolerance_org_kind_idx` (cheap at first apply: the table is
+  empty), plus the hand-written `reconciliation_tolerance_no_overlap` EXCLUDE
+  constraint (also cheap on an empty table). Because the version key is the whole
+  constraint, the table must be empty or duplicate-free at apply; at first apply
+  it is empty. No separate preflight query is needed.
 
 - **`0023_row12_sales_settlements_reconciliation.sql`** — four new, empty tables
   (`sales_transaction`, `sales_line`, `settlement`, `reconciliation`) with their
@@ -580,6 +625,64 @@ only, so the down file is an explicit operator action, not an automatic one.
   `reconciliation`), so it is only safe while those tables carry nothing that
   must be preserved. Apply it manually with
   `psql "$DATABASE_URL" -f packages/persistence/drizzle/0023_row12_sales_settlements_reconciliation_down.sql`.
+- **0024 adds the DEC-072 effective-dated tolerance table and follows the down
+  convention:** `0024_reconciliation_tolerance.sql` is generated DDL for
+  `reconciliation_tolerance` (`organization_id`, `kind`, `rate numeric(9,6)`,
+  `floor_amount numeric(19,4)`, an effective window and the audit columns, with
+  the `reconciliation_tolerance_kind_check` / `_rate_check` / `_floor_check` /
+  `_effective_range_check` constraints) plus one hand-written statement: the
+  `reconciliation_tolerance_no_overlap` EXCLUDE constraint
+  (`(organization_id, kind)` and `daterange(effective_from, effective_to, '[)')`
+  `WITH &&`) that guarantees at most one tolerance per `(organization, kind)` at
+  any instant — the FND-004 rule drizzle-kit cannot express, mirroring the
+  `0012` cost-allocation exclusions. `DEC-072` keeps `reconciliation.tolerance`
+  as the per-row snapshot; this table is the FIN-owned config the application
+  resolves. It adds one table.
+  `0024_reconciliation_tolerance_down.sql` first drops the hand-written
+  `reconciliation_tolerance_no_overlap` constraint and then the
+  `reconciliation_tolerance` table inside one `BEGIN;`/`COMMIT;` (with
+  `DROP ... IF EXISTS`/`DROP TABLE IF EXISTS` so a half-applied manual run cannot
+  wedge). It is **destructive** — tolerance config rows are lost — so run it only
+  while that configuration need not be preserved (AGENTS.md Rule 2). Apply it
+  manually with
+  `psql "$DATABASE_URL" -f packages/persistence/drizzle/0024_reconciliation_tolerance_down.sql`.
+- **0025 adds the `conflict` mapping state and follows the down convention:**
+  `0025_mapping_state_conflict.sql` is generated DDL that drops and recreates
+  `import_staging_row_mapping_state_check` and
+  `sales_line_mapping_state_check` with the five-value `MAPPING_STATE`
+  (`unmapped`/`mapped`/`ignored`/`error`/`conflict`), so a `DEC-033` mapping
+  conflict is a first-class state instead of `error` + `error_code =
+  mapping_conflict` (`DEC-074`). It adds no table, no row and no hand-written
+  statement (drizzle-kit emits the check recreate because the vocabulary array
+  backs the constraint text). The table modules already use
+  `enumCheck(t.mappingState, MAPPING_STATE)`, so no table file changed.
+  `0025_mapping_state_conflict_down.sql` restores the four-value checks inside
+  one `BEGIN;`/`COMMIT;`. No table is touched, but re-adding the narrower checks
+  **validates existing rows**, so the down fails (and rolls back, leaving 0025 in
+  place) if any row already holds `mapping_state = 'conflict'` — resolve those
+  rows first. Run this preflight before applying the down path and reconcile
+  (re-map, or set back to `error` with the conflict in `error_code`) every hit:
+
+  ```sql
+  SELECT 'import_staging_row' AS table, count(*) FROM import_staging_row WHERE mapping_state = 'conflict'
+  UNION ALL
+  SELECT 'sales_line', count(*) FROM sales_line WHERE mapping_state = 'conflict';
+  ```
+
+  Apply it manually with
+  `psql "$DATABASE_URL" -f packages/persistence/drizzle/0025_mapping_state_conflict_down.sql`.
+- **0026 adds the sales-line reversal unique index and follows the down
+  convention:** `0026_sales_line_reversal_unique.sql` is generated DDL for
+  `sales_line_reversal_of_id_key`, a partial unique index on
+  `sales_line.reversal_of_id` `WHERE "reversal_of_id" is not null`, so at most
+  one line reverses a given line (`DEC-073`) — the database-level, race-safe
+  backstop for `reverseSalesLine`'s application pre-check. It adds no table and
+  no row.
+  `0026_sales_line_reversal_unique_down.sql` drops the index (no table, no row),
+  so it is safe to run whenever the invariant must be removed (for example
+  before a data repair); while dropped, only the application pre-check prevents a
+  double reversal. Apply it manually with
+  `psql "$DATABASE_URL" -f packages/persistence/drizzle/0026_sales_line_reversal_unique_down.sql`.
 
 **Re-applying after a manual down:** drizzle-kit tracks applied migrations in
 `drizzle.__drizzle_migrations`, not by comparing the schema, so a plain
@@ -596,7 +699,9 @@ for 0003, `… = 1789850858806` for 0004, `… = 1789851925634` for 0005,
 `… = 1789867797172` for 0016, `… = 1789895339462` for 0017,
 `… = 1789902579323` for 0018, `… = 1789904976754` for 0019,
 `… = 1789911710033` for 0020, `… = 1789913486015` for 0021,
-`… = 1789915583040` for 0022 and `… = 1789917983755` for 0023, then
+`… = 1789915583040` for 0022, `… = 1789917983755` for 0023,
+`… = 1789938630318` for 0024, `… = 1789938645539` for 0025 and
+`… = 1789940067864` for 0026, then
 `npm run db:migrate` (0003 verified 2026-09-19; 0005 rehearsed in the slice-3
 review follow-up; 0006 rehearsed with the slice-4 receiving work; 0007 and
 0008 rehearsed with the slice-4 review follow-up; 0009 rehearsed with the
@@ -611,7 +716,13 @@ production work; 0022 rehearsed with the slice-11 import-framework work; 0023
 rehearsed with the slice-12 sales/settlement/reconciliation persistence work —
 the down restored the `0021` guard, the ledger row was deleted and
 `db:migrate` re-applied it, leaving the database with all 62 tables and the
-`sales_line` guard branch).
+`sales_line` guard branch; 0024 and 0025 rehearsed with the DEC-072/DEC-074
+persistence work — 0024's down dropped the tolerance table and deleting its
+ledger row then re-applying restored it (63 tables), 0025's down restored the
+four-value checks with no row changes, then deleting its ledger row and
+re-applying restored the five-value ones, and 0026's down dropped the
+`sales_line_reversal_of_id_key` partial unique index with no row changes, then
+deleting its ledger row and re-applying restored it).
 A **full 0011 down** drops the tables the three 0012 constraints live on, so its
 replay must clear **both** ledger rows, not just 0011's:
 `DELETE FROM drizzle.__drizzle_migrations WHERE created_at IN (1789862475550, 1789862630158);`
@@ -723,23 +834,44 @@ implements it:
     `import_staging_row.linked_sales_line_id` **stays a plain `uuid` with no FK**
     (the deferred FK belongs to the posting slice that writes it) and
     `IMPORT_POSTING_POLICY` (`vocabularies.ts`) still backs no check.
-  - **(d)** **Tolerance configuration (A3) has no table**;
-    `reconciliation.tolerance` is a **per-row snapshot** of the tolerance applied
-    at reconciliation time, and the effective-dated FIN-owned configuration
-    (`DEC-026`) plus the "missing tolerance blocks close" rule are deferred.
+  - **(d)** ~~**Tolerance configuration (A3) has no table.**~~
+    **Closed by `DEC-072` (2026-09-20, migration `0024`):** the effective-dated
+    FIN-owned config is now the `reconciliation_tolerance` table keyed
+    `(organization_id, kind)` with a non-overlapping `[effective_from,
+    effective_to)` window (`reconciliation_tolerance_no_overlap`);
+    `reconciliation.tolerance` stays the per-row snapshot of what was applied.
+    Resolving the effective config and the "missing tolerance blocks close" rule
+    remain application concerns owned by the reconciliation slice, not schema
+    enforcement. The applied value remains `max(rate × |expected|,
+    floor_amount)` (`DEC-072`).
+  - **(e)** ~~**`MAPPING_STATE` has no `conflict` value** — conflicts are `error`
+    + `error_code = mapping_conflict`.~~ **Closed by `DEC-074` (2026-09-20,
+    migration `0025`):** `MAPPING_STATE` (`vocabularies.ts` +
+    `schemas/domain-enums.yaml`) now has five values
+    (`unmapped`/`mapped`/`ignored`/`error`/`conflict`), enforced by the recreated
+    `import_staging_row_mapping_state_check` and
+    `sales_line_mapping_state_check`; `error` stays for other mapping errors and
+    `error_code` remains detail.
 - **Slice-12 sales/settlement/reconciliation open (owner/TECH) points —
   recorded, do not resolve silently** (also in the
   `packages/persistence/src/schema/sales.ts` comment block; append each
   resolution to `12_OPEN_DECISIONS.md`):
-  - **(d)** No tolerance-configuration table (A3); `reconciliation.tolerance` is
-    a per-row snapshot (see the slice-11 point above).
+  - **(d)** ~~No tolerance-configuration table (A3); `reconciliation.tolerance`
+    is a per-row snapshot (see the slice-11 point above).~~ **Closed by
+    `DEC-072` (2026-09-20, migration `0024`)**: the `reconciliation_tolerance`
+    table now holds the effective-dated config and `reconciliation.tolerance`
+    stays the per-row snapshot (see the slice-11 point above).
   - **(e)** **`settlement.source_file_id` is a plain `uuid`** (`file_object` is
     absent — the same open point as `import_run.file_object_id`).
   - **(f)** **Close/lock/period tables are row 13** (`period_close`,
     `adjustment_period`, `daily_close`); none exist here.
-  - **(g)** **Sales-line reversal semantics (`DEC-028`) are not implemented**;
-    `sales_line.reversal_of_id` only records the self-reference and no guard
-    enforces a reversal pairing.
+  - **(g)** **Sales-line reversal semantics (`DEC-028`) are only partially
+    implemented.** The `0026` `sales_line_reversal_of_id_key` partial unique index
+    now enforces **at most one reversal per line** (`DEC-073`) at the database, so
+    two concurrent reversals cannot both post; the remaining `DEC-028` pairing
+    rules (the exact-negation check and the per-source semantics) are still
+    application-only, and `sales_line.reversal_of_id` records only the
+    self-reference.
   - **(h)** **`tax_code_id` vs `tax_rule_id` naming and the `applied_tax_rate`
     authority (A4) are unresolved.** The draft (`:655`) says `tax_code_id`;
     `DATA_DICTIONARY.md:709` and the row-12 work say `tax_rule_id`. The column is
@@ -839,6 +971,9 @@ session will not serialise against each other.
 | 0021 | `0021_slice10_production.sql` | Generated + hand-written: the four slice-10 tables — `production_plan`, `production_batch`, `production_batch_input`, `production_batch_output` — with their status/quantity/kind checks, FKs (including the batch→line cascade and the batch self-reversal FK) and indexes (the `production_batch_org_location_status_idx` plus the FK/line indexes). Hand-written: the deferred `waste_event.production_batch_id` FK (`NOT VALID` → `VALIDATE`) and `CREATE OR REPLACE FUNCTION stock_movement_source_guard` adding the `production_batch` branch. Down companion: `0021_slice10_production_down.sql` (restores the `0020` guard, drops the `waste_event` FK, drops the four tables — destructive) |
 | 0022 | `0022_row11_import_framework.sql` | Generated: the three slice-11 import-framework tables — `import_run`, `import_staging_row`, `external_mapping` — with their status (`import_run_status_check`), mapping-state (`import_staging_row_mapping_state_check`), period and effective-range checks, the uniques (`import_run_file_hash_key`, `import_staging_row_run_row_no_key`, `external_mapping_key`), the FKs (both org tables; the staging→run `ON DELETE cascade`) and the `import_run_org_source_idx` / `import_run_org_status_idx` indexes. No hand-written invariants: row 11 posts no stock movement, so `stock_movement_source_guard` is untouched (the `sales_line` guard branch belongs to row 12). Down companion: `0022_row11_import_framework_down.sql` (transactional `DROP TABLE IF EXISTS` in FK-safe order — destructive) |
 | 0023 | `0023_row12_sales_settlements_reconciliation.sql` | Generated + hand-written: the four slice-12 tables — `sales_transaction`, `sales_line`, `settlement`, `reconciliation` — with their checks (`sales_line_option_kind_check`, `sales_line_mapping_state_check`, `sales_line_applied_tax_rate_check`, `sales_line_option_parent_check`, `settlement_period_check`, `reconciliation_status_check`, `reconciliation_period_check`), the uniques (`sales_transaction_external_key`, `sales_line_transaction_line_key`), the FKs (both org tables; `sales_line`→transaction/variant/channel/tax_rule and its two self-FKs; `sales_transaction`→location/channel/`import_run`; `settlement`→channel) and the `sales_transaction_org_occurred_idx` / `sales_line_transaction_idx` / `sales_line_sku_idx` / `settlement_org_provider_period_idx` / `reconciliation_org_status_idx` / `reconciliation_org_scope_idx` indexes. Hand-written: `CREATE OR REPLACE FUNCTION stock_movement_source_guard` adding the `sales_line` branch. Down companion: `0023_row12_sales_settlements_reconciliation_down.sql` (restores the `0021` guard, drops the four tables in FK-safe order — destructive) |
+| 0024 | `0024_reconciliation_tolerance.sql` | Generated + hand-written: the `DEC-072` `reconciliation_tolerance` table (`organization_id`, `kind`, `rate numeric(9,6)`, `floor_amount numeric(19,4)`, `effective_from`/`effective_to` `date`, audit columns, the `reconciliation_tolerance_kind_check` / `_rate_check` / `_floor_check` / `_effective_range_check` constraints, the org FK and `reconciliation_tolerance_org_kind_idx`). Hand-written: the `reconciliation_tolerance_no_overlap` EXCLUDE constraint (`(organization_id, kind)`, `daterange(effective_from, effective_to, '[)')` `WITH &&`). Down companion: `0024_reconciliation_tolerance_down.sql` (drops the constraint then the table — destructive) |
+| 0025 | `0025_mapping_state_conflict.sql` | Generated: drops and recreates `import_staging_row_mapping_state_check` and `sales_line_mapping_state_check` with the five-value `MAPPING_STATE` including `conflict` (`DEC-074`). No table. Down companion: `0025_mapping_state_conflict_down.sql` (restores the four-value checks; re-add validates existing rows) |
+| 0026 | `0026_sales_line_reversal_unique.sql` | Generated: adds `sales_line_reversal_of_id_key`, a partial unique index on `sales_line.reversal_of_id` `WHERE "reversal_of_id" is not null`, so at most one line reverses a given line (`DEC-073`) — the race-safe database backstop for `reverseSalesLine`'s application pre-check. No table. Down companion: `0026_sales_line_reversal_unique_down.sql` (drops the index) |
 
 Order matters: extensions before DDL that calls `gen_random_uuid()`, and before
 the exclusion constraints. Verify with:
@@ -868,7 +1003,7 @@ DATABASE_URL=postgres://aquarela:aquarela@localhost:5432/aquarela npm run db:mig
 `public` alone leaves the ledger intact, so `db:migrate` reports success while
 restoring nothing. `DROP SCHEMA drizzle CASCADE` clears the ledger so all
 migrations replay from 0000. Verified: after this sequence `db:migrate`
-re-applies 0000–0023 and the database has all 62 tables plus both extensions
+re-applies 0000–0026 and the database has all 63 tables plus both extensions
 (0004 adds the four slice-3 master-data tables; 0006 adds the two slice-4
 receiving tables; 0007 adds the `goods_receipt_line` guard trigger — no table;
 0008 relaxes the `supplier_price` range check — no table; 0009 adds the two
@@ -891,12 +1026,16 @@ FK and replaces the `stock_movement_source_guard` body again — four tables;
 `import_staging_row`, `external_mapping` — and no hand-written invariant;
 0023 adds the four slice-12 sales/settlement/reconciliation tables and replaces
 the `stock_movement_source_guard` body to add the `sales_line` branch — four
-tables).
+tables; 0024 adds the `DEC-072` `reconciliation_tolerance` table and its
+`reconciliation_tolerance_no_overlap` EXCLUDE constraint — one table; 0025
+recreates the two five-value mapping-state checks — no table; 0026 adds the
+`sales_line_reversal_of_id_key` partial unique index — no table).
 0013–0019 were added after this replay was verified; all are additive and
-table-count-neutral. `0020`, `0021`, `0022` and `0023` are the only migrations
-after the replay was written to add tables (four, four, three and four
-respectively), so the 62-table figure above is the expected post-`0023` count
-(51 after `0020`, 55 after `0021`, 58 after `0022`); `0014`–`0023`'s
+table-count-neutral. `0020`, `0021`, `0022`, `0023` and `0024` are the only
+migrations after the replay was written to add tables (four, four, three, four
+and one respectively), so the 63-table figure above is the expected
+post-`0024` count (51 after `0020`, 55 after `0021`, 58 after `0022`, 62 after
+`0023`); `0025` and `0026` are table-neutral. `0014`–`0026`'s
 apply/re-run/down/re-apply was rehearsed on the local dev database 2026-09-20.
 
 Once real data exists, this path is no longer acceptable: use small atomic
@@ -1031,15 +1170,33 @@ After applying to an empty database the following were verified with `psql`:
   `{standalone, attached, included}` is rejected by
   `sales_line_option_kind_check`; an `attached`/`included` line without a
   `parent_line_id` is rejected by `sales_line_option_parent_check`; a
-  `mapping_state` outside `{unmapped, mapped, ignored, error}` is rejected by
-  `sales_line_mapping_state_check`; a negative `applied_tax_rate` is rejected by
-  `sales_line_applied_tax_rate_check`.
+  `mapping_state` outside the vocabulary is rejected by
+  `sales_line_mapping_state_check` (five values since `0025`, below); a negative
+  `applied_tax_rate` is rejected by `sales_line_applied_tax_rate_check`.
 - `settlement` (0023): a `period_end` before `period_start` is rejected by
   `settlement_period_check`.
 - `reconciliation` (0023): a `status` outside `reconciliation_status` is rejected
   by `reconciliation_status_check`; a `period_end` before `period_start` is
   rejected by `reconciliation_period_check`; an `updateReconciliation` from
   another organization matches no row (`DEC-061`).
+- `reconciliation_tolerance` (0024, `DEC-072`): an overlapping
+  `daterange(effective_from, effective_to)` `[)` window for the same
+  `(organization_id, kind)` is rejected by `reconciliation_tolerance_no_overlap`
+  (a row closing at `2026-07-01` and one opening the same day is not an overlap);
+  the same window on a different `kind` is accepted (the kind is part of the key);
+  a `kind` outside `{sales_settlement, supplier_invoice}` is rejected by
+  `reconciliation_tolerance_kind_check`, a negative `rate` by
+  `reconciliation_tolerance_rate_check` and a negative `floor_amount` by
+  `reconciliation_tolerance_floor_check`. `findReconciliationTolerance` resolves
+  the half-open `[effective_from, effective_to)` row effective at an as-of date.
+- `import_staging_row` / `sales_line` (0025, `DEC-074`): `mapping_state =
+  'conflict'` is now accepted by the recreated
+  `import_staging_row_mapping_state_check` and `sales_line_mapping_state_check`
+  (five values, `unmapped`/`mapped`/`ignored`/`error`/`conflict`); a value
+  outside that set is still rejected.
+- `sales_line` (0026, `DEC-073`): a second line with the same non-null
+  `reversal_of_id` is rejected by `sales_line_reversal_of_id_key`; many lines with
+  `reversal_of_id IS NULL` are accepted (the partial index ignores them).
 - Deferrable FKs: a `calculation_snapshot` and its `cost_card` can be inserted
   in the same transaction in either order and commit together.
 - `calculation_snapshot`: a plain `TRUNCATE` is blocked first by the FK from

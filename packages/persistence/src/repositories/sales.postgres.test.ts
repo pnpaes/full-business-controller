@@ -214,6 +214,14 @@ describe.skipIf(!databaseUrl)("sales repository", () => {
     });
   });
 
+  it("accepts the conflict line mapping state (DEC-074)", async () => {
+    await inRollback(client.db, async (tx) => {
+      const txn = await createTestSalesTransaction(tx, orgId);
+      const line = await createTestSalesLine(tx, orgId, txn.id, { mappingState: "conflict" });
+      expect(line.mappingState).toBe("conflict");
+    });
+  });
+
   it("rejects a negative applied_tax_rate", async () => {
     await inRollback(client.db, async (tx) => {
       const txn = await createTestSalesTransaction(tx, orgId);
@@ -232,6 +240,35 @@ describe.skipIf(!databaseUrl)("sales repository", () => {
         createTestSalesLine(tx, orgId, txn.id, { externalLineId: "same" }),
       );
       expect(cause.message).toMatch(/sales_line_transaction_line_key/);
+    });
+  });
+
+  it("allows many unreversed lines and rejects a second reversal of one line", async () => {
+    await inRollback(client.db, async (tx) => {
+      const txn = await createTestSalesTransaction(tx, orgId);
+      const original = await createTestSalesLine(tx, orgId, txn.id, { externalLineId: "orig" });
+      const other = await createTestSalesLine(tx, orgId, txn.id, { externalLineId: "other" });
+
+      // Ordinary lines carry `reversal_of_id IS NULL`; the partial index does not
+      // constrain them, so many may coexist.
+      expect(original.reversalOfId).toBeNull();
+      expect(other.reversalOfId).toBeNull();
+
+      const reversal = await createTestSalesLine(tx, orgId, txn.id, {
+        reversalOfId: original.id,
+        quantity: "-1",
+      });
+      expect(reversal.reversalOfId).toBe(original.id);
+
+      // A second reversal of the same line is rejected at the database by the
+      // partial unique index (`DEC-073`) — the backstop for `reverseSalesLine`.
+      const cause = await rejectionCause(
+        createTestSalesLine(tx, orgId, txn.id, {
+          reversalOfId: original.id,
+          quantity: "-1",
+        }),
+      );
+      expect(cause.message).toMatch(/sales_line_reversal_of_id_key/);
     });
   });
 

@@ -7,6 +7,7 @@ import {
   pgTable,
   text,
   unique,
+  uniqueIndex,
   uuid,
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
@@ -27,7 +28,13 @@ import {
 import { channel, location, organization } from "./organization";
 import { productVariant } from "./products";
 import { taxRule } from "./tax";
-import { IMPORT_STATUS, MAPPING_STATE, OPTION_KIND, RECONCILIATION_STATUS } from "./vocabularies";
+import {
+  IMPORT_STATUS,
+  MAPPING_STATE,
+  OPTION_KIND,
+  RECONCILIATION_STATUS,
+  RECONCILIATION_TOLERANCE_KIND,
+} from "./vocabularies";
 
 /*
  * Slices 11–12 — import framework + external mappings + sales/settlements/
@@ -66,10 +73,14 @@ import { IMPORT_STATUS, MAPPING_STATE, OPTION_KIND, RECONCILIATION_STATUS } from
  *     the posting slice that writes it, not to this schema-only row.
  *
  * Slice-12:
- * (d) **Tolerance configuration (A3) has no table.** `reconciliation.tolerance`
- *     is a **per-row snapshot** of the tolerance applied at reconciliation
- *     time; the effective-dated FIN-owned configuration (`DEC-026`) is
- *     deferred, and a missing tolerance blocking close is not enforced here.
+ * (d) **Tolerance configuration (A3) is now a table.** `DEC-072` (accepted
+ *     2026-09-20, migration `0024`) models the effective-dated FIN-owned config
+ *     as `reconciliation_tolerance`, keyed `(organization_id, kind)` with a
+ *     non-overlapping `[effective_from, effective_to)` window (the
+ *     `reconciliation_tolerance_no_overlap` EXCLUDE in `0024`). The
+ *     `reconciliation.tolerance` column stays a **per-row snapshot** of what was
+ *     applied. Resolving the effective config and blocking close on a missing
+ *     tolerance are application concerns, not enforced by the schema here.
  * (e) **`source_file_id` is a plain `uuid`** on `settlement` (`file_object` is
  *     absent), like `import_run.file_object_id` (open point (b)).
  * (f) **Close/lock/period tables are row 13** (`period_close`,
@@ -280,6 +291,13 @@ export const salesLine = pgTable(
       sql`${t.optionKind} = 'standalone' or ${t.parentLineId} is not null`,
     ),
     unique("sales_line_transaction_line_key").on(t.salesTransactionId, t.externalLineId),
+    // At most one reversal per line (`DEC-073`): the partial unique index is the
+    // DB-level backstop for `reverseSalesLine`'s pre-check, so two concurrent
+    // reversals cannot both post. Rows with `reversal_of_id IS NULL` (every
+    // ordinary line) are unconstrained.
+    uniqueIndex("sales_line_reversal_of_id_key")
+      .on(t.reversalOfId)
+      .where(sql`${t.reversalOfId} is not null`),
     index("sales_line_transaction_idx").on(t.salesTransactionId),
     index("sales_line_sku_idx").on(t.organizationId, t.sku),
   ],
@@ -323,7 +341,8 @@ export const settlement = pgTable(
  * `scope_id` is a plain uuid (polymorphic target); `scope_type` is
  * unconstrained text (open point (j)); `owner_id` is a plain uuid (no authority
  * requires the `app_user` FK — deferred-FK convention). `tolerance` is a
- * per-row snapshot, not effective-dated config (open point (d)).
+ * per-row snapshot of what was applied; the effective-dated config lives in
+ * `reconciliation_tolerance` (`DEC-072`).
  */
 export const reconciliation = pgTable(
   "reconciliation",
@@ -354,5 +373,44 @@ export const reconciliation = pgTable(
       t.scopeId,
       t.periodStart,
     ),
+  ],
+);
+
+/**
+ * `reconciliation_tolerance` (`DEC-072`, migration `0024`; `REC-001`/`005`).
+ * The effective-dated, FIN-owned tolerance configuration `DEC-026` describes:
+ * keyed `(organization_id, kind)` with a non-overlapping effective window
+ * `[effective_from, effective_to)`. The applied tolerance is
+ * `max(rate × |expected|, floor_amount)` at money scale (HALF_UP), resolved by
+ * the application — the schema stores the config row, not the resolved value
+ * (`reconciliation.tolerance` remains the per-row snapshot).
+ *
+ * The non-overlap guarantee is the hand-written
+ * `reconciliation_tolerance_no_overlap` EXCLUDE constraint in
+ * `0024_reconciliation_tolerance.sql` (drizzle-kit cannot express
+ * `EXCLUDE USING gist`), so `effective_from`/`effective_to` stay plain `date`
+ * here (hand-written invariants convention).
+ */
+export const reconciliationTolerance = pgTable(
+  "reconciliation_tolerance",
+  {
+    id: uuidPk(),
+    organizationId: orgId().references(() => organization.id),
+    kind: text("kind").notNull(),
+    rate: rate("rate").notNull(),
+    floorAmount: money("floor_amount").notNull(),
+    effectiveFrom: date("effective_from").notNull(),
+    effectiveTo: date("effective_to"),
+    ...auditColumns(),
+  },
+  (t) => [
+    check("reconciliation_tolerance_kind_check", enumCheck(t.kind, RECONCILIATION_TOLERANCE_KIND)),
+    check("reconciliation_tolerance_rate_check", sql`${t.rate} >= 0`),
+    check("reconciliation_tolerance_floor_check", sql`${t.floorAmount} >= 0`),
+    check(
+      "reconciliation_tolerance_effective_range_check",
+      rangeCheck(t.effectiveFrom, t.effectiveTo),
+    ),
+    index("reconciliation_tolerance_org_kind_idx").on(t.organizationId, t.kind),
   ],
 );

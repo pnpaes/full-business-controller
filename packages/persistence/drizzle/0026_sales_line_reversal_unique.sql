@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "sales_line_reversal_of_id_key" ON "sales_line" USING btree ("reversal_of_id") WHERE "sales_line"."reversal_of_id" is not null;

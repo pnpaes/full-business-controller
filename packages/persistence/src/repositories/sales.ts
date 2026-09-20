@@ -119,6 +119,33 @@ export async function findSalesLine(
   return rows[0];
 }
 
+/**
+ * The line that reverses `salesLineId` (i.e. its `reversal_of_id`), organization
+ * scoped (`DEC-061`), or `undefined`. Supports the `DEC-028`/`DEC-073` reversal
+ * flow: an application command checks this before reversing so a line already
+ * reversed is rejected rather than double-reversed. That pre-check is the
+ * friendly guard; the `sales_line_reversal_of_id_key` partial unique index
+ * (migration `0026`, `WHERE "reversal_of_id" IS NOT NULL`) is the DB-level
+ * backstop enforcing at most one reversal per line, so at most one row is
+ * returned.
+ */
+export async function findSalesLineReversal(
+  db: Database,
+  query: FindSalesLineQuery,
+): Promise<SalesLine | undefined> {
+  const rows = await db
+    .select()
+    .from(salesLine)
+    .where(
+      and(
+        eq(salesLine.reversalOfId, query.salesLineId),
+        eq(salesLine.organizationId, query.organizationId),
+      ),
+    )
+    .limit(1);
+  return rows[0];
+}
+
 export interface ListSalesLinesQuery {
   readonly organizationId: string;
   readonly salesTransactionId: string;

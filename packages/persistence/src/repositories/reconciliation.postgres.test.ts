@@ -5,7 +5,10 @@ import { createDb, type DbClient } from "../client";
 import { location, organization, reconciliation } from "../schema";
 import {
   createReconciliation,
+  createReconciliationTolerance,
   findReconciliation,
+  findReconciliationTolerance,
+  listReconciliationTolerances,
   listReconciliations,
   updateReconciliation,
 } from "./reconciliation";
@@ -13,6 +16,7 @@ import {
   createTestLocation,
   createTestOrganization,
   createTestReconciliation,
+  createTestReconciliationTolerance,
   inRollback,
   rejectionCause,
   uniqueSuffix,
@@ -162,6 +166,164 @@ describe.skipIf(!databaseUrl)("reconciliation repository", () => {
         reconciliationId: created.id,
       });
       expect(unchanged?.status).toBe("resolved");
+    });
+  });
+
+  it("creates a tolerance and resolves the effective row on a half-open window (DEC-072)", async () => {
+    await inRollback(client.db, async (tx) => {
+      const early = await createReconciliationTolerance(tx, {
+        organizationId: orgId,
+        kind: "sales_settlement",
+        rate: "0.005",
+        floorAmount: "5.0000",
+        effectiveFrom: "2026-01-01",
+        effectiveTo: "2026-07-01",
+      });
+      const late = await createTestReconciliationTolerance(tx, orgId, {
+        kind: "sales_settlement",
+        rate: "0.010000",
+        floorAmount: "10.0000",
+        effectiveFrom: "2026-07-01",
+      });
+      expect(early.effectiveTo).toBe("2026-07-01");
+      expect(late.effectiveTo).toBeNull();
+
+      // Inside the first window.
+      expect(
+        (
+          await findReconciliationTolerance(tx, {
+            organizationId: orgId,
+            kind: "sales_settlement",
+            asOf: "2026-03-15",
+          })
+        )?.id,
+      ).toBe(early.id);
+
+      // The `to` boundary is exclusive: `2026-07-01` belongs to the later row.
+      expect(
+        (
+          await findReconciliationTolerance(tx, {
+            organizationId: orgId,
+            kind: "sales_settlement",
+            asOf: "2026-07-01",
+          })
+        )?.id,
+      ).toBe(late.id);
+
+      // Before the first window and for a kind/org with no config: no row.
+      expect(
+        await findReconciliationTolerance(tx, {
+          organizationId: orgId,
+          kind: "sales_settlement",
+          asOf: "2025-12-31",
+        }),
+      ).toBeUndefined();
+      expect(
+        await findReconciliationTolerance(tx, {
+          organizationId: orgId,
+          kind: "supplier_invoice",
+          asOf: "2026-03-15",
+        }),
+      ).toBeUndefined();
+      const otherOrgId = await createTestOrganization(tx, uniqueSuffix());
+      expect(
+        await findReconciliationTolerance(tx, {
+          organizationId: otherOrgId,
+          kind: "sales_settlement",
+          asOf: "2026-03-15",
+        }),
+      ).toBeUndefined();
+    });
+  });
+
+  it("lists tolerances newest effective first with a kind filter and paging", async () => {
+    await inRollback(client.db, async (tx) => {
+      const january = await createTestReconciliationTolerance(tx, orgId, {
+        kind: "sales_settlement",
+        effectiveFrom: "2026-01-01",
+        effectiveTo: "2026-06-01",
+      });
+      const june = await createTestReconciliationTolerance(tx, orgId, {
+        kind: "sales_settlement",
+        effectiveFrom: "2026-06-01",
+      });
+      const invoice = await createTestReconciliationTolerance(tx, orgId, {
+        kind: "supplier_invoice",
+        effectiveFrom: "2026-02-01",
+      });
+
+      const all = await listReconciliationTolerances(tx, { organizationId: orgId });
+      expect(all.map((row) => row.id)).toEqual([june.id, invoice.id, january.id]);
+
+      const settlements = await listReconciliationTolerances(tx, {
+        organizationId: orgId,
+        kind: "sales_settlement",
+      });
+      expect(settlements.map((row) => row.id)).toEqual([june.id, january.id]);
+
+      const paged = await listReconciliationTolerances(tx, {
+        organizationId: orgId,
+        kind: "sales_settlement",
+        limit: 1,
+        offset: 1,
+      });
+      expect(paged.map((row) => row.id)).toEqual([january.id]);
+    });
+  });
+
+  it("rejects an overlapping effective window for the same (organization, kind)", async () => {
+    await inRollback(client.db, async (tx) => {
+      await createTestReconciliationTolerance(tx, orgId, {
+        kind: "sales_settlement",
+        effectiveFrom: "2026-01-01",
+        effectiveTo: "2026-07-01",
+      });
+
+      // The kind is part of the version key, so the same window on another kind
+      // is allowed. Insert it before the expected failure: a failed statement
+      // aborts the transaction, so nothing may follow it.
+      const other = await createTestReconciliationTolerance(tx, orgId, {
+        kind: "supplier_invoice",
+        effectiveFrom: "2026-06-01",
+        effectiveTo: "2026-12-31",
+      });
+      expect(other.kind).toBe("supplier_invoice");
+
+      const cause = await rejectionCause(
+        createTestReconciliationTolerance(tx, orgId, {
+          kind: "sales_settlement",
+          effectiveFrom: "2026-06-01",
+          effectiveTo: "2026-12-31",
+        }),
+      );
+      expect(cause.message).toMatch(/reconciliation_tolerance_no_overlap/);
+    });
+  });
+
+  it("rejects an out-of-vocabulary kind", async () => {
+    await inRollback(client.db, async (tx) => {
+      const cause = await rejectionCause(
+        createTestReconciliationTolerance(tx, orgId, { kind: "bogus" }),
+      );
+      expect(cause.message).toMatch(/reconciliation_tolerance_kind_check/);
+    });
+  });
+
+  it("rejects a negative rate", async () => {
+    await inRollback(client.db, async (tx) => {
+      const cause = await rejectionCause(
+        createTestReconciliationTolerance(tx, orgId, { rate: "-0.01" }),
+      );
+      expect(cause.message).toMatch(/reconciliation_tolerance_rate_check/);
+    });
+  });
+
+  it("rejects a negative floor amount", async () => {
+    await inRollback(client.db, async (tx) => {
+      const cause = await rejectionCause(
+        createTestReconciliationTolerance(tx, orgId, { floorAmount: "-1.0000" }),
+      );
+      expect(cause.message).toMatch(/reconciliation_tolerance_floor_check/);
     });
   });
 

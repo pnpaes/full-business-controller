@@ -227,6 +227,19 @@ describe.skipIf(!databaseUrl)("imports repository", () => {
     });
   });
 
+  it("accepts the conflict staging mapping state (DEC-074)", async () => {
+    await inRollback(client.db, async (tx) => {
+      const run = await createTestImportRun(tx, orgId);
+      const row = await createTestImportStagingRow(tx, run.id, {
+        sourceRowNo: 7,
+        mappingState: "conflict",
+        errorCode: "mapping_conflict",
+      });
+      expect(row.mappingState).toBe("conflict");
+      expect(row.errorCode).toBe("mapping_conflict");
+    });
+  });
+
   it("cascades staging-row deletes from the parent run", async () => {
     await inRollback(client.db, async (tx) => {
       const run = await createTestImportRun(tx, orgId);

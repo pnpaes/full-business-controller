@@ -17,6 +17,7 @@ import {
   productionBatchOutput,
   productionPlan,
   reconciliation,
+  reconciliationTolerance,
   recipe,
   recipeVersion,
   role,
@@ -641,6 +642,25 @@ export async function createTestReconciliation(
       actualAmount: "100",
       tolerance: "5",
       difference: "0",
+      ...overrides,
+    })
+    .returning();
+  return rows[0]!;
+}
+
+export async function createTestReconciliationTolerance(
+  db: Database,
+  organizationId: string,
+  overrides: Partial<typeof reconciliationTolerance.$inferInsert> = {},
+): Promise<typeof reconciliationTolerance.$inferSelect> {
+  const rows = await db
+    .insert(reconciliationTolerance)
+    .values({
+      organizationId,
+      kind: "sales_settlement",
+      rate: "0.005",
+      floorAmount: "5.0000",
+      effectiveFrom: "2026-01-01",
       ...overrides,
     })
     .returning();
