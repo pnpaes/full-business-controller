@@ -10,79 +10,79 @@ duplicate their content.
 **Say "resume the work" and start here.** A fresh session must be able to continue
 from this section alone.
 
-**Next task:** finish **slice 9 — counts + transfers + waste** (`docs/BUILD_ROADMAP.md`
-§4 row 9; refs `INV-004`–`007`, `INV-009`, `WASTE-001`/`002`; `DEC-017`, `DEC-018`,
-`DEC-029`). Its **persistence layer is done and committed** (migration `0020`:
-`stock_count`/`stock_count_line`/`stock_transfer`, `stock_movement.transfer_id`,
-source guard extended — inside `b525f30`); **Wave 2b — the slice-9 application +
-`/api/v1` + screens for counts, transfers and waste — is in flight in three parallel
-background agents**, each owning `packages/application/src/{counts,transfers,waste}/**`,
-`apps/web/app/api/v1/{counts,transfers,waste}/**`,
-`apps/web/app/(app)/inventory/{counts,transfers,waste}/**` and
-`apps/web/scripts/seed-*.ts`. HEAD is now `6c69f7f` on `main` (five layer commits,
-nothing pushed; slices 8 committed, plus design system/app shell/screens).
+**Next task:** finish the **slice-10 web layer** and then **commit the slice-9/10
+work**. Slices 9 (counts + transfers + waste — application verticals, APIs, screens,
+seeds, tests) and 10 backend (migration `0021`, domain `production.ts`, application
+`production/**` incl. atomic `completeProductionBatch`) are **complete but
+uncommitted** at HEAD `2a5799e`; the slice-10 web layer (API + `/production` screens
+
+- seed) is in flight.
 
 **Programme direction (standing user instruction):** proceed autonomously — per task:
 parallel background agents → adversarial review + fixes → document status and next
-steps → commit → next task. Slice-9's commit resumes **per-task feature commits**
-(the slice-8/9 backlog was committed in dependency-ordered layer commits — persistence
-→ domain → application → web/ui → infra — because the migrations/schema barrels shared
-files across tasks).
+steps → commit → next task.
 
-**Scope (do):** collect the Wave-2b agent output; run the risk-scaled adversarial
-review (`docs/BUILD_ROADMAP.md` §2 — normal slice: 1 reviewer; this one touches
-schema-adjacent application code, so e.g. `reviewer-qwen` + `reviewer-glm`/
-`reviewer-minimax`); reconcile findings (record accepted/declined with reasons); fix
-defects; re-verify with the commands below; update this file and
-`docs/BUILD_ROADMAP.md` §4/§5; then **commit slice 9 atomically per feature area**
-(verification evidence + rollback approach in the body, per `AGENTS.md` Rule 2), and
-start **slice 10 — production planning + batches** (`docs/BUILD_ROADMAP.md` §4 row 10;
-refs `PROD-001`–`005`; `DEC-005`, `DEC-031`, `DEC-036`; depends on slices 5 and 8;
-gate: none) in the same or a later session.
+**Scope (do):** finish the slice-10 web layer
+(`apps/web/app/api/v1/production/**`, `apps/web/app/(app)/production/**`,
+`apps/web/scripts/seed-production.ts`); run the risk-scaled adversarial review
+(`docs/BUILD_ROADMAP.md` §2 — the slice-9/10 work is schema-adjacent and concurrent,
+so e.g. `reviewer-qwen` + `reviewer-glm`/`reviewer-minimax`); reconcile findings
+(record accepted/declined with reasons); fix defects; re-verify with the commands
+below; then **commit in two commits** — (1) a **stock-ops commit** (slice 9 + the
+slice-10 backend share barrel files and cannot be split further), and (2) a
+**production-web commit** (the slice-10 API + `/production` screens + seed) — each
+with verification evidence + rollback approach in the body (per `AGENTS.md` Rule 2);
+update `CONTEXT.md` and `docs/BUILD_ROADMAP.md` §1/§4/§5; then start the
+sales-import/reconciliation slice (`docs/BUILD_ROADMAP.md` §4 rows 11–12;
+`ADR-0008` still Proposed — row 11 is not gated by it, row 12 is).
 
-**Scope (do not):** do not amend or rewrite history (the five commits above are
-already made; nothing pushed); do not edit migrations `0000–0020`; do not deploy,
-`terraform apply`, or write externally (per-source approval remains `DEC-015`);
-invent no decision — append from **`DEC-066`** only if genuinely needed; do not
-rewrite the specification inputs (`00_README.md` … `13_`, `docs/phase0/`, `schemas/`,
-`samples/`).
+**Scope (do not):** do not amend or rewrite history (the six commits through
+`2a5799e` are already made; nothing pushed); do not edit migrations `0000–0021`;
+do not deploy, `terraform apply`, or write externally (per-source approval remains
+`DEC-015`); invent no decision — append from **`DEC-072`** only if genuinely needed;
+do not rewrite the specification inputs (`00_README.md` … `13_`, `docs/phase0/`,
+`schemas/`, `samples/`).
 
-**Files/paths:** `packages/application/src/{counts,transfers,waste}/**`, (as agents
-deliver) `packages/application/src/index.ts`, `apps/web/app/api/v1/{counts,transfers,waste}/**`,
-`apps/web/app/(app)/inventory/{counts,transfers,waste}/**`, `apps/web/scripts/seed-*.ts`,
-`docs/runbooks/persistence-migrations.md` (only if a new migration `0021+` is added),
-`docs/BUILD_ROADMAP.md`, `12_OPEN_DECISIONS.md` (only if a new decision is needed,
-from `DEC-066`), `CONTEXT.md`.
+**Files/paths:** the in-flight slice-10 web files above; barrel files shared with
+slice 9 (`packages/application/src/index.ts`, `packages/domain/src/index.ts`,
+`packages/persistence/src/index.ts`, `packages/persistence/src/schema/index.ts`,
+`packages/persistence/src/schema/vocabularies.ts`, `drizzle/_journal.json` — do not
+try to split slice 9 from slice 10 backend into separate commits);
+`docs/runbooks/persistence-migrations.md` (only if a new migration `0022+` is added);
+`docs/BUILD_ROADMAP.md`; `12_OPEN_DECISIONS.md` (only if a new decision is needed,
+from `DEC-072`); `CONTEXT.md`.
 
 **Acceptance / verification:** `nvm use 22`, then `npm run lint`, `npm run
-typecheck`, `npm run test` (both with and without `DATABASE_URL` — current
-baseline: **842/842 with it; 691 passed / 151 skipped without**), `npm run build`,
-`npm run format:check`, `npm audit --omit=dev` = 0; `db:migrate` through the current
-head (`0020`) re-runs as a no-op; if a slice-9 migration `0021+` is added it must be
-additive with a rehearsed down path; curl-level checks equivalent to the existing
-screens (signed-out → 401; signed-in → 200) for the new routes.
+typecheck`, `npm run test` (with `DATABASE_URL` — current baseline: **989/989**;
+without it the integration tests skip), `npm run build`, `npm run format:check`,
+`npm audit --omit=dev` = 0; `db:migrate` applies through the current head (`0021`)
+and re-runs as a no-op; any new migration `0022+` must be additive with a rehearsed
+down path; curl-level checks equivalent to the existing screens (signed-out → 401;
+signed-in → 200) for the `/production` routes.
 
-**Open inputs shaping Wave 2b (record in `docs/BUILD_ROADMAP.md` §5, do not
-decide):** the 13 slice-9 open points listed there (receipts not wired to the ledger;
-`DEC-028` per-source reversal semantics; `lotTracked` unenforced; the
-reconciled-downstream-sales reversal gate; source-guard coverage;
-`DEC-009` daily theoretical consumption; `stock_balance` writer policy; no
-`location`-row surface; **no transfer line table**; positive count-variance
-`unit_cost` source; `waste_event.value_method`/`value` vs the ledger's moving
-average; count `scope` shape and recount thresholds; no transfer-discrepancy
-exception table). Next free decision id `DEC-066`.
+**Open inputs (recorded, do not decide):** the slice-9/10 open owner questions in
+`docs/BUILD_ROADMAP.md` §5 ("Slice-9/10 open owner questions": output-cost
+allocation across multiple outputs/by-products, FIN; yield-variance tolerance +
+exception store, `PROD-003`, FIN+TECH; WIP/source-draw storage area, OPS+TECH;
+`production_plan` line/quantity model + status vocabulary, OPS+TECH; lot-tracked
+cross-location transfer policy, OPS; per-source reversal semantics `DEC-028` not
+yet implemented; receipts not wired to the ledger; `lotTracked` unenforced;
+`DEC-009` daily theoretical consumption) — plus the standing slice-8/9 open points
+in the same section. Accepted technical defaults are now `DEC-066`–`DEC-071`;
+next free decision id `DEC-072`.
 
-**Parallel owner action — golden-fixture sign-off:** the six golden fixtures are now
+**Parallel owner action — golden-fixture sign-off:** the six golden fixtures are
 prepared as machine-readable JSON under `tests/fixtures/` (`DEC-065`) with the
 sign-off trail ready (six files, the reconciliation test
 `packages/domain/src/golden-fixtures.test.ts`, and the sign-off mechanics — see
 `docs/phase0/GOLDEN_FIXTURES.md`); finance + product owner sign. Until signed, no
 cost is "verified"; `I8`/`I9` still gate the real rates behind the fixtures.
 
-**After slice 9:** slice 10 (production planning + batches); then, per the roadmap
-order, the sales import/reconciliation slices (`ADR-0008` still Proposed), then
-insights/month-close. Deployment rehearsal stays parked on its prerequisite inputs
-(see "Open decisions / inputs"; per-task commitment continues before it).
+**After the slice-9/10 commits:** the sales import/reconciliation slices
+(`docs/BUILD_ROADMAP.md` §4 rows 11–12; `ADR-0008` still Proposed), then
+insights/month-close, then price versions + PRICE-002/003 (`DEC-064`). Deployment
+rehearsal stays parked on its prerequisite inputs (see "Open decisions / inputs";
+per-task commitment continues before it).
 
 ## What this is
 
@@ -95,14 +95,15 @@ UI token foundation, master-data slices 2–3, slice 4 (receipt + price history 
 landed cost), slice 5 (recipes), slice 6 (operating costs + labour + allocation),
 slice 7 (cost card + snapshots + price scenario + approval), slice 8 (stock
 ledger + balances + lots/storage) and the design system/app shell/screens — all
-committed — with slice 9 (counts + transfers + waste; persistence done) in
-progress.
+committed — with **slice 9 (counts + transfers + waste) complete and slice 10
+(production planning + batches) backend complete** (both uncommitted; the
+slice-10 web layer is in flight).
 
 ## Where things live
 
 - `00_README.md` … `13_AGENT_BUILD_BRIEF.md` — the specification package
   (inputs, rarely edited). Start with `00_README.md`.
-- `12_OPEN_DECISIONS.md` — the accepted decisions (DEC-001…DEC-065); the
+- `12_OPEN_DECISIONS.md` — the accepted decisions (DEC-001…DEC-071); the
   authority. New decisions are appended here.
 - `docs/phase0/` — close-out plan, calculation contract, data dictionary, golden
   fixtures, source-data request, notes. See `docs/phase0/PHASE0_CLOSEOUT_PLAN.md`
@@ -122,45 +123,44 @@ progress.
 
 ## Current status
 
-- **As of:** 2026-09-20 — branch `main`; HEAD `6c69f7f`; nothing pushed
-  (previous HEAD `f7b1db7`). **Slice 8 (stock ledger + balances + lots/storage) is
-  COMMITTED**, together with the design system, app shell and first screens, in five
-  dependency-ordered **layer commits** on `main` (the migrations/schema barrels shared
-  files across tasks, so the backlog was committed persistence → domain → application
-  → web/ui → infra; per-task feature commits resume from here):
-  `583da3f` feat(infra) deploy env vars; `b525f30` feat(persistence) stock ledger +
-  stock-ops schema, repositories, migrations `0017`–`0020`; `40e736b` feat(domain)
-  stock valuation + client-safe subpath exports; `c91e512` feat(application)
-  inventory/catalog/recipes/costing/receiving slices; `6c69f7f` feat(web) design
-  system, app shell and product screens. **Delivered and verified**: slice 8 —
-  moving-weighted-average valuation, reversal/revaluation, the DEC-010
-  negative-stock manager gate, per-org idempotency (`0018`), SQL-aggregate as-of
-  balance (`0019`) — with migrations `0017`–`0019`; the Aquarela design system
-  (`packages/ui` shell + patterns + client-only modal), the app shell with
-  role-aware nav and scope bar, Management home, branded sign-in, styleguide, and
-  the Inventory/Products/Recipes/Costs/Purchasing screens with `/api/v1` routes and
-  idempotent seeds; slice 9 **persistence** — tables
-  `stock_count`/`stock_count_line`/`stock_transfer`, `stock_movement.transfer_id`,
-  the `0017` source guard extended to them — with migration `0020`.
-  **Known defects fixed during integration:** a client component pulled
-  `node:crypto` into the browser bundle via the domain barrel (fixed with
-  client-safe `@aquarela/domain/decimal|quantity|money` subpath exports); six
-  detail pages returned HTTP 500 on a non-UUID param (fixed with
-  `apps/web/lib/route-params.ts` → 404, with its test).
-  **Verification at `6c69f7f`:** `typecheck`, `lint`, `build`, `format:check`
-  clean; **842/842 tests with `DATABASE_URL`** (691 passed / 151 skipped without
-  it); `npm audit --omit=dev` = 0; `db:migrate` through `0020` re-runs as a no-op;
-  the `0017`–`0020` down paths rehearsed.
-  **In flight: Wave 2b — slice 9's application + API + screens for counts,
-  transfers and waste**, in three parallel background agents, each owning
-  `packages/application/src/{counts,transfers,waste}/**`,
+- **As of:** 2026-09-20 — branch `main`; HEAD `2a5799e` (docs); nothing pushed
+  (previous HEAD `6c69f7f`). **Slice 9 (counts + transfers + waste) is COMPLETE and
+  slice 10 (production planning + batches) backend is COMPLETE — both UNCOMMITTED**
+  on top of the committed layer stack `583da3f` (infra) → `b525f30` (persistence
+  `0017`–`0020`) → `40e736b` (domain) → `c91e512` (application) → `6c69f7f` (web) →
+  `2a5799e` (docs).
+  **Slice 9 delivered:** the counts, transfers and waste application verticals with
+  `/api/v1` routes, `(app)/inventory/*` screens, idempotent seeds and tests
+  (`packages/application/src/{counts,transfers,waste}/**`,
   `apps/web/app/api/v1/{counts,transfers,waste}/**`,
-  `apps/web/app/(app)/inventory/{counts,transfers,waste}/**` and
-  `apps/web/scripts/seed-*.ts`. Programme direction (user instruction): proceed
-  autonomously — review/fix the agent output, document status + next steps, commit
-  slice 9, then slice 10 (production planning + batches), then sales
-  import/reconciliation, then insights/month-close. Nothing has been applied to
-  DigitalOcean.
+  `apps/web/app/(app)/inventory/{counts,transfers,waste}/**`,
+  `apps/web/scripts/seed-{counts,transfers,waste}.ts`) over the committed
+  migration `0020` tables. A transfers-seed type error was found and fixed during
+  integration (`apps/web/scripts/seed-transfers.ts`).
+  **Slice 10 backend delivered:** migration `0021` (tables `production_plan`,
+  `production_batch`, `production_batch_input`, `production_batch_output`;
+  `waste_event.production_batch_id` FK; source guard extended to
+  `production_batch`), `packages/domain/src/production.ts` (yield helpers),
+  `packages/application/src/production/**` (plan/batch commands incl. the atomic
+  `completeProductionBatch`). Its **web layer** (API + `/production` screens +
+  seed) is in flight.
+  **Parallelism caveat:** slices 9 and 10 were built concurrently and share barrel
+  files (`packages/application/src/index.ts`, `packages/domain/src/index.ts`,
+  `packages/persistence/src/index.ts`, `schema/index.ts`, `vocabularies.ts`,
+  `_journal.json`), so they cannot be split into independently-buildable commits —
+  they will be committed as **one stock-ops commit plus a separate production-web
+  commit**.
+  **Technical defaults accepted:** `DEC-066`–`DEC-071` (2026-09-20, in
+  `12_OPEN_DECISIONS.md`).
+  **Verification at the current working tree:** `typecheck`, `lint`,
+  `format:check` clean; **989/989 tests with `DATABASE_URL`** (the full suite
+  including the slice-9/10 integration tests); `db:migrate` applies `0020` and
+  `0021`, both no-ops on re-run; both down paths rehearsed.
+  **In flight: the slice-10 web layer** (API + `/production` screens + seed).
+  Programme direction (user instruction): proceed autonomously — review/fix,
+  document status + next steps, commit (stock-ops commit, then production-web
+  commit), then the sales import/reconciliation slices, then insights/month-close.
+  Nothing has been applied to DigitalOcean.
 - **Auth complete and security-reviewed (slices 1a–1e):** domain primitives (1a);
   persistence layer (1b-i); application flow (1b-ii); password reset + access
   control (1b-iii, `2ce8847`; reset neutrality `5776914`); hardening (`60ac52e`:
@@ -200,19 +200,18 @@ progress.
   (`bfc5f74`).
 - **DEC-049 closed:** drizzle-orm 0.45.2 / drizzle-kit 0.31.10 upgrade (`cc86f13`);
   `npm audit --omit=dev` = 0.
-- **Tests:** without `DATABASE_URL` **691 passed / 151 skipped (842)**; with it
-  **842/842 passed** — recorded 2026-09-20 at HEAD `6c69f7f` (the committed slice-8 +
-  slice-9-persistence + web layers; lint/typecheck/build/format:check pass;
-  `npm audit --omit=dev` = 0; `db:migrate` applies through `0020`, re-runs as a
-  no-op, and the `0017`–`0020` down paths were rehearsed). Re-verify with
-  `npm run test` and update if they differ.
+- **Tests:** without `DATABASE_URL` the integration tests skip; with it
+  **989/989 passed** — recorded 2026-09-20 at the current uncommitted slice-9/10
+  working tree (HEAD `2a5799e`; lint/typecheck/format:check pass; `db:migrate`
+  applies `0020` and `0021`, re-runs as a no-op, and the `0020`/`0021` down paths
+  were rehearsed). Re-verify with `npm run test` and update if they differ.
   Open verification debt: the per-process rate limiter needs a shared
   store before multi-instance deployment; the reset-token delivery is a no-op stub
   until the email slice; the palette hex values and data-viz palette semantics
   await owner sign-off (see "Open decisions / inputs"); the six golden fixtures
   remain unsigned and are the "verified" gate.
 - **Persistence core + deployment foundation (committed):** Drizzle schema,
-  migrations `0000_enable_extensions` → `0020` additive with tested down paths
+  migrations `0000_enable_extensions` → `0021` additive with tested down paths
   (`0011_cost_allocation.sql` adds the four slice-6 tables; `0014_cost_card_pricing`
   adds four deferred `price_scenario` columns + `snapshot_component_kind_check`;
   `0015` adds `calculation_snapshot_cost_card_index`; the hand-written `0016` adds
@@ -221,45 +220,49 @@ progress.
   `0018` scopes the stock-movement idempotency key per organization and `0019`
   adds the `stock_movement_org_occurred_idx` as-of index; `0020` adds the
   slice-9 stock-ops tables (`stock_count`/`stock_count_line`/`stock_transfer`,
-  `stock_movement.transfer_id`) and extends the source guard; ledger 21 rows
-  through `0020`; the `asset`
+  `stock_movement.transfer_id`) and extends the source guard; `0021` (uncommitted)
+  adds the slice-10 production tables (`production_plan`, `production_batch`,
+  `production_batch_input`, `production_batch_output`,
+  `waste_event.production_batch_id` FK) and extends the source guard to
+  `production_batch`; ledger 21 rows
+  through `0021`; the `asset`
   register is deliberately deferred), the
   advisory-locked migrator, worker/scheduler
   stubs and the `infra/` Terraform scaffold validated offline. Not applied.
-- **Not yet built:** the remainder of slice 9 (Wave 2b application/API/screens for
-  counts/transfers/waste — in flight in three parallel agents) and slices 10+; also
+- **Not yet built:** the slice-10 web layer (in flight) and slices 11+; also
   the deferred tables
-  (workforce, integrations, competitor, AI, sales, procurement, production,
-  period close, platform job/file/approval — note the
+  (workforce, integrations, competitor, AI, sales, procurement, period close,
+  platform job/file/approval — note the
   `approval` platform table from DATA_DICTIONARY §9 does not exist yet — and the
   `asset` register).
 
 ## Next up (prioritised)
 
 `docs/BUILD_ROADMAP.md` is the ordered execution tracker for these slices (slice 0 and
-1a–1e, 2–8 done; **slice 9 in progress — persistence done and committed, Wave 2b
-application/API/screens in flight in three parallel agents**). The list below is the
-short narrative form.
+1a–1e, 2–8 done; **slice 9 done (uncommitted); slice 10 in progress — backend done,
+web layer in flight**). The list below is the short narrative form.
 
-1. **Finish slice 9 — counts + transfers + waste (Wave 2b)** (`INV-004`–`007`,
-   `INV-009`, `WASTE-001`/`002`; `DEC-017`, `DEC-018`, `DEC-029`) — persistence done
-   (migration `0020`, committed in `b525f30`); the collection/review/fix of the three
-   parallel agents' output, re-verification, doc updates and the feature-committed
-   slice-9 commit are the immediate tasks (see "Resume here"). Programme direction:
-   proceed autonomously (agents → review/fix → document → commit → next task).
-2. **Slice 10 — production planning + batches** (`PROD-001`–`005`; `DEC-005`,
-   `DEC-031`, `DEC-036`) — next after slice 9 per the roadmap; then the sales
-   import/reconciliation slices, then insights/month-close.
-3. **Test-deployment rehearsal** — per `docs/runbooks/deployment.md`, staging first
+1. **Finish the slice-10 web layer and commit the slice-9/10 work** — the slice-10
+   API + `/production` screens + seed; then adversarial review/fix, re-verify
+   (989/989 with `DATABASE_URL`), and commit as **one stock-ops commit** (slice 9 +
+   the slice-10 backend share barrel files) **plus a separate production-web
+   commit** (see "Resume here"). Programme direction: proceed autonomously (agents
+   → review/fix → document → commit → next task).
+2. **Sales import/reconciliation slices** (`docs/BUILD_ROADMAP.md` §4 rows 11–12;
+   `ADR-0008` still Proposed — row 11 is not gated by it, row 12 is) — next after
+   the slice-9/10 commits; then insights/month-close.
+3. **Price versions + PRICE-002/003** (`DEC-064`) — the next pricing slice after
+   the production slices.
+4. **Test-deployment rehearsal** — per `docs/runbooks/deployment.md`, staging first
    with sanitized/synthetic data only; blocked on the deployment prerequisite inputs
    (see "Open decisions / inputs"); proceeds after the current slices in the
    meantime.
-4. **Golden-fixture sign-off** — the six fixtures are prepared as machine-readable
+5. **Golden-fixture sign-off** — the six fixtures are prepared as machine-readable
    JSON under `tests/fixtures/` (`DEC-065`); finance + product owner sign (the
    "verified" gate); `I8`/`I9` still gate the real rates behind them.
-5. **Price versions + PRICE-002/003** (`DEC-064`) — the next pricing slice after
+6. **Price versions + PRICE-002/003** (`DEC-064`) — the next pricing slice after
    the roadmap's slice 10.
-6. **Deployment foundation — scaffolded and validated offline (committed); not
+7. **Deployment foundation — scaffolded and validated offline (committed); not
    applied.** `infra/` Terraform (project, database, spaces, networking,
    app-platform, monitoring, dns) + the App Platform app spec are done, and the
    `apps/worker` / `apps/scheduler` stubs exist. The jobs runtime (`DEC-062`,
@@ -272,7 +275,7 @@ short narrative form.
    single-runner apply. See
    `docs/adr/0012-deployment-topology-and-service-runtimes.md` and
    `docs/runbooks/deployment.md`.
-7. **Costing verification** — against `docs/phase0/CALCULATION_CONTRACT.md` with
+8. **Costing verification** — against `docs/phase0/CALCULATION_CONTRACT.md` with
    synthetic fixtures, then real data; **owner sign-off of the six golden
    fixtures** (`docs/phase0/GOLDEN_FIXTURES.md`, prepared per `DEC-065`) is the
    gate for treating any cost as "verified" (slice 7 surfaces the sign-off trail).
@@ -288,7 +291,22 @@ short narrative form.
   is contribution over net price (a 6 dp fraction, not gross margin, not markup);
   **`DEC-064`** `price_version` + PRICE-002/003 are the next pricing slice after
   slice 8; **`DEC-065`** golden fixtures are machine-readable JSON under
-  `tests/fixtures/` with the sign-off trail prepared.
+  `tests/fixtures/` with the sign-off trail prepared; **`DEC-066`–`DEC-071`** the
+  slice-9/10 technical defaults (transfer = header + paired movements, no line
+  table; positive count variance via caller `unit_cost` → `item.current_cost`;
+  waste valued at the ledger's moving average; production batch without a business
+  number yet; recipe yield loss never posts waste; provisional
+  `production_batch_output.kind` vocabulary).
+- **Slice-9/10 open owner questions (2026-09-20; also tracked in
+  `docs/BUILD_ROADMAP.md` §5 "Slice-9/10 open owner questions"):** output-cost
+  allocation across multiple outputs/by-products (FIN); yield-variance tolerance
+  and exception store (`PROD-003`, FIN+TECH); work-in-progress/source-draw storage
+  area (OPS+TECH); `production_plan` line/quantity model and status vocabulary
+  (OPS+TECH); lot-tracked cross-location transfer policy (OPS); per-source reversal
+  semantics (`DEC-028`) not yet implemented (TECH); receipts not wired to the
+  ledger (TECH); `lotTracked` unenforced (TECH); `DEC-009` daily theoretical
+  consumption not implemented (TECH). Record each resolution in
+  `12_OPEN_DECISIONS.md` (next free id **`DEC-072`**); do not resolve silently.
 - **Deployment prerequisite inputs (owner; before any real `apply`):** `ADR-0004`
   acceptance; a real scoped `DIGITALOCEAN_TOKEN`; a provisioned private Spaces
   state bucket + state credentials; the sanitized-data owner; the legacy
@@ -535,6 +553,18 @@ and Spaces credentials via `-backend-config` / `AWS_ACCESS_KEY_ID` +
   `stock_movement.transfer_id` + the extended source guard) are additive with
   rehearsed down paths (drop the added objects/tables/columns, delete the ledger
   row, re-migrate).
+- **Slice 9 + slice-10 backend (UNCOMMITTED at HEAD `2a5799e`)**: the counts/
+  transfers/waste application + APIs + screens + seeds + tests and the production
+  backend (migration `0021`, domain `production.ts`, application `production/**`)
+  live only in the working tree — recovery is `git checkout -- <paths>` / `git
+stash` until the planned stock-ops and production-web commits land (then `git
+revert <sha>` per commit). Because slices 9 and 10 share barrel files
+  (`packages/application/src/index.ts`, `packages/domain/src/index.ts`,
+  `packages/persistence/src/index.ts`, `schema/index.ts`, `vocabularies.ts`,
+  `_journal.json`), they cannot be split into independently-buildable commits.
+  Migrations `0020` (slice-9 stock-ops tables, committed in `b525f30`) and `0021`
+  (slice-10 production tables, uncommitted) are **additive with rehearsed down
+  paths** (drop the added tables/columns/FKs, delete the ledger row, re-migrate).
 - **Deployment env vars (`583da3f`)**: the `ORGANIZATION_ID` /
   `TOTP_SECRET_ENCRYPTION_KEY` wiring in `infra/` is additive and conditional
   (unset adds no env var) — it changes no plan count (still **16 to add / 0
@@ -549,10 +579,11 @@ and Spaces credentials via `-backend-config` / `AWS_ACCESS_KEY_ID` +
   them with `git revert` if needed. **No cloud resource was created — only offline
   `fmt`/`validate`/`plan` ran, never `apply`; no Terraform state exists, and
   nothing has been applied to DigitalOcean.**
-- Migrations 0000–0020 are additive with tested down paths (`0011` down drops the
+- Migrations 0000–0021 are additive with tested down paths (`0011` down drops the
   four slice-6 tables; `0012` down drops the three EXCLUDE constraints; `0015`/
-  `0016` down drop their indexes/invariant — rehearsed; `0017`–`0020` down are
-  rehearsed — see the slice-8 bullet). While the database is
+  `0016` down drop their indexes/invariant — rehearsed; `0017`–`0021` down are
+  rehearsed — see the slice-8 bullet and the slice-9/10 bullet above). While the
+  database is
   empty the tested recovery is `DROP SCHEMA public CASCADE; DROP SCHEMA drizzle
 CASCADE; CREATE SCHEMA public; npm run db:migrate` (see the runbook). Once data
   exists, migrations must be additive (expand → migrate → contract) with a tested
@@ -561,6 +592,59 @@ CASCADE; CREATE SCHEMA public; npm run db:migrate` (see the runbook). Once data
   (`DEC-015`).
 
 ## Work log (append-only, newest first)
+
+### 2026-09-20 — Slices 9 + 10-backend complete (uncommitted); decisions DEC-066–DEC-071 recorded; slice-10 web layer in flight
+
+Slices 9 (counts + transfers + waste) and 10 (production planning + batches)
+backend are **complete but UNCOMMITTED** at HEAD `2a5799e` (docs commit; nothing
+pushed; nothing applied to DigitalOcean). They were built **concurrently in
+parallel** and share barrel files
+(`packages/application/src/index.ts`, `packages/domain/src/index.ts`,
+`packages/persistence/src/index.ts`, `packages/persistence/src/schema/index.ts`,
+`packages/persistence/src/schema/vocabularies.ts`, `drizzle/_journal.json`), so
+they **cannot be split into independently-buildable commits** — the commit plan is
+one **stock-ops commit** (slice 9 + the slice-10 backend) plus a separate
+**production-web commit**.
+
+- **Slice 9 (counts + transfers + waste) — complete.** Persistence was already
+  committed (migration `0020` in `b525f30`); this session added the three
+  application verticals with APIs, screens, seeds and tests:
+  `packages/application/src/{counts,transfers,waste}/**`,
+  `apps/web/app/api/v1/{counts,transfers,waste}/**`,
+  `apps/web/app/(app)/inventory/{counts,transfers,waste}/**`,
+  `apps/web/scripts/seed-{counts,transfers,waste}.ts`. A transfers-seed type error
+  was found and fixed during integration (`apps/web/scripts/seed-transfers.ts`).
+- **Slice 10 backend — complete.** Migration `0021` (tables `production_plan`,
+  `production_batch`, `production_batch_input`, `production_batch_output`;
+  `waste_event.production_batch_id` FK; source guard extended to
+  `production_batch`), `packages/domain/src/production.ts` (yield helpers),
+  `packages/application/src/production/**` (plan/batch commands incl. the atomic
+  `completeProductionBatch`). Its **web layer** (API + `/production` screens +
+  seed) is in flight.
+- **Decisions recorded (docs commit `2a5799e` + this update):**
+  `DEC-066` transfers = header + paired `stock_movement.transfer_id` movements, no
+  line table, derived discrepancy, `discrepancy_note` as the interim exception
+  record; `DEC-067` positive count variance valued at caller `unit_cost` →
+  `item.current_cost`, approval fails with neither (provisional, FIN);
+  `DEC-068` operational waste valued at the ledger's moving weighted average at
+  posting (`cost_selection`/`latest_price`/`manual` unimplemented); `DEC-069`
+  production batch identity/idempotency = the caller-supplied deterministic id
+  until OPS+TECH define a numbering scheme; `DEC-070` expected trim/cooking loss
+  never posts a `waste` movement, only actual abnormal loss becomes a
+  `waste_event`; `DEC-071` provisional local `production_batch_output.kind`
+  vocabulary pending a `domain-enums.yaml` key. Open owner questions (not
+  decisions) recorded in `docs/BUILD_ROADMAP.md` §5 "Slice-9/10 open owner
+  questions"; next free decision id `DEC-072`.
+- **Verification (exact, at the current working tree):** `typecheck`, `lint`,
+  `format:check` clean; **989/989 tests with `DATABASE_URL`** (the full suite
+  including the slice-9/10 integration tests); `db:migrate` applies `0020` and
+  `0021`, both no-ops on re-run; both down paths rehearsed.
+
+Rollback: the slice-9/10 work is uncommitted — `git checkout -- <paths>` / discard
+the tree (or `git revert` the stock-ops/production-web commits once landed);
+migrations `0020`/`0021` are additive with rehearsed down paths. Next: finish the
+slice-10 web layer, review/fix, commit (stock-ops, then production-web), then the
+sales-import/reconciliation slice (see "Resume here").
 
 ### 2026-09-20 — Slice 8 + slice-9 persistence + design system/screens committed (five layer commits); slice 9 Wave 2b in flight
 

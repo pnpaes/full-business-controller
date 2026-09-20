@@ -13,41 +13,48 @@ This file is **updated at the end of every slice** — statuses and the "current
 line move with the work; `CONTEXT.md` keeps the narrative handoff and the immediate
 `Resume here` section.
 
-**Current position:** HEAD `6c69f7f` on `main` (nothing pushed; previous HEAD
-`f7b1db7`); slice 0 `done`; auth slices 1a–1e and slices 2, 3, 4, 5, 6, 7 and **8
-`done`**. Slice 8 (stock ledger + balances + lots/storage) and the deployment env-var
-wiring were committed in dependency-ordered **layer commits** on `main` — `583da3f`
-infra deploy env vars; `b525f30` stock ledger + stock-ops persistence (repos,
+**Current position:** HEAD `2a5799e` on `main` (nothing pushed; previous HEAD
+`6c69f7f`); slice 0 `done`; auth slices 1a–1e and slices 2, 3, 4, 5, 6, 7 and **8
+`done`**. Slices 8, the deployment env-var wiring, the design system/screens and the
+slice-9 persistence are committed in dependency-ordered **layer commits** on `main` —
+`583da3f` infra deploy env vars; `b525f30` stock ledger + stock-ops persistence (repos,
 migrations `0017`–`0020`); `40e736b` stock valuation domain + client-safe subpath
 exports; `c91e512` inventory/catalog/recipes/costing/receiving application slices;
 `6c69f7f` design system (`packages/ui` shell + patterns + client-only modal), app
 shell with role-aware nav + scope bar, Management home, branded sign-in, styleguide,
 and the Inventory/Products/Recipes/Costs/Purchasing screens with `/api/v1` routes and
-idempotent seeds — because the migrations/schema barrels shared files across tasks;
-**per-task feature commits resume from slice 9's commit**. Fix commits within the
-layers addressed the integration defects (a client component pulled `node:crypto`
-into the browser bundle via the domain barrel — fixed with client-safe
-`@aquarela/domain/decimal|quantity|money` subpath exports; six detail pages returned
-500 on a non-UUID param — fixed with `apps/web/lib/route-params.ts` → 404).
-Verification at `6c69f7f`: `typecheck`, `lint`, `build`, `format:check` clean;
-**842/842 tests with `DATABASE_URL`** (691 passed / 151 skipped without it);
-`npm audit --omit=dev` = 0; `db:migrate` through `0020` re-runs as a no-op;
-migrations `0017`–`0020` down paths rehearsed; slice-9 **persistence** included
-(tables `stock_count`/`stock_count_line`/`stock_transfer`, `stock_movement.transfer_id`,
-source guard extended; migration `0020`). **Slice 9 (counts + transfers + waste) is
-in progress**: Wave 2b — the slice-9 application + API + screens for counts,
-transfers and waste — runs in three parallel background agents, each owning
+idempotent seeds; `2a5799e` docs — because the migrations/schema barrels shared files
+across tasks; **feature commits resume from the slice-9/10 commits**. **Slice 9
+(counts + transfers + waste) is complete but uncommitted**: migration `0020` (in
+`b525f30`) plus the three application verticals with APIs, screens, seeds and tests —
 `packages/application/src/{counts,transfers,waste}/**`,
 `apps/web/app/api/v1/{counts,transfers,waste}/**`,
-`apps/web/app/(app)/inventory/{counts,transfers,waste}/**` and
-`apps/web/scripts/seed-*.ts`. Programme direction: proceed autonomously, per task —
-parallel background agents → adversarial review + fixes → document status and next
-steps → commit → next task. After slice 9: slice 10 (production planning + batches),
-then sales import/reconciliation, then insights/month-close. `ADR-0005` was accepted
-(2026-09-20) and the owner recorded `DEC-061` (multi-tenancy: shared schema with
-`organization_id` row scoping), `DEC-062` (jobs runtime: pg-boss), `DEC-063` (target
-semantics), `DEC-064` (`price_version` deferred to the next pricing slice) and
-`DEC-065` (golden fixtures as JSON).
+`apps/web/app/(app)/inventory/{counts,transfers,waste}/**`,
+`apps/web/scripts/seed-{counts,transfers,waste}.ts`. **Slice 10 (production
+planning + batches) backend is complete**: migration `0021` (tables `production_plan`,
+`production_batch`, `production_batch_input`, `production_batch_output`;
+`waste_event.production_batch_id` FK; source guard extended to `production_batch`),
+`packages/domain/src/production.ts` (yield helpers),
+`packages/application/src/production/**` (plan/batch commands incl. atomic
+`completeProductionBatch`); its **web layer** (API + `/production` screens + seed) is
+in flight. **Parallelism caveat:** slices 9 and 10 were built concurrently and share
+barrel files (`packages/application/src/index.ts`, `packages/domain/src/index.ts`,
+`packages/persistence/src/index.ts`, `schema/index.ts`, `vocabularies.ts`,
+`_journal.json`), so they cannot be split into independently-buildable commits; they
+will be committed as one stock-ops commit plus a separate production-web commit.
+Verification at `2a5799e`: `typecheck`, `lint`, `format:check` clean; **989/989 tests
+with `DATABASE_URL`** (the full suite including the slice-9/10 integration tests);
+`db:migrate` applies `0020` and `0021`, both no-ops on re-run; both down paths
+rehearsed; a transfers-seed type error found and fixed during integration
+(`apps/web/scripts/seed-transfers.ts`). Programme direction: proceed autonomously, per
+task — parallel background agents → adversarial review + fixes → document status and
+next steps → commit → next task. Next: finish the slice-10 web layer, review/fix,
+commit the stock-ops and production-web commits, then the sales import/reconciliation
+slices, then insights/month-close. `ADR-0005` was accepted (2026-09-20) and the owner
+recorded `DEC-061` (multi-tenancy: shared schema with `organization_id` row scoping),
+`DEC-062` (jobs runtime: pg-boss), `DEC-063` (target semantics), `DEC-064`
+(`price_version` deferred to the next pricing slice) and `DEC-065` (golden fixtures as
+JSON). Slice-9/10 technical defaults recorded as `DEC-066`–`DEC-071` (2026-09-20).
 
 ## 2. The execution loop (per slice)
 
@@ -132,8 +139,8 @@ sequence). Requirement IDs are from `11_REQUIREMENTS_CATALOG.md`; decision IDs f
 | 6 | Operating costs + labour + allocation | P1 / epic 5 | `COST-004`, `COST-006`, `COST-007`, `COST-011`, `COST-013`; `DEC-006`, `DEC-007`, `DEC-048`; `CALCULATION_CONTRACT.md` §7, §9 | 3 | none — I8 remainder + I9 ruling confirm loaded rates | done |
 | 7 | Cost card + snapshots + price scenario + approval | P1 / epic 6 | `COST-005`, `COST-008`, `COST-009`, `PRICE-001`–`005`; `DEC-021`–`024`; `CALCULATION_CONTRACT.md`; `GOLDEN_FIXTURES.md` | 4, 5, 6 | six golden fixtures signed (A5) before "verified" | done |
 | 8 | Stock ledger + balances + lots / storage | P1–P2 / epic 7 | `INV-001`–`003`, `INV-008`, `PROD-002`, `WASTE-002`, `COST-008`; `DEC-008`, `DEC-009`, `DEC-010`, `DEC-028`, `DEC-034`; `ADR-0005` (accepted 2026-09-20) | 3, 4 | none — `ADR-0005` **Accepted** (2026-09-20) | done (committed `b525f30`/`40e736b`/`c91e512`/`6c69f7f` with migrations `0017`–`0019`; verified 842/842 with `DATABASE_URL`) |
-| 9 | Counts + transfers + waste | P2 / epic 8 | `INV-004`–`007`, `INV-009`, `WASTE-001`, `WASTE-002`; `DEC-017`, `DEC-018`, `DEC-029` | 8 | none — I7 opening counts gate the pilot | in progress — persistence done (migration `0020`: `stock_count`/`stock_count_line`/`stock_transfer`, `stock_movement.transfer_id`, source guard extended; committed in `b525f30`); Wave 2b application + `/api/v1` + screens for counts/transfers/waste in flight (three parallel agents) |
-| 10 | Production planning + batches | P2 / epic 9 | `PROD-001`–`005`; `DEC-005`, `DEC-031`, `DEC-036` | 5, 8 | none | todo |
+| 9 | Counts + transfers + waste | P2 / epic 8 | `INV-004`–`007`, `INV-009`, `WASTE-001`, `WASTE-002`; `DEC-017`, `DEC-018`, `DEC-029`, `DEC-066`–`DEC-068` | 8 | none — I7 opening counts gate the pilot | done (uncommitted — counts/transfers/waste application + `/api/v1` + screens + seeds + tests; persistence in `b525f30`, migration `0020`; verified 989/989 with `DATABASE_URL`) |
+| 10 | Production planning + batches | P2 / epic 9 | `PROD-001`–`005`; `DEC-005`, `DEC-031`, `DEC-036`, `DEC-069`–`DEC-071` | 5, 8 | none | in progress — backend done (migration `0021`: `production_plan`/`production_batch`/`production_batch_input`/`production_batch_output`, `waste_event.production_batch_id` FK, source guard extended to `production_batch`; domain `production.ts` yield helpers; application `production/**` incl. atomic `completeProductionBatch`); web layer (API + `/production` screens + seed) in flight |
 | 11 | Import framework + external mappings | P3 / epic 10 | `SALE-002`, `SALE-004`, `SALE-007`, `SALE-008`; `DEC-025`, `DEC-033`, `DEC-035`, `DEC-041`; `ADR-0008` (**Proposed**) | 3 | none — legacy I19 as reference; I1/I15 Frontline shapes gate real profiles | todo |
 | 12 | Sales + settlements + reconciliation | P3 / epic 11 | `SALE-001`–`011`, `PRICE-006`, `REC-001`–`006`; `DEC-026`, `DEC-035`, `DEC-040`, `DEC-042`, `DEC-043`, `DEC-045`; `ADR-0008` (**Proposed**) | 8, 11 | `ADR-0008` acceptance (owner + tech); I1 channel/SKU confirmations | blocked (owner) |
 | 13 | Close + dashboards + menu engineering | P3 / epic 12 | `REC-003`, `REC-006`, `RPT-001`–`005`; `DEC-027`, `DEC-032`; `ADR-0007` (**Proposed**) | 12 | `ADR-0007` acceptance (tech); history/grain quality | blocked (owner) |
@@ -381,6 +388,37 @@ dates assigned):
   commits** — persistence → domain → application → web/ui → infra — because the
   migrations/schema barrels shared files across tasks; per-task feature commits
   resume from here.)
+- **Slice-9/10 accepted technical decisions (`DEC-066`–`DEC-071`, 2026-09-20)** — the
+  technical defaults implemented by the slice-9/10 code, consistent with `ADR-0005`,
+  are now recorded as accepted decisions in `12_OPEN_DECISIONS.md`: `DEC-066`
+  transfers as a header plus paired `stock_movement.transfer_id` movements (no line
+  table; the discrepancy is derived; `discrepancy_note` is the interim exception
+  record); `DEC-067` positive count variance valued at a caller-supplied `unit_cost`
+  falling back to `item.current_cost` (provisional — FIN to confirm the valuation
+  source); `DEC-068` operational waste valued at the ledger's moving weighted average
+  at posting (`cost_selection`/`latest_price`/`manual` unimplemented); `DEC-069`
+  production batches have no business number yet (deterministic caller id until
+  OPS+TECH define one); `DEC-070` expected trim/cooking loss never posts a `waste`
+  movement (only actual abnormal loss becomes a `waste_event`); `DEC-071`
+  `production_batch_output.kind` uses a provisional local vocabulary pending a
+  `domain-enums.yaml` key. Next free decision id **`DEC-072`**.
+- **Slice-9/10 open owner questions (deliberate; recorded not decided)** — surfaced
+  by the concurrent slice-9/10 build (uncommitted working tree at HEAD `2a5799e`);
+  record each resolution in `12_OPEN_DECISIONS.md` (next free id **`DEC-072`**); do
+  not resolve silently:
+  1. Output-cost allocation across multiple outputs/by-products of one batch.
+     owner/FIN.
+  2. Yield-variance tolerance and the exception store (`PROD-003`). owner/FIN+TECH.
+  3. Work-in-progress / source-draw storage area for production batches.
+     owner/OPS+TECH.
+  4. `production_plan` line/quantity model and status vocabulary. owner/OPS+TECH.
+  5. Lot-tracked cross-location transfer policy. owner/OPS.
+  6. Per-source reversal semantics (`DEC-028`) are not yet implemented (overlaps
+     slice-8 point 2). owner/TECH.
+  7. Receipts are not wired to the ledger (overlaps slice-8 point 1). owner/TECH.
+  8. `lotTracked` is unenforced (overlaps slice-8 point 3). owner/TECH.
+  9. `DEC-009` daily theoretical consumption is not implemented (overlaps slice-8
+     point 6). owner/TECH.
 - **Unit `m` vs the missing `length` dimension** — a dimension-vocabulary mismatch in
   `schemas/domain-enums.yaml` surfaced by slice 3; owner/TECH to resolve (FND-003).
 - **`numeric(19,6)` digit cap in `packages/domain/src/decimal.ts`** — the domain decimal
