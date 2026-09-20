@@ -10,79 +10,93 @@ duplicate their content.
 **Say "resume the work" and start here.** A fresh session must be able to continue
 from this section alone.
 
-**Next task:** finish the **slice-10 web layer** and then **commit the slice-9/10
-work**. Slices 9 (counts + transfers + waste — application verticals, APIs, screens,
-seeds, tests) and 10 backend (migration `0021`, domain `production.ts`, application
-`production/**` incl. atomic `completeProductionBatch`) are **complete but
-uncommitted** at HEAD `2a5799e`; the slice-10 web layer (API + `/production` screens
+**Next task:** **commit the row-11 work + the cross-cutting error-handling fix +
+docs** (three commits), then take up **row 12** once the owner accepts
+`ADR-0008` — otherwise proceed to the **price-version work (`DEC-064`)** and the
+**deployment rehearsal**.
 
-- seed) is in flight.
+**State:** `main` HEAD `7f6aa78`; the working tree has uncommitted **row 11
+(import framework + external mappings)** work plus a cross-cutting error-handling
+fix, about to be committed as three commits. Row 11 is **complete**: migration
+`0022` (tables `import_run`, `import_staging_row`, `external_mapping`),
+vocabularies `IMPORT_STATUS`/`MAPPING_STATE`/`IMPORT_POSTING_POLICY`, domain
+`packages/domain/src/sales-mapping.ts` (`resolveExternalEntity` — SKU-first then
+external id, with both `DEC-033` conflict directions), application
+`packages/application/src/imports/**` (create/stage/validate/map/dispose/preview +
+list/get), web `/api/v1/imports/**` and `(app)/sales/**` (landing + import runs
+list + run detail with diagnostics, staging rows, dispositions and preview), and
+`apps/web/scripts/seed-imports.ts`. The import slice deliberately stops at
+`validated`/`needs_review` — **row 12 was NOT built** (owner-gated on `ADR-0008`,
+still Proposed; the `/sales` page marks Reconciliation "not yet implemented —
+row 12 is owner-gated on ADR-0008"); `ADR-0007` (Proposed) still gates row 13.
+The cross-cutting fix: `apps/web/lib/http.ts` `jsonError` now takes a message and
+`mapErrors` maps `DomainError`→400 with the authored message; all ~40 non-auth
+`DomainError` branches pass `error.message`; auth routes stay generic
+(`ADR-0003`).
 
 **Programme direction (standing user instruction):** proceed autonomously — per task:
 parallel background agents → adversarial review + fixes → document status and next
 steps → commit → next task.
 
-**Scope (do):** finish the slice-10 web layer
-(`apps/web/app/api/v1/production/**`, `apps/web/app/(app)/production/**`,
-`apps/web/scripts/seed-production.ts`); run the risk-scaled adversarial review
-(`docs/BUILD_ROADMAP.md` §2 — the slice-9/10 work is schema-adjacent and concurrent,
-so e.g. `reviewer-qwen` + `reviewer-glm`/`reviewer-minimax`); reconcile findings
-(record accepted/declined with reasons); fix defects; re-verify with the commands
-below; then **commit in two commits** — (1) a **stock-ops commit** (slice 9 + the
-slice-10 backend share barrel files and cannot be split further), and (2) a
-**production-web commit** (the slice-10 API + `/production` screens + seed) — each
-with verification evidence + rollback approach in the body (per `AGENTS.md` Rule 2);
-update `CONTEXT.md` and `docs/BUILD_ROADMAP.md` §1/§4/§5; then start the
-sales-import/reconciliation slice (`docs/BUILD_ROADMAP.md` §4 rows 11–12;
-`ADR-0008` still Proposed — row 11 is not gated by it, row 12 is).
+**Scope (do):** (1) commit in **three commits** — (a) the **row-11 import
+slice** (migration `0022` + vocabularies + domain `sales-mapping.ts` +
+application `imports/**` + web `/api/v1/imports/**` + `(app)/sales/**` +
+`seed-imports.ts`), (b) the **error-handling fix** (`apps/web/lib/http.ts` +
+the ~40 non-auth `DomainError` call sites; auth routes untouched), (c) the
+**docs update** (`CONTEXT.md`, `docs/BUILD_ROADMAP.md`) — each with verification
+evidence + rollback approach in the body (per `AGENTS.md` Rule 2); (2) if the
+owner has accepted `ADR-0008` by then, start row 12 (sales + settlements +
+reconciliation, `docs/BUILD_ROADMAP.md` §4 row 12); otherwise proceed to the
+price-version work (`DEC-064`) and/or the deployment rehearsal (parked on its
+owner inputs).
 
-**Scope (do not):** do not amend or rewrite history (the six commits through
-`2a5799e` are already made; nothing pushed); do not edit migrations `0000–0021`;
-do not deploy, `terraform apply`, or write externally (per-source approval remains
-`DEC-015`); invent no decision — append from **`DEC-072`** only if genuinely needed;
-do not rewrite the specification inputs (`00_README.md` … `13_`, `docs/phase0/`,
+**Scope (do not):** do not build row 12 or touch reconciliation — it stays
+owner-gated on `ADR-0008` (still Proposed); do not amend or rewrite history
+(nothing pushed); do not edit migrations `0000–0022`; do not deploy,
+`terraform apply`, or write externally (per-source approval remains `DEC-015`);
+invent no decision — append from **`DEC-072`** only if genuinely needed; do not
+rewrite the specification inputs (`00_README.md` … `13_`, `docs/phase0/`,
 `schemas/`, `samples/`).
 
-**Files/paths:** the in-flight slice-10 web files above; barrel files shared with
-slice 9 (`packages/application/src/index.ts`, `packages/domain/src/index.ts`,
-`packages/persistence/src/index.ts`, `packages/persistence/src/schema/index.ts`,
-`packages/persistence/src/schema/vocabularies.ts`, `drizzle/_journal.json` — do not
-try to split slice 9 from slice 10 backend into separate commits);
-`docs/runbooks/persistence-migrations.md` (only if a new migration `0022+` is added);
-`docs/BUILD_ROADMAP.md`; `12_OPEN_DECISIONS.md` (only if a new decision is needed,
-from `DEC-072`); `CONTEXT.md`.
+**Files/paths:** the working tree above (already written; commit it);
+`docs/BUILD_ROADMAP.md` §1/§4/§5 (already updated in the tree); `CONTEXT.md`
+(this file); `12_OPEN_DECISIONS.md` only if a new decision is needed, from
+`DEC-072`; `docs/runbooks/persistence-migrations.md` only if `0022`'s entry
+needs correction.
+
+**Authoritative docs to read first:** `docs/BUILD_ROADMAP.md` §1 (current
+position) and §4 rows 11–12; `12_OPEN_DECISIONS.md` (`DEC-033`, next free id
+`DEC-072`); `docs/adr/0008-*` (Proposed — the row-12 gate); this file's
+"Open decisions / inputs".
 
 **Acceptance / verification:** `nvm use 22`, then `npm run lint`, `npm run
-typecheck`, `npm run test` (with `DATABASE_URL` — current baseline: **989/989**;
-without it the integration tests skip), `npm run build`, `npm run format:check`,
-`npm audit --omit=dev` = 0; `db:migrate` applies through the current head (`0021`)
-and re-runs as a no-op; any new migration `0022+` must be additive with a rehearsed
-down path; curl-level checks equivalent to the existing screens (signed-out → 401;
-signed-in → 200) for the `/production` routes.
+typecheck`, `npm run test` (with `DATABASE_URL` — current baseline:
+**1087/1087**; without it 880 passed / 207 skipped), `npm run build`,
+`npm run format:check`, `npm audit --omit=dev` = 0; `db:migrate` through `0022`
+is a no-op on re-run; the `0022` down path was rehearsed; after committing,
+re-run the suite at the clean tree and confirm HEAD advanced by three commits.
 
-**Open inputs (recorded, do not decide):** the slice-9/10 open owner questions in
-`docs/BUILD_ROADMAP.md` §5 ("Slice-9/10 open owner questions": output-cost
-allocation across multiple outputs/by-products, FIN; yield-variance tolerance +
-exception store, `PROD-003`, FIN+TECH; WIP/source-draw storage area, OPS+TECH;
-`production_plan` line/quantity model + status vocabulary, OPS+TECH; lot-tracked
-cross-location transfer policy, OPS; per-source reversal semantics `DEC-028` not
-yet implemented; receipts not wired to the ledger; `lotTracked` unenforced;
-`DEC-009` daily theoretical consumption) — plus the standing slice-8/9 open points
-in the same section. Accepted technical defaults are now `DEC-066`–`DEC-071`;
-next free decision id `DEC-072`.
+**Open inputs (recorded, do not decide):** row 12 gated on `ADR-0008` + I1
+channel/SKU confirmations; row 13 gated on `ADR-0007`; the sales/consumption
+grain ambiguity (`DEC-009` daily-per-location vs a single `sales_line`
+`source_id`); no import-profile table; no tolerance-configuration table;
+`file_object` absent so `file_object_id` is a plain uuid; dispositions live in
+`diagnostics.dispositions` (no table); two routes return 404 by matching the
+text `/not found/i` on the `DomainError` message (`recipes/[id]`,
+`recipes/[id]/versions`) — a brittle pattern to replace with a typed not-found
+error; `MAPPING_STATE` has no `conflict` value (conflicts are `error` +
+`error_code=mapping_conflict`); a live-check left one dev `import_run` row in
+the local database. All tracked in `docs/BUILD_ROADMAP.md` §5 ("Row-11
+import-framework open points"); next free decision id `DEC-072`.
 
 **Parallel owner action — golden-fixture sign-off:** the six golden fixtures are
 prepared as machine-readable JSON under `tests/fixtures/` (`DEC-065`) with the
-sign-off trail ready (six files, the reconciliation test
-`packages/domain/src/golden-fixtures.test.ts`, and the sign-off mechanics — see
-`docs/phase0/GOLDEN_FIXTURES.md`); finance + product owner sign. Until signed, no
-cost is "verified"; `I8`/`I9` still gate the real rates behind the fixtures.
+sign-off trail ready; finance + product owner sign. Until signed, no cost is
+"verified"; `I8`/`I9` still gate the real rates behind the fixtures.
 
-**After the slice-9/10 commits:** the sales import/reconciliation slices
-(`docs/BUILD_ROADMAP.md` §4 rows 11–12; `ADR-0008` still Proposed), then
-insights/month-close, then price versions + PRICE-002/003 (`DEC-064`). Deployment
-rehearsal stays parked on its prerequisite inputs (see "Open decisions / inputs";
-per-task commitment continues before it).
+**After the row-11 commits:** row 12 when `ADR-0008` is accepted (else the
+price-version work `DEC-064` / the deployment rehearsal), then row 13 (close/
+dashboards) when `ADR-0007` is accepted, then the remaining open owner questions.
 
 ## What this is
 
@@ -95,9 +109,10 @@ UI token foundation, master-data slices 2–3, slice 4 (receipt + price history 
 landed cost), slice 5 (recipes), slice 6 (operating costs + labour + allocation),
 slice 7 (cost card + snapshots + price scenario + approval), slice 8 (stock
 ledger + balances + lots/storage) and the design system/app shell/screens — all
-committed — with **slice 9 (counts + transfers + waste) complete and slice 10
-(production planning + batches) backend complete** (both uncommitted; the
-slice-10 web layer is in flight).
+committed — with slices 9 (counts + transfers + waste) and 10 (production
+planning + batches, including the web layer) complete and **row 11 (import
+framework + external mappings) complete but uncommitted**, together with a
+cross-cutting error-handling fix (both about to be committed as three commits).
 
 ## Where things live
 
@@ -123,43 +138,41 @@ slice-10 web layer is in flight).
 
 ## Current status
 
-- **As of:** 2026-09-20 — branch `main`; HEAD `2a5799e` (docs); nothing pushed
-  (previous HEAD `6c69f7f`). **Slice 9 (counts + transfers + waste) is COMPLETE and
-  slice 10 (production planning + batches) backend is COMPLETE — both UNCOMMITTED**
-  on top of the committed layer stack `583da3f` (infra) → `b525f30` (persistence
-  `0017`–`0020`) → `40e736b` (domain) → `c91e512` (application) → `6c69f7f` (web) →
-  `2a5799e` (docs).
-  **Slice 9 delivered:** the counts, transfers and waste application verticals with
-  `/api/v1` routes, `(app)/inventory/*` screens, idempotent seeds and tests
-  (`packages/application/src/{counts,transfers,waste}/**`,
-  `apps/web/app/api/v1/{counts,transfers,waste}/**`,
-  `apps/web/app/(app)/inventory/{counts,transfers,waste}/**`,
-  `apps/web/scripts/seed-{counts,transfers,waste}.ts`) over the committed
-  migration `0020` tables. A transfers-seed type error was found and fixed during
-  integration (`apps/web/scripts/seed-transfers.ts`).
-  **Slice 10 backend delivered:** migration `0021` (tables `production_plan`,
-  `production_batch`, `production_batch_input`, `production_batch_output`;
-  `waste_event.production_batch_id` FK; source guard extended to
-  `production_batch`), `packages/domain/src/production.ts` (yield helpers),
-  `packages/application/src/production/**` (plan/batch commands incl. the atomic
-  `completeProductionBatch`). Its **web layer** (API + `/production` screens +
-  seed) is in flight.
-  **Parallelism caveat:** slices 9 and 10 were built concurrently and share barrel
-  files (`packages/application/src/index.ts`, `packages/domain/src/index.ts`,
-  `packages/persistence/src/index.ts`, `schema/index.ts`, `vocabularies.ts`,
-  `_journal.json`), so they cannot be split into independently-buildable commits —
-  they will be committed as **one stock-ops commit plus a separate production-web
-  commit**.
-  **Technical defaults accepted:** `DEC-066`–`DEC-071` (2026-09-20, in
-  `12_OPEN_DECISIONS.md`).
-  **Verification at the current working tree:** `typecheck`, `lint`,
-  `format:check` clean; **989/989 tests with `DATABASE_URL`** (the full suite
-  including the slice-9/10 integration tests); `db:migrate` applies `0020` and
-  `0021`, both no-ops on re-run; both down paths rehearsed.
-  **In flight: the slice-10 web layer** (API + `/production` screens + seed).
+- **As of:** 2026-09-20 — branch `main`; HEAD `7f6aa78`; nothing pushed.
+  **Row 11 (import framework + external mappings) is COMPLETE and UNCOMMITTED**
+  on top of the committed layer stack (slices 0–10, auth 1a–1e, all committed;
+  previous HEAD `2a5799e` was the docs commit before the slice-9/10
+  stock-ops/production-web commits landed).
+  **Row 11 delivered:** migration `0022` (tables `import_run`,
+  `import_staging_row`, `external_mapping`), vocabularies
+  `IMPORT_STATUS`/`MAPPING_STATE`/`IMPORT_POSTING_POLICY`, domain
+  `packages/domain/src/sales-mapping.ts` (`resolveExternalEntity` — SKU-first
+  then external id, with both `DEC-033` conflict directions), application
+  `packages/application/src/imports/**` (create/stage/validate/map/dispose/
+  preview + list/get), web `/api/v1/imports/**` and `(app)/sales/**` (landing +
+  import runs list + run detail with diagnostics, staging rows, dispositions and
+  preview), and `apps/web/scripts/seed-imports.ts`. **Row 12 (sales +
+  settlements + reconciliation) was deliberately NOT built** — it remains
+  `blocked (owner)` on `ADR-0008` (still Proposed); the import slice stops at
+  `validated`/`needs_review` and the `/sales` page marks Reconciliation "not yet
+  implemented — row 12 is owner-gated on ADR-0008". `ADR-0007` (Proposed) still
+  gates row 13.
+  **Cross-cutting fix (uncommitted, same tree):** `apps/web/lib/http.ts`
+  `jsonError` now takes a message and `mapErrors` maps `DomainError`→400 with
+  the authored message; all ~40 non-auth `DomainError` branches pass
+  `error.message`; auth routes stay generic (`ADR-0003`). Verified live: a
+  duplicate import hash returns `{"error":"duplicate import file hash …"}`
+  instead of "Invalid email or password".
+  **Verification at the current working tree:** `typecheck`, `lint`, `build`,
+  `format:check` clean; **1087/1087 tests with `DATABASE_URL`** (880 passed /
+  207 skipped without); `npm audit --omit=dev` 0; `db:migrate` through `0022` is
+  a no-op; the `0022` down path was rehearsed.
+  **In flight: the three commits** — row 11, the error-handling fix, docs (see
+  "Resume here").
   Programme direction (user instruction): proceed autonomously — review/fix,
-  document status + next steps, commit (stock-ops commit, then production-web
-  commit), then the sales import/reconciliation slices, then insights/month-close.
+  document status + next steps, commit, then row 12 when the owner accepts
+  `ADR-0008` (else the price-version work `DEC-064` / the deployment rehearsal),
+  then row 13 when `ADR-0007` is accepted.
   Nothing has been applied to DigitalOcean.
 - **Auth complete and security-reviewed (slices 1a–1e):** domain primitives (1a);
   persistence layer (1b-i); application flow (1b-ii); password reset + access
@@ -201,10 +214,11 @@ slice-10 web layer is in flight).
 - **DEC-049 closed:** drizzle-orm 0.45.2 / drizzle-kit 0.31.10 upgrade (`cc86f13`);
   `npm audit --omit=dev` = 0.
 - **Tests:** without `DATABASE_URL` the integration tests skip; with it
-  **989/989 passed** — recorded 2026-09-20 at the current uncommitted slice-9/10
-  working tree (HEAD `2a5799e`; lint/typecheck/format:check pass; `db:migrate`
-  applies `0020` and `0021`, re-runs as a no-op, and the `0020`/`0021` down paths
-  were rehearsed). Re-verify with `npm run test` and update if they differ.
+  **1087/1087 passed** (880 passed / 207 skipped without it) — recorded
+  2026-09-20 at the current uncommitted row-11 working tree (HEAD `7f6aa78`;
+  lint/typecheck/build/format:check pass; `db:migrate` through `0022` is a
+  no-op, and the `0022` down path was rehearsed). Re-verify with `npm run test`
+  and update if they differ.
   Open verification debt: the per-process rate limiter needs a shared
   store before multi-instance deployment; the reset-token delivery is a no-op stub
   until the email slice; the palette hex values and data-viz palette semantics
@@ -220,48 +234,57 @@ slice-10 web layer is in flight).
   `0018` scopes the stock-movement idempotency key per organization and `0019`
   adds the `stock_movement_org_occurred_idx` as-of index; `0020` adds the
   slice-9 stock-ops tables (`stock_count`/`stock_count_line`/`stock_transfer`,
-  `stock_movement.transfer_id`) and extends the source guard; `0021` (uncommitted)
+  `stock_movement.transfer_id`) and extends the source guard; `0021`
   adds the slice-10 production tables (`production_plan`, `production_batch`,
   `production_batch_input`, `production_batch_output`,
   `waste_event.production_batch_id` FK) and extends the source guard to
-  `production_batch`; ledger 21 rows
-  through `0021`; the `asset`
+  `production_batch`; **`0022` (uncommitted)** adds the row-11 tables
+  `import_run`/`import_staging_row`/`external_mapping` and vocabularies
+  `IMPORT_STATUS`/`MAPPING_STATE`/`IMPORT_POSTING_POLICY`; ledger 22 rows
+  through `0022`; the `asset`
   register is deliberately deferred), the
   advisory-locked migrator, worker/scheduler
   stubs and the `infra/` Terraform scaffold validated offline. Not applied.
-- **Not yet built:** the slice-10 web layer (in flight) and slices 11+; also
+- **Not yet built:** row 12 (sales + settlements + reconciliation —
+  owner-gated on `ADR-0008`) and rows 13+; also
   the deferred tables
-  (workforce, integrations, competitor, AI, sales, procurement, period close,
+  (workforce, integrations, competitor, AI, procurement, period close,
   platform job/file/approval — note the
-  `approval` platform table from DATA_DICTIONARY §9 does not exist yet — and the
+  `approval` platform table from DATA_DICTIONARY §9 does not exist yet, and the
+  `file_object` table is absent so `import_run.file_object_id` is a plain uuid —
+  and the
   `asset` register).
 
 ## Next up (prioritised)
 
-`docs/BUILD_ROADMAP.md` is the ordered execution tracker for these slices (slice 0 and
-1a–1e, 2–8 done; **slice 9 done (uncommitted); slice 10 in progress — backend done,
-web layer in flight**). The list below is the short narrative form.
+`docs/BUILD_ROADMAP.md` is the ordered execution tracker for these slices (slice 0,
+1a–1e and 2–10 done; **row 11 done (uncommitted)**; row 12 `blocked (owner)`).
+The list below is the short narrative form.
 
-1. **Finish the slice-10 web layer and commit the slice-9/10 work** — the slice-10
-   API + `/production` screens + seed; then adversarial review/fix, re-verify
-   (989/989 with `DATABASE_URL`), and commit as **one stock-ops commit** (slice 9 +
-   the slice-10 backend share barrel files) **plus a separate production-web
-   commit** (see "Resume here"). Programme direction: proceed autonomously (agents
-   → review/fix → document → commit → next task).
-2. **Sales import/reconciliation slices** (`docs/BUILD_ROADMAP.md` §4 rows 11–12;
-   `ADR-0008` still Proposed — row 11 is not gated by it, row 12 is) — next after
-   the slice-9/10 commits; then insights/month-close.
-3. **Price versions + PRICE-002/003** (`DEC-064`) — the next pricing slice after
-   the production slices.
-4. **Test-deployment rehearsal** — per `docs/runbooks/deployment.md`, staging first
+1. **Commit the row-11 work + the error fix + docs** — three commits: (a) the
+   row-11 import slice (migration `0022`, domain `sales-mapping.ts`,
+   application `imports/**`, `/api/v1/imports/**`, `(app)/sales/**`,
+   `seed-imports.ts`); (b) the cross-cutting error-handling fix
+   (`apps/web/lib/http.ts` + the ~40 non-auth `DomainError` call sites); (c)
+   the docs update (`CONTEXT.md`, `docs/BUILD_ROADMAP.md`) — each with
+   verification evidence + rollback approach in the body (see "Resume here").
+   Programme direction: proceed autonomously (agents → review/fix → document →
+   commit → next task).
+2. **Row 12 — sales + settlements + reconciliation** (`docs/BUILD_ROADMAP.md`
+   §4 row 12) — **owner-gated**: start only once `ADR-0008` is accepted plus the
+   I1 channel/SKU confirmations; then insights/month-close territory is row 13.
+   The import slice stops at `validated`/`needs_review` until then.
+3. **Row 13 — close + dashboards + menu engineering** — gated on `ADR-0007`
+   acceptance (still Proposed).
+4. **Price versions + PRICE-002/003** (`DEC-064`) — the next pricing work while
+   rows 12/13 are owner-gated.
+5. **Test-deployment rehearsal** — per `docs/runbooks/deployment.md`, staging first
    with sanitized/synthetic data only; blocked on the deployment prerequisite inputs
    (see "Open decisions / inputs"); proceeds after the current slices in the
    meantime.
-5. **Golden-fixture sign-off** — the six fixtures are prepared as machine-readable
+6. **Golden-fixture sign-off** — the six fixtures are prepared as machine-readable
    JSON under `tests/fixtures/` (`DEC-065`); finance + product owner sign (the
    "verified" gate); `I8`/`I9` still gate the real rates behind them.
-6. **Price versions + PRICE-002/003** (`DEC-064`) — the next pricing slice after
-   the roadmap's slice 10.
 7. **Deployment foundation — scaffolded and validated offline (committed); not
    applied.** `infra/` Terraform (project, database, spaces, networking,
    app-platform, monitoring, dns) + the App Platform app spec are done, and the
@@ -297,6 +320,23 @@ web layer in flight**). The list below is the short narrative form.
   waste valued at the ledger's moving average; production batch without a business
   number yet; recipe yield loss never posts waste; provisional
   `production_batch_output.kind` vocabulary).
+- **Row-11 import-framework open points (2026-09-20; also tracked in
+  `docs/BUILD_ROADMAP.md` §5 "Row-11 import-framework open points"; recorded,
+  not decided — do not resolve silently):** row 12 (sales + settlements +
+  reconciliation) is gated on `ADR-0008` acceptance + the I1 channel/SKU
+  confirmations (owner); row 13 is gated on `ADR-0007` (still Proposed); the
+  sales/consumption grain ambiguity (`DEC-009` daily-per-location vs a single
+  `sales_line` `source_id`, FIN+TECH); no import-profile table (TECH); no
+  tolerance-configuration table (FIN); `file_object` is absent, so
+  `import_run.file_object_id` is a plain uuid (TECH); dispositions live in
+  `diagnostics.dispositions` jsonb, not a table (TECH); two routes return 404 by
+  matching the text `/not found/i` on the `DomainError` message
+  (`recipes/[id]`, `recipes/[id]/versions`) — a brittle pattern to replace with
+  a typed not-found error (TECH); `MAPPING_STATE` has no `conflict` value —
+  conflicts are `error` + `error_code=mapping_conflict` (TECH). Also a live-check
+  left one dev `import_run` row in the local database (see "Local dev-DB
+  cleanup" below). Record each resolution in `12_OPEN_DECISIONS.md` (next free
+  id **`DEC-072`**); do not resolve silently.
 - **Slice-9/10 open owner questions (2026-09-20; also tracked in
   `docs/BUILD_ROADMAP.md` §5 "Slice-9/10 open owner questions"):** output-cost
   allocation across multiple outputs/by-products (FIN); yield-variance tolerance
@@ -553,18 +593,29 @@ and Spaces credentials via `-backend-config` / `AWS_ACCESS_KEY_ID` +
   `stock_movement.transfer_id` + the extended source guard) are additive with
   rehearsed down paths (drop the added objects/tables/columns, delete the ledger
   row, re-migrate).
-- **Slice 9 + slice-10 backend (UNCOMMITTED at HEAD `2a5799e`)**: the counts/
-  transfers/waste application + APIs + screens + seeds + tests and the production
-  backend (migration `0021`, domain `production.ts`, application `production/**`)
-  live only in the working tree — recovery is `git checkout -- <paths>` / `git
-stash` until the planned stock-ops and production-web commits land (then `git
-revert <sha>` per commit). Because slices 9 and 10 share barrel files
+- **Row 11 + the error-fix (UNCOMMITTED at HEAD `7f6aa78`)**: the row-11
+  import slice (migration `0022`, vocabularies `IMPORT_STATUS`/
+  `MAPPING_STATE`/`IMPORT_POSTING_POLICY`, domain `sales-mapping.ts`, application
+  `imports/**`, web `/api/v1/imports/**` + `(app)/sales/**` + seed) and the
+  cross-cutting `jsonError`/`mapErrors` error-handling fix live only in the
+  working tree, together with the `CONTEXT.md`/`docs/BUILD_ROADMAP.md` doc
+  update — recovery is `git checkout -- <paths>` / `git stash` until the three
+  planned commits land (row 11, the error fix, docs; then `git revert <sha>` per
+  commit). Migration `0022` is **additive with a rehearsed down path** (drop
+  the three added tables, delete the ledger row, re-migrate); the error fix
+  touches no migration or generated file, so it has no data-recovery concern.
+- **Slice 9 + slice-10 backend (committed as layer commits between `2a5799e`
+  and `7f6aa78`)**: the counts/transfers/waste and production work (migration
+  `0021`, domain `production.ts`, application `production/**`, the production
+  web layer) is committed on `main`; each commit is revertible with
+  `git revert <sha>`. Migrations `0020` (slice-9 stock-ops tables, committed in
+  `b525f30`) and `0021` (slice-10 production tables) are **additive with
+  rehearsed down paths** (drop the added tables/columns/FKs, delete the ledger
+  row, re-migrate). Note: slices 9 and 10 shared barrel files
   (`packages/application/src/index.ts`, `packages/domain/src/index.ts`,
   `packages/persistence/src/index.ts`, `schema/index.ts`, `vocabularies.ts`,
-  `_journal.json`), they cannot be split into independently-buildable commits.
-  Migrations `0020` (slice-9 stock-ops tables, committed in `b525f30`) and `0021`
-  (slice-10 production tables, uncommitted) are **additive with rehearsed down
-  paths** (drop the added tables/columns/FKs, delete the ledger row, re-migrate).
+  `_journal.json`), so their commits were able to be split only along those
+  shared-file boundaries.
 - **Deployment env vars (`583da3f`)**: the `ORGANIZATION_ID` /
   `TOTP_SECRET_ENCRYPTION_KEY` wiring in `infra/` is additive and conditional
   (unset adds no env var) — it changes no plan count (still **16 to add / 0
@@ -579,10 +630,11 @@ revert <sha>` per commit). Because slices 9 and 10 share barrel files
   them with `git revert` if needed. **No cloud resource was created — only offline
   `fmt`/`validate`/`plan` ran, never `apply`; no Terraform state exists, and
   nothing has been applied to DigitalOcean.**
-- Migrations 0000–0021 are additive with tested down paths (`0011` down drops the
+- Migrations 0000–0022 are additive with tested down paths (`0011` down drops the
   four slice-6 tables; `0012` down drops the three EXCLUDE constraints; `0015`/
-  `0016` down drop their indexes/invariant — rehearsed; `0017`–`0021` down are
-  rehearsed — see the slice-8 bullet and the slice-9/10 bullet above). While the
+  `0016` down drop their indexes/invariant — rehearsed; `0017`–`0022` down are
+  rehearsed — see the slice-8 bullet and the slice-9/10 and row-11 bullets
+  above). While the
   database is
   empty the tested recovery is `DROP SCHEMA public CASCADE; DROP SCHEMA drizzle
 CASCADE; CREATE SCHEMA public; npm run db:migrate` (see the runbook). Once data
@@ -592,6 +644,57 @@ CASCADE; CREATE SCHEMA public; npm run db:migrate` (see the runbook). Once data
   (`DEC-015`).
 
 ## Work log (append-only, newest first)
+
+### 2026-09-20 — Row 11 (import framework + external mappings) complete + cross-cutting error-handling fix (uncommitted); handoff updated
+
+`main` HEAD `7f6aa78`; the working tree holds uncommitted **row 11** work plus a
+cross-cutting error-handling fix and this handoff update — about to be committed
+as **three commits** (row 11, the error fix, docs; nothing pushed; nothing
+applied to DigitalOcean). No handoff/code file outside `CONTEXT.md` and
+`docs/BUILD_ROADMAP.md` was touched by this update.
+
+- **Row 11 — complete.** Migration `0022` (tables `import_run`,
+  `import_staging_row`, `external_mapping`), vocabularies
+  `IMPORT_STATUS`/`MAPPING_STATE`/`IMPORT_POSTING_POLICY`, domain
+  `packages/domain/src/sales-mapping.ts` (`resolveExternalEntity` — SKU-first
+  then external id, with both `DEC-033` conflict directions), application
+  `packages/application/src/imports/**` (create/stage/validate/map/dispose/
+  preview + list/get), web `/api/v1/imports/**` and `(app)/sales/**` (landing +
+  import runs list + run detail with diagnostics, staging rows, dispositions
+  and preview), and `apps/web/scripts/seed-imports.ts`. **Row 12 (sales +
+  settlements + reconciliation) was deliberately NOT built** — it remains
+  `blocked (owner)` on `ADR-0008` (still Proposed); the import slice stops at
+  `validated`/`needs_review` and the `/sales` page marks Reconciliation "not
+  yet implemented — row 12 is owner-gated on ADR-0008". `ADR-0007` (Proposed)
+  still gates row 13.
+- **Cross-cutting fix (uncommitted).** `apps/web/lib/http.ts` `jsonError` now
+  takes a message and `mapErrors` maps `DomainError`→400 with the authored
+  message; all ~40 non-auth `DomainError` branches pass `error.message`; auth
+  routes stay generic (`ADR-0003`). Verified live: a duplicate import hash now
+  returns `{"error":"duplicate import file hash …"}` instead of "Invalid email
+  or password".
+- **Open points recorded, not decided** (see "Open decisions / inputs" and
+  `docs/BUILD_ROADMAP.md` §5 "Row-11 import-framework open points"): the
+  row-12/13 gates; the sales/consumption grain ambiguity (`DEC-009`
+  daily-per-location vs a single `sales_line` `source_id`); no import-profile
+  table; no tolerance-configuration table; `file_object` absent so
+  `file_object_id` is a plain uuid; dispositions in `diagnostics.dispositions`
+  (no table); two routes return 404 by matching the text `/not found/i` on the
+  `DomainError` message (`recipes/[id]`, `recipes/[id]/versions`) — a brittle
+  pattern to replace with a typed not-found error; `MAPPING_STATE` has no
+  `conflict` value (conflicts are `error` + `error_code=mapping_conflict`);
+  next free decision id `DEC-072`. A live-check left one dev `import_run` row
+  in the local database (local dev-data artefact, no repository impact).
+- **Verification (exact, at the current working tree):** `typecheck`, `lint`,
+  `build`, `format:check` clean; **1087/1087 tests with `DATABASE_URL`** (880
+  passed / 207 skipped without); `npm audit --omit=dev` 0; `db:migrate` through
+  `0022` is a no-op; the `0022` down path was rehearsed.
+
+Rollback: the row-11 work + the error fix are uncommitted — `git checkout --
+<paths>` / discard the tree (or `git revert` the three commits once they land);
+migration `0022` is additive with a rehearsed down path. Next: the three
+commits, then row 12 when `ADR-0008` is accepted (else the price-version work
+`DEC-064` / the deployment rehearsal) — see "Resume here".
 
 ### 2026-09-20 — Slices 9 + 10-backend complete (uncommitted); decisions DEC-066–DEC-071 recorded; slice-10 web layer in flight
 
