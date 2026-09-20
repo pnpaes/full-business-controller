@@ -10,48 +10,79 @@ duplicate their content.
 **Say "resume the work" and start here.** A fresh session must be able to continue
 from this section alone.
 
-**Next task:** **slice 8 — stock ledger + balances + lots/storage** — now
-**UNBLOCKED**: the owner accepted `ADR-0005` (`docs/adr/`, the
-stock-inventory/valuation model) on 2026-09-20, lifting the slice-8 gate from
-`docs/BUILD_ROADMAP.md` §3/§4. Read `docs/BUILD_ROADMAP.md` §4 row 8 (refs
-`INV-001`–`003`, `INV-008`, `PROD-002`, `WASTE-002`, `COST-008`; `DEC-008`,
-`DEC-009`, `DEC-010`, `DEC-028`, `DEC-034`) and run the §2 execution loop from
-step 1 (pre-flight → design → implement → verify → reviews → reconcile → atomic
-commit).
+**Next task:** finish **slice 9 — counts + transfers + waste** (`docs/BUILD_ROADMAP.md`
+§4 row 9; refs `INV-004`–`007`, `INV-009`, `WASTE-001`/`002`; `DEC-017`, `DEC-018`,
+`DEC-029`). Its **persistence layer is done and committed** (migration `0020`:
+`stock_count`/`stock_count_line`/`stock_transfer`, `stock_movement.transfer_id`,
+source guard extended — inside `b525f30`); **Wave 2b — the slice-9 application +
+`/api/v1` + screens for counts, transfers and waste — is in flight in three parallel
+background agents**, each owning `packages/application/src/{counts,transfers,waste}/**`,
+`apps/web/app/api/v1/{counts,transfers,waste}/**`,
+`apps/web/app/(app)/inventory/{counts,transfers,waste}/**` and
+`apps/web/scripts/seed-*.ts`. HEAD is now `6c69f7f` on `main` (five layer commits,
+nothing pushed; slices 8 committed, plus design system/app shell/screens).
 
-**Scope (do):** implement slice 8 per `docs/BUILD_ROADMAP.md` §2/§4 row 8 —
-domain, application and persistence work plus migration `0017+` — never treating
-calculated costs as "verified" before the golden fixtures are signed; record any
-genuinely new decision in `12_OPEN_DECISIONS.md` from **`DEC-066`**.
+**Programme direction (standing user instruction):** proceed autonomously — per task:
+parallel background agents → adversarial review + fixes → document status and next
+steps → commit → next task. Slice-9's commit resumes **per-task feature commits**
+(the slice-8/9 backlog was committed in dependency-ordered layer commits — persistence
+→ domain → application → web/ui → infra — because the migrations/schema barrels shared
+files across tasks).
 
-**Scope (do not):** do not rework the committed auth/UI/master-data/receiving/
-recipe/costing workstreams or slice 7's application logic; do not edit migrations
-`0000–0016`; invent no decision (append from `DEC-066` only if genuinely needed);
-no external writes; do not deploy (`infra/` stays unapplied and gated on the
-owner inputs below).
+**Scope (do):** collect the Wave-2b agent output; run the risk-scaled adversarial
+review (`docs/BUILD_ROADMAP.md` §2 — normal slice: 1 reviewer; this one touches
+schema-adjacent application code, so e.g. `reviewer-qwen` + `reviewer-glm`/
+`reviewer-minimax`); reconcile findings (record accepted/declined with reasons); fix
+defects; re-verify with the commands below; update this file and
+`docs/BUILD_ROADMAP.md` §4/§5; then **commit slice 9 atomically per feature area**
+(verification evidence + rollback approach in the body, per `AGENTS.md` Rule 2), and
+start **slice 10 — production planning + batches** (`docs/BUILD_ROADMAP.md` §4 row 10;
+refs `PROD-001`–`005`; `DEC-005`, `DEC-031`, `DEC-036`; depends on slices 5 and 8;
+gate: none) in the same or a later session.
 
-**Files/paths:** `packages/domain/src/`, `packages/application/src/`,
-`packages/persistence/src/` + `drizzle/` (`0017+`), `docs/BUILD_ROADMAP.md`,
-`12_OPEN_DECISIONS.md` (only if a new decision is needed, from `DEC-066`),
-`CONTEXT.md`.
+**Scope (do not):** do not amend or rewrite history (the five commits above are
+already made; nothing pushed); do not edit migrations `0000–0020`; do not deploy,
+`terraform apply`, or write externally (per-source approval remains `DEC-015`);
+invent no decision — append from **`DEC-066`** only if genuinely needed; do not
+rewrite the specification inputs (`00_README.md` … `13_`, `docs/phase0/`, `schemas/`,
+`samples/`).
 
-**Acceptance / verification:** the slice-8 requirements of `docs/BUILD_ROADMAP.md`
-§4 row 8 are met. After any (code) change: `npm run lint`, `npm run typecheck`,
-`npm run test` (both with and without `DATABASE_URL`), `npm run build` and
-`npm run format:check` pass; `npm audit --omit=dev` = 0; migration `0017+` applies,
-re-runs as a no-op and has a rehearsed down path.
+**Files/paths:** `packages/application/src/{counts,transfers,waste}/**`, (as agents
+deliver) `packages/application/src/index.ts`, `apps/web/app/api/v1/{counts,transfers,waste}/**`,
+`apps/web/app/(app)/inventory/{counts,transfers,waste}/**`, `apps/web/scripts/seed-*.ts`,
+`docs/runbooks/persistence-migrations.md` (only if a new migration `0021+` is added),
+`docs/BUILD_ROADMAP.md`, `12_OPEN_DECISIONS.md` (only if a new decision is needed,
+from `DEC-066`), `CONTEXT.md`.
 
-**Parallel owner action — golden-fixture sign-off:** the six golden fixtures are
-now prepared as machine-readable JSON under `tests/fixtures/` (`DEC-065`) with the
+**Acceptance / verification:** `nvm use 22`, then `npm run lint`, `npm run
+typecheck`, `npm run test` (both with and without `DATABASE_URL` — current
+baseline: **842/842 with it; 691 passed / 151 skipped without**), `npm run build`,
+`npm run format:check`, `npm audit --omit=dev` = 0; `db:migrate` through the current
+head (`0020`) re-runs as a no-op; if a slice-9 migration `0021+` is added it must be
+additive with a rehearsed down path; curl-level checks equivalent to the existing
+screens (signed-out → 401; signed-in → 200) for the new routes.
+
+**Open inputs shaping Wave 2b (record in `docs/BUILD_ROADMAP.md` §5, do not
+decide):** the 13 slice-9 open points listed there (receipts not wired to the ledger;
+`DEC-028` per-source reversal semantics; `lotTracked` unenforced; the
+reconciled-downstream-sales reversal gate; source-guard coverage;
+`DEC-009` daily theoretical consumption; `stock_balance` writer policy; no
+`location`-row surface; **no transfer line table**; positive count-variance
+`unit_cost` source; `waste_event.value_method`/`value` vs the ledger's moving
+average; count `scope` shape and recount thresholds; no transfer-discrepancy
+exception table). Next free decision id `DEC-066`.
+
+**Parallel owner action — golden-fixture sign-off:** the six golden fixtures are now
+prepared as machine-readable JSON under `tests/fixtures/` (`DEC-065`) with the
 sign-off trail ready (six files, the reconciliation test
 `packages/domain/src/golden-fixtures.test.ts`, and the sign-off mechanics — see
 `docs/phase0/GOLDEN_FIXTURES.md`); finance + product owner sign. Until signed, no
 cost is "verified"; `I8`/`I9` still gate the real rates behind the fixtures.
 
-**After this task:** per `DEC-064`, **price versions + PRICE-002/003** are the next
-pricing slice after slice 8. Subsequent: slice 9 (counts + transfers + waste)
-depends on slice 8; then the deployment/apply gates (jobs runtime and
-multi-tenancy are now decided — `DEC-062`/`DEC-061`).
+**After slice 9:** slice 10 (production planning + batches); then, per the roadmap
+order, the sales import/reconciliation slices (`ADR-0008` still Proposed), then
+insights/month-close. Deployment rehearsal stays parked on its prerequisite inputs
+(see "Open decisions / inputs"; per-task commitment continues before it).
 
 ## What this is
 
@@ -61,8 +92,11 @@ sales/imports, workforce and reporting. It is **documentation-first**: Phase 0 i
 complete (specification, 65 accepted decisions, artifacts and ADRs); the
 foundation scaffold, the Phase 1–2 persistence core, the auth slices (1a–1e), the
 UI token foundation, master-data slices 2–3, slice 4 (receipt + price history +
-landed cost), slice 5 (recipes), slice 6 (operating costs + labour + allocation)
-and slice 7 (cost card + snapshots + price scenario + approval) are built.
+landed cost), slice 5 (recipes), slice 6 (operating costs + labour + allocation),
+slice 7 (cost card + snapshots + price scenario + approval), slice 8 (stock
+ledger + balances + lots/storage) and the design system/app shell/screens — all
+committed — with slice 9 (counts + transfers + waste; persistence done) in
+progress.
 
 ## Where things live
 
@@ -88,22 +122,45 @@ and slice 7 (cost card + snapshots + price scenario + approval) are built.
 
 ## Current status
 
-- **As of:** 2026-09-20 — branch `main`; HEAD `aa4ab29`. **Slice 7 (cost card +
-  snapshots + price scenario + approval) is complete, reviewed, verified and
-  committed (`400c95b`, with its review fixes in `60f3ec5`, `c82a30f` and
-  `083106a`, and the decisions/ADR acceptance and fixture trail in
-  `aa4ab29`).** This session the owner accepted **`ADR-0005`** (stock
-  valuation/consumption — unblocking slice 8) and made five decisions:
-  `DEC-061` (multi-tenancy: shared schema with `organization_id` row scoping; RLS
-  possible later, no schema/DB-per-tenant), `DEC-062` (background jobs runtime:
-  **pg-boss** over the existing PostgreSQL, worker/scheduler long-lived),
-  `DEC-063` (price-scenario target is contribution over net price — a 6 dp
-  fraction, not gross margin, not markup), `DEC-064` (`price_version` +
-  PRICE-002/003 are the next pricing slice after slice 8) and `DEC-065` (golden
-  fixtures are machine-readable JSON under `tests/fixtures/`, with the sign-off
-  trail prepared: six files, the reconciliation test
-  `packages/domain/src/golden-fixtures.test.ts`, and the sign-off mechanics).
-  Nothing has been applied to DigitalOcean.
+- **As of:** 2026-09-20 — branch `main`; HEAD `6c69f7f`; nothing pushed
+  (previous HEAD `f7b1db7`). **Slice 8 (stock ledger + balances + lots/storage) is
+  COMMITTED**, together with the design system, app shell and first screens, in five
+  dependency-ordered **layer commits** on `main` (the migrations/schema barrels shared
+  files across tasks, so the backlog was committed persistence → domain → application
+  → web/ui → infra; per-task feature commits resume from here):
+  `583da3f` feat(infra) deploy env vars; `b525f30` feat(persistence) stock ledger +
+  stock-ops schema, repositories, migrations `0017`–`0020`; `40e736b` feat(domain)
+  stock valuation + client-safe subpath exports; `c91e512` feat(application)
+  inventory/catalog/recipes/costing/receiving slices; `6c69f7f` feat(web) design
+  system, app shell and product screens. **Delivered and verified**: slice 8 —
+  moving-weighted-average valuation, reversal/revaluation, the DEC-010
+  negative-stock manager gate, per-org idempotency (`0018`), SQL-aggregate as-of
+  balance (`0019`) — with migrations `0017`–`0019`; the Aquarela design system
+  (`packages/ui` shell + patterns + client-only modal), the app shell with
+  role-aware nav and scope bar, Management home, branded sign-in, styleguide, and
+  the Inventory/Products/Recipes/Costs/Purchasing screens with `/api/v1` routes and
+  idempotent seeds; slice 9 **persistence** — tables
+  `stock_count`/`stock_count_line`/`stock_transfer`, `stock_movement.transfer_id`,
+  the `0017` source guard extended to them — with migration `0020`.
+  **Known defects fixed during integration:** a client component pulled
+  `node:crypto` into the browser bundle via the domain barrel (fixed with
+  client-safe `@aquarela/domain/decimal|quantity|money` subpath exports); six
+  detail pages returned HTTP 500 on a non-UUID param (fixed with
+  `apps/web/lib/route-params.ts` → 404, with its test).
+  **Verification at `6c69f7f`:** `typecheck`, `lint`, `build`, `format:check`
+  clean; **842/842 tests with `DATABASE_URL`** (691 passed / 151 skipped without
+  it); `npm audit --omit=dev` = 0; `db:migrate` through `0020` re-runs as a no-op;
+  the `0017`–`0020` down paths rehearsed.
+  **In flight: Wave 2b — slice 9's application + API + screens for counts,
+  transfers and waste**, in three parallel background agents, each owning
+  `packages/application/src/{counts,transfers,waste}/**`,
+  `apps/web/app/api/v1/{counts,transfers,waste}/**`,
+  `apps/web/app/(app)/inventory/{counts,transfers,waste}/**` and
+  `apps/web/scripts/seed-*.ts`. Programme direction (user instruction): proceed
+  autonomously — review/fix the agent output, document status + next steps, commit
+  slice 9, then slice 10 (production planning + batches), then sales
+  import/reconciliation, then insights/month-close. Nothing has been applied to
+  DigitalOcean.
 - **Auth complete and security-reviewed (slices 1a–1e):** domain primitives (1a);
   persistence layer (1b-i); application flow (1b-ii); password reset + access
   control (1b-iii, `2ce8847`; reset neutrality `5776914`); hardening (`60ac52e`:
@@ -143,59 +200,79 @@ and slice 7 (cost card + snapshots + price scenario + approval) are built.
   (`bfc5f74`).
 - **DEC-049 closed:** drizzle-orm 0.45.2 / drizzle-kit 0.31.10 upgrade (`cc86f13`);
   `npm audit --omit=dev` = 0.
-- **Tests:** 475 passed / 113 skipped (588) without `DATABASE_URL`; **588 passed /
-  588 (60 files + the new golden-fixture test)** with it (recorded 2026-09-20 at
-  HEAD `aa4ab29`; re-verify with `npm run test` and update if they differ).
+- **Tests:** without `DATABASE_URL` **691 passed / 151 skipped (842)**; with it
+  **842/842 passed** — recorded 2026-09-20 at HEAD `6c69f7f` (the committed slice-8 +
+  slice-9-persistence + web layers; lint/typecheck/build/format:check pass;
+  `npm audit --omit=dev` = 0; `db:migrate` applies through `0020`, re-runs as a
+  no-op, and the `0017`–`0020` down paths were rehearsed). Re-verify with
+  `npm run test` and update if they differ.
   Open verification debt: the per-process rate limiter needs a shared
   store before multi-instance deployment; the reset-token delivery is a no-op stub
   until the email slice; the palette hex values and data-viz palette semantics
   await owner sign-off (see "Open decisions / inputs"); the six golden fixtures
   remain unsigned and are the "verified" gate.
 - **Persistence core + deployment foundation (committed):** Drizzle schema,
-  migrations `0000_enable_extensions` → `0016` additive with tested down paths
+  migrations `0000_enable_extensions` → `0020` additive with tested down paths
   (`0011_cost_allocation.sql` adds the four slice-6 tables; `0014_cost_card_pricing`
   adds four deferred `price_scenario` columns + `snapshot_component_kind_check`;
   `0015` adds `calculation_snapshot_cost_card_index`; the hand-written `0016` adds
   the `cost_card_approved_scope` invariant — a partial unique
   `cost_card_approved_scope_key` (`NULLS NOT DISTINCT WHERE state = 'approved'`);
-  ledger 17 rows through `0016`; the `asset`
+  `0018` scopes the stock-movement idempotency key per organization and `0019`
+  adds the `stock_movement_org_occurred_idx` as-of index; `0020` adds the
+  slice-9 stock-ops tables (`stock_count`/`stock_count_line`/`stock_transfer`,
+  `stock_movement.transfer_id`) and extends the source guard; ledger 21 rows
+  through `0020`; the `asset`
   register is deliberately deferred), the
   advisory-locked migrator, worker/scheduler
   stubs and the `infra/` Terraform scaffold validated offline. Not applied.
-- **Not yet built:** business slices 8+; the deferred tables
+- **Not yet built:** the remainder of slice 9 (Wave 2b application/API/screens for
+  counts/transfers/waste — in flight in three parallel agents) and slices 10+; also
+  the deferred tables
   (workforce, integrations, competitor, AI, sales, procurement, production,
-  counts/transfers, period close, platform job/file/approval — note the
+  period close, platform job/file/approval — note the
   `approval` platform table from DATA_DICTIONARY §9 does not exist yet — and the
   `asset` register).
 
 ## Next up (prioritised)
 
 `docs/BUILD_ROADMAP.md` is the ordered execution tracker for these slices (slice 0 and
-1a–1e, 2, 3, 4, 5, 6 and 7 done; **slice 8 next and unblocked by the `ADR-0005`
-acceptance**). The list below is the short narrative form.
+1a–1e, 2–8 done; **slice 9 in progress — persistence done and committed, Wave 2b
+application/API/screens in flight in three parallel agents**). The list below is the
+short narrative form.
 
-1. **Slice 8 — stock ledger + balances + lots/storage** (`INV-001`–`003`, `INV-008`,
-   `PROD-002`, `WASTE-002`, `COST-008`; `DEC-008`/`009`/`010`/`028`/`034`;
-   `ADR-0005`) — **UNBLOCKED: the owner accepted `ADR-0005` (2026-09-20)**. This is
-   the next task (see "Resume here").
-2. **Price versions + PRICE-002/003** (`DEC-064`) — the next pricing slice after
-   slice 8.
-3. **Golden-fixture sign-off** — the six fixtures are prepared as machine-readable
+1. **Finish slice 9 — counts + transfers + waste (Wave 2b)** (`INV-004`–`007`,
+   `INV-009`, `WASTE-001`/`002`; `DEC-017`, `DEC-018`, `DEC-029`) — persistence done
+   (migration `0020`, committed in `b525f30`); the collection/review/fix of the three
+   parallel agents' output, re-verification, doc updates and the feature-committed
+   slice-9 commit are the immediate tasks (see "Resume here"). Programme direction:
+   proceed autonomously (agents → review/fix → document → commit → next task).
+2. **Slice 10 — production planning + batches** (`PROD-001`–`005`; `DEC-005`,
+   `DEC-031`, `DEC-036`) — next after slice 9 per the roadmap; then the sales
+   import/reconciliation slices, then insights/month-close.
+3. **Test-deployment rehearsal** — per `docs/runbooks/deployment.md`, staging first
+   with sanitized/synthetic data only; blocked on the deployment prerequisite inputs
+   (see "Open decisions / inputs"); proceeds after the current slices in the
+   meantime.
+4. **Golden-fixture sign-off** — the six fixtures are prepared as machine-readable
    JSON under `tests/fixtures/` (`DEC-065`); finance + product owner sign (the
    "verified" gate); `I8`/`I9` still gate the real rates behind them.
-4. **Deployment foundation — scaffolded and validated offline (committed); not
+5. **Price versions + PRICE-002/003** (`DEC-064`) — the next pricing slice after
+   the roadmap's slice 10.
+6. **Deployment foundation — scaffolded and validated offline (committed); not
    applied.** `infra/` Terraform (project, database, spaces, networking,
    app-platform, monitoring, dns) + the App Platform app spec are done, and the
    `apps/worker` / `apps/scheduler` stubs exist. The jobs runtime (`DEC-062`,
-   pg-boss) and the multi-tenancy posture (`DEC-061`) are now decided. Before any
-   `apply`: real DO credentials and a provisioned Spaces state bucket, and a
-   single-runner apply. See `docs/adr/0012-deployment-topology-and-service-runtimes.md`
-   and `docs/runbooks/deployment.md`.
-   decisions under "Open decisions / inputs", real DO credentials and a
-   provisioned Spaces state bucket, and a single-runner apply. See
+   pg-boss) and the multi-tenancy posture (`DEC-061`) are now decided. The env-var
+   wiring is done and committed (`583da3f`): `ORGANIZATION_ID` and
+   `TOTP_SECRET_ENCRYPTION_KEY` are wired conditionally into the app-platform
+   module and both env roots; the offline plan is still **16 to add / 0 change / 0
+   destroy** per env. Before any `apply`: the decisions under "Open decisions /
+   inputs", real DO credentials and a provisioned Spaces state bucket, and a
+   single-runner apply. See
    `docs/adr/0012-deployment-topology-and-service-runtimes.md` and
    `docs/runbooks/deployment.md`.
-5. **Costing verification** — against `docs/phase0/CALCULATION_CONTRACT.md` with
+7. **Costing verification** — against `docs/phase0/CALCULATION_CONTRACT.md` with
    synthetic fixtures, then real data; **owner sign-off of the six golden
    fixtures** (`docs/phase0/GOLDEN_FIXTURES.md`, prepared per `DEC-065`) is the
    gate for treating any cost as "verified" (slice 7 surfaces the sign-off trail).
@@ -212,6 +289,14 @@ acceptance**). The list below is the short narrative form.
   **`DEC-064`** `price_version` + PRICE-002/003 are the next pricing slice after
   slice 8; **`DEC-065`** golden fixtures are machine-readable JSON under
   `tests/fixtures/` with the sign-off trail prepared.
+- **Deployment prerequisite inputs (owner; before any real `apply`):** `ADR-0004`
+  acceptance; a real scoped `DIGITALOCEAN_TOKEN`; a provisioned private Spaces
+  state bucket + state credentials; the sanitized-data owner; the legacy
+  instance-slug/manual-scaling check; domain names (optional). The runbook
+  (`docs/runbooks/deployment.md`) mandates the first real `apply` be **staging**
+  with sanitized/synthetic data only — never a raw production copy (a raw
+  production copy is only sanctioned via an isolated PITR restore for a data
+  rollback). Nothing has been applied to DigitalOcean.
 - External inputs still outstanding: supplier costs/receipts (I4), recipes +
   yields (I5), productive-hours % (I8 remainder), opening counts (I7), and the
   Frontline data-shape confirmations (item-level sales lines, per-line
@@ -258,6 +343,60 @@ acceptance**). The list below is the short narrative form.
   open points"); record each owner resolution in `12_OPEN_DECISIONS.md` (next free
   id **`DEC-066`**); do not resolve silently. The golden fixtures remain unsigned
   and are the gate for "verified".
+- **Surfaced by slice 8** (uncommitted working tree at HEAD `f7b1db7`): eight
+  stock-ledger open (owner/TECH) points are recorded in `docs/BUILD_ROADMAP.md` §5
+  ("Slice-8 stock-ledger open points"); record each resolution in
+  `12_OPEN_DECISIONS.md` (next free id **`DEC-066`**); do not resolve silently:
+  goods-receipt acceptance is not yet wired to the ledger (no destination
+  `storage_area_id` on a receipt; the receipt→movement integration and its
+  storage-area policy are unresolved, `post-stock-movement.ts`); per-source
+  reversal semantics are not enumerated (a non-receipt reversal posts movement
+  type `correction`; only `receipt` → `receipt_reversal`; `DEC-028` defines the
+  semantics per source type, `reverse-stock-movement.ts`); `lotTracked` is not
+  enforced (a lot-tracked item can post with `lotId` null,
+  `post-stock-movement.ts`); the `DEC-028` "reversal blocked when reconciled
+  downstream sales depend on the original" gate is deferred until the sales slice
+  exposes reconciliation state (reversal always requires an explicit reason
+  today); the `0017` `source_id` guard originally covered only
+  `source_type='goods_receipt'` and — slice-9 persistence, migration `0020`
+  (committed in `b525f30`) — now covers `stock_count`/`transfer`/`waste_event` too
+  (production/sales remain documented no-ops until their slices
+  extend the trigger); `DEC-009` daily theoretical sale-consumption posting is
+  not implemented (no sales source exists yet; `postStockMovements` is the
+  idempotent primitive the sales slice will call); `stock_balance` is written
+  directly by the posting command while the runbook calls it a rebuildable
+  projection (confirm the writer policy before multi-instance use); no
+  application surface creates `location` rows (a pre-existing gap;
+  `registerStorageArea` requires an existing location).
+  Two further points from the finding fixes: the idempotency key is now a
+  **per-organization** namespace (`stock_movement_org_idempotency_key_key`,
+  migration `0018`), which narrows `DATA_DICTIONARY` §6's global "unique where
+  not null" wording; and the DEC-010 negative-override role set
+  (`NEGATIVE_OVERRIDE_ROLES = ["owner", "general_manager", "location_manager"]`,
+  `packages/application/src/inventory/permissions.ts`) is fail-closed — the
+  residual open point is which of those roles should grant the override
+  (`DEC-066`).
+- **Surfaced by slice 9** (persistence committed in `b525f30`, migration `0020`;
+  Wave 2b application/API/screens in flight in three parallel agents): five
+  slice-9 open (owner/TECH) points, also tracked in `docs/BUILD_ROADMAP.md` §5
+  ("Slice-9 counts/transfers/waste open points", which also cross-references the
+  slice-8 points above); record each resolution in `12_OPEN_DECISIONS.md` (next
+  free id **`DEC-066`**); do not resolve silently:
+  **no transfer line table exists** (a transfer is a header plus paired
+  `stock_movement.transfer_id` movements; the per-item discrepancy is derived —
+  owner/TECH to confirm the shape); the **positive count-variance `unit_cost`
+  source is undecided** (the ledger's moving average is the working
+  assumption — owner/FIN); **`waste_event.value_method`/`value` vs the ledger's
+  moving average is undecided** (which value the waste record is judged against,
+  and whether they may diverge — owner/FIN); **count `scope` shape and recount
+  thresholds are undefined** (whole area vs item subset, plus the escalation
+  rule, `DEC-017`/`DEC-029` — owner/FIN); **no transfer-discrepancy exception
+  table exists** (a discrepancy between shipped and received movements is only
+  derivable from the ledger — owner/TECH).
+- **Local dev-DB cleanup (not a code issue):** an ad-hoc reviewer probe left 3
+  `stock_movement` rows under a throwaway org in the local dev database; the
+  append-only trigger makes them undeletable (the documented destructive replay
+  would clear them). Local dev-data artefact only — no repository impact.
 - Surfaced by slice 5 (`841da96`, deliberate ambiguities left for a decision —
   also tracked in `docs/BUILD_ROADMAP.md` §5; do not resolve silently):
   1. allergen roll-up from sub-recipes into the parent recipe is not implemented;
@@ -310,12 +449,17 @@ export NVM_DIR="$HOME/.nvm"; . "$NVM_DIR/nvm.sh"; nvm use 22
 npm run lint && npm run typecheck && npm run test && npm run build && npm run format:check
 ```
 
-Runtime stubs (each prints its start line and exits 0 after one tick):
+Runtime stubs (each prints its start line and exits 0 after one tick; the worker
+and scheduler ticks pass only when `DATABASE_URL` is set):
 
 ```bash
-WORKER_TICKS=1 npm run start --workspace @aquarela/worker
-SCHEDULER_TICKS=1 npm run start --workspace @aquarela/scheduler
+DATABASE_URL=postgres://aquarela:aquarela@localhost:5432/aquarela WORKER_TICKS=1 npm run start --workspace @aquarela/worker
+DATABASE_URL=postgres://aquarela:aquarela@localhost:5432/aquarela SCHEDULER_TICKS=1 npm run start --workspace @aquarela/scheduler
 ```
+
+Environment note: `docker` and `terraform` are **not on PATH** in this environment
+— the container build and credentialed Terraform steps cannot be run here (the
+Terraform offline validation was run from a downloaded 1.16.3 binary).
 
 Local PostgreSQL 16 and migrations (the wrapper takes advisory lock `8675309`;
 `DATABASE_MIGRATIONS_URL`, when set, wins over `DATABASE_URL`):
@@ -376,6 +520,26 @@ and Spaces credentials via `-backend-config` / `AWS_ACCESS_KEY_ID` +
   scenario outcome, the two dead read-API removals, the contribution-boundary
   de-duplication and the `0014`/`0016` pre-apply preflight notes. Neither touched
   a migration or a generated file, so neither has a data-recovery concern.
+- **Slice 8 + slice-9 persistence + web layers (committed as five layer commits;
+  nothing pushed; HEAD `6c69f7f`)**: each is independently revertible with
+  `git revert <sha>` — `583da3f` (infra deploy env vars), `b525f30` (stock ledger +
+  stock-ops persistence, repositories, migrations `0017`–`0020`),
+  `40e736b` (stock-valuation domain + client-safe subpath exports), `c91e512`
+  (application slices), `6c69f7f` (design system, app shell, screens). Because they
+  are layer commits over shared files, reverting the earliest layer (`b525f30`)
+  alone may leave later layers referencing missing exports — revert the cohort
+  together (or in reverse order) if reverting more than the topmost commit.
+  Migrations `0017` (deferred FK + `goods_receipt` source guard), `0018` (per-org
+  idempotency key), `0019` (`stock_movement_org_occurred_idx`) and `0020`
+  (slice-9 `stock_count`/`stock_count_line`/`stock_transfer` tables +
+  `stock_movement.transfer_id` + the extended source guard) are additive with
+  rehearsed down paths (drop the added objects/tables/columns, delete the ledger
+  row, re-migrate).
+- **Deployment env vars (`583da3f`)**: the `ORGANIZATION_ID` /
+  `TOTP_SECRET_ENCRYPTION_KEY` wiring in `infra/` is additive and conditional
+  (unset adds no env var) — it changes no plan count (still **16 to add / 0
+  change / 0 destroy** per env offline); `git revert 583da3f` undoes it. **No
+  cloud resource was created and nothing has been applied to DigitalOcean.**
 - **Decisions + fixture trail (`aa4ab29`)**: documentation only — the five
   `DEC-061`–`DEC-065` entries, the `ADR-0005` acceptance and the additive golden
   fixture trail/test (`tests/fixtures/`,
@@ -385,9 +549,10 @@ and Spaces credentials via `-backend-config` / `AWS_ACCESS_KEY_ID` +
   them with `git revert` if needed. **No cloud resource was created — only offline
   `fmt`/`validate`/`plan` ran, never `apply`; no Terraform state exists, and
   nothing has been applied to DigitalOcean.**
-- Migrations 0000–0016 are additive with tested down paths (`0011` down drops the
+- Migrations 0000–0020 are additive with tested down paths (`0011` down drops the
   four slice-6 tables; `0012` down drops the three EXCLUDE constraints; `0015`/
-  `0016` down drop their indexes/invariant — rehearsed). While the database is
+  `0016` down drop their indexes/invariant — rehearsed; `0017`–`0020` down are
+  rehearsed — see the slice-8 bullet). While the database is
   empty the tested recovery is `DROP SCHEMA public CASCADE; DROP SCHEMA drizzle
 CASCADE; CREATE SCHEMA public; npm run db:migrate` (see the runbook). Once data
   exists, migrations must be additive (expand → migrate → contract) with a tested
@@ -396,6 +561,351 @@ CASCADE; CREATE SCHEMA public; npm run db:migrate` (see the runbook). Once data
   (`DEC-015`).
 
 ## Work log (append-only, newest first)
+
+### 2026-09-20 — Slice 8 + slice-9 persistence + design system/screens committed (five layer commits); slice 9 Wave 2b in flight
+
+Five commits landed on `main` (HEAD now `6c69f7f`; nothing pushed; previous HEAD
+`f7b1db7`). Because the migrations/schema barrels shared files across tasks, the
+backlog was committed in dependency-ordered **layer commits**
+(persistence → domain → application → web/ui → infra — infra commit chronologically
+topmost as the last stack entry); **per-task feature commits resume from here**:
+
+- `583da3f` feat(infra) deploy env vars (`ORGANIZATION_ID`,
+  `TOTP_SECRET_ENCRYPTION_KEY` wired conditionally into the app-platform module and
+  both env roots).
+- `b525f30` feat(persistence) stock ledger + stock-ops schema, repositories,
+  migrations `0017`–`0020` (slice 8 plus the slice-9 stock-ops tables:
+  `stock_count`/`stock_count_line`/`stock_transfer`, `stock_movement.transfer_id`,
+  the `0017` source guard extended to `stock_count`/`transfer`/`waste_event`).
+- `40e736b` feat(domain) stock valuation + client-safe subpath exports
+  (`@aquarela/domain/decimal|quantity|money`).
+- `c91e512` feat(application) inventory/catalog/recipes/costing/receiving slices.
+- `6c69f7f` feat(web) Aquarela design system (`packages/ui` shell + patterns +
+  client-only modal), app shell with role-aware nav and scope bar, Management home,
+  branded sign-in, styleguide, and the Inventory/Products/Recipes/Costs/Purchasing
+  screens with `/api/v1` routes and idempotent seeds.
+
+**Delivered and verified within these commits:** slice 8 stock ledger (moving
+weighted-average valuation, reversal/revaluation, DEC-010 negative-stock manager
+gate, per-org idempotency, SQL as-of aggregate) with migrations `0017`–`0019`;
+the web surface above; slice 9 **persistence** with migration `0020`.
+**Known defects fixed during integration:** a client component pulled `node:crypto`
+into the browser bundle via the domain barrel (fixed with the client-safe
+`@aquarela/domain/decimal|quantity|money` subpath exports); six detail pages
+returned HTTP 500 on a non-UUID param (fixed with
+`apps/web/lib/route-params.ts` → 404, with its test).
+
+**Verification at `6c69f7f` (exact):** `typecheck`, `lint`, `build`,
+`format:check` clean; **842/842 tests with `DATABASE_URL`** (691 passed / 151
+skipped without it); `npm audit --omit=dev` = 0; `db:migrate` through `0020`
+re-runs as a no-op; the `0017`–`0020` down paths rehearsed.
+
+**In flight: slice 9 Wave 2b** — the counts, transfers and waste application +
+`/api/v1` + screens, in three parallel background agents (each owning
+`packages/application/src/{counts,transfers,waste}/**`,
+`apps/web/app/api/v1/{counts,transfers,waste}/**`,
+`apps/web/app/(app)/inventory/{counts,transfers,waste}/**` and
+`apps/web/scripts/seed-*.ts`). **Programme direction (user instruction):**
+proceed autonomously — per task: parallel background agents → review/fix →
+document status + next steps → commit → next task; after slice 9, slice 10
+(production planning + batches), then sales import/reconciliation, then
+insights/month-close. **Open points recorded not decided** (13 — see
+`docs/BUILD_ROADMAP.md` §5 "Slice-9 counts/transfers/waste open points" and "Open
+decisions / inputs"); next free decision id `DEC-066`.
+
+Rollback: `git revert <sha>` per commit (see "Reversibility" for the cohort
+caveat); migrations `0017`–`0020` additive with rehearsed downs.
+
+### 2026-09-20 — Detail pages return 404 (not 500) for a non-UUID route param (uncommitted)
+
+Fixed the cross-cutting defect where all six `(app)` detail pages returned **HTTP
+500** for a malformed route param (`/inventory/notauuid`, `/products/notauuid`,
+`/recipes/notauuid`, `/costs/cost-cards/notauuid`, `/costs/price-scenarios/notauuid`,
+`/purchasing/receipts/notauuid`): the raw param reached a Postgres `uuid`
+comparison and raised a driver error.
+
+- New `apps/web/lib/route-params.ts` exports `uuidOrNotFound(value)`: trims,
+  matches a strict 8-4-4-4-12 hex UUID (version/variant nibbles unconstrained),
+  and calls `notFound()` on a miss; JSDoc states an unvalidated id must never
+  reach the database. New focused test `apps/web/lib/route-params.test.ts`
+  (valid, uppercase, wrong-length, non-hex, surrounding whitespace) = **5 passed**.
+- Applied in all six detail pages before any store/service call, via a
+  `raw<Param>` destructure rename (`uuidOrNotFound(rawId)`), keeping the existing
+  `notFound()` for valid-but-unknown ids. No API route, domain/application/
+  persistence layer, or `packages/ui` change. A sweep of `apps/web/app/(app)/**`
+  confirmed exactly these six dynamic pages.
+- Verified: `npx tsc --noEmit -p apps/web/tsconfig.json` clean; focused
+  `npx vitest run apps/web/lib/route-params.test.ts` = 5 passed; `npx eslint` and
+  `npx prettier --check` clean on all touched files. Live (dev server, signed-in):
+  all six `…/notauuid` URLs now **404** (were 500); valid ids for inventory,
+  products, recipes and purchasing/receipts **200**. The `cost_card` /
+  `price_scenario` tables are empty in the dev DB (list API returns no rows), so
+  no 200 id exists there; a valid-but-unknown UUID returns a clean **404**, i.e.
+  the guard passes well-formed ids to the loader and never 500s. Uncommitted;
+  rollback: discard the touched files (or `git revert` once committed).
+
+### 2026-09-20 — Inventory balances show the item name/code instead of the raw UUID (uncommitted)
+
+Closed the gap where the new Inventory screen displayed raw item UUIDs because the
+inventory read model did not expose the item name/code. No domain/persistence
+logic change — the persistence `findItemById` already returned the full row.
+
+- `InventoryItemRecord` gained `code`/`name`
+  (`packages/application/src/inventory/types.ts`), mapped in `toItem`
+  (`postgres-store.ts`) and seeded in `FakeInventoryStore`'s fixture
+  (`test-support.ts`); the inline item literals in `post-stock-movement.test.ts`
+  were updated so they still compile.
+- `BalanceRow` gained `itemCode`/`itemName` from the existing org-checked item
+  lookup, so `GET /api/v1/inventory/balances` now carries them
+  (`apps/web/app/api/v1/inventory/balances/balance-rows.ts`); its test updated.
+- `BalancesTable` renders the item name (the code as a small muted secondary line)
+  with the id kept in a `title`, and the "names are not exposed yet" caption /
+  row comment were removed; the `—`/empty behaviour and the currency logic are
+  unchanged (`apps/web/app/(app)/inventory/balances-table.tsx`, `page.tsx`).
+
+Verified (exact): `npm run typecheck`, `npm run lint` pass; focused
+`npx vitest run packages/application/src/inventory apps/web/app/api/v1/inventory`
+= **55 passed / 4 skipped (59)**; `npm run test` = **568 passed / 135 skipped
+(703)**; `npm run build` passes (the first attempt failed transiently on missing
+auth page modules — the `next build`/running `next dev` shared-`.next` race — and
+succeeded on retry); `npx prettier --check` clean on all eight touched files.
+Curl: signed-out `GET /api/v1/inventory/balances` → **401**; signed in as
+`owner`/`LocalDevPass123` → **200** with `itemCode`/`itemName` populated (e.g.
+`DEMO_ESPRESSO_BEANS` / "Demo Espresso Beans"). Uncommitted; rollback: discard the
+touched files/the working tree (or `git revert` once committed).
+
+### 2026-09-20 — Slice 8 final review fixes (findings 5–10) + deployment readiness (uncommitted)
+
+Finished the slice-8 adversarial-review follow-up on the still-uncommitted working
+tree (HEAD `f7b1db7`; nothing applied to DigitalOcean): **all ten review findings
+are now addressed.** No new domain change beyond the earlier fixes.
+
+- **Findings 5–10 fixed.** Batch posting memoises transaction-immutable reference
+  lookups inside the transaction; `getStockBalanceAsOf` uses the new SQL aggregate
+  `sumStockMovementsAsOf` (no in-memory ledger scan) plus the domain average
+  helper; migration `0019_stock_movement_asof_index.sql` (journal `when`
+  `1789904976754`) adds the `stock_movement_org_occurred_idx` index on
+  `(organization_id, occurred_at, posted_at, id)`; the negative-override guard and
+  `isBlank` are de-duplicated; the dead wrapper `getCurrentStockBalance` and the
+  test-only persistence exports (`createStockLot`, `findStockLotByNumber`,
+  `listStorageAreas`) were removed. `listStockMovements` is deliberately retained
+  as a ledger read API (now used only by its persistence test; slice 9 will need
+  it). Findings 1–4 were fixed earlier (DEC-010 gate, per-org idempotency `0018`,
+  domain `deriveAverageUnitCost`, shared `postRevaluationCorrection`).
+- **Deployment readiness (infra).** `ORGANIZATION_ID` (general) and
+  `TOTP_SECRET_ENCRYPTION_KEY` (secret) are wired conditionally into the
+  app-platform module and both env roots (unset adds no env var), web-only;
+  `docs/runbooks/deployment.md` updated (deployed env vars, the corrected
+  owner-decision drift — multi-tenancy decided `DEC-061`, jobs runtime decided
+  `DEC-062`, `ADR-0004` acceptance itself still open — and a "Rehearsing against
+  a production clone" note). Runbook `0019` entries added to
+  `docs/runbooks/persistence-migrations.md`.
+- **Local deployment rehearsal (this session).** The full suite and migration are
+  green; `npm run bootstrap -- --dry-run` prints the expected plan without
+  writing; the worker and scheduler smoke ticks pass only when `DATABASE_URL` is
+  set (the "How to verify" commands here were corrected to include it). Docker
+  and Terraform binaries are not on PATH here, so the container build and
+  credentialed Terraform steps could not run (Terraform offline validation ran
+  from a downloaded 1.16.3 binary by the infra agent).
+
+Verified (exact): `npm run lint`, `npm run typecheck`, `npm run build` and
+`npm run format:check` pass; without `DATABASE_URL` **558 passed / 135 skipped
+(693)**; with it **693 passed / 693 (69 files)**; `npm audit --omit=dev` = 0;
+`db:migrate` applies through `0019` and re-runs as a no-op; the `0019` down path
+was rehearsed (drop the index, delete the ledger row, re-migrate). Terraform:
+`fmt -check -recursive` clean; `init -backend=false` + `validate` green in both
+envs; offline plan still **16 to add / 0 change / 0 destroy** per env.
+
+Rollback: discard the working tree (or, once committed, `git revert`); migrations
+`0018`/`0019` are additive with rehearsed down paths; the infra env-var change is
+additive and changes no plan count. Next: the atomic slice-8 commit (see "Resume
+here"), then the test-deployment rehearsal.
+
+### 2026-09-20 — Slice 8 finding fixes: DEC-010 role gate, per-org idempotency (`0018`), shared revaluation helper (uncommitted)
+
+Applied three review findings to the still-uncommitted slice-8 working tree (HEAD
+`f7b1db7`; nothing applied to DigitalOcean). No domain change.
+
+- **Finding 1 — DEC-010 negative override now requires a manager role.** New
+  `listActorRoleCodes(actorId)` port (`types.ts`), implemented via the existing
+  `listUserRoles` repository in the Postgres adapter and a public role map in
+  `FakeInventoryStore`; new `permissions.ts` holds the provisional fail-closed
+  `NEGATIVE_OVERRIDE_ROLES = ["owner", "manager"]` and
+  `assertNegativeOverrideAuthorized`; `postStockMovement` and
+  `reverseStockMovement` call it when the override is actually used, throwing
+  `DomainError("negative stock override requires manager permission")` otherwise.
+  Tests: override rejected with no qualifying role (post + reverse); the existing
+  owner-held override tests still pass. **Role-code correction (post-review):**
+  the gate now uses the real `ROLE_CODE` vocabulary codes —
+  `NEGATIVE_OVERRIDE_ROLES = ["owner", "general_manager", "location_manager"]`;
+  `manager` was not a vocabulary code; the residual open point is only _which_ of
+  those roles should grant the override (next free id `DEC-066`).
+- **Finding 2 — idempotency key scoped per organization.** Schema's global
+  unique replaced by the composite `stock_movement_org_idempotency_key_key` on
+  `(organization_id, idempotency_key)`; migration
+  `0018_stock_movement_org_idempotency_key.sql` generated (journal `when`
+  `1789902579323`) with its unjournaled `_down.sql`; repository
+  `findStockMovementByIdempotencyKey(db, organizationId, key)` filters by org; the
+  application replay path passes the org and the redundant foreign-org throw is
+  gone. Tests: one org's key does not block another's posting and each org
+  replays its own movement (application), plus the composite same-org collision /
+  two-org acceptance (persistence integration). This deviates from
+  `DATA_DICTIONARY` §6's global "unique where not null" wording — recorded as an
+  open point, not ignored.
+- **Finding 4 — shared revaluation correction.** New `revaluation.ts`
+  (`postRevaluationCorrection`) is used by both commands; it posts the value-only
+  movement, saves the balance and writes the audit, adding `reversal_of_id` to
+  the audit only when non-null. Callers keep their own `reasonCode` and
+  idempotency-key scheme; the post path's audit gains no `reversal_of_id`.
+- **Docs:** runbook `0018` entries (order row, bullet, down companion, ledger
+  `when`, preflight, invariant check, recovery range `0000–0018`); two new
+  slice-8 open points in `docs/BUILD_ROADMAP.md` §5 (per-org key vs
+  `DATA_DICTIONARY` §6; provisional override role set) and this file.
+
+Verified (exact): `npm run lint`, `npm run typecheck`, `npm run build` and
+`npm run format:check` pass; without `DATABASE_URL` **557 passed / 135 skipped
+(692)**; with it **692 passed / 692 (69 files)**; `db:migrate` applies `0018`,
+re-runs as a no-op, and the down path was rehearsed (run the down via node+`pg`,
+delete the `1789902579323` ledger row, re-migrate), leaving the database migrated
+through `0018`. Rollback: discard the working tree (or, once committed, `git
+revert`); migration `0018` is additive with the rehearsed down path. Next: the
+atomic slice-8 commit (see "Resume here").
+
+### 2026-09-20 — Slice 8 stock ledger + balances + lots/storage implemented, reviewed, reconciled (uncommitted)
+
+Slice 8 is **implemented, adversarially reviewed in three independent passes,
+fix-reconciled and fully verified — but UNCOMMITTED** (branch `main`, HEAD
+`f7b1db7`; nothing applied to DigitalOcean). The three stock tables already
+existed in `0001`; migrations `0000–0016` untouched.
+
+- **What was built.** Domain `packages/domain/src/stock.ts` (+`stock.test.ts`,
+  exported from the domain barrel): moving-weighted-average valuation with
+  `computeMovementValue`, `applyStockMovement`, `applyStockMovementValue`,
+  `reverseStockMovement`, `recomputeStockBalance`, `revaluationGap` and
+  `wouldDriveNegative`. Application `packages/application/src/inventory/`
+  (`types.ts`, `actions.ts`, `validation.ts`, `post-stock-movement.ts`,
+  `reverse-stock-movement.ts`, `stock-balance.ts`, `register-storage-area.ts`,
+  `postgres-store.ts`, `test-support.ts`, `index.ts`, unit tests + the
+  `inventory.postgres.test.ts` integration file; barrel export added):
+  `postStockMovement`, `postStockMovements` (atomic batch — the `PROD-002`
+  primitive), `reverseStockMovement` (exact offset + `revaluation` correction),
+  `getCurrentStockBalance`, `getStockBalanceAsOf` (`INV-002`),
+  `registerStorageArea`, the `InventoryStore` port + `FakeInventoryStore` +
+  `createPostgresInventoryStore`. Persistence
+  `packages/persistence/src/repositories/inventory.ts` (+`inventory.test.ts`,
+  `repositories/test-support.ts`, `schema/inventory.ts`, package barrel):
+  `lockOrCreateStockBalance` (`INSERT … ON CONFLICT DO NOTHING` + `SELECT … FOR
+UPDATE`, per `DEC-034`), `findOrCreateStockLot`, movement/lot/area reads. New
+  hand-written migration `0017_stock_ledger_invariants.sql` (+`_down.sql`,
+  `meta/0017_snapshot.json`, `meta/_journal.json` entry idx 17, `when`
+  `1789895339462`): the deferred FK on `stock_lot.source_movement_id` and a
+  `goods_receipt`-only `source_id` guard trigger.
+- **Adversarial reviews and reconciliation.** Three independent passes:
+  `reviewer-qwen` (logic/edge cases), `reviewer-glm` (application code),
+  `reviewer-minimax` (schema/migration/rollback). Applied on top of the first
+  implementation (items A1–A12/P1–P4/D1 in the prior work-log entry — see the
+  next entry): posting-path `revaluationGap` correction; org-scoped idempotency
+  replay; removal of the caller-supplied `currency` (always
+  `organization.currency`); pre-transaction batch validation + empty-batch
+  rejection; reversal `negative_override` audit; removal of the dead `"NOK"`
+  fallback; strict ISO-instant/`yyyy-mm-dd` validation; `lotId`+`lot` rejection;
+  reversing a `revaluation` rejected; `requires_revaluation: true` when an
+  override leaves negative quantity; `:`-containing batch idempotency key
+  rejected; fake timestamp normalisation; `findOrCreateStockLot` (lot
+  create-or-find race); `saveStockBalance` throws when it matches no row;
+  `lockOrCreateStockBalance` transaction docstring; the `0017` runbook
+  `ShareLock`/`NOT VALID`→`VALIDATE` preflight note. **Declined with reasons:**
+  the adapter `isNodeDatabase` guard/savepoint nesting (repo-wide convention;
+  nesting is harmless and the batch stays atomic); converting the concurrent
+  unique-violation on `idempotency_key` into a replay (the unique index prevents
+  double-posting; a retry hits the replay path); tightening the `0017` trigger
+  to `goods_receipt.status='accepted'`/location match (deferred to the
+  receipt-wiring slice). Eight open owner/TECH points are recorded in
+  `docs/BUILD_ROADMAP.md` §5 and "Open decisions / inputs" (next free id
+  `DEC-066`). A later delta review of the fixes found two more accepted minors
+  (fake `saveStockBalance` parity with the adapter; single-posting
+  idempotency-key `:` rejection — see "Delta review" below) and one declined
+  (documented) strictness note (`assertIsoInstant` deliberately rejects an ISO
+  instant without seconds).
+- **Verified (exact):** `npm run lint`, `npm run typecheck`, `npm run build` and
+  `npm run format:check` pass; without `DATABASE_URL` **551 passed / 134 skipped
+  (685)**; with it **685 passed / 685 (69 files)**; `npm audit --omit=dev` = 0;
+  `db:migrate` applies `0017`, re-runs as a no-op, and the down path was
+  rehearsed (drop trigger/function/FK, delete the ledger row, re-migrate).
+- **Delta review.** After the reconciliation above, a delta review of the
+  slice-8 fixes found two more minors, both **accepted and applied** with new
+  tests: `FakeInventoryStore.saveStockBalance` now throws when the balance row
+  was not locked first (parity with the Postgres repository, which now throws —
+  new `packages/application/src/inventory/test-support.test.ts`), and
+  `postStockMovement` now also rejects a single-posting `idempotencyKey`
+  containing `:` (the batch already did). One **declined (documented)**
+  strictness note: an ISO instant without seconds is rejected by the
+  `assertIsoInstant` regex — a deliberate choice. The verified counts above
+  reflect these additions.
+- **Rollback:** the slice is uncommitted and purely additive — discard the
+  working tree; once committed, `git revert <sha>`. Migration `0017` is additive
+  with the rehearsed down path.
+- **Local note:** a reviewer's ad-hoc probe left 3 `stock_movement` rows under a
+  throwaway org in the local dev database (undeletable due to the append-only
+  trigger; the documented destructive replay would clear them) — a local
+  dev-data artefact, no repository impact.
+- **Next:** atomic commit (see "Resume here"), then slice 9 — counts +
+  transfers + waste.
+
+### 2026-09-20 — Slice 8 review fixes applied (uncommitted)
+
+Applied the reconciled adversarial-review fixes to the still-uncommitted slice-8
+working tree (HEAD `f7b1db7`; nothing applied to DigitalOcean). Accepted items
+only; no unrelated refactor and no new migration (`0017` already applied).
+
+- **Application (`packages/application/src/inventory/`).** A1: the normal posting
+  path now mirrors the reversal path — after `applyStockMovement` it checks
+  `revaluationGap` and, when non-null, posts a value-only `revaluation` movement
+  (`quantityDelta "0.000000"`, `unitCost null`, `sourceType "revaluation"`,
+  reason `input.reasonCode ?? "revaluation"`, idempotency key suffixed
+  `:revaluation`) and returns the corrected balance. A2: an idempotency replay
+  whose movement belongs to another organization throws
+  `DomainError("movement not found in organization")` before touching the other
+  org's balance. A3: removed the caller `currency` input; the movement always uses
+  `organization.currency`. A4: `postStockMovements` validates `sourceType`,
+  `occurredAt` and a non-empty `movements` before opening the transaction. A5:
+  the reversal audit records `negative_override: true` when the override was
+  used. A6: the `?? "NOK"` fallback is gone — a null-currency movement resolves
+  its organization or throws. A7: new `validation.ts` (`assertIsoInstant`) rejects
+  non-instant `occurredAt`/`asOf`; lot `expiryDate`/`openedDate` use the existing
+  `assertIsoDate`. A8: supplying both `lotId` and `lot` is rejected. A9: reversing
+  a `revaluation` movement is rejected. A10: an override that leaves negative
+  quantity adds `requires_revaluation: true` to the audit (the DEC-010 exception
+  queue is not modelled yet). A11: a batch `idempotencyKey` containing `:` is
+  rejected. A12: the fake normalises `occurredAt`/lot `receivedAt` to
+  `toISOString()`.
+- **Persistence (`packages/persistence/src/repositories/inventory.ts`).** P1:
+  new `findOrCreateStockLot` (`INSERT … ON CONFLICT DO NOTHING` then `SELECT`),
+  now used by the application lot path; the now-dead application port methods
+  `findStockLotByNumber`/`createStockLot` were removed from the port, adapter and
+  fake. P2: `saveStockBalance` throws when the update matches no row (callers must
+  lock first). P3: `lockOrCreateStockBalance` documents that it MUST run inside a
+  transaction. P4: the persistence `createTestStockMovement` comment names the
+  documented `0017` trigger no-op.
+- **Docs.** D1: the `0017` runbook preflight note now states the plain
+  `ADD CONSTRAINT … FOREIGN KEY` takes a `ShareLock` on `stock_lot`, and points to
+  the `NOT VALID` → `VALIDATE` form when the table may already hold rows.
+
+Tests added: the posting-path revaluation + clean-zeroing cases, the foreign-org
+replay rejection, `lotId`+`lot` rejection, negative-override `requires_revaluation`,
+batch pre-validation, strict-instant rejections, UTC normalisation in the fake;
+`findOrCreateStockLot` idempotency and the `saveStockBalance` no-op guard at the
+persistence layer. **Reviewer note:** the reviewer's literal sequence
+`3 @ 0.0001` then `-3` is arithmetically clean (3 × 0.0001 = 0.0003; 0.0003 / 3 =
+0.0001 exactly), so it cannot leave a residual; the test keeps that literal
+receipt and adds a `27 @ 0.0000` top-up so the 4 dp average rounds to `0.0000`,
+which reproduces the same defect class and now posts the correction.
+
+Verified (exact): `npm run typecheck`, `npm run lint`, `npm run build` and
+`npm run format:check` pass; without `DATABASE_URL` **549 passed / 134 skipped
+(683)**; with it **683 passed / 683 (68 files)**; `npx prettier --write/--check`
+run on every touched file. Rollback: discard the working tree; no new migration or
+generated file.
 
 ### 2026-09-20 — Slice-7 review-fix commits (`c82a30f`, `083106a`); five owner decisions + `ADR-0005` accepted; handoff updated
 

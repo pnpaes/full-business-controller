@@ -13,14 +13,41 @@ This file is **updated at the end of every slice** — statuses and the "current
 line move with the work; `CONTEXT.md` keeps the narrative handoff and the immediate
 `Resume here` section.
 
-**Current position:** slice 0 `done`; auth slices 1a–1e and slices 2, 3, 4, 5, 6 and 7
-`done` (slice 7 — cost card + snapshots + price scenario + approval — committed as
-`400c95b` on `main`; its adversarial reviews were run and reconciled; its open points
-are recorded in §5); **slice 8 (stock ledger + balances + lots/storage) is now the next
-unblocked task** — `ADR-0005` was accepted (2026-09-20) and the owner recorded `DEC-061`
-(multi-tenancy: shared schema with `organization_id` row scoping), `DEC-062` (jobs
-runtime: pg-boss), `DEC-063` (target semantics), `DEC-064` (`price_version` deferred to
-the next pricing slice) and `DEC-065` (golden fixtures as JSON).
+**Current position:** HEAD `6c69f7f` on `main` (nothing pushed; previous HEAD
+`f7b1db7`); slice 0 `done`; auth slices 1a–1e and slices 2, 3, 4, 5, 6, 7 and **8
+`done`**. Slice 8 (stock ledger + balances + lots/storage) and the deployment env-var
+wiring were committed in dependency-ordered **layer commits** on `main` — `583da3f`
+infra deploy env vars; `b525f30` stock ledger + stock-ops persistence (repos,
+migrations `0017`–`0020`); `40e736b` stock valuation domain + client-safe subpath
+exports; `c91e512` inventory/catalog/recipes/costing/receiving application slices;
+`6c69f7f` design system (`packages/ui` shell + patterns + client-only modal), app
+shell with role-aware nav + scope bar, Management home, branded sign-in, styleguide,
+and the Inventory/Products/Recipes/Costs/Purchasing screens with `/api/v1` routes and
+idempotent seeds — because the migrations/schema barrels shared files across tasks;
+**per-task feature commits resume from slice 9's commit**. Fix commits within the
+layers addressed the integration defects (a client component pulled `node:crypto`
+into the browser bundle via the domain barrel — fixed with client-safe
+`@aquarela/domain/decimal|quantity|money` subpath exports; six detail pages returned
+500 on a non-UUID param — fixed with `apps/web/lib/route-params.ts` → 404).
+Verification at `6c69f7f`: `typecheck`, `lint`, `build`, `format:check` clean;
+**842/842 tests with `DATABASE_URL`** (691 passed / 151 skipped without it);
+`npm audit --omit=dev` = 0; `db:migrate` through `0020` re-runs as a no-op;
+migrations `0017`–`0020` down paths rehearsed; slice-9 **persistence** included
+(tables `stock_count`/`stock_count_line`/`stock_transfer`, `stock_movement.transfer_id`,
+source guard extended; migration `0020`). **Slice 9 (counts + transfers + waste) is
+in progress**: Wave 2b — the slice-9 application + API + screens for counts,
+transfers and waste — runs in three parallel background agents, each owning
+`packages/application/src/{counts,transfers,waste}/**`,
+`apps/web/app/api/v1/{counts,transfers,waste}/**`,
+`apps/web/app/(app)/inventory/{counts,transfers,waste}/**` and
+`apps/web/scripts/seed-*.ts`. Programme direction: proceed autonomously, per task —
+parallel background agents → adversarial review + fixes → document status and next
+steps → commit → next task. After slice 9: slice 10 (production planning + batches),
+then sales import/reconciliation, then insights/month-close. `ADR-0005` was accepted
+(2026-09-20) and the owner recorded `DEC-061` (multi-tenancy: shared schema with
+`organization_id` row scoping), `DEC-062` (jobs runtime: pg-boss), `DEC-063` (target
+semantics), `DEC-064` (`price_version` deferred to the next pricing slice) and
+`DEC-065` (golden fixtures as JSON).
 
 ## 2. The execution loop (per slice)
 
@@ -104,8 +131,8 @@ sequence). Requirement IDs are from `11_REQUIREMENTS_CATALOG.md`; decision IDs f
 | 5 | Recipes / sub-recipes / version / yield / allergens | P1 / epic 4 | `COST-001`, `COST-002`, `PROD-005`; `DEC-005`, `DEC-030`, `DEC-036`; `CALCULATION_CONTRACT.md` §6 | 3 | none — I5 data gates real recipes | done |
 | 6 | Operating costs + labour + allocation | P1 / epic 5 | `COST-004`, `COST-006`, `COST-007`, `COST-011`, `COST-013`; `DEC-006`, `DEC-007`, `DEC-048`; `CALCULATION_CONTRACT.md` §7, §9 | 3 | none — I8 remainder + I9 ruling confirm loaded rates | done |
 | 7 | Cost card + snapshots + price scenario + approval | P1 / epic 6 | `COST-005`, `COST-008`, `COST-009`, `PRICE-001`–`005`; `DEC-021`–`024`; `CALCULATION_CONTRACT.md`; `GOLDEN_FIXTURES.md` | 4, 5, 6 | six golden fixtures signed (A5) before "verified" | done |
-| 8 | Stock ledger + balances + lots / storage | P1–P2 / epic 7 | `INV-001`–`003`, `INV-008`, `PROD-002`, `WASTE-002`, `COST-008`; `DEC-008`, `DEC-009`, `DEC-010`, `DEC-028`, `DEC-034`; `ADR-0005` (accepted 2026-09-20) | 3, 4 | none — `ADR-0005` **Accepted** (2026-09-20) | todo |
-| 9 | Counts + transfers + waste | P2 / epic 8 | `INV-004`–`007`, `INV-009`, `WASTE-001`, `WASTE-002`; `DEC-017`, `DEC-018`, `DEC-029` | 8 | none — I7 opening counts gate the pilot | todo |
+| 8 | Stock ledger + balances + lots / storage | P1–P2 / epic 7 | `INV-001`–`003`, `INV-008`, `PROD-002`, `WASTE-002`, `COST-008`; `DEC-008`, `DEC-009`, `DEC-010`, `DEC-028`, `DEC-034`; `ADR-0005` (accepted 2026-09-20) | 3, 4 | none — `ADR-0005` **Accepted** (2026-09-20) | done (committed `b525f30`/`40e736b`/`c91e512`/`6c69f7f` with migrations `0017`–`0019`; verified 842/842 with `DATABASE_URL`) |
+| 9 | Counts + transfers + waste | P2 / epic 8 | `INV-004`–`007`, `INV-009`, `WASTE-001`, `WASTE-002`; `DEC-017`, `DEC-018`, `DEC-029` | 8 | none — I7 opening counts gate the pilot | in progress — persistence done (migration `0020`: `stock_count`/`stock_count_line`/`stock_transfer`, `stock_movement.transfer_id`, source guard extended; committed in `b525f30`); Wave 2b application + `/api/v1` + screens for counts/transfers/waste in flight (three parallel agents) |
 | 10 | Production planning + batches | P2 / epic 9 | `PROD-001`–`005`; `DEC-005`, `DEC-031`, `DEC-036` | 5, 8 | none | todo |
 | 11 | Import framework + external mappings | P3 / epic 10 | `SALE-002`, `SALE-004`, `SALE-007`, `SALE-008`; `DEC-025`, `DEC-033`, `DEC-035`, `DEC-041`; `ADR-0008` (**Proposed**) | 3 | none — legacy I19 as reference; I1/I15 Frontline shapes gate real profiles | todo |
 | 12 | Sales + settlements + reconciliation | P3 / epic 11 | `SALE-001`–`011`, `PRICE-006`, `REC-001`–`006`; `DEC-026`, `DEC-035`, `DEC-040`, `DEC-042`, `DEC-043`, `DEC-045`; `ADR-0008` (**Proposed**) | 8, 11 | `ADR-0008` acceptance (owner + tech); I1 channel/SKU confirmations | blocked (owner) |
@@ -147,6 +174,18 @@ dates assigned):
 - **Real DO credentials + provisioned Spaces state bucket + single-runner apply** —
   `docs/runbooks/deployment.md` ("Database privilege bootstrap", state-bucket bootstrap,
   proxy/dry-run notes); includes the **legacy instance-slug check** before apply.
+  (Deployment readiness, 2026-09-20: the env-var wiring is **done** —
+  `ORGANIZATION_ID` (general) and `TOTP_SECRET_ENCRYPTION_KEY` (secret) are wired
+  conditionally into the app-platform module and both env roots (unset adds no env
+  var), web-only; `terraform fmt -check -recursive` clean, `init -backend=false` +
+  `validate` green in both envs, offline plan still **16 to add / 0 change / 0
+  destroy** per env. What still gates a real `apply`: `ADR-0004` acceptance, a real
+  scoped `DIGITALOCEAN_TOKEN`, a provisioned private Spaces state bucket + state
+  credentials, the sanitized-data owner, the legacy instance-slug/manual-scaling
+  check, and domain names (optional). The runbook mandates staging-first `apply`
+  with sanitized/synthetic data only — never a raw production copy; a raw
+  production copy is only sanctioned via an isolated PITR restore for a data
+  rollback.)
 - **Slice-5 recipe ambiguities (eight, deliberate, from `841da96`)** — record each
   owner resolution in `12_OPEN_DECISIONS.md` (next free id `DEC-066`; items 3 and 7
   already resolved as `DEC-050` and `DEC-053`); do not resolve silently:
@@ -239,6 +278,109 @@ dates assigned):
       and the missing `numeric(19,6)` digit cap in
       `packages/domain/src/decimal.ts` — tracked in the standing bullets
       below. owner/TECH.
+- **Slice-8 stock-ledger open points (deliberate; recorded not decided)** — surfaced
+  by the slice-8 adversarial reviews and implementation (uncommitted working tree at
+  HEAD `f7b1db7`); record each owner/TECH resolution in `12_OPEN_DECISIONS.md` (next
+  free id **`DEC-066`**); do not resolve silently:
+  1. Goods-receipt acceptance is not yet wired to the ledger: a receipt has no
+     destination `storage_area_id`, so the receipt→movement integration and its
+     storage-area policy are unresolved (surface: `post-stock-movement.ts`). owner/TECH.
+  2. Per-source reversal semantics are not enumerated: reversing a non-receipt
+     movement posts movement type `correction` (only `receipt` →
+     `receipt_reversal`); `DEC-028` defines the semantics per source type (receipt,
+     production batch, transfer, count adjustment, sales line). Surface:
+     `reverse-stock-movement.ts`. owner/TECH.
+  3. `lotTracked` is not enforced — a lot-tracked item can post with `lotId` null
+     (`post-stock-movement.ts`). owner/TECH.
+  4. The `DEC-028` "automatic reversal blocked when reconciled downstream sales
+     depend on the original" gate is deferred until the sales slice exposes
+     reconciliation state; reversal always requires an explicit reason today
+     (`reverse-stock-movement.ts`). owner/TECH.
+  5. The `0017_stock_ledger_invariants.sql` `source_id` guard validates only
+     `source_type='goods_receipt'` (existence + org); production/transfer/count/
+     sales/waste source types are documented no-ops until their slices extend the
+     trigger. owner/TECH.
+  6. `DEC-009` daily theoretical sale-consumption posting is not implemented (no
+     sales source exists yet); `postStockMovements` is the idempotent primitive the
+     sales slice will call. owner/TECH.
+  7. `stock_balance` is written directly by the posting command while the runbook
+     calls it a rebuildable projection; confirm the writer policy before
+     multi-instance use (`post-stock-movement.ts`). owner/TECH.
+  8. No application surface creates `location` rows (a pre-existing gap);
+     `registerStorageArea` requires an existing location. owner/TECH.
+  9. The `stock_movement` idempotency key is now a **per-organization**
+     namespace (`stock_movement_org_idempotency_key_key` on `(organization_id,
+     idempotency_key)`, migration `0018`), which **narrows** `DATA_DICTIONARY` §6's
+     global "unique where not null" wording — the owner must confirm the intended
+     scope (per-org, as the slice assumes). owner/TECH.
+  10. The DEC-010 negative-override role set is fail-closed and uses the real
+      `ROLE_CODE` vocabulary codes (`NEGATIVE_OVERRIDE_ROLES =
+      ["owner", "general_manager", "location_manager"]` in
+      `packages/application/src/inventory/permissions.ts`; an earlier draft used
+      `manager`, which is **not** a vocabulary code and was corrected). The open
+      point is the owner confirming which of those roles should grant the
+      override (`DEC-066`).
+      Surfaces: `post-stock-movement.ts`, `reverse-stock-movement.ts`. owner/TECH.
+  (Delta note, 2026-09-20: two further accepted minors from a delta review —
+  fake `saveStockBalance` throws when the row was not locked first, and
+  single-posting `idempotencyKey` containing `:` is rejected; final counts 557
+  passed / 135 skipped (692) without `DATABASE_URL`, 692 passed / 692 (69 files)
+  with it.)
+  (Review follow-up, 2026-09-20: **all ten adversarial-review findings are now
+  addressed.** Findings 1–4 were fixed earlier (DEC-010 manager-permission gate
+  via `assertNegativeOverrideAuthorized`; per-org idempotency key via migration
+  `0018`; domain `deriveAverageUnitCost`; shared `postRevaluationCorrection`).
+  Findings 5–10 are fixed too: batch posting memoises transaction-immutable
+  reference lookups; `getStockBalanceAsOf` uses the SQL aggregate
+  `sumStockMovementsAsOf` (no in-memory ledger scan) plus the domain average
+  helper; migration `0019` adds `stock_movement_org_occurred_idx`; the
+  negative-override guard and `isBlank` are de-duplicated; the dead wrapper
+  `getCurrentStockBalance` and the test-only persistence exports
+  (`createStockLot`, `findStockLotByNumber`, `listStorageAreas`) were removed.
+  `listStockMovements` is deliberately retained as a ledger read API (used only
+   by its persistence test for now; slice 9 will need it). The open points above
+   remain open.)
+- **Slice-9 counts/transfers/waste open points (deliberate; recorded not decided)** —
+  surfaced by the slice-8/9 implementation (slice-9 persistence
+  committed in `b525f30`, migration `0020`; Wave 2b application/API/screens in
+  flight); record each owner/TECH resolution in `12_OPEN_DECISIONS.md` (next free id
+  **`DEC-066`**); do not resolve silently. (Where an item overlaps a slice-8 point
+  above, the slice-8 numbering is retained and noted.)
+  1. Receipts are not wired to the ledger: a receipt still has no destination
+     storage area, so it does not post a stock movement (overlaps slice-8 point 1).
+     owner/TECH.
+  2. Per-source reversal semantics (`DEC-028`) are not implemented in
+     `reverseStockMovement` (overlaps slice-8 point 2). owner/TECH.
+  3. `lotTracked` is unenforced (overlaps slice-8 point 3). owner/TECH.
+  4. The `DEC-028` reconciled-downstream-sales reversal gate is deferred (overlaps
+     slice-8 point 4). owner/TECH.
+  5. The source guard now covers `stock_count`/`transfer`/`waste_event`
+     (migration `0020`) but no other source types; production/sales remain
+     documented no-ops. owner/TECH.
+  6. `DEC-009` daily theoretical sale consumption is not implemented (overlaps
+     slice-8 point 6). owner/TECH.
+  7. `stock_balance` is written directly by the posting command (overlaps slice-8
+     point 7); confirm the writer policy before multi-instance use. owner/TECH.
+  8. No application surface creates `location` rows (overlaps slice-8 point 8).
+     owner/TECH.
+  9. **No transfer line table exists** — a transfer is a header plus paired
+     `stock_movement.transfer_id` movements; the per-item discrepancy is derived.
+     Owner/TECH to confirm this shape or require a line table later. owner/TECH.
+  10. The `unit_cost` source for a **positive** count variance (a found-item surplus)
+      is undecided (the ledger's moving average is the working assumption).
+      owner/FIN.
+  11. `waste_event.value_method`/`value` vs the ledger's moving average at waste
+      posting time is undecided (which value the waste record is judged against,
+      and whether they may diverge). owner/FIN.
+  12. Count `scope` shape (whole area vs item subset) and the recount thresholds
+      are undefined (`DEC-017`/`DEC-029` leave the escalation rule open). owner/FIN.
+  13. No transfer-discrepancy exception table exists; a discrepancy between the
+      shipped and received movements is currently only derivable from the ledger.
+      owner/TECH.
+  (Process note: the slice-8/9 backlog was committed in dependency-ordered **layer
+  commits** — persistence → domain → application → web/ui → infra — because the
+  migrations/schema barrels shared files across tasks; per-task feature commits
+  resume from here.)
 - **Unit `m` vs the missing `length` dimension** — a dimension-vocabulary mismatch in
   `schemas/domain-enums.yaml` surfaced by slice 3; owner/TECH to resolve (FND-003).
 - **`numeric(19,6)` digit cap in `packages/domain/src/decimal.ts`** — the domain decimal

@@ -20,7 +20,8 @@
     "dev": "npm run dev --workspace @aquarela/web",
     "db:generate": "npm run db:generate --workspace @aquarela/persistence",
     "db:migrate": "npm run db:migrate --workspace @aquarela/persistence",
-    "bootstrap": "tsx apps/web/scripts/bootstrap.ts"
+    "bootstrap": "tsx apps/web/scripts/bootstrap.ts",
+    "seed:demo": "tsx apps/web/scripts/seed-demo.ts"
   },
   "overrides": {
     "postcss": "^8.5.28"
