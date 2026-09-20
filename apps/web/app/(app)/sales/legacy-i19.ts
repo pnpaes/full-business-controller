@@ -146,12 +146,23 @@ export function parseLegacyI19Rows(text: string): LegacyI19ParseResult {
     // `external_id` is the product name: the legacy export's SKU column is
     // empty, so the mapping falls back to the external id (DEC-041). `product`
     // and `variant` are kept for the review summary.
+    //
+    // `external_transaction_id`/`external_line_id` are the row-12 posting
+    // identity (`NORMALIZED_SALES_FIELDS`): `postImportRun` groups transactions
+    // by the former and matches a line by the latter. The legacy export's
+    // `receipt` is the transaction, and `receipt#sourceRowNo` is a deterministic
+    // per-line id (the export carries no line id). Recorded integration point:
+    // row 11 originally projected neither key, so a staged run could not post
+    // until this projection supplied them.
+    const receipt = cells[2] ?? "";
     const normalized: Record<string, unknown> = {
       occurred_at: occurredAt,
       currency: LEGACY_I19_CURRENCY,
       gross_amount: normalizedTotal,
       quantity: normalizedQuantity,
       external_id: product,
+      external_transaction_id: receipt,
+      external_line_id: `${receipt}#${sourceRowNo}`,
       location_external_id: location,
       product,
       variant,

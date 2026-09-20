@@ -1,12 +1,4 @@
-import {
-  Badge,
-  EmptyState,
-  PageHeader,
-  SectionCard,
-  color,
-  spacing,
-  typography,
-} from "@aquarela/ui";
+import { Badge, PageHeader, SectionCard, Tabs, color, spacing, typography } from "@aquarela/ui";
 import Link from "next/link";
 
 export const metadata = { title: "Sales — Aquarela Business Control" };
@@ -27,11 +19,10 @@ const linkStyle = {
 } as const;
 
 /**
- * Sales landing (08_UI_UX.md §8.3). Slice 11 is the **import framework +
- * external mappings** only: it stops at `validated`/`needs_review` and posts
- * nothing. Posting, sales and settlement reconciliation are row 12, owner-gated
- * on `ADR-0008`, so Reconciliation is a placeholder here — not a stub that
- * shows invented figures.
+ * Sales landing (08_UI_UX.md §8.3). Links the three row-12 surfaces: the row-11
+ * **import** framework, the posted **transactions**, and the **reconciliation**
+ * of source/posted/settlement totals. Every figure shown downstream is read
+ * from the database — nothing is fabricated.
  */
 export default function SalesPage() {
   return (
@@ -39,27 +30,55 @@ export default function SalesPage() {
       <PageHeader
         title="Sales"
         scope="Aquarela Business Control"
-        description="Import sales data from a POS export, review mappings and errors, and preview the source totals. Posting and settlement reconciliation arrive with row 12."
+        description="Import sales data from a POS export, post the validated rows, review the resulting transactions and reconcile source, posted and settlement totals."
       />
 
-      <SectionCard title="Sales import" meta="upload · review · preview">
+      <Tabs
+        items={[
+          { label: "Sales", href: "/sales", active: true },
+          { label: "Sales import", href: "/sales/import" },
+          { label: "Transactions", href: "/sales/transactions" },
+          { label: "Reconciliation", href: "/sales/reconciliation" },
+        ]}
+        ariaLabel="Sales sections"
+      />
+
+      <SectionCard title="Sales import" meta="upload · review · post">
         <p style={{ margin: `0 0 ${spacing[3]}px`, color: color.text.secondary }}>
-          Register a sales export, stage its rows, validate and map them to the catalogue, and
-          record a disposition for every row that will not be posted. The run stops at{" "}
-          <strong>validated</strong> or <strong>needs review</strong>.
+          Register a sales export, stage its rows, validate and map them to the catalogue, record a
+          disposition for every row that will not be posted, then post the run into sales. Posting
+          is idempotent on the external transaction/line keys, so a retry cannot duplicate a
+          transaction.
         </p>
         <Link href="/sales/import" style={linkStyle}>
           Open sales import →
         </Link>
       </SectionCard>
 
-      <SectionCard title="Reconciliation" meta="08_UI_UX.md §8.3">
-        <EmptyState title="Reconciliation is not yet implemented">
-          <Badge>Not yet implemented</Badge> Source/posted/settlement totals, the amount tolerance
-          and difference resolution arrive with row 12, which is owner-gated on{" "}
-          <strong>ADR-0008</strong>. Until then this screen shows no reconciliation figures, and the
-          import preview reports the residual for visibility only.
-        </EmptyState>
+      <SectionCard title="Transactions" meta="posted sales lines">
+        <p style={{ margin: `0 0 ${spacing[3]}px`, color: color.text.secondary }}>
+          The posted sales transactions with their location, channel, gross/net/tax totals and line
+          count. Open a transaction to see its lines, the captured applied tax rate and each line's
+          option kind and mapping state.
+        </p>
+        <Link href="/sales/transactions" style={linkStyle}>
+          Open transactions →
+        </Link>
+      </SectionCard>
+
+      <SectionCard title="Reconciliation" meta="source vs posted vs settlement">
+        <p style={{ margin: `0 0 ${spacing[3]}px`, color: color.text.secondary }}>
+          Reconcile a posted import run or a channel settlement against the posted sales, then
+          resolve the exception with a note. The tolerance is the caller's explicit value or an
+          explicit opt-in to the published DEC-026 default — there is no tolerance table, so a
+          missing tolerance blocks close rather than defaulting silently.
+        </p>
+        <div style={{ display: "flex", alignItems: "center", gap: spacing[3] }}>
+          <Link href="/sales/reconciliation" style={linkStyle}>
+            Open reconciliation →
+          </Link>
+          <Badge>DEC-026 · DEC-035</Badge>
+        </div>
       </SectionCard>
     </div>
   );

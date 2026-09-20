@@ -174,7 +174,10 @@ describe.skipIf(!databaseUrl)("stock ledger against PostgreSQL", () => {
         storageAreaId: fixture.storageAreaId,
         itemId: fixture.itemId,
         movementType: "sale_consumption",
-        sourceType: "sales_line",
+        // `sales_line` is guarded by the ledger source guard (migration 0023)
+        // and needs a real sales line; this test only exercises the balance
+        // projection, so it uses the unguarded `adjustment` source.
+        sourceType: "adjustment",
         sourceId: randomUUID(),
         quantityDelta: "-2.000000",
         occurredAt: "2026-01-02T10:00:00.000Z",

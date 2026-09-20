@@ -72,10 +72,12 @@ exclusion constraints (`cost_pool_no_overlap`, `labor_rate_no_overlap`,
 validation of `stock_movement.source_id`) lives only in
 `0017_stock_ledger_invariants.sql`, and its **body is replaced** by
 `0020_slice9_counts_transfers_waste.sql` to also validate the slice-9
-`stock_count`, `transfer` and `waste_event` sources and again by
-`0021_slice10_production.sql` to add the `production_batch` source (the
-`goods_receipt`/`stock_count`/`transfer`/`waste_event` branches are kept; the
-remaining source types stay documented no-ops); the
+`stock_count`, `transfer` and `waste_event` sources, again by
+`0021_slice10_production.sql` to add the `production_batch` source and again by
+`0023_row12_sales_settlements_reconciliation.sql` to add the `sales_line`
+source (the `goods_receipt`/`stock_count`/`transfer`/`waste_event`/
+`production_batch` branches are kept; the remaining source types
+(`adjustment`/`revaluation`/`correction`) stay documented no-ops); the
 `goods_receipt_line_accept_qty_guard` trigger/function (an accepted receipt's
 line must have `accepted_pack_qty > 0`; a plain CHECK cannot read the parent
 status) lives only in `0007_goods_receipt_line_checks.sql`; and the
@@ -99,8 +101,8 @@ them manually is invisible to the tool.
 > constraints, the state-gated `recipe_version_no_overlap`, the
 > `goods_receipt_line` guard, the three cost-allocation exclusion
 > constraints, the `cost_card_approved_scope_key` approval index and the
-> `stock_movement_source_guard` validation trigger (extended in `0020` and
-> `0021`). Those
+> `stock_movement_source_guard` validation trigger (extended in `0020`, `0021`
+> and `0023`). Those
 > objects live only in
 > `0002_invariants.sql`, `0005_unit_conversion_invariants.sql`,
 > `0007_goods_receipt_line_checks.sql`,
@@ -108,9 +110,10 @@ them manually is invisible to the tool.
 > `0012_cost_allocation_invariants.sql`,
 > `0016_cost_card_approved_scope.sql`,
 > `0017_stock_ledger_invariants.sql`,
-> `0020_slice9_counts_transfers_waste.sql` and
-> `0021_slice10_production.sql`; use `generate` + `migrate` and the
-> guard below.
+> `0020_slice9_counts_transfers_waste.sql`,
+> `0021_slice10_production.sql` and
+> `0023_row12_sales_settlements_reconciliation.sql`; use `generate` + `migrate`
+> and the guard below.
 
 **Guard:** before committing any future generated migration, diff the database
 schema against the previous revision (`pg_dump --schema-only` before/after, or
@@ -152,11 +155,20 @@ because its target table varies by `source_type`.
 
 ## Pre-apply preflight for validating constraints and indexes
 
-Migrations 0014, 0016, 0017, 0018, 0019, 0020, 0021 and 0022 add objects that
-validate or build, so a failure aborts the whole transactional migration
+Migrations 0014, 0016, 0017, 0018, 0019, 0020, 0021, 0022 and 0023 add objects
+that validate or build, so a failure aborts the whole transactional migration
 (drizzle-kit runs each file in one transaction). Run the matching preflight
 against the target database **before** applying and reconcile any hits;
 drizzle-kit cannot detect them because these files diff against existing data.
+
+- **`0023_row12_sales_settlements_reconciliation.sql`** — four new, empty tables
+  (`sales_transaction`, `sales_line`, `settlement`, `reconciliation`) with their
+  checks, uniques, FKs and indexes (cheap at first apply: the tables are empty).
+  The `sales_transaction.import_run_id` FK validates against the existing
+  `import_run` table but is a plain validating FK because `sales_transaction` is
+  empty at apply. The `CREATE OR REPLACE FUNCTION "stock_movement_source_guard"`
+  that adds the `sales_line` branch is metadata-only and scans nothing. No
+  backfill; no separate preflight query is needed.
 
 - **`0022_row11_import_framework.sql`** — three new, empty tables
   (`import_run`, `import_staging_row`, `external_mapping`) with their checks,
@@ -550,6 +562,24 @@ only, so the down file is an explicit operator action, not an automatic one.
   so it is only safe while those tables carry nothing that must be preserved.
   Apply it manually with
   `psql "$DATABASE_URL" -f packages/persistence/drizzle/0022_row11_import_framework_down.sql`.
+- **0023 adds the slice-12 sales/settlement/reconciliation tables and follows the
+  down convention:** `0023_row12_sales_settlements_reconciliation.sql` is
+  generated DDL for the four tables (`sales_transaction`, `sales_line`,
+  `settlement`, `reconciliation`, with their status/option-kind/period/tax-rate
+  checks, uniques — including the replay-safe
+  `(source_system, external_transaction_id)` and
+  `(sales_transaction_id, external_line_id)` keys — the FKs, the two
+  `sales_line` self-FKs, and the `org`/`sku`/period indexes), plus one
+  hand-written statement: `CREATE OR REPLACE FUNCTION
+  "stock_movement_source_guard"` adding the `sales_line` branch (keeping the
+  existing branches). The four tables are the schema deliverable for
+  `REC-001/002/005`; close/lock/period tables are row 13.
+  `0023_row12_sales_settlements_reconciliation_down.sql` is **destructive**: it
+  restores the `0021` guard body (drops the `sales_line` branch) and drops the
+  four tables in FK-safe order (`sales_line`, `sales_transaction`, `settlement`,
+  `reconciliation`), so it is only safe while those tables carry nothing that
+  must be preserved. Apply it manually with
+  `psql "$DATABASE_URL" -f packages/persistence/drizzle/0023_row12_sales_settlements_reconciliation_down.sql`.
 
 **Re-applying after a manual down:** drizzle-kit tracks applied migrations in
 `drizzle.__drizzle_migrations`, not by comparing the schema, so a plain
@@ -565,8 +595,8 @@ for 0003, `… = 1789850858806` for 0004, `… = 1789851925634` for 0005,
 `… = 1789866859108` for 0014, `… = 1789867750326` for 0015,
 `… = 1789867797172` for 0016, `… = 1789895339462` for 0017,
 `… = 1789902579323` for 0018, `… = 1789904976754` for 0019,
-`… = 1789911710033` for 0020, `… = 1789913486015` for 0021 and
-`… = 1789915583040` for 0022, then
+`… = 1789911710033` for 0020, `… = 1789913486015` for 0021,
+`… = 1789915583040` for 0022 and `… = 1789917983755` for 0023, then
 `npm run db:migrate` (0003 verified 2026-09-19; 0005 rehearsed in the slice-3
 review follow-up; 0006 rehearsed with the slice-4 receiving work; 0007 and
 0008 rehearsed with the slice-4 review follow-up; 0009 rehearsed with the
@@ -577,7 +607,11 @@ code-review follow-up; 0014 rehearsed with the slice-7 pricing work; 0015 and
 slice-8 stock-ledger work; 0018 rehearsed with the slice-8 finding-fix work;
 0019 rehearsed with the slice-8 review-fix work; 0020 rehearsed with the
 slice-9 counts/transfers/waste work; 0021 rehearsed with the slice-10
-production work; 0022 rehearsed with the slice-11 import-framework work).
+production work; 0022 rehearsed with the slice-11 import-framework work; 0023
+rehearsed with the slice-12 sales/settlement/reconciliation persistence work —
+the down restored the `0021` guard, the ledger row was deleted and
+`db:migrate` re-applied it, leaving the database with all 62 tables and the
+`sales_line` guard branch).
 A **full 0011 down** drops the tables the three 0012 constraints live on, so its
 replay must clear **both** ledger rows, not just 0011's:
 `DELETE FROM drizzle.__drizzle_migrations WHERE created_at IN (1789862475550, 1789862630158);`
@@ -610,7 +644,9 @@ implements it:
   body now also validates the `stock_count`, `transfer` and `waste_event`
   sources.
   **Extended in `0021_slice10_production.sql`:** it now also validates the
-  `production_batch` source; `sales_line`, `adjustment`, `revaluation` and
+  `production_batch` source.
+  **Extended in `0023_row12_sales_settlements_reconciliation.sql`:** it now also
+  validates the `sales_line` source; `adjustment`, `revaluation` and
   `correction` remain documented no-ops until their slices land.
 - ~~`snapshot_component.component_kind` needs a **controlled vocabulary**
   (`vocabularies.ts` + check constraint) to be defined in the costing slice.~~
@@ -681,14 +717,52 @@ implements it:
   - **(b)** **`file_object` does not exist yet**, so `import_run.file_object_id`
     is a plain `uuid` with no FK. The platform slice that models `file_object`
     closes it later.
-  - **(c)** The **posting step is row 12 and owner-gated on `ADR-0008`**. The
-    three row-11 tables are created now, but no
-    `sales_transaction`/`sales_line`/`settlement`/`reconciliation` table is, so
-    `import_staging_row.linked_sales_line_id` is a plain `uuid` with no FK and
-    `IMPORT_POSTING_POLICY` (`vocabularies.ts`) backs no check yet.
-  - **(d)** **Tolerance configuration (A3) has no table**; nothing stores the
-    tolerance a future `reconciliation` row would compare against, and no
-    tolerance column or table is invented.
+  - **(c)** The **posting step is still a later application slice**. Row 12
+    (2026-09-20) created `sales_transaction`/`sales_line`/`settlement`/
+    `reconciliation`, but no pipeline writes them yet, so
+    `import_staging_row.linked_sales_line_id` **stays a plain `uuid` with no FK**
+    (the deferred FK belongs to the posting slice that writes it) and
+    `IMPORT_POSTING_POLICY` (`vocabularies.ts`) still backs no check.
+  - **(d)** **Tolerance configuration (A3) has no table**;
+    `reconciliation.tolerance` is a **per-row snapshot** of the tolerance applied
+    at reconciliation time, and the effective-dated FIN-owned configuration
+    (`DEC-026`) plus the "missing tolerance blocks close" rule are deferred.
+- **Slice-12 sales/settlement/reconciliation open (owner/TECH) points —
+  recorded, do not resolve silently** (also in the
+  `packages/persistence/src/schema/sales.ts` comment block; append each
+  resolution to `12_OPEN_DECISIONS.md`):
+  - **(d)** No tolerance-configuration table (A3); `reconciliation.tolerance` is
+    a per-row snapshot (see the slice-11 point above).
+  - **(e)** **`settlement.source_file_id` is a plain `uuid`** (`file_object` is
+    absent — the same open point as `import_run.file_object_id`).
+  - **(f)** **Close/lock/period tables are row 13** (`period_close`,
+    `adjustment_period`, `daily_close`); none exist here.
+  - **(g)** **Sales-line reversal semantics (`DEC-028`) are not implemented**;
+    `sales_line.reversal_of_id` only records the self-reference and no guard
+    enforces a reversal pairing.
+  - **(h)** **`tax_code_id` vs `tax_rule_id` naming and the `applied_tax_rate`
+    authority (A4) are unresolved.** The draft (`:655`) says `tax_code_id`;
+    `DATA_DICTIONARY.md:709` and the row-12 work say `tax_rule_id`. The column is
+    `tax_rule_id` here (matching `channel_fee_rule.tax_rule_id`); the naming and
+    authority question is left open.
+  - **(i)** No **`settlement_status` vocabulary** exists in
+    `schemas/domain-enums.yaml`, so `settlement.status` is unconstrained text.
+  - **(j)** **`reconciliation.scope_type` values are unresolved** — the shared
+    `scope_type` vocabulary describes cost/ownership scopes, while
+    `REC-001`/`005` reconcile source-vs-posted totals by source kind
+    (`DEC-026`); the column is unconstrained text rather than an invented check.
+  - **(k)** `RECONCILIATION_STATUS` (`pending`/`within_tolerance`/`exception`/
+    `resolved`/`approved`) and `OPTION_KIND` (`standalone`/`attached`/
+    `included`) are now exported from `vocabularies.ts` and enforced by
+    `reconciliation_status_check` / `sales_line_option_kind_check`.
+  - **(l)** The `sales_line` guard branch **invalidates a pre-existing
+    application test**: `packages/application/src/inventory/inventory.postgres.test.ts`
+    (~line 170) posts a `sale_consumption` movement with `sourceType:
+    'sales_line'` and a random `sourceId`, relying on the old no-op, so it now
+    fails with the guard's `23503`. Fixing it belongs to the row-12 application
+    slice (out of the persistence work's file ownership): either seed a real
+    `sales_line`/`sales_transaction` pair or move that assertion to a
+    still-unimplemented source type (`adjustment`).
 
 ## Extensions are idempotent
 
@@ -763,7 +837,8 @@ session will not serialise against each other.
 | 0019 | `0019_stock_movement_asof_index.sql` | Generated: adds `stock_movement_org_occurred_idx` on `(organization_id, occurred_at, posted_at, id)`, covering the bounded as-of aggregation (`sumStockMovementsAsOf`). No table. Down companion: `0019_stock_movement_asof_index_down.sql` (drops the index) |
 | 0020 | `0020_slice9_counts_transfers_waste.sql` | Generated + hand-written: the four slice-9 tables — `stock_count`, `stock_count_line`, `stock_transfer`, `waste_event` — with their status/timestamp/quantity checks and indexes, plus `stock_movement.transfer_id` (column, FK and partial `stock_movement_transfer_idx`). Hand-written: `CREATE OR REPLACE FUNCTION stock_movement_source_guard` extending the `0017` guard to the `stock_count`/`transfer`/`waste_event` sources. Down companion: `0020_slice9_counts_transfers_waste_down.sql` (restores the `0017` guard, drops `transfer_id`, drops the four tables — destructive) |
 | 0021 | `0021_slice10_production.sql` | Generated + hand-written: the four slice-10 tables — `production_plan`, `production_batch`, `production_batch_input`, `production_batch_output` — with their status/quantity/kind checks, FKs (including the batch→line cascade and the batch self-reversal FK) and indexes (the `production_batch_org_location_status_idx` plus the FK/line indexes). Hand-written: the deferred `waste_event.production_batch_id` FK (`NOT VALID` → `VALIDATE`) and `CREATE OR REPLACE FUNCTION stock_movement_source_guard` adding the `production_batch` branch. Down companion: `0021_slice10_production_down.sql` (restores the `0020` guard, drops the `waste_event` FK, drops the four tables — destructive) |
-| 0022 | `0022_row11_import_framework.sql` | Generated: the three slice-11 import-framework tables — `import_run`, `import_staging_row`, `external_mapping` — with their status (`import_run_status_check`), mapping-state (`import_staging_row_mapping_state_check`), period and effective-range checks, the uniques (`import_run_file_hash_key`, `import_staging_row_run_row_no_key`, `external_mapping_key`), the FKs (both org tables; the staging→run `ON DELETE cascade`) and the `import_run_org_source_idx` / `import_run_org_status_idx` indexes. No hand-written invariants: row 11 posts no stock movement, so `stock_movement_source_guard` is untouched (the `sales_line` guard branch belongs to row 12, owner-gated on `ADR-0008`). Down companion: `0022_row11_import_framework_down.sql` (transactional `DROP TABLE IF EXISTS` in FK-safe order — destructive) |
+| 0022 | `0022_row11_import_framework.sql` | Generated: the three slice-11 import-framework tables — `import_run`, `import_staging_row`, `external_mapping` — with their status (`import_run_status_check`), mapping-state (`import_staging_row_mapping_state_check`), period and effective-range checks, the uniques (`import_run_file_hash_key`, `import_staging_row_run_row_no_key`, `external_mapping_key`), the FKs (both org tables; the staging→run `ON DELETE cascade`) and the `import_run_org_source_idx` / `import_run_org_status_idx` indexes. No hand-written invariants: row 11 posts no stock movement, so `stock_movement_source_guard` is untouched (the `sales_line` guard branch belongs to row 12). Down companion: `0022_row11_import_framework_down.sql` (transactional `DROP TABLE IF EXISTS` in FK-safe order — destructive) |
+| 0023 | `0023_row12_sales_settlements_reconciliation.sql` | Generated + hand-written: the four slice-12 tables — `sales_transaction`, `sales_line`, `settlement`, `reconciliation` — with their checks (`sales_line_option_kind_check`, `sales_line_mapping_state_check`, `sales_line_applied_tax_rate_check`, `sales_line_option_parent_check`, `settlement_period_check`, `reconciliation_status_check`, `reconciliation_period_check`), the uniques (`sales_transaction_external_key`, `sales_line_transaction_line_key`), the FKs (both org tables; `sales_line`→transaction/variant/channel/tax_rule and its two self-FKs; `sales_transaction`→location/channel/`import_run`; `settlement`→channel) and the `sales_transaction_org_occurred_idx` / `sales_line_transaction_idx` / `sales_line_sku_idx` / `settlement_org_provider_period_idx` / `reconciliation_org_status_idx` / `reconciliation_org_scope_idx` indexes. Hand-written: `CREATE OR REPLACE FUNCTION stock_movement_source_guard` adding the `sales_line` branch. Down companion: `0023_row12_sales_settlements_reconciliation_down.sql` (restores the `0021` guard, drops the four tables in FK-safe order — destructive) |
 
 Order matters: extensions before DDL that calls `gen_random_uuid()`, and before
 the exclusion constraints. Verify with:
@@ -793,7 +868,7 @@ DATABASE_URL=postgres://aquarela:aquarela@localhost:5432/aquarela npm run db:mig
 `public` alone leaves the ledger intact, so `db:migrate` reports success while
 restoring nothing. `DROP SCHEMA drizzle CASCADE` clears the ledger so all
 migrations replay from 0000. Verified: after this sequence `db:migrate`
-re-applies 0000–0022 and the database has all 58 tables plus both extensions
+re-applies 0000–0023 and the database has all 62 tables plus both extensions
 (0004 adds the four slice-3 master-data tables; 0006 adds the two slice-4
 receiving tables; 0007 adds the `goods_receipt_line` guard trigger — no table;
 0008 relaxes the `supplier_price` range check — no table; 0009 adds the two
@@ -813,13 +888,16 @@ and replaces the `stock_movement_source_guard` body — four tables; 0021 adds t
 four slice-10 production tables, the deferred `waste_event.production_batch_id`
 FK and replaces the `stock_movement_source_guard` body again — four tables;
 0022 adds the three slice-11 import-framework tables — `import_run`,
-`import_staging_row`, `external_mapping` — and no hand-written invariant).
+`import_staging_row`, `external_mapping` — and no hand-written invariant;
+0023 adds the four slice-12 sales/settlement/reconciliation tables and replaces
+the `stock_movement_source_guard` body to add the `sales_line` branch — four
+tables).
 0013–0019 were added after this replay was verified; all are additive and
-table-count-neutral. `0020`, `0021` and `0022` are the only migrations after the
-replay was written to add tables (four, four and three respectively), so the
-58-table figure above is the expected post-`0022` count (51 after `0020`, 55
-after `0021`); `0014`–`0022`'s apply/re-run/down/re-apply was rehearsed on the
-local dev database 2026-09-20.
+table-count-neutral. `0020`, `0021`, `0022` and `0023` are the only migrations
+after the replay was written to add tables (four, four, three and four
+respectively), so the 62-table figure above is the expected post-`0023` count
+(51 after `0020`, 55 after `0021`, 58 after `0022`); `0014`–`0023`'s
+apply/re-run/down/re-apply was rehearsed on the local dev database 2026-09-20.
 
 Once real data exists, this path is no longer acceptable: use small atomic
 commits, expand → migrate → contract for schema changes, and a tested
@@ -942,6 +1020,26 @@ After applying to an empty database the following were verified with `psql`:
 - `waste_event` (0021): a non-null `production_batch_id` that does not name a
   `production_batch` is rejected by
   `waste_event_production_batch_id_production_batch_id_fk`.
+- `stock_movement` (0023): a `source_type = 'sales_line'` movement whose
+  `source_id` is not a `sales_line` in the same `organization_id` is rejected by
+  `stock_movement_source_guard`; a matching line is accepted.
+- `sales_transaction` (0023): a duplicate
+  `(source_system, external_transaction_id)` is rejected by
+  `sales_transaction_external_key` (replay-safe, `SALE-003`).
+- `sales_line` (0023): a duplicate `(sales_transaction_id, external_line_id)` is
+  rejected by `sales_line_transaction_line_key`; an `option_kind` outside
+  `{standalone, attached, included}` is rejected by
+  `sales_line_option_kind_check`; an `attached`/`included` line without a
+  `parent_line_id` is rejected by `sales_line_option_parent_check`; a
+  `mapping_state` outside `{unmapped, mapped, ignored, error}` is rejected by
+  `sales_line_mapping_state_check`; a negative `applied_tax_rate` is rejected by
+  `sales_line_applied_tax_rate_check`.
+- `settlement` (0023): a `period_end` before `period_start` is rejected by
+  `settlement_period_check`.
+- `reconciliation` (0023): a `status` outside `reconciliation_status` is rejected
+  by `reconciliation_status_check`; a `period_end` before `period_start` is
+  rejected by `reconciliation_period_check`; an `updateReconciliation` from
+  another organization matches no row (`DEC-061`).
 - Deferrable FKs: a `calculation_snapshot` and its `cost_card` can be inserted
   in the same transaction in either order and commit together.
 - `calculation_snapshot`: a plain `TRUNCATE` is blocked first by the FK from

@@ -36,7 +36,7 @@ import {
   type MoneyTotalEntry,
 } from "../../import-labels";
 
-import { DispositionForm, RunActions } from "./run-actions";
+import { DispositionForm, PostRunForm, RunActions } from "./run-actions";
 
 export const dynamic = "force-dynamic";
 
@@ -66,15 +66,23 @@ function canRunActions(status: string): boolean {
   return status === "parsed" || status === "needs_review" || status === "validated";
 }
 
+/** Only a validated/needs-review run is open for posting (`postImportRun`). */
+function canPost(status: string): boolean {
+  return status === "validated" || status === "needs_review";
+}
+
+function hasPosted(status: string): boolean {
+  return status === "posted" || status === "partially_posted";
+}
+
 /**
  * Import run detail (08_UI_UX.md §8.3): diagnostics and row counts, the staging
  * rows with their mapping state and error code, the validate/map actions, a
  * disposition form for rows that will not be posted, and the reconciliation
  * preview totals.
  *
- * No posting action exists here. Slice 11 stops at `validated`/`needs_review`;
- * posting is row 12, owner-gated on `ADR-0008`, and the preview's posted totals
- * are therefore empty by construction (`postedTotals: {}`).
+ * A validated/needs-review run also offers the row-12 **post** action; after
+ * posting, the preview's posted totals are read from the linked sales lines.
  */
 export default async function ImportRunDetailPage({
   params,
@@ -134,16 +142,29 @@ export default async function ImportRunDetailPage({
         items={[
           { label: "Sales", href: "/sales" },
           { label: "Sales import", href: "/sales/import" },
+          { label: "Transactions", href: "/sales/transactions" },
+          { label: "Reconciliation", href: "/sales/reconciliation" },
         ]}
         ariaLabel="Sales sections"
       />
 
-      <Alert tone="info" title="No posting in this slice">
-        This run stops at <strong>{status.label}</strong>. Posting sales lines is row 12 and is
-        owner-gated on <strong>ADR-0008</strong>, so the posted totals are empty and the preview
-        reports the residual for visibility only — no tolerance is configured because there is no
-        tolerance table.
-      </Alert>
+      {canPost(run.status) ? (
+        <Alert tone="info" title="Ready to post">
+          This run is <strong>{status.label}</strong>. Record a disposition for every row that will
+          not be posted (DEC-035), then post it into sales below. Posting is idempotent on the
+          external transaction/line keys.
+        </Alert>
+      ) : hasPosted(run.status) ? (
+        <Alert tone="success" title="Posted">
+          This run is <strong>{status.label}</strong>. Its mapped rows were written to sales; the
+          posted totals below are read from the linked sales lines. Reconcile it from{" "}
+          <strong>Reconciliation</strong>.
+        </Alert>
+      ) : (
+        <Alert tone="info" title="Not yet postable">
+          This run is <strong>{status.label}</strong>. Stage, validate and map it before posting.
+        </Alert>
+      )}
 
       <div
         style={{
@@ -171,7 +192,7 @@ export default async function ImportRunDetailPage({
         <KpiCard
           label="Residual"
           value={residualLabel(residualEntries)}
-          meta="Source − dispositions (no posting yet)"
+          meta="Source − posted − dispositions"
         />
       </div>
 
@@ -212,6 +233,8 @@ export default async function ImportRunDetailPage({
       {canRunActions(run.status) ? (
         <RunActions runId={run.id} status={run.status} sourceSystem={run.source} />
       ) : null}
+
+      {canPost(run.status) ? <PostRunForm runId={run.id} sourceSystem={run.source} /> : null}
 
       {detail.conflicts.length > 0 ? (
         <Alert tone="danger" title="Mapping conflicts (DEC-033)">
@@ -337,7 +360,7 @@ export default async function ImportRunDetailPage({
         {preview.sourceTotals === null ? (
           <EmptyState title="No source totals yet">
             The preview totals are recorded when the run is validated. Validate the staged rows to
-            see the per-currency source totals and the residual.
+            see the per-currency source, posted, dispositioned and residual totals.
           </EmptyState>
         ) : currencies.length === 0 ? (
           <EmptyState title="No per-currency amounts recorded">
@@ -347,7 +370,7 @@ export default async function ImportRunDetailPage({
           </EmptyState>
         ) : (
           <Table
-            caption="Per-currency source, posted, dispositioned and residual totals. Posted totals are empty because slice 11 never posts (row 12, ADR-0008); there is no tolerance table, so no threshold is applied."
+            caption="Per-currency source, posted, dispositioned and residual totals. The posted totals come from the linked sales lines; there is no tolerance table, so no threshold is applied here — reconciling the run is the separate step that snapshots one."
             columnCount={5}
           >
             <thead>

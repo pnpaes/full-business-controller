@@ -52,13 +52,15 @@ export default async function SalesImportPage() {
       <PageHeader
         title="Sales import"
         scope="Sales"
-        description="Register a sales export, stage, validate and map its rows, then preview the source totals. Posting is row 12 and owner-gated on ADR-0008 — this slice stops at validated/needs review."
+        description="Register a sales export, stage, validate and map its rows, then post the validated run into sales and preview the source/posted totals."
       />
 
       <Tabs
         items={[
           { label: "Sales", href: "/sales" },
           { label: "Sales import", href: "/sales/import", active: true },
+          { label: "Transactions", href: "/sales/transactions" },
+          { label: "Reconciliation", href: "/sales/reconciliation" },
         ]}
         ariaLabel="Sales sections"
       />
@@ -76,7 +78,7 @@ export default async function SalesImportPage() {
           value={String(needsReview)}
           meta="Unmapped, conflicted or invalid rows"
         />
-        <KpiCard label="Validated" value={String(validated)} meta="Ready for row-12 posting" />
+        <KpiCard label="Validated" value={String(validated)} meta="Ready for posting into sales" />
         <KpiCard label="Staged rows" value={String(totalStaged)} meta="Across all runs" />
       </div>
 

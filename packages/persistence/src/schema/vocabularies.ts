@@ -272,6 +272,22 @@ export const MAPPING_STATE = ["unmapped", "mapped", "ignored", "error"] as const
 
 export const IMPORT_POSTING_POLICY = ["all_or_nothing", "allow_partial"] as const;
 
+// Slice 12 (sales + settlements + reconciliation), from
+// `schemas/domain-enums.yaml`: the `reconciliation` workflow state
+// (`pending` → `approved`, `REC-001`/`005`) and the `sales_line.option_kind`
+// add-on shape (`DEC-043`). Both were present in the yaml but deliberately
+// unexported until a table needed them; `vocabularies.test.ts`'s
+// `UNEXPORTED_YAML_KEYS` guard shrinks accordingly.
+export const RECONCILIATION_STATUS = [
+  "pending",
+  "within_tolerance",
+  "exception",
+  "resolved",
+  "approved",
+] as const;
+
+export const OPTION_KIND = ["standalone", "attached", "included"] as const;
+
 // `stock_movement.reason_code` for count/adjustment postings (`adjustment_reason`
 // in `schemas/domain-enums.yaml`). Exported here because the count-adjustment
 // and waste slices need a closed vocabulary for the reason code.

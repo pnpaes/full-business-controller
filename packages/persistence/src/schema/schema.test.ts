@@ -14,7 +14,7 @@ import * as schema from "./index";
 
 const tables = Object.values(schema).filter((value) => is(value, PgTable));
 
-/** The 58 in-scope Phase 1-2 tables: the 35 core tables, the slice-3
+/** The 62 in-scope Phase 1-2 tables: the 35 core tables, the slice-3
  * master-data additions (`unit_conversion`, `supplier`, `supplier_item`,
  * `cost_center`), the slice-4 receiving additions (`goods_receipt`,
  * `goods_receipt_line`), the slice-5 allergen additions (`allergen`,
@@ -23,9 +23,11 @@ const tables = Object.values(schema).filter((value) => is(value, PgTable));
  * slice-9 counts/transfers/waste additions (`stock_count`, `stock_count_line`,
  * `stock_transfer`, `waste_event`), the slice-10 production additions
  * (`production_plan`, `production_batch`, `production_batch_input`,
- * `production_batch_output`) and the slice-11 import-framework additions
- * (`import_run`, `import_staging_row`, `external_mapping`) from
- * `schemas/phase1_2_draft.sql` / `DATA_DICTIONARY`. */
+ * `production_batch_output`), the slice-11 import-framework additions
+ * (`import_run`, `import_staging_row`, `external_mapping`) and the slice-12
+ * sales/settlement/reconciliation additions (`sales_transaction`, `sales_line`,
+ * `settlement`, `reconciliation`) from `schemas/phase1_2_draft.sql` /
+ * `DATA_DICTIONARY`. */
 const EXPECTED_TABLES = [
   "addon_applicability",
   "allergen",
@@ -66,7 +68,11 @@ const EXPECTED_TABLES = [
   "recipe_allergen",
   "recipe_line",
   "recipe_version",
+  "reconciliation",
   "role",
+  "sales_line",
+  "sales_transaction",
+  "settlement",
   "snapshot_component",
   "stock_balance",
   "stock_count",
@@ -95,8 +101,6 @@ const NOT_EXPECTED_TABLES = [
   "publish_run",
   "competitor_source",
   "competitor_observation",
-  "sales_transaction",
-  "sales_line",
   "employee",
   "shift",
   "shift_assignment",

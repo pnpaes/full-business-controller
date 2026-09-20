@@ -29,9 +29,15 @@ describe("parseLegacyI19Rows", () => {
       gross_amount: "129.00",
       quantity: "1",
       external_id: "Demo Espresso Beans",
+      external_transaction_id: "R-1001",
+      external_line_id: "R-1001#2",
       location_external_id: "Aquarela Kongens Gate",
     });
     expect(rows[2]!.normalized.gross_amount).toBe("129.00");
+    // The line id is unique inside one receipt: both R-1001 rows share the
+    // transaction key but not the line key.
+    expect(rows[1]!.normalized.external_transaction_id).toBe("R-1001");
+    expect(rows[1]!.normalized.external_line_id).toBe("R-1001#3");
   });
 
   it("accepts rows without a header and a HH:MM clock", () => {

@@ -72,6 +72,21 @@ export type {
   RecipeVersionState,
 } from "./recipe";
 export {
+  RECONCILIATION_TOLERANCE_DEFAULTS,
+  TOLERANCE_KINDS,
+  defaultToleranceFor,
+  explodeTheoreticalConsumption,
+  withinTolerance,
+} from "./sales-consumption";
+export type {
+  EvaluateToleranceInput,
+  RecipeComponentQuantityInput,
+  TheoreticalConsumptionInput,
+  TheoreticalConsumptionLine,
+  ToleranceEvaluation,
+  ToleranceKind,
+} from "./sales-consumption";
+export {
   IMPORT_RUN_STATUSES,
   IMPORT_RUN_STATUS_TRANSITIONS,
   assertImportRunStatusTransition,

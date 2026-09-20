@@ -16,9 +16,13 @@ import {
   productionBatchInput,
   productionBatchOutput,
   productionPlan,
+  reconciliation,
   recipe,
   recipeVersion,
   role,
+  salesLine,
+  salesTransaction,
+  settlement,
   stockCount,
   stockCountLine,
   stockLot,
@@ -559,6 +563,84 @@ export async function createTestExternalMapping(
       internalEntityType: "product_variant",
       internalEntityId: randomUUID(),
       effectiveFrom: new Date("2026-01-01T00:00:00.000Z"),
+      ...overrides,
+    })
+    .returning();
+  return rows[0]!;
+}
+
+export async function createTestSalesTransaction(
+  db: Database,
+  organizationId: string,
+  overrides: Partial<typeof salesTransaction.$inferInsert> = {},
+): Promise<typeof salesTransaction.$inferSelect> {
+  const rows = await db
+    .insert(salesTransaction)
+    .values({
+      organizationId,
+      sourceSystem: "frontline",
+      externalTransactionId: uniqueName("txn"),
+      occurredAt: new Date("2026-03-01T12:00:00.000Z"),
+      ...overrides,
+    })
+    .returning();
+  return rows[0]!;
+}
+
+export async function createTestSalesLine(
+  db: Database,
+  organizationId: string,
+  salesTransactionId: string,
+  overrides: Partial<typeof salesLine.$inferInsert> = {},
+): Promise<typeof salesLine.$inferSelect> {
+  const rows = await db
+    .insert(salesLine)
+    .values({
+      organizationId,
+      salesTransactionId,
+      quantity: "1",
+      ...overrides,
+    })
+    .returning();
+  return rows[0]!;
+}
+
+export async function createTestSettlement(
+  db: Database,
+  organizationId: string,
+  overrides: Partial<typeof settlement.$inferInsert> = {},
+): Promise<typeof settlement.$inferSelect> {
+  const rows = await db
+    .insert(settlement)
+    .values({
+      organizationId,
+      provider: "wolt",
+      periodStart: "2026-03-01",
+      periodEnd: "2026-03-31",
+      status: "received",
+      ...overrides,
+    })
+    .returning();
+  return rows[0]!;
+}
+
+export async function createTestReconciliation(
+  db: Database,
+  organizationId: string,
+  overrides: Partial<typeof reconciliation.$inferInsert> = {},
+): Promise<typeof reconciliation.$inferSelect> {
+  const rows = await db
+    .insert(reconciliation)
+    .values({
+      organizationId,
+      scopeType: "sales_source",
+      scopeId: randomUUID(),
+      periodStart: "2026-03-01",
+      periodEnd: "2026-03-31",
+      expectedAmount: "100",
+      actualAmount: "100",
+      tolerance: "5",
+      difference: "0",
       ...overrides,
     })
     .returning();

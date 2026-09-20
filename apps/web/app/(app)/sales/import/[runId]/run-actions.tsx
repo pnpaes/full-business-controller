@@ -16,6 +16,7 @@ import type { FormEvent } from "react";
 const VALIDATE_FALLBACK = "Could not validate the run. Please try again.";
 const MAP_FALLBACK = "Could not map the run. Please try again.";
 const DISPOSITION_FALLBACK = "Could not record the disposition. Please try again.";
+const POST_FALLBACK = "Could not post the run. Please try again.";
 
 interface ErrorBody {
   readonly error?: string;
@@ -49,7 +50,8 @@ interface RunActionProps {
  * external mappings to the run's source system and the `item` entity type
  * (`DEC-041`, SKU-first).
  *
- * Neither action posts anything — posting is row 12, owner-gated on `ADR-0008`.
+ * Neither action posts anything; posting a validated run is the separate
+ * `PostRunForm` below.
  */
 export function RunActions({ runId, status, sourceSystem }: RunActionProps) {
   const router = useRouter();
@@ -393,8 +395,94 @@ export function DispositionForm({
         </div>
         <p style={{ margin: 0, opacity: 0.8 }}>
           A disposition is an approval that the row will not be posted. A posted row cannot be
-          dispositioned — correcting it is a reversal in row 12.
+          dispositioned — correcting it needs a reversal, which is not implemented (`DEC-028`).
         </p>
+      </form>
+    </SectionCard>
+  );
+}
+
+/**
+ * Posts the run's staged rows into `sales_transaction`/`sales_line`
+ * (`SALE-003`/`005`). Only a `validated` or `needs_review` run can post; a run
+ * that posts every row becomes `posted` and a partial one `partially_posted`.
+ *
+ * Posting is **idempotent** on the external transaction/line keys, so pressing it
+ * again (or retrying after a failure) reuses the existing rows instead of
+ * duplicating them. The optional source system overrides the
+ * `sales_transaction.source_system` label; there is no source-system column on
+ * the run (recorded open point).
+ */
+export function PostRunForm({
+  runId,
+  sourceSystem,
+}: {
+  readonly runId: string;
+  readonly sourceSystem: string;
+}) {
+  const router = useRouter();
+  const [source, setSource] = useState(sourceSystem);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function submit(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    setError(null);
+    setSuccess(null);
+    setBusy(true);
+    try {
+      const response = await fetch(`/api/v1/sales/import-runs/${runId}/post`, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(source.trim().length === 0 ? {} : { sourceSystem: source.trim() }),
+      });
+      const body = (await response.json().catch(() => null)) as {
+        readonly postedCount?: number;
+        readonly notPostedCount?: number;
+      } | null;
+      if (!response.ok) {
+        setError(await errorMessage(response, POST_FALLBACK));
+        return;
+      }
+      setSuccess(
+        `Posted ${body?.postedCount ?? 0} row(s); ${body?.notPostedCount ?? 0} left unposted.`,
+      );
+      router.refresh();
+    } catch {
+      setError(POST_FALLBACK);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <SectionCard title="Post to sales" meta="validated run">
+      <form
+        onSubmit={submit}
+        style={{ display: "flex", flexDirection: "column", gap: spacing[3], maxWidth: 720 }}
+      >
+        {error !== null ? <Alert tone="danger">{error}</Alert> : null}
+        {success !== null ? <Alert tone="success">{success}</Alert> : null}
+        <p style={{ margin: 0, opacity: 0.85 }}>
+          Posting writes a <code>sales_transaction</code> and its <code>sales_line</code> rows. It
+          is idempotent on the external transaction/line keys, so a replay cannot duplicate a
+          transaction. A row that is not mapped stays unposted in the review queue and is covered by
+          its disposition.
+        </p>
+        <TextField
+          name="sourceSystem"
+          label="Source system"
+          value={source}
+          onChange={(event) => setSource(event.target.value)}
+          help="The sales_transaction.source_system label; defaults to the run's source."
+        />
+        <div>
+          <Button type="submit" loading={busy} disabled={busy}>
+            Post run
+          </Button>
+        </div>
       </form>
     </SectionCard>
   );

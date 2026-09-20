@@ -162,6 +162,13 @@
       "when": 1789915583040,
       "tag": "0022_row11_import_framework",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1789917983755,
+      "tag": "0023_row12_sales_settlements_reconciliation",
+      "breakpoints": true
     }
   ]
 }
