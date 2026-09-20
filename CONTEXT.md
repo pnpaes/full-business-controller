@@ -22,7 +22,8 @@ message matching in `apps/web/app/(app)/recipes/[id]/page.tsx` and
 question (A4). Then proceed to the gated rows as their gates land (row 13 on
 history/grain quality I11; row 14 on the privacy review / access matrix).
 
-**State:** `main` HEAD **`77d913e`**, working tree **clean**, nothing pushed;
+**State:** `main` HEAD **`1bbc1d0`** (the code was verified at `77d913e`; the
+three commits after it are docs-only), working tree **clean**, nothing pushed;
 **17 commits** since the previous session baseline `f7b1db7` (recent:
 `77d913e` docs — row 12; `2104068` feat — sales **row 12**; `c324418` docs —
 **ADR-0007/0008 accepted** 2026-09-20; `0ac9667` docs — row 11; `a02719f` fix —
@@ -151,7 +152,8 @@ design system/app shell/screens and migrations `0017`–`0023`.
 
 ## Current status
 
-- **As of:** 2026-09-20 — branch `main`; HEAD `77d913e` (docs — row 12);
+- **As of:** 2026-09-20 — branch `main`; HEAD `1bbc1d0` (docs-only after the
+  `77d913e` code state);
   working tree **clean**; nothing pushed. **17 commits** since the previous
   session baseline `f7b1db7`: the layer commits for slices 8/9/10 (+ the design
   system/screens), the row-11 import slice, the web error fix, the ADR
