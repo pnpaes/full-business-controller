@@ -1,13 +1,21 @@
 import type { AuditInput } from "../auth";
 
 import type {
+  CorrectiveActionListQuery,
+  CorrectiveActionRecord,
   HmsStore,
+  IncidentListQuery,
+  IncidentRecord,
   MonitoringPointListQuery,
   MonitoringPointRecord,
   MonitoringReadingListQuery,
   MonitoringReadingRecord,
+  NewCorrectiveActionRecord,
+  NewIncidentRecord,
   NewMonitoringPointRecord,
   NewMonitoringReadingRecord,
+  UpdateCorrectiveActionRecord,
+  UpdateIncidentRecord,
   UpdateMonitoringPointRecord,
 } from "./types";
 
@@ -18,6 +26,8 @@ import type {
 interface HmsSnapshot {
   readonly monitoringPoints: Map<string, MonitoringPointRecord>;
   readonly monitoringReadings: Map<string, MonitoringReadingRecord>;
+  readonly incidents: Map<string, IncidentRecord>;
+  readonly correctiveActions: Map<string, CorrectiveActionRecord>;
   readonly audits: AuditInput[];
 }
 
@@ -29,6 +39,8 @@ interface HmsSnapshot {
 export class FakeHmsStore implements HmsStore {
   readonly monitoringPoints = new Map<string, MonitoringPointRecord>();
   readonly monitoringReadings = new Map<string, MonitoringReadingRecord>();
+  readonly incidents = new Map<string, IncidentRecord>();
+  readonly correctiveActions = new Map<string, CorrectiveActionRecord>();
   readonly audits: AuditInput[] = [];
 
   private sequence = 0;
@@ -55,6 +67,8 @@ export class FakeHmsStore implements HmsStore {
     return {
       monitoringPoints: new Map(this.monitoringPoints),
       monitoringReadings: new Map(this.monitoringReadings),
+      incidents: new Map(this.incidents),
+      correctiveActions: new Map(this.correctiveActions),
       audits: [...this.audits],
     };
   }
@@ -65,6 +79,12 @@ export class FakeHmsStore implements HmsStore {
     this.monitoringReadings.clear();
     for (const [key, value] of snapshot.monitoringReadings) {
       this.monitoringReadings.set(key, value);
+    }
+    this.incidents.clear();
+    for (const [key, value] of snapshot.incidents) this.incidents.set(key, value);
+    this.correctiveActions.clear();
+    for (const [key, value] of snapshot.correctiveActions) {
+      this.correctiveActions.set(key, value);
     }
     this.audits.length = 0;
     this.audits.push(...snapshot.audits);
@@ -168,6 +188,150 @@ export class FakeHmsStore implements HmsStore {
     const limit = query.limit ?? rows.length;
     return rows.slice(offset, offset + limit);
   }
+
+  async createIncident(input: NewIncidentRecord): Promise<IncidentRecord> {
+    const record: IncidentRecord = {
+      id: this.nextId("incident"),
+      ...input,
+      // A new incident starts `open` with no close instant, like the adapter;
+      // `createdBy` comes from the input and no update has run yet.
+      closedAt: null,
+      createdAt: new Date().toISOString(),
+      updatedBy: null,
+    };
+    this.incidents.set(record.id, record);
+    return record;
+  }
+
+  async findIncident(query: {
+    readonly organizationId: string;
+    readonly incidentId: string;
+  }): Promise<IncidentRecord | undefined> {
+    const incident = this.incidents.get(query.incidentId);
+    return incident !== undefined && incident.organizationId === query.organizationId
+      ? incident
+      : undefined;
+  }
+
+  async updateIncident(input: UpdateIncidentRecord): Promise<IncidentRecord | undefined> {
+    const existing = await this.findIncident({
+      organizationId: input.organizationId,
+      incidentId: input.incidentId,
+    });
+    if (existing === undefined) return undefined;
+    // Replace the record rather than mutate it: the transaction snapshot keeps
+    // the old object reference, so an in-place edit would survive a rollback.
+    const record: IncidentRecord = {
+      ...existing,
+      ...(input.status === undefined ? {} : { status: input.status }),
+      ...(input.severity === undefined ? {} : { severity: input.severity }),
+      ...(input.ownerId === undefined ? {} : { ownerId: input.ownerId }),
+      ...(input.dueDate === undefined ? {} : { dueDate: input.dueDate }),
+      ...(input.title === undefined ? {} : { title: input.title }),
+      ...(input.description === undefined ? {} : { description: input.description }),
+      ...(input.closedAt === undefined
+        ? {}
+        : { closedAt: input.closedAt === null ? null : new Date(input.closedAt).toISOString() }),
+      ...(input.updatedBy === undefined ? {} : { updatedBy: input.updatedBy }),
+    };
+    this.incidents.set(record.id, record);
+    return record;
+  }
+
+  async listIncidents(query: IncidentListQuery): Promise<readonly IncidentRecord[]> {
+    const rows = [...this.incidents.values()]
+      .filter((incident) => incident.organizationId === query.organizationId)
+      .filter((incident) => query.status === undefined || incident.status === query.status)
+      .filter(
+        (incident) => query.locationId === undefined || incident.locationId === query.locationId,
+      )
+      .sort((a, b) => {
+        if (a.occurredAt !== b.occurredAt) return a.occurredAt < b.occurredAt ? 1 : -1;
+        return a.id < b.id ? 1 : -1;
+      });
+    const offset = query.offset ?? 0;
+    const limit = query.limit ?? rows.length;
+    return rows.slice(offset, offset + limit);
+  }
+
+  async createCorrectiveAction(input: NewCorrectiveActionRecord): Promise<CorrectiveActionRecord> {
+    const record: CorrectiveActionRecord = {
+      id: this.nextId("action"),
+      ...input,
+      // A new action starts `open`, so the derived companions are all null;
+      // `createdBy` comes from the input and no update has run yet.
+      completedAt: null,
+      verifiedBy: null,
+      verifiedAt: null,
+      createdAt: new Date().toISOString(),
+      updatedBy: null,
+    };
+    this.correctiveActions.set(record.id, record);
+    return record;
+  }
+
+  async findCorrectiveAction(query: {
+    readonly organizationId: string;
+    readonly correctiveActionId: string;
+  }): Promise<CorrectiveActionRecord | undefined> {
+    const action = this.correctiveActions.get(query.correctiveActionId);
+    return action !== undefined && action.organizationId === query.organizationId
+      ? action
+      : undefined;
+  }
+
+  async updateCorrectiveAction(
+    input: UpdateCorrectiveActionRecord,
+  ): Promise<CorrectiveActionRecord | undefined> {
+    const existing = await this.findCorrectiveAction({
+      organizationId: input.organizationId,
+      correctiveActionId: input.correctiveActionId,
+    });
+    if (existing === undefined) return undefined;
+    const record: CorrectiveActionRecord = {
+      ...existing,
+      ...(input.status === undefined ? {} : { status: input.status }),
+      ...(input.ownerId === undefined ? {} : { ownerId: input.ownerId }),
+      ...(input.dueDate === undefined ? {} : { dueDate: input.dueDate }),
+      ...(input.description === undefined ? {} : { description: input.description }),
+      ...(input.completedAt === undefined
+        ? {}
+        : {
+            completedAt:
+              input.completedAt === null ? null : new Date(input.completedAt).toISOString(),
+          }),
+      ...(input.verifiedBy === undefined ? {} : { verifiedBy: input.verifiedBy }),
+      ...(input.verifiedAt === undefined
+        ? {}
+        : {
+            verifiedAt: input.verifiedAt === null ? null : new Date(input.verifiedAt).toISOString(),
+          }),
+      ...(input.updatedBy === undefined ? {} : { updatedBy: input.updatedBy }),
+    };
+    this.correctiveActions.set(record.id, record);
+    return record;
+  }
+
+  async listCorrectiveActions(
+    query: CorrectiveActionListQuery,
+  ): Promise<readonly CorrectiveActionRecord[]> {
+    const rows = [...this.correctiveActions.values()]
+      .filter((action) => action.organizationId === query.organizationId)
+      .filter((action) => query.incidentId === undefined || action.incidentId === query.incidentId)
+      .filter((action) => query.status === undefined || action.status === query.status)
+      .filter((action) => query.ownerId === undefined || action.ownerId === query.ownerId)
+      .sort((a, b) => {
+        // `due_date` ascending, a null due date last (the adapter's `asc` with
+        // Postgres's default NULLS LAST), then `id` ascending.
+        const aDue = a.dueDate ?? "\uffff";
+        const bDue = b.dueDate ?? "\uffff";
+        if (aDue !== bDue) return aDue < bDue ? -1 : 1;
+        return a.id < b.id ? -1 : 1;
+      });
+    const offset = query.offset ?? 0;
+    const limit = query.limit ?? rows.length;
+    return rows.slice(offset, offset + limit);
+  }
 }
 
 export interface HmsFixture {
@@ -176,11 +340,14 @@ export interface HmsFixture {
   readonly actorId: string;
   readonly locationId: string;
   readonly otherLocationId: string;
+  /** A second actor, e.g. the verifier of a corrective action. */
+  readonly ownerId: string;
 }
 
 /**
  * Seeds the two-organization fixture the HMS tests share: a location in each
- * organization so a point can be registered in one and read from the other.
+ * organization so a point can be registered in one and read from the other, plus
+ * a second actor for the owner/verifier fields.
  */
 export function seedHmsFixture(): HmsFixture {
   return {
@@ -189,5 +356,6 @@ export function seedHmsFixture(): HmsFixture {
     actorId: "actor-1",
     locationId: "loc-1",
     otherLocationId: "loc-2",
+    ownerId: "actor-2",
   };
 }

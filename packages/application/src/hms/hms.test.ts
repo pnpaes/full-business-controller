@@ -1,14 +1,26 @@
 import { DomainError, NotFoundError } from "@aquarela/domain";
 import { describe, expect, it } from "vitest";
 
+import { findCorrectiveAction } from "./find-corrective-action";
+import { findIncident } from "./find-incident";
 import { findMonitoringPoint } from "./find-monitoring-point";
+import { listCorrectiveActions } from "./list-corrective-actions";
+import { listIncidents } from "./list-incidents";
 import { listMonitoringPoints } from "./list-monitoring-points";
 import { listMonitoringReadings } from "./list-monitoring-readings";
+import { recordCorrectiveAction } from "./record-corrective-action";
+import type { RecordCorrectiveActionInput } from "./record-corrective-action";
 import { recordMonitoringReading } from "./record-monitoring-reading";
+import { registerIncident } from "./register-incident";
+import type { RegisterIncidentInput } from "./register-incident";
 import { registerMonitoringPoint } from "./register-monitoring-point";
 import type { RegisterMonitoringPointInput } from "./register-monitoring-point";
 import { FakeHmsStore, seedHmsFixture, type HmsFixture } from "./test-support";
-import type { MonitoringPointRecord } from "./types";
+import type { CorrectiveActionRecord, IncidentRecord, MonitoringPointRecord } from "./types";
+import { updateCorrectiveAction } from "./update-corrective-action";
+import type { UpdateCorrectiveActionInput } from "./update-corrective-action";
+import { updateIncident } from "./update-incident";
+import type { UpdateIncidentInput } from "./update-incident";
 import { updateMonitoringPoint } from "./update-monitoring-point";
 import type { UpdateMonitoringPointInput } from "./update-monitoring-point";
 
@@ -47,6 +59,53 @@ function updateFridge(
     organizationId: fixture.organizationId,
     actorId: fixture.actorId,
     monitoringPointId: point.id,
+    ...overrides,
+  });
+}
+
+function registerNearMiss(
+  store: FakeHmsStore,
+  fixture: HmsFixture,
+  overrides: Partial<RegisterIncidentInput> = {},
+): Promise<IncidentRecord> {
+  return registerIncident(store, {
+    organizationId: fixture.organizationId,
+    actorId: fixture.actorId,
+    locationId: fixture.locationId,
+    category: "near_miss",
+    severity: "medium",
+    occurredAt: "2026-02-01T10:00:00.000Z",
+    reportedAt: "2026-02-01T10:05:00.000Z",
+    reportedBy: fixture.actorId,
+    title: "Pallets stacked too high",
+    involvesPersonalData: false,
+    ...overrides,
+  });
+}
+
+function recordFix(
+  store: FakeHmsStore,
+  fixture: HmsFixture,
+  overrides: Partial<RecordCorrectiveActionInput> = {},
+): Promise<CorrectiveActionRecord> {
+  return recordCorrectiveAction(store, {
+    organizationId: fixture.organizationId,
+    actorId: fixture.actorId,
+    description: "Re-stack the pallets lower",
+    ...overrides,
+  });
+}
+
+function updateFix(
+  store: FakeHmsStore,
+  fixture: HmsFixture,
+  action: CorrectiveActionRecord,
+  overrides: Partial<UpdateCorrectiveActionInput> = {},
+): Promise<CorrectiveActionRecord> {
+  return updateCorrectiveAction(store, {
+    organizationId: fixture.organizationId,
+    actorId: fixture.actorId,
+    correctiveActionId: action.id,
     ...overrides,
   });
 }
@@ -487,5 +546,649 @@ describe("FakeHmsStore.withTransaction", () => {
     expect(store.monitoringPoints.has(existing.id)).toBe(true);
     expect(store.monitoringReadings.size).toBe(baseline.monitoringReadings);
     expect(store.audits).toHaveLength(baseline.audits);
+  });
+});
+
+describe("registerIncident", () => {
+  it("registers an incident as open with no close instant and writes its audit fact", async () => {
+    const { store, fixture } = setup();
+
+    const incident = await registerNearMiss(store, fixture, {
+      title: "  Pallets stacked too high  ",
+    });
+
+    expect(incident).toMatchObject({
+      organizationId: fixture.organizationId,
+      locationId: fixture.locationId,
+      category: "near_miss",
+      severity: "medium",
+      occurredAt: "2026-02-01T10:00:00.000Z",
+      reportedAt: "2026-02-01T10:05:00.000Z",
+      reportedBy: fixture.actorId,
+      ownerId: null,
+      title: "Pallets stacked too high",
+      description: null,
+      dueDate: null,
+      involvesPersonalData: false,
+      status: "open",
+      closedAt: null,
+      createdBy: fixture.actorId,
+    });
+    expect(store.incidents.size).toBe(1);
+    expect(store.audits).toHaveLength(1);
+    expect(store.audits[0]).toMatchObject({
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      action: "hms.incident.created",
+      entityType: "hms_incident",
+      entityId: incident.id,
+      after: {
+        category: "near_miss",
+        severity: "medium",
+        status: "open",
+        closed_at: null,
+      },
+    });
+  });
+
+  it("rejects an unknown category, severity, blank title, malformed instant or missing location", async () => {
+    const { store, fixture } = setup();
+
+    await expect(registerNearMiss(store, fixture, { category: "explosion" })).rejects.toThrow(
+      DomainError,
+    );
+    await expect(registerNearMiss(store, fixture, { severity: "catastrophic" })).rejects.toThrow(
+      DomainError,
+    );
+    await expect(registerNearMiss(store, fixture, { title: "   " })).rejects.toThrow(DomainError);
+    await expect(registerNearMiss(store, fixture, { occurredAt: "2026-02-01" })).rejects.toThrow(
+      DomainError,
+    );
+    await expect(registerNearMiss(store, fixture, { locationId: "" })).rejects.toThrow(DomainError);
+
+    expect(store.incidents.size).toBe(0);
+    expect(store.audits).toHaveLength(0);
+  });
+
+  it("rejects a blank reportedBy and a malformed dueDate without writing", async () => {
+    const { store, fixture } = setup();
+
+    await expect(registerNearMiss(store, fixture, { reportedBy: "   " })).rejects.toThrow(
+      DomainError,
+    );
+    await expect(registerNearMiss(store, fixture, { dueDate: "2026-02-31" })).rejects.toThrow(
+      DomainError,
+    );
+    await expect(registerNearMiss(store, fixture, { dueDate: "15/02/2026" })).rejects.toThrow(
+      DomainError,
+    );
+
+    expect(store.incidents.size).toBe(0);
+    expect(store.audits).toHaveLength(0);
+  });
+});
+
+describe("updateIncident", () => {
+  it("sets closed_at on the transition into closed and clears it on the move back out", async () => {
+    const { store, fixture } = setup();
+    const incident = await registerNearMiss(store, fixture);
+
+    const closed = await updateIncident(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      incidentId: incident.id,
+      status: "closed",
+    });
+
+    expect(closed.status).toBe("closed");
+    expect(closed.closedAt).not.toBeNull();
+    expect(Number.isNaN(Date.parse(closed.closedAt ?? ""))).toBe(false);
+    expect(closed.updatedBy).toBe(fixture.actorId);
+
+    const closeAudit = store.audits.find((audit) => audit.action === "hms.incident.closed");
+    expect(closeAudit).toMatchObject({
+      actorId: fixture.actorId,
+      entityType: "hms_incident",
+      entityId: incident.id,
+      before: { status: "open" },
+      after: { status: "closed" },
+    });
+
+    const reopened = await updateIncident(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      incidentId: incident.id,
+      status: "investigating",
+    });
+
+    expect(reopened.status).toBe("investigating");
+    expect(reopened.closedAt).toBeNull();
+    // Only the close transition records the specific action; the reopen is generic.
+    expect(store.audits.filter((audit) => audit.action === "hms.incident.closed")).toHaveLength(1);
+    expect(store.audits.filter((audit) => audit.action === "hms.incident.updated")).toHaveLength(1);
+  });
+
+  it("preserves closed_at when an already-closed incident is closed again", async () => {
+    const { store, fixture } = setup();
+    const incident = await registerNearMiss(store, fixture);
+
+    const first = await updateIncident(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      incidentId: incident.id,
+      status: "closed",
+    });
+    const second = await updateIncident(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      incidentId: incident.id,
+      status: "closed",
+    });
+
+    expect(second.status).toBe("closed");
+    // The re-close is idempotent: the original instant is not refreshed.
+    expect(second.closedAt).toBe(first.closedAt);
+    // Only the real transition fires the specific close action; the re-close is generic.
+    expect(store.audits.filter((audit) => audit.action === "hms.incident.closed")).toHaveLength(1);
+    expect(store.audits.filter((audit) => audit.action === "hms.incident.updated")).toHaveLength(1);
+  });
+
+  it("rejects an unknown status, severity or blank title and an empty patch without writing", async () => {
+    const { store, fixture } = setup();
+    const incident = await registerNearMiss(store, fixture);
+    const update = (overrides: Partial<UpdateIncidentInput>) =>
+      updateIncident(store, {
+        organizationId: fixture.organizationId,
+        actorId: fixture.actorId,
+        incidentId: incident.id,
+        ...overrides,
+      });
+
+    await expect(update({ status: "pending" })).rejects.toThrow(DomainError);
+    await expect(update({ severity: "catastrophic" })).rejects.toThrow(DomainError);
+    await expect(update({ title: "  " })).rejects.toThrow(DomainError);
+    await expect(update({})).rejects.toThrow(DomainError);
+
+    expect(store.incidents.get(incident.id)).toMatchObject({
+      status: "open",
+      severity: "medium",
+      title: "Pallets stacked too high",
+      closedAt: null,
+    });
+    expect(store.audits.filter((audit) => audit.entityId === incident.id)).toHaveLength(1);
+  });
+
+  it("rejects a malformed dueDate without writing", async () => {
+    const { store, fixture } = setup();
+    const incident = await registerNearMiss(store, fixture);
+
+    await expect(
+      updateIncident(store, {
+        organizationId: fixture.organizationId,
+        actorId: fixture.actorId,
+        incidentId: incident.id,
+        dueDate: "2026-02-31",
+      }),
+    ).rejects.toThrow(DomainError);
+
+    expect(store.incidents.get(incident.id)?.dueDate).toBeNull();
+    expect(store.audits.filter((audit) => audit.action === "hms.incident.updated")).toHaveLength(0);
+  });
+
+  it("reports an unknown or cross-organization incident as NotFoundError", async () => {
+    const { store, fixture } = setup();
+    await registerNearMiss(store, fixture);
+    const otherIncident = await registerNearMiss(store, {
+      ...fixture,
+      organizationId: fixture.otherOrganizationId,
+      locationId: fixture.otherLocationId,
+    });
+
+    await expect(
+      updateIncident(store, {
+        organizationId: fixture.organizationId,
+        actorId: fixture.actorId,
+        incidentId: "missing",
+        title: "Nonexistent",
+      }),
+    ).rejects.toThrow(NotFoundError);
+    await expect(
+      updateIncident(store, {
+        organizationId: fixture.organizationId,
+        actorId: fixture.actorId,
+        incidentId: otherIncident.id,
+        title: "Hijacked",
+      }),
+    ).rejects.toThrow(NotFoundError);
+
+    expect(store.incidents.get(otherIncident.id)?.title).toBe("Pallets stacked too high");
+    expect(store.audits.filter((audit) => audit.action === "hms.incident.updated")).toHaveLength(0);
+  });
+});
+
+describe("recordCorrectiveAction", () => {
+  it("records an action as open with no completion or verification fields and audits it", async () => {
+    const { store, fixture } = setup();
+    const incident = await registerNearMiss(store, fixture);
+
+    const action = await recordFix(store, fixture, {
+      incidentId: incident.id,
+      description: "  Re-stack the pallets lower  ",
+      ownerId: fixture.ownerId,
+      dueDate: "2026-02-15",
+    });
+
+    expect(action).toMatchObject({
+      organizationId: fixture.organizationId,
+      incidentId: incident.id,
+      monitoringReadingId: null,
+      description: "Re-stack the pallets lower",
+      ownerId: fixture.ownerId,
+      dueDate: "2026-02-15",
+      status: "open",
+      completedAt: null,
+      verifiedBy: null,
+      verifiedAt: null,
+      createdBy: fixture.actorId,
+    });
+    expect(store.correctiveActions.size).toBe(1);
+    const audit = store.audits.find((row) => row.action === "hms.corrective_action.created");
+    expect(audit).toMatchObject({
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      entityType: "corrective_action",
+      entityId: action.id,
+      after: {
+        incident_id: incident.id,
+        status: "open",
+        completed_at: null,
+        verified_by: null,
+        verified_at: null,
+      },
+    });
+  });
+
+  it("accepts a reading link or a standalone action, but still rejects a blank description", async () => {
+    const { store, fixture } = setup();
+    const point = await registerFridge(store, fixture);
+    const reading = await recordMonitoringReading(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      monitoringPointId: point.id,
+      value: "9",
+      measuredAt: "2026-02-01T08:00:00.000Z",
+    });
+
+    const fromReading = await recordFix(store, fixture, {
+      monitoringReadingId: reading.id,
+      description: "Service the fridge door",
+    });
+    expect(fromReading).toMatchObject({
+      incidentId: null,
+      monitoringReadingId: reading.id,
+      status: "open",
+    });
+
+    // Both links are optional (`DEC-090`), so a standalone improvement action
+    // with neither link is a valid action.
+    const standalone = await recordFix(store, fixture, {
+      description: "Orphan action with no link",
+    });
+    expect(standalone).toMatchObject({
+      incidentId: null,
+      monitoringReadingId: null,
+      status: "open",
+    });
+
+    await expect(
+      recordFix(store, fixture, { incidentId: "incident-1", description: "   " }),
+    ).rejects.toThrow(DomainError);
+
+    expect(store.correctiveActions.size).toBe(2);
+    expect(
+      store.audits.filter((row) => row.action === "hms.corrective_action.created"),
+    ).toHaveLength(2);
+  });
+
+  it("rejects a malformed dueDate without writing", async () => {
+    const { store, fixture } = setup();
+
+    await expect(recordFix(store, fixture, { dueDate: "2026-02-31" })).rejects.toThrow(DomainError);
+
+    expect(store.correctiveActions.size).toBe(0);
+    expect(store.audits).toHaveLength(0);
+  });
+});
+
+describe("updateCorrectiveAction", () => {
+  it("sets completed_at on done and the acting verifier on verified", async () => {
+    const { store, fixture } = setup();
+    const incident = await registerNearMiss(store, fixture);
+    const action = await recordFix(store, fixture, { incidentId: incident.id });
+
+    const done = await updateFix(store, fixture, action, { status: "done" });
+    expect(done).toMatchObject({
+      status: "done",
+      verifiedBy: null,
+      verifiedAt: null,
+      updatedBy: fixture.actorId,
+    });
+    expect(done.completedAt).not.toBeNull();
+    expect(
+      store.audits.find(
+        (row) => row.entityId === action.id && row.action === "hms.corrective_action.completed",
+      )?.after,
+    ).toEqual({ status: "done" });
+
+    // The verifier is the acting actor, not the action's owner.
+    const verified = await updateFix(store, { ...fixture, actorId: fixture.ownerId }, action, {
+      status: "verified",
+    });
+    expect(verified.status).toBe("verified");
+    // `completed_at` is preserved across the done → verified transition.
+    expect(verified.completedAt).toBe(done.completedAt);
+    expect(verified.verifiedBy).toBe(fixture.ownerId);
+    expect(verified.verifiedAt).not.toBeNull();
+    expect(
+      store.audits.find(
+        (row) => row.entityId === action.id && row.action === "hms.corrective_action.verified",
+      ),
+    ).toMatchObject({ actorId: fixture.ownerId, after: { status: "verified" } });
+  });
+
+  it("clears completion when leaving done/verified and the verifier when leaving verified", async () => {
+    const { store, fixture } = setup();
+    const incident = await registerNearMiss(store, fixture);
+    const action = await recordFix(store, fixture, { incidentId: incident.id });
+    await updateFix(store, fixture, action, { status: "verified" });
+
+    // verified → done: still a completed action, but no longer a verified one.
+    const done = await updateFix(store, fixture, action, { status: "done" });
+    expect(done.completedAt).not.toBeNull();
+    expect(done.verifiedBy).toBeNull();
+    expect(done.verifiedAt).toBeNull();
+
+    // done → in_progress: no completion and no verification.
+    const reopened = await updateFix(store, fixture, action, { status: "in_progress" });
+    expect(reopened.completedAt).toBeNull();
+    expect(reopened.verifiedBy).toBeNull();
+    expect(reopened.verifiedAt).toBeNull();
+  });
+
+  it("preserves the original verifier when an already-verified action is verified again", async () => {
+    const { store, fixture } = setup();
+    const incident = await registerNearMiss(store, fixture);
+    const action = await recordFix(store, fixture, { incidentId: incident.id });
+
+    const first = await updateFix(store, fixture, action, { status: "verified" });
+    // A second actor re-verifies the already-verified action.
+    const second = await updateFix(store, { ...fixture, actorId: fixture.ownerId }, action, {
+      status: "verified",
+    });
+
+    expect(second.status).toBe("verified");
+    // The re-verify is idempotent: the original verifier and instant are not overwritten.
+    expect(second.verifiedBy).toBe(first.verifiedBy);
+    expect(second.verifiedAt).toBe(first.verifiedAt);
+    expect(second.verifiedBy).toBe(fixture.actorId);
+    // Only the real transition fires the specific verified action; the re-verify is generic.
+    expect(
+      store.audits.filter((row) => row.action === "hms.corrective_action.verified"),
+    ).toHaveLength(1);
+    expect(
+      store.audits.filter((row) => row.action === "hms.corrective_action.updated"),
+    ).toHaveLength(1);
+  });
+
+  it("rejects an unknown status and reports a scoped miss as NotFoundError", async () => {
+    const { store, fixture } = setup();
+    const incident = await registerNearMiss(store, fixture);
+    const action = await recordFix(store, fixture, { incidentId: incident.id });
+    const otherAction = await recordFix(store, fixture, {
+      organizationId: fixture.otherOrganizationId,
+      incidentId: "incident-other",
+    });
+
+    await expect(updateFix(store, fixture, action, { status: "cancelled" })).rejects.toThrow(
+      DomainError,
+    );
+    await expect(updateFix(store, fixture, otherAction, { status: "done" })).rejects.toThrow(
+      NotFoundError,
+    );
+    await expect(
+      updateFix(store, fixture, { ...action, id: "missing" }, { status: "done" }),
+    ).rejects.toThrow(NotFoundError);
+
+    expect(store.correctiveActions.get(action.id)).toMatchObject({ status: "open" });
+    expect(store.correctiveActions.get(otherAction.id)).toMatchObject({ status: "open" });
+  });
+
+  it("rejects a malformed dueDate without writing", async () => {
+    const { store, fixture } = setup();
+    const incident = await registerNearMiss(store, fixture);
+    const action = await recordFix(store, fixture, { incidentId: incident.id });
+
+    await expect(updateFix(store, fixture, action, { dueDate: "2026-02-31" })).rejects.toThrow(
+      DomainError,
+    );
+
+    expect(store.correctiveActions.get(action.id)?.dueDate).toBeNull();
+    expect(
+      store.audits.filter((row) => row.action === "hms.corrective_action.updated"),
+    ).toHaveLength(0);
+  });
+});
+
+describe("findIncident and findCorrectiveAction", () => {
+  it("return the row for its organization and undefined for a scoped miss", async () => {
+    const { store, fixture } = setup();
+    const incident = await registerNearMiss(store, fixture);
+    const otherIncident = await registerNearMiss(store, {
+      ...fixture,
+      organizationId: fixture.otherOrganizationId,
+      locationId: fixture.otherLocationId,
+    });
+    const action = await recordFix(store, fixture, { incidentId: incident.id });
+    const otherAction = await recordFix(store, fixture, {
+      organizationId: fixture.otherOrganizationId,
+      incidentId: otherIncident.id,
+    });
+
+    expect(
+      (
+        await findIncident(store, {
+          organizationId: fixture.organizationId,
+          incidentId: incident.id,
+        })
+      )?.id,
+    ).toBe(incident.id);
+    // The org filter is load-bearing: dropping it would return the other row.
+    expect(
+      await findIncident(store, {
+        organizationId: fixture.organizationId,
+        incidentId: otherIncident.id,
+      }),
+    ).toBeUndefined();
+    expect(
+      await findIncident(store, { organizationId: fixture.organizationId, incidentId: "missing" }),
+    ).toBeUndefined();
+
+    expect(
+      (
+        await findCorrectiveAction(store, {
+          organizationId: fixture.organizationId,
+          correctiveActionId: action.id,
+        })
+      )?.id,
+    ).toBe(action.id);
+    expect(
+      await findCorrectiveAction(store, {
+        organizationId: fixture.organizationId,
+        correctiveActionId: otherAction.id,
+      }),
+    ).toBeUndefined();
+    expect(
+      await findCorrectiveAction(store, {
+        organizationId: fixture.organizationId,
+        correctiveActionId: "missing",
+      }),
+    ).toBeUndefined();
+  });
+});
+
+describe("listIncidents and listCorrectiveActions", () => {
+  it("filters and pages the incident register, scoped to the organization", async () => {
+    const { store, fixture } = setup();
+    const older = await registerNearMiss(store, fixture, {
+      occurredAt: "2026-01-01T08:00:00.000Z",
+    });
+    const newer = await registerNearMiss(store, fixture, {
+      occurredAt: "2026-03-01T08:00:00.000Z",
+      category: "fire",
+    });
+    const elsewhere = await registerNearMiss(store, fixture, {
+      occurredAt: "2026-02-01T08:00:00.000Z",
+      locationId: "loc-kitchen",
+    });
+    const otherOrg = await registerNearMiss(
+      store,
+      {
+        ...fixture,
+        organizationId: fixture.otherOrganizationId,
+        locationId: fixture.otherLocationId,
+      },
+      { occurredAt: "2026-04-01T08:00:00.000Z" },
+    );
+    await updateIncident(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      incidentId: older.id,
+      status: "closed",
+    });
+
+    // Newest `occurred_at` first; the exact id list fails if the organization
+    // filter were dropped (the other organization's row would be appended).
+    expect(
+      (await listIncidents(store, { organizationId: fixture.organizationId })).map((row) => row.id),
+    ).toEqual([newer.id, elsewhere.id, older.id]);
+    expect(
+      (await listIncidents(store, { organizationId: fixture.otherOrganizationId })).map(
+        (row) => row.id,
+      ),
+    ).toEqual([otherOrg.id]);
+
+    // Filters actually filter: status and location.
+    expect(
+      (await listIncidents(store, { organizationId: fixture.organizationId, status: "open" })).map(
+        (row) => row.id,
+      ),
+    ).toEqual([newer.id, elsewhere.id]);
+    expect(
+      (
+        await listIncidents(store, {
+          organizationId: fixture.organizationId,
+          locationId: fixture.locationId,
+        })
+      ).map((row) => row.id),
+    ).toEqual([newer.id, older.id]);
+    expect(
+      (
+        await listIncidents(store, {
+          organizationId: fixture.organizationId,
+          locationId: "loc-kitchen",
+        })
+      ).map((row) => row.id),
+    ).toEqual([elsewhere.id]);
+
+    expect(
+      (
+        await listIncidents(store, {
+          organizationId: fixture.organizationId,
+          limit: 1,
+          offset: 1,
+        })
+      ).map((row) => row.id),
+    ).toEqual([elsewhere.id]);
+  });
+
+  it("filters and pages the corrective-action register, scoped to the organization", async () => {
+    const { store, fixture } = setup();
+    const incident = await registerNearMiss(store, fixture);
+    const dueLater = await recordFix(store, fixture, {
+      incidentId: incident.id,
+      description: "Later",
+      dueDate: "2026-03-01",
+      ownerId: fixture.ownerId,
+    });
+    const dueSooner = await recordFix(store, fixture, {
+      incidentId: incident.id,
+      description: "Sooner",
+      dueDate: "2026-02-01",
+      ownerId: fixture.ownerId,
+    });
+    const noDue = await recordFix(store, fixture, {
+      incidentId: incident.id,
+      description: "No due date",
+    });
+    await updateFix(store, fixture, dueSooner, { status: "done" });
+    const otherIncident = await registerNearMiss(store, {
+      ...fixture,
+      organizationId: fixture.otherOrganizationId,
+      locationId: fixture.otherLocationId,
+    });
+    const otherOrgAction = await recordFix(store, fixture, {
+      organizationId: fixture.otherOrganizationId,
+      incidentId: otherIncident.id,
+      description: "Other tenant",
+      dueDate: "2026-01-01",
+    });
+
+    // Earliest `due_date` first, a null due date last; the exact id list fails
+    // if the organization filter were dropped.
+    expect(
+      (await listCorrectiveActions(store, { organizationId: fixture.organizationId })).map(
+        (row) => row.id,
+      ),
+    ).toEqual([dueSooner.id, dueLater.id, noDue.id]);
+    expect(
+      (await listCorrectiveActions(store, { organizationId: fixture.otherOrganizationId })).map(
+        (row) => row.id,
+      ),
+    ).toEqual([otherOrgAction.id]);
+
+    expect(
+      (
+        await listCorrectiveActions(store, {
+          organizationId: fixture.organizationId,
+          incidentId: incident.id,
+        })
+      ).map((row) => row.id),
+    ).toEqual([dueSooner.id, dueLater.id, noDue.id]);
+    expect(
+      (
+        await listCorrectiveActions(store, {
+          organizationId: fixture.organizationId,
+          status: "open",
+        })
+      ).map((row) => row.id),
+    ).toEqual([dueLater.id, noDue.id]);
+    expect(
+      (
+        await listCorrectiveActions(store, {
+          organizationId: fixture.organizationId,
+          ownerId: fixture.ownerId,
+        })
+      ).map((row) => row.id),
+    ).toEqual([dueSooner.id, dueLater.id]);
+
+    expect(
+      (
+        await listCorrectiveActions(store, {
+          organizationId: fixture.organizationId,
+          limit: 1,
+          offset: 1,
+        })
+      ).map((row) => row.id),
+    ).toEqual([dueLater.id]);
   });
 });

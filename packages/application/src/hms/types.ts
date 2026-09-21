@@ -129,6 +129,164 @@ export interface MonitoringReadingListQuery {
   readonly offset?: number;
 }
 
+/**
+ * One `hms_incident` row (`DEC-090`, `HMS-003`). `timestamptz` columns cross the
+ * port as ISO strings, `due_date` as a plain `YYYY-MM-DD` day (`date`).
+ * `closedAt` is non-null exactly when `status === "closed"` (a derived
+ * invariant the commands keep coherent); `reportedBy`/`ownerId` are plain uuids
+ * (the `app_user` FK is deferred).
+ */
+export interface IncidentRecord {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly locationId: string;
+  readonly category: string;
+  readonly severity: string;
+  readonly occurredAt: string;
+  readonly reportedAt: string;
+  readonly reportedBy: string;
+  readonly ownerId: string | null;
+  readonly title: string;
+  readonly description: string | null;
+  /** `date`, `YYYY-MM-DD`, or null. */
+  readonly dueDate: string | null;
+  readonly involvesPersonalData: boolean;
+  readonly status: string;
+  /** `timestamptz`, ISO; non-null iff `status === "closed"`. */
+  readonly closedAt: string | null;
+  /** `timestamptz`, ISO. */
+  readonly createdAt: string;
+  readonly createdBy: string | null;
+  /** The actor of the last amendment, or null before any update. */
+  readonly updatedBy?: string | null;
+}
+
+export interface NewIncidentRecord {
+  readonly organizationId: string;
+  readonly locationId: string;
+  readonly category: string;
+  readonly severity: string;
+  /** ISO instant. */
+  readonly occurredAt: string;
+  /** ISO instant. */
+  readonly reportedAt: string;
+  readonly reportedBy: string;
+  readonly ownerId: string | null;
+  readonly title: string;
+  readonly description: string | null;
+  /** `date`, `YYYY-MM-DD`, or null. */
+  readonly dueDate: string | null;
+  readonly involvesPersonalData: boolean;
+  readonly status: string;
+  /** The acting actor; recorded as `created_by`. */
+  readonly createdBy: string | null;
+}
+
+/** One `hms_incident` patch. Omitted field = unchanged; `null` clears a nullable column. */
+export interface IncidentPatch {
+  readonly status?: string;
+  readonly severity?: string;
+  readonly ownerId?: string | null;
+  /** `date`, `YYYY-MM-DD`, or null to clear it. */
+  readonly dueDate?: string | null;
+  readonly title?: string;
+  readonly description?: string | null;
+  /** Derived companion of `status`: non-null iff `status === "closed"`. */
+  readonly closedAt?: string | null;
+}
+
+/** An organization-scoped patch of one incident by id (`DEC-061`). */
+export interface UpdateIncidentRecord extends IncidentPatch {
+  readonly organizationId: string;
+  readonly incidentId: string;
+  /** The acting actor; recorded as `updated_by`. */
+  readonly updatedBy?: string | null;
+}
+
+/** Incident filters for the store read. */
+export interface IncidentListQuery {
+  readonly organizationId: string;
+  readonly status?: string;
+  readonly locationId?: string;
+  readonly limit?: number;
+  readonly offset?: number;
+}
+
+/**
+ * One `corrective_action` row (`DEC-090`, `HMS-004`). Both links are nullable and
+ * independent (an action may hang off an incident, a reading, or neither).
+ * Derived invariants the commands keep coherent: `completedAt` is non-null
+ * exactly when `status` is `done` or `verified`; `verifiedBy`/`verifiedAt` are
+ * non-null exactly when `status === "verified"`.
+ */
+export interface CorrectiveActionRecord {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly incidentId: string | null;
+  readonly monitoringReadingId: string | null;
+  readonly description: string;
+  readonly ownerId: string | null;
+  /** `date`, `YYYY-MM-DD`, or null. */
+  readonly dueDate: string | null;
+  readonly status: string;
+  /** `timestamptz`, ISO; non-null iff `status` is `done` or `verified`. */
+  readonly completedAt: string | null;
+  readonly verifiedBy: string | null;
+  /** `timestamptz`, ISO; non-null iff `status === "verified"`. */
+  readonly verifiedAt: string | null;
+  /** `timestamptz`, ISO. */
+  readonly createdAt: string;
+  readonly createdBy: string | null;
+  /** The actor of the last amendment, or null before any update. */
+  readonly updatedBy?: string | null;
+}
+
+export interface NewCorrectiveActionRecord {
+  readonly organizationId: string;
+  readonly incidentId: string | null;
+  readonly monitoringReadingId: string | null;
+  readonly description: string;
+  readonly ownerId: string | null;
+  /** `date`, `YYYY-MM-DD`, or null. */
+  readonly dueDate: string | null;
+  readonly status: string;
+  /** The acting actor; recorded as `created_by`. */
+  readonly createdBy: string | null;
+}
+
+/** One `corrective_action` patch, with its derived status companions. */
+export interface CorrectiveActionPatch {
+  readonly status?: string;
+  readonly ownerId?: string | null;
+  /** `date`, `YYYY-MM-DD`, or null to clear it. */
+  readonly dueDate?: string | null;
+  readonly description?: string;
+  /** Derived companion of `status`: non-null iff `done`/`verified`. */
+  readonly completedAt?: string | null;
+  /** Derived companion of `status === "verified"`: the acting verifier. */
+  readonly verifiedBy?: string | null;
+  /** Derived companion of `status === "verified"`. */
+  readonly verifiedAt?: string | null;
+}
+
+/** An organization-scoped patch of one corrective action by id (`DEC-061`). */
+export interface UpdateCorrectiveActionRecord extends CorrectiveActionPatch {
+  readonly organizationId: string;
+  readonly correctiveActionId: string;
+  /** The acting actor; recorded as `updated_by`. */
+  readonly updatedBy?: string | null;
+}
+
+/** Corrective-action filters for the store read. */
+export interface CorrectiveActionListQuery {
+  readonly organizationId: string;
+  readonly incidentId?: string;
+  readonly status?: string;
+  readonly ownerId?: string;
+  readonly limit?: number;
+  readonly offset?: number;
+}
+
 export interface HmsStore {
   /**
    * Binds `fn` to one transaction so a create and its audit fact commit or roll
@@ -155,4 +313,32 @@ export interface HmsStore {
   listMonitoringReadings(
     query: MonitoringReadingListQuery,
   ): Promise<readonly MonitoringReadingRecord[]>;
+  createIncident(input: NewIncidentRecord): Promise<IncidentRecord>;
+  /** One incident by id, organization-scoped (`DEC-061`), or `undefined`. */
+  findIncident(query: {
+    readonly organizationId: string;
+    readonly incidentId: string;
+  }): Promise<IncidentRecord | undefined>;
+  /**
+   * Applies a patch to one incident, organization-scoped (`DEC-061`);
+   * `undefined` when no row matches in the organization.
+   */
+  updateIncident(input: UpdateIncidentRecord): Promise<IncidentRecord | undefined>;
+  listIncidents(query: IncidentListQuery): Promise<readonly IncidentRecord[]>;
+  createCorrectiveAction(input: NewCorrectiveActionRecord): Promise<CorrectiveActionRecord>;
+  /** One corrective action by id, organization-scoped (`DEC-061`), or `undefined`. */
+  findCorrectiveAction(query: {
+    readonly organizationId: string;
+    readonly correctiveActionId: string;
+  }): Promise<CorrectiveActionRecord | undefined>;
+  /**
+   * Applies a patch to one corrective action, organization-scoped (`DEC-061`);
+   * `undefined` when no row matches in the organization.
+   */
+  updateCorrectiveAction(
+    input: UpdateCorrectiveActionRecord,
+  ): Promise<CorrectiveActionRecord | undefined>;
+  listCorrectiveActions(
+    query: CorrectiveActionListQuery,
+  ): Promise<readonly CorrectiveActionRecord[]>;
 }

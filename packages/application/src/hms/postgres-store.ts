@@ -2,13 +2,21 @@ import * as repo from "@aquarela/persistence";
 import type { Database, NodeDatabase } from "@aquarela/persistence";
 
 import type {
+  CorrectiveActionListQuery,
+  CorrectiveActionRecord,
   HmsStore,
+  IncidentListQuery,
+  IncidentRecord,
   MonitoringPointListQuery,
   MonitoringPointRecord,
   MonitoringReadingListQuery,
   MonitoringReadingRecord,
+  NewCorrectiveActionRecord,
+  NewIncidentRecord,
   NewMonitoringPointRecord,
   NewMonitoringReadingRecord,
+  UpdateCorrectiveActionRecord,
+  UpdateIncidentRecord,
 } from "./types";
 
 /** A transaction handle has no `transaction` method of its own. */
@@ -79,6 +87,91 @@ function newReadingValues(input: NewMonitoringReadingRecord): repo.NewMonitoring
   };
 }
 
+/** `timestamptz`, ISO, or `null` — the adapter's read-side convention. */
+function toIso(value: Date | null): string | null {
+  return value === null ? null : value.toISOString();
+}
+
+/** The write-side twin of `toIso`: an ISO string or `null` becomes a `Date` or `null`. */
+function toDate(value: string | null): Date | null {
+  return value === null ? null : new Date(value);
+}
+
+function toIncident(row: repo.HmsIncident): IncidentRecord {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    locationId: row.locationId,
+    category: row.category,
+    severity: row.severity,
+    occurredAt: row.occurredAt.toISOString(),
+    reportedAt: row.reportedAt.toISOString(),
+    reportedBy: row.reportedBy,
+    ownerId: row.ownerId,
+    title: row.title,
+    description: row.description,
+    dueDate: row.dueDate,
+    involvesPersonalData: row.involvesPersonalData,
+    status: row.status,
+    closedAt: toIso(row.closedAt),
+    createdAt: row.createdAt.toISOString(),
+    createdBy: row.createdBy,
+    updatedBy: row.updatedBy,
+  };
+}
+
+function newIncidentValues(input: NewIncidentRecord): repo.CreateIncidentInput {
+  return {
+    organizationId: input.organizationId,
+    locationId: input.locationId,
+    category: input.category,
+    severity: input.severity,
+    occurredAt: new Date(input.occurredAt),
+    reportedAt: new Date(input.reportedAt),
+    reportedBy: input.reportedBy,
+    ownerId: input.ownerId,
+    title: input.title,
+    description: input.description,
+    dueDate: input.dueDate,
+    involvesPersonalData: input.involvesPersonalData,
+    status: input.status,
+    actorId: input.createdBy,
+  };
+}
+
+function toCorrectiveAction(row: repo.CorrectiveAction): CorrectiveActionRecord {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    incidentId: row.incidentId,
+    monitoringReadingId: row.monitoringReadingId,
+    description: row.description,
+    ownerId: row.ownerId,
+    dueDate: row.dueDate,
+    status: row.status,
+    completedAt: toIso(row.completedAt),
+    verifiedBy: row.verifiedBy,
+    verifiedAt: toIso(row.verifiedAt),
+    createdAt: row.createdAt.toISOString(),
+    createdBy: row.createdBy,
+    updatedBy: row.updatedBy,
+  };
+}
+
+function newCorrectiveActionValues(
+  input: NewCorrectiveActionRecord,
+): repo.CreateCorrectiveActionInput {
+  return {
+    organizationId: input.organizationId,
+    incidentId: input.incidentId,
+    monitoringReadingId: input.monitoringReadingId,
+    description: input.description,
+    ownerId: input.ownerId,
+    dueDate: input.dueDate,
+    status: input.status,
+    actorId: input.createdBy,
+  };
+}
 /**
  * Adapts the persistence monitoring repository to the `HmsStore` port: the
  * `timestamptz` columns become ISO strings on read and `Date`s on write, and
@@ -143,6 +236,77 @@ export function createPostgresHmsStore(db: Database): HmsStore {
         ...(query.offset === undefined ? {} : { offset: query.offset }),
       });
       return rows.map(toMonitoringReading);
+    },
+    createIncident: async (input) =>
+      toIncident(await repo.createIncident(db, newIncidentValues(input))),
+    findIncident: async (query) => {
+      const row = await repo.findIncident(db, {
+        organizationId: query.organizationId,
+        incidentId: query.incidentId,
+      });
+      return row === undefined ? undefined : toIncident(row);
+    },
+    updateIncident: async (input: UpdateIncidentRecord) => {
+      const row = await repo.updateIncident(db, {
+        organizationId: input.organizationId,
+        incidentId: input.incidentId,
+        ...(input.status === undefined ? {} : { status: input.status }),
+        ...(input.severity === undefined ? {} : { severity: input.severity }),
+        ...(input.ownerId === undefined ? {} : { ownerId: input.ownerId }),
+        ...(input.dueDate === undefined ? {} : { dueDate: input.dueDate }),
+        ...(input.title === undefined ? {} : { title: input.title }),
+        ...(input.description === undefined ? {} : { description: input.description }),
+        ...(input.closedAt === undefined
+          ? {}
+          : { closedAt: input.closedAt === null ? null : new Date(input.closedAt) }),
+        ...(input.updatedBy === undefined ? {} : { actorId: input.updatedBy }),
+      });
+      return row === undefined ? undefined : toIncident(row);
+    },
+    listIncidents: async (query: IncidentListQuery) => {
+      const rows = await repo.listIncidents(db, {
+        organizationId: query.organizationId,
+        ...(query.status === undefined ? {} : { status: query.status }),
+        ...(query.locationId === undefined ? {} : { locationId: query.locationId }),
+        ...(query.limit === undefined ? {} : { limit: query.limit }),
+        ...(query.offset === undefined ? {} : { offset: query.offset }),
+      });
+      return rows.map(toIncident);
+    },
+    createCorrectiveAction: async (input) =>
+      toCorrectiveAction(await repo.createCorrectiveAction(db, newCorrectiveActionValues(input))),
+    findCorrectiveAction: async (query) => {
+      const row = await repo.findCorrectiveAction(db, {
+        organizationId: query.organizationId,
+        correctiveActionId: query.correctiveActionId,
+      });
+      return row === undefined ? undefined : toCorrectiveAction(row);
+    },
+    updateCorrectiveAction: async (input: UpdateCorrectiveActionRecord) => {
+      const row = await repo.updateCorrectiveAction(db, {
+        organizationId: input.organizationId,
+        correctiveActionId: input.correctiveActionId,
+        ...(input.status === undefined ? {} : { status: input.status }),
+        ...(input.ownerId === undefined ? {} : { ownerId: input.ownerId }),
+        ...(input.dueDate === undefined ? {} : { dueDate: input.dueDate }),
+        ...(input.description === undefined ? {} : { description: input.description }),
+        ...(input.completedAt === undefined ? {} : { completedAt: toDate(input.completedAt) }),
+        ...(input.verifiedBy === undefined ? {} : { verifiedBy: input.verifiedBy }),
+        ...(input.verifiedAt === undefined ? {} : { verifiedAt: toDate(input.verifiedAt) }),
+        ...(input.updatedBy === undefined ? {} : { actorId: input.updatedBy }),
+      });
+      return row === undefined ? undefined : toCorrectiveAction(row);
+    },
+    listCorrectiveActions: async (query: CorrectiveActionListQuery) => {
+      const rows = await repo.listCorrectiveActions(db, {
+        organizationId: query.organizationId,
+        ...(query.incidentId === undefined ? {} : { incidentId: query.incidentId }),
+        ...(query.status === undefined ? {} : { status: query.status }),
+        ...(query.ownerId === undefined ? {} : { ownerId: query.ownerId }),
+        ...(query.limit === undefined ? {} : { limit: query.limit }),
+        ...(query.offset === undefined ? {} : { offset: query.offset }),
+      });
+      return rows.map(toCorrectiveAction);
     },
   };
 }
