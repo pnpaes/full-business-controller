@@ -1,5 +1,16 @@
 import { sql } from "drizzle-orm";
-import { check, date, index, integer, jsonb, pgTable, text, uuid } from "drizzle-orm/pg-core";
+import {
+  bigint,
+  check,
+  date,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  text,
+  unique,
+  uuid,
+} from "drizzle-orm/pg-core";
 
 import { auditColumns, enumCheck, orgId, tstz, uuidPk } from "./columns";
 import { organization } from "./organization";
@@ -94,5 +105,52 @@ export const dataQualityException = pgTable(
       t.detectedAt,
     ),
     index("data_quality_exception_org_entity_idx").on(t.organizationId, t.entityType, t.entityId),
+  ],
+);
+
+/*
+ * `ADR-0006` / `DEC-085` (row-11 import-framework point 6): the storage-object
+ * registry. One row is one stored file — the bytes live in object storage, this
+ * table is the metadata authority. Schema-only for now: no storage client, no
+ * signed URLs and no retention enforcement, so `retention_policy` stays
+ * provisional free text (no vocabulary, no check — the `rule_code` precedent).
+ *
+ * `(organization_id, storage_key)` is unique: a storage key identifies exactly
+ * one object within an organization (mirrors `import_profile_org_source_key`).
+ * `uploaded_by` is a plain uuid (the `app_user` FK is deferred, like
+ * `created_by`), and `(linked_entity_type, linked_entity_id)` is a polymorphic
+ * target with no FK. `import_run.file_object_id` is a real FK (migration `0035`)
+ * with a forward-only `file_object_org_guard` trigger (migration `0036`, the
+ * `DEC-079` shape) so a run cannot link another organization's file.
+ */
+export const fileObject = pgTable(
+  "file_object",
+  {
+    id: uuidPk(),
+    organizationId: orgId().references(() => organization.id),
+    storageKey: text("storage_key").notNull(),
+    filename: text("filename").notNull(),
+    mime: text("mime").notNull(),
+    // Object sizes are counted in bytes; `>= 0` is enforced below.
+    // ponytail: `{ mode: "number" }` is exact only up to 2^53-1 bytes (~9 PB);
+    // a larger file would silently lose bytes on the JS round-trip. If
+    // petabyte files ever become real, switch to `{ mode: "bigint" }` or
+    // `numeric(19,0)`.
+    sizeBytes: bigint("size_bytes", { mode: "number" }).notNull(),
+    // ponytail: the expected value is 64 lowercase hex chars (SHA-256), but the
+    // column stays unconstrained free text — provisional, the `DEC-071`
+    // precedent. Once the upload path closes the format, add
+    // `CHECK (checksum_sha256 ~ '^[0-9a-f]{64}$')`.
+    checksumSha256: text("checksum_sha256").notNull(),
+    retentionPolicy: text("retention_policy").notNull(),
+    uploadedBy: uuid("uploaded_by"),
+    uploadedAt: tstz("uploaded_at").notNull().defaultNow(),
+    linkedEntityType: text("linked_entity_type"),
+    linkedEntityId: uuid("linked_entity_id"),
+    ...auditColumns(),
+  },
+  (t) => [
+    check("file_object_size_bytes_check", sql`${t.sizeBytes} >= 0`),
+    unique("file_object_org_storage_key_key").on(t.organizationId, t.storageKey),
   ],
 );

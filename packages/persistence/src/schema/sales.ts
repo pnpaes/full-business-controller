@@ -26,6 +26,7 @@ import {
   uuidPk,
 } from "./columns";
 import { channel, location, organization } from "./organization";
+import { fileObject } from "./platform";
 import { productVariant } from "./products";
 import { taxRule } from "./tax";
 import {
@@ -74,10 +75,14 @@ import {
  *     `import_profile` table is keyed `(organization_id, source)` and carries
  *     the per-source `posting_policy`/`validation_rules`; `import_run` gains a
  *     nullable `import_profile_id` FK (legacy runs keep null).
- * (b) **`file_object` does not exist yet**, so `import_run.file_object_id` is a
- *     plain `uuid` with **no FK** (deferred-FK convention, like
+ * (b) ~~**`file_object` does not exist yet**, so `import_run.file_object_id` is
+ *     a plain `uuid` with **no FK** (deferred-FK convention, like
  *     `goods_receipt.evidence_file_id`). The platform slice that models
- *     `file_object` closes it later.
+ *     `file_object` closes it later.~~ **Closed by `ADR-0006`/`DEC-085`**
+ *     (migration `0035`): the `file_object` table now exists and
+ *     `import_run.file_object_id` is a real FK; a forward-only
+ *     `file_object_org_guard` trigger (migration `0036`, the `DEC-079` shape)
+ *     keeps the file in the run's organization.
  * (c) `IMPORT_POSTING_POLICY` now backs `import_profile_posting_policy_check`
  *     (`DEC-081`); it still does not constrain `import_run` itself.
  *     `import_staging_row.linked_sales_line_id` stays a plain `uuid` with no FK
@@ -93,8 +98,9 @@ import {
  *     `reconciliation.tolerance` column stays a **per-row snapshot** of what was
  *     applied. Resolving the effective config and blocking close on a missing
  *     tolerance are application concerns, not enforced by the schema here.
- * (e) **`source_file_id` is a plain `uuid`** on `settlement` (`file_object` is
- *     absent), like `import_run.file_object_id` (open point (b)).
+ * (e) **`source_file_id` is a plain `uuid`** on `settlement`: `file_object`
+ *     now exists (`ADR-0006`/`DEC-085`), but the `settlement` → `file_object`
+ *     FK is not this slice's scope and stays deferred.
  * (f) **Close/lock/period tables are row 13** (`period_close`,
  *     `adjustment_period`, `daily_close`); none are authored here.
  * (g) **Sales-line reversal semantics (`DEC-028`) are not implemented**;
@@ -180,8 +186,12 @@ export const importRun = pgTable(
     // "runs using profile X" read path exists; add one then (the
     // `data_quality_exception_org_entity_idx` precedent).
     importProfileId: uuid("import_profile_id").references(() => importProfile.id),
-    // Open point (b): `file_object` is not modelled yet, so this is a plain uuid.
-    fileObjectId: uuid("file_object_id"),
+    // `ADR-0006`/`DEC-085` (migration `0035`): the upload this run parsed. A
+    // real FK now that `file_object` exists; no `onDelete`, so deleting a file
+    // object cannot remove the import fact (default `NO ACTION`). The
+    // `file_object_org_guard` trigger (migration `0036`) rejects a file from
+    // another organization than the run.
+    fileObjectId: uuid("file_object_id").references(() => fileObject.id),
     // `file_hash` is unique: 05_WORKFLOWS §5.9 step 2 rejects/recognises a
     // duplicate file by hash before it is parsed.
     fileHash: text("file_hash").notNull(),
@@ -404,9 +414,10 @@ export const salesLine = pgTable(
 /**
  * `settlement` (`DATA_DICTIONARY.md:728`, `REC-001`/`002`; `DEC-026`,
  * `DEC-040`). A payment/channel payout report line: what the provider paid,
- * charged in fees and refunded over a period. `source_file_id` is a plain uuid
- * (`file_object` absent — open point (e)); `status` defaults to `received` and
- * is checked against `SETTLEMENT_STATUS` (`DEC-078` (a), migration `0028`).
+ * charged in fees and refunded over a period. `source_file_id` is a plain uuid:
+ * `file_object` now exists (`DEC-085`), but the `settlement` → `file_object` FK
+ * stays deferred (open point (e)). `status` defaults to `received` and is checked
+ * against `SETTLEMENT_STATUS` (`DEC-078` (a), migration `0028`).
  */
 export const settlement = pgTable(
   "settlement",

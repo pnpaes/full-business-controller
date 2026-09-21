@@ -10,6 +10,7 @@ export * from "./repositories/cost-card";
 export * from "./repositories/costing";
 export * from "./repositories/counts";
 export * from "./repositories/data-quality-exception";
+export * from "./repositories/file-object";
 export * from "./repositories/imports";
 export * from "./repositories/inventory";
 export * from "./repositories/master-data";

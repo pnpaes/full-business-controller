@@ -94,7 +94,7 @@ export const costObservation = pgTable(
     packPrice: money("pack_price"),
     currency: currency().notNull(),
     source: text("source").notNull(),
-    // FK file_object when that slice is declared (deferred: see AGENTS.md scope).
+    // FK file_object(id) stays deferred (the table now exists, `DEC-085`).
     receiptFileId: uuid("receipt_file_id"),
     notes: text("notes"),
     createdAt: tstz("created_at").notNull().defaultNow(),

@@ -6,6 +6,7 @@ import {
   costCenter,
   dataQualityException,
   externalMapping,
+  fileObject,
   importDisposition,
   importProfile,
   importRun,
@@ -755,6 +756,33 @@ export async function createTestDataQualityException(
       ruleCode: uniqueName("rule"),
       entityType: "stock_transfer",
       entityId: randomUUID(),
+      ...overrides,
+    })
+    .returning();
+  return rows[0]!;
+}
+
+/**
+ * An `ADR-0006`/`DEC-085` file object. `storage_key` and `checksum_sha256` get
+ * unique test values because `(organization_id, storage_key)` is unique;
+ * `uploaded_by` stays null (the `app_user` FK is deferred) and the polymorphic
+ * link stays null unless a test sets it.
+ */
+export async function createTestFileObject(
+  db: Database,
+  organizationId: string,
+  overrides: Partial<typeof fileObject.$inferInsert> = {},
+): Promise<typeof fileObject.$inferSelect> {
+  const rows = await db
+    .insert(fileObject)
+    .values({
+      organizationId,
+      storageKey: uniqueName("key"),
+      filename: "test.csv",
+      mime: "text/csv",
+      sizeBytes: 1,
+      checksumSha256: uniqueName("sha"),
+      retentionPolicy: "default",
       ...overrides,
     })
     .returning();

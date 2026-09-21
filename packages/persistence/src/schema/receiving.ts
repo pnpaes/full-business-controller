@@ -11,9 +11,9 @@ import { RECEIPT_STATUS, TAX_BASIS } from "./vocabularies";
 /**
  * `goods_receipt` (`DATA_DICTIONARY` §5, PROC-002). `supplier_id` is **nullable**
  * (DEC-047): an ad-hoc grocery purchase has no supplier master and falls back to
- * the free-text `store_name`. `purchase_order_id` and `evidence_file_id` stay
- * plain uuid because their tables are deferred (`purchase_order` to a later
- * slice, `file_object` to the platform slice).
+ * the free-text `store_name`. `purchase_order_id` stays a plain uuid (its table
+ * is deferred to a later slice); `evidence_file_id` is a plain uuid too —
+ * `file_object` now exists (`DEC-085`) but this deferred FK stays open.
  */
 export const goodsReceipt = pgTable(
   "goods_receipt",
@@ -34,7 +34,7 @@ export const goodsReceipt = pgTable(
     acceptedBy: uuid("accepted_by"),
     acceptedAt: tstz("accepted_at"),
     reversalOfId: uuid("reversal_of_id").references((): AnyPgColumn => goodsReceipt.id),
-    // FK file_object(id) when that table is declared (deferred: platform slice).
+    // FK file_object(id) stays deferred (the table now exists, `DEC-085`).
     evidenceFileId: uuid("evidence_file_id"),
     ...auditColumns(),
   },

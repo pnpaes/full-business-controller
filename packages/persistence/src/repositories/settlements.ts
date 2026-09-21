@@ -10,9 +10,10 @@ export type NewSettlement = typeof settlement.$inferInsert;
  * Slice-12 settlement reads/writes (`REC-001`, `REC-002`; `DEC-026`, `DEC-040`).
  *
  * `settlement` carries `organization_id` directly, so every read is
- * organization-scoped (`DEC-061`). `source_file_id` is a plain uuid
- * (`file_object` absent — open point (e)); `status` defaults to `received` and
- * is checked against `SETTLEMENT_STATUS` (`DEC-078` (a), migration `0028`). This
+ * organization-scoped (`DEC-061`). `source_file_id` is a plain uuid:
+ * `file_object` now exists (`DEC-085`), but the `settlement` → `file_object` FK
+ * stays deferred (open point (e)). `status` defaults to `received` and is checked
+ * against `SETTLEMENT_STATUS` (`DEC-078` (a), migration `0028`). This
  * module stores payout-report facts only; it does not reconcile or post.
  */
 

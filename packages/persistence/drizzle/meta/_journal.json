@@ -246,6 +246,20 @@
       "when": 1789989056234,
       "tag": "0034_import_disposition_contract",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1789990745770,
+      "tag": "0035_file_object",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1789990766802,
+      "tag": "0036_file_object_org_guard",
+      "breakpoints": true
     }
   ]
 }

@@ -238,8 +238,8 @@ export const operatingCost = pgTable(
     taxBasis: text("tax_basis").notNull(),
     ...dateRange(),
     vendor: text("vendor"),
-    // FK deferred: points at a platform file object, added when that slice lands
-    // (see the runbook's deferred-FK list and DATA_DICTIONARY §4).
+    // FK deferred: points at a `file_object` (now present, `DEC-085`); the FK
+    // stays on the runbook's deferred-FK list (see DATA_DICTIONARY §4).
     evidenceFileId: uuid("evidence_file_id"),
     createdAt: tstz("created_at").notNull().defaultNow(),
   },

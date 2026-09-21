@@ -56,7 +56,7 @@ export const wasteEvent = pgTable(
     occurredAt: tstz("occurred_at").notNull(),
     // FK app_user(id) is deferred like audit_event.actor_id (deferred-FK convention).
     actorId: uuid("actor_id").notNull(),
-    // FK file_object(id) is deferred to the platform slice.
+    // FK file_object(id) stays deferred (the table now exists, `DEC-085`).
     photoFileId: uuid("photo_file_id"),
     correctiveAction: text("corrective_action"),
     // FK calculation_snapshot(id) deferred (open point (c): snapshot semantics).
