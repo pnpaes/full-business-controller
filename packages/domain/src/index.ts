@@ -28,6 +28,7 @@ export type {
   LoadedRateComponents,
 } from "./labour";
 export { MONEY_SCALE, Money } from "./money";
+export { isReadingInRange } from "./monitoring";
 export {
   PRESENTED_MONEY_SCALE,
   TAX_BASES,
