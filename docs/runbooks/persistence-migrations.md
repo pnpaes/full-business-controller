@@ -174,7 +174,47 @@ Migrations 0014, 0016, 0017, 0018, 0019, 0020, 0021, 0022, 0023, 0024, 0025,
 aborts the whole transactional migration (drizzle-kit runs each file in one
 transaction). Run the matching preflight against the target database **before**
 applying and reconcile any hits; drizzle-kit cannot detect them because these
-files diff against existing data.
+  files diff against existing data.
+
+- **`0034_import_disposition_contract.sql`** — the `DEC-083` contract step is
+  **data-only** and hand-written: it adds no table, index or validating
+  constraint, so it cannot fail on an existing row, but it **drops the
+  retained-frozen `diagnostics.dispositions` key from every `import_run` that
+  still carries it** (`SET "diagnostics" = "diagnostics" - 'dispositions' WHERE
+  "diagnostics" ? 'dispositions'`). Every jsonb record the `0033` backfill did
+  not move into `import_disposition` — the ones it **skipped** (malformed
+  `stagingRowId`/`actorId`, an out-of-vocabulary `disposition`, an orphaned
+  staging row, or a malformed `at`) or **superseded** (an earlier duplicate per
+  staging row) — is **permanently lost** when the key is dropped. Preflight the
+  two counts below before applying and reconcile every hit (repair the record or
+  accept the loss). Runs still carrying the key:
+
+  ```sql
+  SELECT count(*) AS runs_with_dispositions
+  FROM import_run
+  WHERE diagnostics ? 'dispositions';
+  ```
+
+  Records that will be permanently lost — every jsonb record with no matching
+  `import_disposition` row, i.e. exactly the ones the `0033` backfill skipped or
+  superseded:
+
+  ```sql
+  SELECT ir.id AS import_run_id,
+         element ->> 'stagingRowId' AS staging_row_id,
+         element AS lost_record
+  FROM import_run ir
+  CROSS JOIN LATERAL jsonb_array_elements(COALESCE(ir.diagnostics -> 'dispositions', '[]'::jsonb)) AS element
+  WHERE NOT EXISTS (
+    SELECT 1
+    FROM import_disposition d
+    WHERE d.import_staging_row_id::text = element ->> 'stagingRowId'
+  );
+  ```
+
+  After `0033` the table is the source of truth, so a record the table does not
+  hold is a loss to repair (re-run `0033`'s backfill insert, or copy the record
+  out) or to accept before `0034` drops it.
 
 - **`0033_import_disposition.sql`** — one new, empty table (`import_disposition`)
   with its `import_disposition_disposition_check` check, the
@@ -994,6 +1034,27 @@ only, so the down file is an explicit operator action, not an automatic one.
   `0033` re-creates the table and re-backfills from the retained jsonb. Apply
   it manually with
   `psql "$DATABASE_URL" -f packages/persistence/drizzle/0033_import_disposition_down.sql`.
+- **0034 performs the `DEC-083` contract step and follows the down convention:**
+  `0034_import_disposition_contract.sql` is hand-written and **data-only** — it
+  adds no table, index or constraint and runs one `UPDATE` that removes the
+  retained-frozen `dispositions` key from every `import_run` whose `diagnostics`
+  still carries it (`jsonb - 'dispositions'`, guarded by
+  `WHERE "diagnostics" ? 'dispositions'`), leaving the other `diagnostics` keys
+  (`posting_policy`/`issues`/`conflicts`/`totals`) untouched. After this step
+  `import_disposition` is the only source of truth; the jsonb records the `0033`
+  backfill skipped or superseded are dropped and unrecoverable from the table.
+  `0034_import_disposition_contract_down.sql` rebuilds each run's
+  `diagnostics.dispositions` from the table (`jsonb_agg … ORDER BY
+  import_staging_row.source_row_no`) and **drops nothing** — the exact inverse of
+  the forward for every value the table holds, inside one `BEGIN;`/`COMMIT;`. It
+  is **value-identical but not order-identical**: `0033`'s backfill ordered the
+  retained jsonb by each record's `at`, whereas the down orders by
+  `source_row_no`. It restores **nothing** for a run with no `import_disposition`
+  rows (no `dispositions` key is added), so the jsonb records the `0033` backfill
+  skipped or superseded are not recovered. It is **not journalled** in
+  `meta/_journal.json` (like every `*_down.sql`), so it is applied manually with
+  `psql "$DATABASE_URL" -f packages/persistence/drizzle/0034_import_disposition_contract_down.sql`;
+  re-applying `0034` (after deleting its ledger row, below) drops the key again.
 
 **Re-applying after a manual down:** drizzle-kit tracks applied migrations in
 `drizzle.__drizzle_migrations`, not by comparing the schema, so a plain
@@ -1019,7 +1080,8 @@ for 0003, `… = 1789850858806` for 0004, `… = 1789851925634` for 0005,
 `… = 1789954073839` for 0030,
 `… = 1789972623859` for 0031 and
 `… = 1789973761461` for 0032 and
-`… = 1789977792561` for 0033, then
+`… = 1789977792561` for 0033 and
+`… = 1789989056234` for 0034, then
 `npm run db:migrate` (0003 verified 2026-09-19; 0005 rehearsed in the slice-3
 review follow-up; 0006 rehearsed with the slice-4 receiving work; 0007 and
 0008 rehearsed with the slice-4 review follow-up; 0009 rehearsed with the
@@ -1058,7 +1120,11 @@ re-applying restored the column, its FK and the table with its unique and both
 checks — 66 tables; 0032's down dropped the `import_run_profile_org_guard`
 trigger and its function with no row changes (a cross-organization `import_run`
 insert succeeded while the guard was absent), then deleting its ledger row and
-re-applying restored the guard and rejected that insert again — 66 tables).
+re-applying restored the guard and rejected that insert again — 66 tables;
+0034 on 2026-09-21 dropped the retained `diagnostics.dispositions` key from the
+dev runs and its down rebuilt it from `import_disposition` value-identically
+(not order-identically), then deleting its ledger row and re-applying dropped it
+again — still 67 tables).
 A **full 0011 down** drops the tables the three 0012 constraints live on, so its
 replay must clear **both** ledger rows, not just 0011's:
 `DELETE FROM drizzle.__drizzle_migrations WHERE created_at IN (1789862475550, 1789862630158);`
@@ -1339,6 +1405,7 @@ session will not serialise against each other.
 | 0031 | `0031_import_profile.sql` | Generated (`DEC-081`): the `import_profile` table — `organization_id`, `source`, `profile_version`, `posting_policy` (`import_profile_posting_policy_check`, default `allow_partial`), `validation_rules` jsonb (`import_profile_validation_rules_check` requiring a jsonb object, default `'{}'`) and the audit columns, with the `import_profile_org_source_key` unique on `(organization_id, source)` and the organization FK — plus the nullable `import_run.import_profile_id` column with its `import_run_import_profile_id_import_profile_id_fk` FK → `import_profile(id)`. No hand-written statement. Down companion: `0031_import_profile_down.sql` (drops `import_run.import_profile_id` first, then the table — destructive) |
 | 0032 | `0032_import_run_profile_org_guard.sql` | Hand-written (`DEC-079`'s guard shape applied to `DEC-081`'s `import_run.import_profile_id` FK): the `import_run_profile_org_guard` `BEFORE INSERT OR UPDATE FOR EACH ROW` trigger on `import_run` (one function) that rejects a non-null `import_profile_id` whose `import_profile` belongs to another organization than the run. No table and no TypeScript schema change. Down companion: `0032_import_run_profile_org_guard_down.sql` (drops the trigger and its function — no row is touched) |
 | 0033 | `0033_import_disposition.sql` | Generated + hand-appended (`DEC-083`): the `import_disposition` table — `import_staging_row_id` (FK → `import_staging_row(id)` `ON DELETE cascade`, required), `disposition` (`import_disposition_disposition_check`, in `unmapped`/`rejected`/`ignored`), the nullable `reason`, the required `actor_id` (a plain uuid; the `app_user` FK is deferred), `created_at` (the approval instant) and the `created_by`/`updated_at`/`updated_by`/`version` audit columns — with the `import_disposition_staging_row_key` unique on `(import_staging_row_id)` and **no `organization_id`** (scoped through `import_staging_row` → `import_run`, the `import_staging_row` precedent). Hand-appended: the backfill `INSERT … SELECT` from `import_run.diagnostics.dispositions` keeping the latest record per staging row (`DISTINCT ON (stagingRowId) … ORDER BY at DESC NULLS LAST`) and skipping malformed/out-of-vocabulary/orphaned records; the jsonb keys are retained frozen. Down companion: `0033_import_disposition_down.sql` (rebuilds each run's `diagnostics.dispositions` from the table, then drops it — lossless) |
+| 0034 | `0034_import_disposition_contract.sql` | Hand-written, **data-only** (`DEC-083` contract step): one `UPDATE "import_run" SET "diagnostics" = "diagnostics" - 'dispositions' WHERE "diagnostics" ? 'dispositions'` drops the retained-frozen jsonb key from every run that still carries it, leaving the other `diagnostics` keys (`posting_policy`/`issues`/`conflicts`/`totals`) untouched. No table, index, constraint or TypeScript schema change. Down companion: `0034_import_disposition_contract_down.sql` (rebuilds each run's `diagnostics.dispositions` from `import_disposition` ordered by `import_staging_row.source_row_no` — value-identical but not order-identical, restores nothing for a run with no table dispositions and drops nothing; **not journalled**, applied manually) |
 
 Order matters: extensions before DDL that calls `gen_random_uuid()`, and before
 the exclusion constraints. Verify with:
@@ -1368,7 +1435,7 @@ DATABASE_URL=postgres://aquarela:aquarela@localhost:5432/aquarela npm run db:mig
 `public` alone leaves the ledger intact, so `db:migrate` reports success while
 restoring nothing. `DROP SCHEMA drizzle CASCADE` clears the ledger so all
 migrations replay from 0000. Verified: after this sequence `db:migrate`
-re-applies 0000–0033 and the database has all 67 tables plus both extensions
+  re-applies 0000–0034 and the database has all 67 tables plus both extensions
 (0004 adds the four slice-3 master-data tables; 0006 adds the two slice-4
 receiving tables; 0007 adds the `goods_receipt_line` guard trigger — no table;
 0008 relaxes the `supplier_price` range check — no table; 0009 adds the two
@@ -1406,21 +1473,26 @@ the `DEC-080` `data_quality_exception` table — one table; 0031 adds the
 FK — one table; 0032 adds the `DEC-081` import-run profile org-coherence guard
 trigger on `import_run` — no table; 0033 adds the `DEC-083`
 `import_disposition` table and backfills it from the run
-`diagnostics.dispositions` jsonb — one table).
+`diagnostics.dispositions` jsonb — one table; 0034 removes that retained jsonb
+key — no table, table-neutral).
 0013–0019 were added after this replay was verified; all are additive and
 table-count-neutral. `0020`, `0021`, `0022`, `0023`, `0024`, `0027`, `0030`,
 `0031` and `0033`
 are the only migrations after the replay was written to add tables (four, four,
 three, four, one, one, one, one and one respectively), so the 67-table figure above is the
-expected post-`0033` count (51 after `0020`, 55 after `0021`, 58 after `0022`,
+expected post-`0034` count (51 after `0020`, 55 after `0021`, 58 after `0022`,
 62 after `0023`, 63 after `0024`, 64 after `0029`, 65 after `0030`, 66 after
-`0031` and `0032`, 67 after `0033`); `0025`, `0026`, `0028` and `0032`
+`0031` and `0032`, 67 after `0033`, still 67 after `0034`); `0025`, `0026`,
+`0028`, `0032` and `0034`
 are table-neutral.
-`0014`–`0033`'s
+`0014`–`0034`'s
 apply/re-run/down/re-apply was rehearsed on the local dev database 2026-09-20
 (0030 and 0031 on 2026-09-21; 0032 on 2026-09-21; 0033 on 2026-09-21 — its
 down restored the two dev dispositions byte-identically and the re-apply
-rebuilt the table; the re-run was a no-op).
+rebuilt the table; 0034 on 2026-09-21 — its forward dropped the retained
+`diagnostics.dispositions` key and its down rebuilt it from `import_disposition`
+value-identically (not order-identically), with no table change; the re-run was
+a no-op).
 
 Once real data exists, this path is no longer acceptable: use small atomic
 commits, expand → migrate → contract for schema changes, and a tested
@@ -1646,6 +1718,13 @@ After applying to an empty database the following were verified with `psql`:
   skip query returns 0 rows once its hits are reconciled, and each run's
   `diagnostics.dispositions` still holds its records (the jsonb keys stay
   frozen).
+- `import_run` (0034, `DEC-083` contract step): after applying, no `import_run`
+  row's `diagnostics` has a `dispositions` key — the preflight
+  `SELECT count(*) FROM import_run WHERE diagnostics ? 'dispositions'` is 0 —
+  while the other `diagnostics` keys (`posting_policy`/`issues`/`conflicts`/
+  `totals`) are unchanged. The down path rebuilds `diagnostics.dispositions` from
+  `import_disposition` ordered by `source_row_no`, so it is value-identical but
+  not order-identical.
 - Deferrable FKs: a `calculation_snapshot` and its `cost_card` can be inserted
   in the same transaction in either order and commit together.
 - `calculation_snapshot`: a plain `TRUNCATE` is blocked first by the FK from
