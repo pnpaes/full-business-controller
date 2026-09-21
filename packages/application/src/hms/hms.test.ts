@@ -1,22 +1,40 @@
 import { DomainError, NotFoundError } from "@aquarela/domain";
 import { describe, expect, it } from "vitest";
 
+import { findChecklistRun } from "./find-checklist-run";
+import { findChecklistTemplate } from "./find-checklist-template";
 import { findCorrectiveAction } from "./find-corrective-action";
 import { findIncident } from "./find-incident";
 import { findMonitoringPoint } from "./find-monitoring-point";
+import { listChecklistRuns } from "./list-checklist-runs";
+import { listChecklistTemplates } from "./list-checklist-templates";
 import { listCorrectiveActions } from "./list-corrective-actions";
 import { listIncidents } from "./list-incidents";
 import { listMonitoringPoints } from "./list-monitoring-points";
 import { listMonitoringReadings } from "./list-monitoring-readings";
+import { recordChecklistRun } from "./record-checklist-run";
+import type { RecordChecklistRunInput } from "./record-checklist-run";
 import { recordCorrectiveAction } from "./record-corrective-action";
 import type { RecordCorrectiveActionInput } from "./record-corrective-action";
 import { recordMonitoringReading } from "./record-monitoring-reading";
+import { registerChecklistTemplate } from "./register-checklist-template";
+import type { RegisterChecklistTemplateInput } from "./register-checklist-template";
 import { registerIncident } from "./register-incident";
 import type { RegisterIncidentInput } from "./register-incident";
 import { registerMonitoringPoint } from "./register-monitoring-point";
 import type { RegisterMonitoringPointInput } from "./register-monitoring-point";
 import { FakeHmsStore, seedHmsFixture, type HmsFixture } from "./test-support";
-import type { CorrectiveActionRecord, IncidentRecord, MonitoringPointRecord } from "./types";
+import type {
+  ChecklistRunRecord,
+  ChecklistTemplateRecord,
+  CorrectiveActionRecord,
+  IncidentRecord,
+  MonitoringPointRecord,
+} from "./types";
+import { updateChecklistRun } from "./update-checklist-run";
+import type { UpdateChecklistRunInput } from "./update-checklist-run";
+import { updateChecklistTemplate } from "./update-checklist-template";
+import type { UpdateChecklistTemplateInput } from "./update-checklist-template";
 import { updateCorrectiveAction } from "./update-corrective-action";
 import type { UpdateCorrectiveActionInput } from "./update-corrective-action";
 import { updateIncident } from "./update-incident";
@@ -106,6 +124,73 @@ function updateFix(
     organizationId: fixture.organizationId,
     actorId: fixture.actorId,
     correctiveActionId: action.id,
+    ...overrides,
+  });
+}
+
+const CLEANING_ITEMS = [
+  { key: "floor", label: "Mop the floor" },
+  { key: "bins", label: "Empty the bins", required: false },
+];
+
+function registerCleaningTemplate(
+  store: FakeHmsStore,
+  fixture: HmsFixture,
+  overrides: Partial<RegisterChecklistTemplateInput> = {},
+): Promise<ChecklistTemplateRecord> {
+  return registerChecklistTemplate(store, {
+    organizationId: fixture.organizationId,
+    actorId: fixture.actorId,
+    name: "Daily cleaning",
+    category: "cleaning",
+    frequency: "daily",
+    items: CLEANING_ITEMS,
+    ...overrides,
+  });
+}
+
+function updateCleaningTemplate(
+  store: FakeHmsStore,
+  fixture: HmsFixture,
+  template: ChecklistTemplateRecord,
+  overrides: Partial<UpdateChecklistTemplateInput> = {},
+): Promise<ChecklistTemplateRecord> {
+  return updateChecklistTemplate(store, {
+    organizationId: fixture.organizationId,
+    actorId: fixture.actorId,
+    templateId: template.id,
+    ...overrides,
+  });
+}
+
+function recordRun(
+  store: FakeHmsStore,
+  fixture: HmsFixture,
+  template: ChecklistTemplateRecord,
+  overrides: Partial<RecordChecklistRunInput> = {},
+): Promise<ChecklistRunRecord> {
+  return recordChecklistRun(store, {
+    organizationId: fixture.organizationId,
+    actorId: fixture.actorId,
+    templateId: template.id,
+    locationId: fixture.locationId,
+    runAt: "2026-02-01T08:00:00.000Z",
+    performedBy: fixture.actorId,
+    results: [{ key: "floor", outcome: "pass" }],
+    ...overrides,
+  });
+}
+
+function updateRun(
+  store: FakeHmsStore,
+  fixture: HmsFixture,
+  run: ChecklistRunRecord,
+  overrides: Partial<UpdateChecklistRunInput> = {},
+): Promise<ChecklistRunRecord> {
+  return updateChecklistRun(store, {
+    organizationId: fixture.organizationId,
+    actorId: fixture.actorId,
+    runId: run.id,
     ...overrides,
   });
 }
@@ -545,6 +630,57 @@ describe("FakeHmsStore.withTransaction", () => {
     expect(store.monitoringPoints.size).toBe(baseline.monitoringPoints);
     expect(store.monitoringPoints.has(existing.id)).toBe(true);
     expect(store.monitoringReadings.size).toBe(baseline.monitoringReadings);
+    expect(store.audits).toHaveLength(baseline.audits);
+  });
+
+  it("rolls back checklist template and run writes when the callback throws", async () => {
+    const { store, fixture } = setup();
+    const existing = await registerCleaningTemplate(store, fixture);
+
+    const baseline = {
+      checklistTemplates: store.checklistTemplates.size,
+      checklistRuns: store.checklistRuns.size,
+      audits: store.audits.length,
+    };
+
+    await expect(
+      store.withTransaction(async (tx) => {
+        const template = await tx.createChecklistTemplate({
+          organizationId: fixture.organizationId,
+          name: "Rolled-back template",
+          category: "cleaning",
+          frequency: "daily",
+          items: [],
+          active: true,
+          supersedesId: null,
+          createdBy: fixture.actorId,
+        });
+        await tx.createChecklistRun({
+          organizationId: fixture.organizationId,
+          templateId: template.id,
+          locationId: fixture.locationId,
+          runAt: "2026-02-01T08:00:00.000Z",
+          performedBy: fixture.actorId,
+          status: "in_progress",
+          results: [],
+          notes: null,
+          createdBy: fixture.actorId,
+        });
+        await tx.writeAudit({
+          organizationId: fixture.organizationId,
+          actorId: fixture.actorId,
+          action: "hms.checklist_template.created",
+          entityType: "checklist_template",
+          entityId: template.id,
+          after: { rolled_back: false },
+        });
+        throw new Error("boom");
+      }),
+    ).rejects.toThrow("boom");
+
+    expect(store.checklistTemplates.size).toBe(baseline.checklistTemplates);
+    expect(store.checklistTemplates.has(existing.id)).toBe(true);
+    expect(store.checklistRuns.size).toBe(baseline.checklistRuns);
     expect(store.audits).toHaveLength(baseline.audits);
   });
 });
@@ -1190,5 +1326,703 @@ describe("listIncidents and listCorrectiveActions", () => {
         })
       ).map((row) => row.id),
     ).toEqual([dueLater.id]);
+  });
+});
+
+describe("registerChecklistTemplate", () => {
+  it("registers an active template, trims the name and writes its audit fact", async () => {
+    const { store, fixture } = setup();
+
+    const template = await registerCleaningTemplate(store, fixture, {
+      name: "  Daily cleaning  ",
+    });
+
+    expect(template).toMatchObject({
+      organizationId: fixture.organizationId,
+      name: "Daily cleaning",
+      category: "cleaning",
+      frequency: "daily",
+      items: CLEANING_ITEMS,
+      active: true,
+      supersedesId: null,
+      createdBy: fixture.actorId,
+    });
+    expect(store.checklistTemplates.size).toBe(1);
+    expect(store.audits).toHaveLength(1);
+    expect(store.audits[0]).toMatchObject({
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      action: "hms.checklist_template.created",
+      entityType: "checklist_template",
+      entityId: template.id,
+      after: {
+        name: "Daily cleaning",
+        category: "cleaning",
+        frequency: "daily",
+        active: true,
+        supersedes_id: null,
+      },
+    });
+  });
+
+  it("records a revision, deactivates the superseded row and audits both", async () => {
+    const { store, fixture } = setup();
+    const first = await registerCleaningTemplate(store, fixture, { name: "Daily cleaning (v1)" });
+
+    const revision = await registerCleaningTemplate(store, fixture, {
+      name: "Daily cleaning (v2)",
+      supersedesId: first.id,
+    });
+
+    // The revision is active and points at the row it replaces; the replaced
+    // row is retired in the same transaction (`DEC-096`).
+    expect(revision).toMatchObject({ active: true, supersedesId: first.id });
+    expect(store.checklistTemplates.get(first.id)?.active).toBe(false);
+
+    // v1 created, v1 deactivated, v2 created — three facts.
+    expect(store.audits).toHaveLength(3);
+    expect(store.audits[1]).toMatchObject({
+      action: "hms.checklist_template.updated",
+      entityType: "checklist_template",
+      entityId: first.id,
+      before: { active: true },
+      after: { active: false },
+    });
+    expect(store.audits[2]).toMatchObject({
+      action: "hms.checklist_template.created",
+      entityType: "checklist_template",
+      entityId: revision.id,
+      after: { name: "Daily cleaning (v2)", active: true, supersedes_id: first.id },
+    });
+  });
+
+  it("rejects superseding a deactivated template or an unknown one without writing", async () => {
+    const { store, fixture } = setup();
+    const retired = await registerCleaningTemplate(store, fixture, { active: false });
+
+    await expect(
+      registerCleaningTemplate(store, fixture, { name: "Revival", supersedesId: retired.id }),
+    ).rejects.toThrow(DomainError);
+    await expect(
+      registerCleaningTemplate(store, fixture, { name: "Revival", supersedesId: "missing" }),
+    ).rejects.toThrow(NotFoundError);
+
+    expect(store.checklistTemplates.size).toBe(1);
+    expect(store.checklistTemplates.get(retired.id)?.active).toBe(false);
+    // Only the retired template's own create fact exists; no revision was made.
+    expect(store.audits).toHaveLength(1);
+  });
+
+  it("rejects an unknown category or frequency and a blank name without writing", async () => {
+    const { store, fixture } = setup();
+
+    await expect(
+      registerCleaningTemplate(store, fixture, { category: "deep_clean" }),
+    ).rejects.toThrow(DomainError);
+    await expect(registerCleaningTemplate(store, fixture, { frequency: "hourly" })).rejects.toThrow(
+      DomainError,
+    );
+    await expect(registerCleaningTemplate(store, fixture, { name: "   " })).rejects.toThrow(
+      DomainError,
+    );
+
+    expect(store.checklistTemplates.size).toBe(0);
+    expect(store.audits).toHaveLength(0);
+  });
+
+  it("rejects a malformed items array naming the offending index and field", async () => {
+    const { store, fixture } = setup();
+
+    await expect(
+      registerCleaningTemplate(store, fixture, { items: { key: "floor" } }),
+    ).rejects.toThrow(/items must be a JSON array/);
+    await expect(
+      registerCleaningTemplate(store, fixture, { items: [{ label: "Mop" }] }),
+    ).rejects.toThrow(/items\[0\]\.key is required/);
+    await expect(
+      registerCleaningTemplate(store, fixture, { items: [{ key: "floor" }] }),
+    ).rejects.toThrow(/items\[0\]\.label is required/);
+    await expect(
+      registerCleaningTemplate(store, fixture, {
+        items: [{ key: "floor", label: "Mop", required: "yes" }],
+      }),
+    ).rejects.toThrow(/items\[0\]\.required must be a boolean/);
+
+    // Extra keys pass through untouched (`DEC-096`).
+    const template = await registerCleaningTemplate(store, fixture, {
+      items: [{ key: "floor", label: "Mop", zone: "kitchen" }],
+    });
+    expect(template.items).toEqual([{ key: "floor", label: "Mop", zone: "kitchen" }]);
+
+    expect(store.checklistTemplates.size).toBe(1);
+    expect(store.audits).toHaveLength(1);
+  });
+
+  it("caps the items array at the shared ceiling", async () => {
+    const { store, fixture } = setup();
+    const overCeiling = Array.from({ length: 501 }, (_, index) => ({
+      key: `item-${index}`,
+      label: `Item ${index}`,
+    }));
+
+    await expect(registerCleaningTemplate(store, fixture, { items: overCeiling })).rejects.toThrow(
+      /items must hold at most 500 elements/,
+    );
+    expect(store.checklistTemplates.size).toBe(0);
+
+    // Exactly at the ceiling is allowed.
+    const atCeiling = overCeiling.slice(0, 500);
+    const template = await registerCleaningTemplate(store, fixture, { items: atCeiling });
+    expect(template.items).toEqual(atCeiling);
+  });
+});
+
+describe("updateChecklistTemplate", () => {
+  it("patches fields and audits before/after in snake_case", async () => {
+    const { store, fixture } = setup();
+    const template = await registerCleaningTemplate(store, fixture);
+
+    const updated = await updateCleaningTemplate(store, fixture, template, {
+      name: "Daily cleaning (front)",
+      category: "hygiene",
+      frequency: "weekly",
+      items: [{ key: "floor", label: "Mop the floor" }],
+      active: false,
+    });
+
+    expect(updated).toMatchObject({
+      id: template.id,
+      name: "Daily cleaning (front)",
+      category: "hygiene",
+      frequency: "weekly",
+      active: false,
+      updatedBy: fixture.actorId,
+    });
+    expect(updated.items).toEqual([{ key: "floor", label: "Mop the floor" }]);
+
+    const audit = store.audits.find((row) => row.action === "hms.checklist_template.updated");
+    expect(audit).toMatchObject({
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      entityType: "checklist_template",
+      entityId: template.id,
+      before: {
+        name: "Daily cleaning",
+        category: "cleaning",
+        frequency: "daily",
+        items: CLEANING_ITEMS,
+        active: true,
+      },
+      after: {
+        name: "Daily cleaning (front)",
+        category: "hygiene",
+        frequency: "weekly",
+        items: [{ key: "floor", label: "Mop the floor" }],
+        active: false,
+      },
+    });
+  });
+
+  it("rejects unknown vocabularies, a malformed items array and an empty patch without writing", async () => {
+    const { store, fixture } = setup();
+    const template = await registerCleaningTemplate(store, fixture);
+
+    await expect(updateCleaningTemplate(store, fixture, template, {})).rejects.toThrow(DomainError);
+    await expect(
+      updateCleaningTemplate(store, fixture, template, { category: "deep_clean" }),
+    ).rejects.toThrow(DomainError);
+    await expect(
+      updateCleaningTemplate(store, fixture, template, { frequency: "hourly" }),
+    ).rejects.toThrow(DomainError);
+    await expect(updateCleaningTemplate(store, fixture, template, { name: "  " })).rejects.toThrow(
+      DomainError,
+    );
+    await expect(
+      updateCleaningTemplate(store, fixture, template, { items: "nope" }),
+    ).rejects.toThrow(/items must be a JSON array/);
+
+    expect(store.checklistTemplates.get(template.id)).toMatchObject({
+      name: "Daily cleaning",
+      category: "cleaning",
+      frequency: "daily",
+      active: true,
+    });
+    expect(
+      store.audits.filter((row) => row.action === "hms.checklist_template.updated"),
+    ).toHaveLength(0);
+  });
+
+  it("reports an unknown or cross-organization template as NotFoundError", async () => {
+    const { store, fixture } = setup();
+    const other = await registerCleaningTemplate(store, fixture, {
+      organizationId: fixture.otherOrganizationId,
+      name: "Other tenant",
+    });
+
+    await expect(
+      updateChecklistTemplate(store, {
+        organizationId: fixture.organizationId,
+        actorId: fixture.actorId,
+        templateId: "missing",
+        name: "Nonexistent",
+      }),
+    ).rejects.toThrow(NotFoundError);
+    await expect(
+      updateChecklistTemplate(store, {
+        organizationId: fixture.organizationId,
+        actorId: fixture.actorId,
+        templateId: other.id,
+        name: "Hijacked",
+      }),
+    ).rejects.toThrow(NotFoundError);
+
+    expect(store.checklistTemplates.get(other.id)?.name).toBe("Other tenant");
+  });
+});
+
+describe("recordChecklistRun", () => {
+  it("records a run as in_progress by default with its results and audit fact", async () => {
+    const { store, fixture } = setup();
+    const template = await registerCleaningTemplate(store, fixture);
+    const results = [
+      { key: "floor", outcome: "pass" },
+      { key: "bins", outcome: "fail", note: "overflowing" },
+    ];
+
+    const run = await recordRun(store, fixture, template, { results });
+
+    expect(run).toMatchObject({
+      organizationId: fixture.organizationId,
+      templateId: template.id,
+      locationId: fixture.locationId,
+      runAt: "2026-02-01T08:00:00.000Z",
+      performedBy: fixture.actorId,
+      status: "in_progress",
+      notes: null,
+      createdBy: fixture.actorId,
+    });
+    expect(run.results).toEqual(results);
+
+    const audit = store.audits.find((row) => row.action === "hms.checklist_run.recorded");
+    expect(audit).toMatchObject({
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      entityType: "checklist_run",
+      entityId: run.id,
+      after: {
+        template_id: template.id,
+        location_id: fixture.locationId,
+        run_at: "2026-02-01T08:00:00.000Z",
+        status: "in_progress",
+      },
+    });
+  });
+
+  it("accepts an explicit completed status and notes", async () => {
+    const { store, fixture } = setup();
+    const template = await registerCleaningTemplate(store, fixture);
+
+    const run = await recordRun(store, fixture, template, {
+      status: "completed",
+      notes: "everything done",
+    });
+
+    expect(run).toMatchObject({ status: "completed", notes: "everything done" });
+  });
+
+  it("rejects a bad status, missing ids/operator, malformed instant or malformed results without writing", async () => {
+    const { store, fixture } = setup();
+    const template = await registerCleaningTemplate(store, fixture);
+
+    await expect(recordRun(store, fixture, template, { status: "pending" })).rejects.toThrow(
+      DomainError,
+    );
+    await expect(recordRun(store, fixture, template, { templateId: "" })).rejects.toThrow(
+      DomainError,
+    );
+    await expect(recordRun(store, fixture, template, { locationId: "  " })).rejects.toThrow(
+      DomainError,
+    );
+    await expect(recordRun(store, fixture, template, { performedBy: "" })).rejects.toThrow(
+      DomainError,
+    );
+    await expect(recordRun(store, fixture, template, { runAt: "2026-02-01" })).rejects.toThrow(
+      DomainError,
+    );
+    await expect(recordRun(store, fixture, template, { results: {} })).rejects.toThrow(
+      /results must be a JSON array/,
+    );
+    await expect(
+      recordRun(store, fixture, template, { results: [{ key: "floor" }] }),
+    ).rejects.toThrow(/results\[0\]\.outcome must be one of/);
+    await expect(
+      recordRun(store, fixture, template, { results: [{ key: "floor", outcome: "maybe" }] }),
+    ).rejects.toThrow(/results\[0\]\.outcome must be one of/);
+    await expect(
+      recordRun(store, fixture, template, { results: [{ outcome: "pass" }] }),
+    ).rejects.toThrow(/results\[0\]\.key is required/);
+    await expect(
+      recordRun(store, fixture, template, {
+        results: [{ key: "floor", outcome: "pass", note: 5 }],
+      }),
+    ).rejects.toThrow(/results\[0\]\.note must be a string/);
+
+    expect(store.checklistRuns.size).toBe(0);
+    expect(store.audits.filter((row) => row.action === "hms.checklist_run.recorded")).toHaveLength(
+      0,
+    );
+  });
+
+  it("rejects a result key the template does not define", async () => {
+    const { store, fixture } = setup();
+    const template = await registerCleaningTemplate(store, fixture);
+
+    await expect(
+      recordRun(store, fixture, template, { results: [{ key: "windows", outcome: "pass" }] }),
+    ).rejects.toThrow(/results\[0\]\.key "windows" is not an item of the template/);
+
+    expect(store.checklistRuns.size).toBe(0);
+    expect(store.audits.filter((row) => row.action === "hms.checklist_run.recorded")).toHaveLength(
+      0,
+    );
+  });
+
+  it("caps the results array at the shared ceiling", async () => {
+    const { store, fixture } = setup();
+    const template = await registerCleaningTemplate(store, fixture);
+    const results = Array.from({ length: 501 }, () => ({ key: "floor", outcome: "pass" }));
+
+    await expect(recordRun(store, fixture, template, { results })).rejects.toThrow(
+      /results must hold at most 500 elements/,
+    );
+    expect(store.checklistRuns.size).toBe(0);
+  });
+
+  it("reports an unknown or cross-organization template as NotFoundError", async () => {
+    const { store, fixture } = setup();
+    const template = await registerCleaningTemplate(store, fixture);
+
+    await expect(recordRun(store, fixture, template, { templateId: "missing" })).rejects.toThrow(
+      NotFoundError,
+    );
+
+    const otherTemplate = await registerCleaningTemplate(store, fixture, {
+      organizationId: fixture.otherOrganizationId,
+      name: "Other tenant template",
+    });
+    await expect(recordRun(store, fixture, otherTemplate)).rejects.toThrow(NotFoundError);
+
+    expect(store.checklistRuns.size).toBe(0);
+  });
+});
+
+describe("updateChecklistRun", () => {
+  it("patches status, results and notes and audits before/after", async () => {
+    const { store, fixture } = setup();
+    const template = await registerCleaningTemplate(store, fixture);
+    const run = await recordRun(store, fixture, template);
+
+    const updated = await updateRun(store, fixture, run, {
+      status: "completed",
+      results: [{ key: "floor", outcome: "fail", note: "spilled" }],
+      notes: "spilled during prep",
+    });
+
+    expect(updated).toMatchObject({
+      status: "completed",
+      notes: "spilled during prep",
+      updatedBy: fixture.actorId,
+    });
+    expect(updated.results).toEqual([{ key: "floor", outcome: "fail", note: "spilled" }]);
+
+    // `status` carries no derived companion (`DEC-096`): only the vocabulary
+    // value moves, unlike the incident close or corrective-action verification.
+    const audit = store.audits.find((row) => row.action === "hms.checklist_run.updated");
+    expect(audit).toMatchObject({
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      entityType: "checklist_run",
+      entityId: run.id,
+      before: { status: "in_progress", results: [{ key: "floor", outcome: "pass" }], notes: null },
+      after: {
+        status: "completed",
+        results: [{ key: "floor", outcome: "fail", note: "spilled" }],
+        notes: "spilled during prep",
+      },
+    });
+  });
+
+  it("clears notes with an explicit null", async () => {
+    const { store, fixture } = setup();
+    const template = await registerCleaningTemplate(store, fixture);
+    const run = await recordRun(store, fixture, template, { notes: "draft notes" });
+
+    const updated = await updateRun(store, fixture, run, { notes: null });
+
+    expect(updated.notes).toBeNull();
+  });
+
+  it("rejects an empty patch, an unknown status and malformed results without writing", async () => {
+    const { store, fixture } = setup();
+    const template = await registerCleaningTemplate(store, fixture);
+    const run = await recordRun(store, fixture, template);
+
+    await expect(updateRun(store, fixture, run, {})).rejects.toThrow(DomainError);
+    await expect(updateRun(store, fixture, run, { status: "pending" })).rejects.toThrow(
+      DomainError,
+    );
+    await expect(updateRun(store, fixture, run, { results: "nope" })).rejects.toThrow(
+      /results must be a JSON array/,
+    );
+    await expect(
+      updateRun(store, fixture, run, { results: [{ key: "floor", outcome: "maybe" }] }),
+    ).rejects.toThrow(/results\[0\]\.outcome must be one of/);
+
+    expect(store.checklistRuns.get(run.id)).toMatchObject({
+      status: "in_progress",
+      notes: null,
+    });
+    expect(store.audits.filter((row) => row.action === "hms.checklist_run.updated")).toHaveLength(
+      0,
+    );
+  });
+
+  it("rejects a result key the run's template does not define", async () => {
+    const { store, fixture } = setup();
+    const template = await registerCleaningTemplate(store, fixture);
+    const run = await recordRun(store, fixture, template);
+
+    await expect(
+      updateRun(store, fixture, run, { results: [{ key: "windows", outcome: "pass" }] }),
+    ).rejects.toThrow(/results\[0\]\.key "windows" is not an item of the template/);
+
+    expect(store.checklistRuns.get(run.id)?.results).toEqual([{ key: "floor", outcome: "pass" }]);
+    expect(store.audits.filter((row) => row.action === "hms.checklist_run.updated")).toHaveLength(
+      0,
+    );
+  });
+
+  it("reports an unknown or cross-organization run as NotFoundError", async () => {
+    const { store, fixture } = setup();
+    const template = await registerCleaningTemplate(store, fixture);
+    const run = await recordRun(store, fixture, template);
+    const otherTemplate = await registerCleaningTemplate(store, fixture, {
+      organizationId: fixture.otherOrganizationId,
+      name: "Other tenant template",
+    });
+    const otherRun = await recordRun(store, fixture, otherTemplate, {
+      organizationId: fixture.otherOrganizationId,
+      locationId: fixture.otherLocationId,
+    });
+
+    await expect(
+      updateChecklistRun(store, {
+        organizationId: fixture.organizationId,
+        actorId: fixture.actorId,
+        runId: "missing",
+        status: "completed",
+      }),
+    ).rejects.toThrow(NotFoundError);
+    await expect(
+      updateChecklistRun(store, {
+        organizationId: fixture.organizationId,
+        actorId: fixture.actorId,
+        runId: otherRun.id,
+        status: "completed",
+      }),
+    ).rejects.toThrow(NotFoundError);
+
+    expect(store.checklistRuns.get(run.id)?.status).toBe("in_progress");
+    expect(store.checklistRuns.get(otherRun.id)?.status).toBe("in_progress");
+  });
+});
+
+describe("findChecklistTemplate and findChecklistRun", () => {
+  it("return the row for its organization and undefined for a scoped miss", async () => {
+    const { store, fixture } = setup();
+    const template = await registerCleaningTemplate(store, fixture);
+    const otherTemplate = await registerCleaningTemplate(store, fixture, {
+      organizationId: fixture.otherOrganizationId,
+      name: "Other tenant template",
+    });
+    const run = await recordRun(store, fixture, template);
+    const otherRun = await recordRun(store, fixture, otherTemplate, {
+      organizationId: fixture.otherOrganizationId,
+      locationId: fixture.otherLocationId,
+    });
+
+    expect(
+      (
+        await findChecklistTemplate(store, {
+          organizationId: fixture.organizationId,
+          templateId: template.id,
+        })
+      )?.id,
+    ).toBe(template.id);
+    // The org filter is load-bearing: dropping it would return the other row.
+    expect(
+      await findChecklistTemplate(store, {
+        organizationId: fixture.organizationId,
+        templateId: otherTemplate.id,
+      }),
+    ).toBeUndefined();
+    expect(
+      await findChecklistTemplate(store, {
+        organizationId: fixture.organizationId,
+        templateId: "missing",
+      }),
+    ).toBeUndefined();
+
+    expect(
+      (
+        await findChecklistRun(store, {
+          organizationId: fixture.organizationId,
+          runId: run.id,
+        })
+      )?.id,
+    ).toBe(run.id);
+    expect(
+      await findChecklistRun(store, {
+        organizationId: fixture.organizationId,
+        runId: otherRun.id,
+      }),
+    ).toBeUndefined();
+    expect(
+      await findChecklistRun(store, { organizationId: fixture.organizationId, runId: "missing" }),
+    ).toBeUndefined();
+  });
+});
+
+describe("listChecklistTemplates and listChecklistRuns", () => {
+  it("lists templates by name with filters and paging, scoped to the organization", async () => {
+    const { store, fixture } = setup();
+    const beta = await registerCleaningTemplate(store, fixture, {
+      name: "Beta routine",
+      category: "hygiene",
+    });
+    const alpha = await registerCleaningTemplate(store, fixture, { name: "Alpha routine" });
+    const retired = await registerCleaningTemplate(store, fixture, {
+      name: "Gamma routine",
+      active: false,
+    });
+    const otherOrg = await registerCleaningTemplate(store, fixture, {
+      organizationId: fixture.otherOrganizationId,
+      name: "Alpha routine",
+    });
+
+    // Name ascending; the exact id list fails if the organization filter were
+    // dropped (the other organization's row would be appended).
+    expect(
+      (await listChecklistTemplates(store, { organizationId: fixture.organizationId })).map(
+        (row) => row.id,
+      ),
+    ).toEqual([alpha.id, beta.id, retired.id]);
+    expect(
+      (await listChecklistTemplates(store, { organizationId: fixture.otherOrganizationId })).map(
+        (row) => row.id,
+      ),
+    ).toEqual([otherOrg.id]);
+
+    expect(
+      (
+        await listChecklistTemplates(store, {
+          organizationId: fixture.organizationId,
+          category: "cleaning",
+        })
+      ).map((row) => row.id),
+    ).toEqual([alpha.id, retired.id]);
+    expect(
+      (
+        await listChecklistTemplates(store, {
+          organizationId: fixture.organizationId,
+          active: true,
+        })
+      ).map((row) => row.id),
+    ).toEqual([alpha.id, beta.id]);
+    expect(
+      (
+        await listChecklistTemplates(store, {
+          organizationId: fixture.organizationId,
+          limit: 1,
+          offset: 1,
+        })
+      ).map((row) => row.id),
+    ).toEqual([beta.id]);
+  });
+
+  it("lists runs newest first with filters and paging, scoped to the organization", async () => {
+    const { store, fixture } = setup();
+    const template = await registerCleaningTemplate(store, fixture);
+    const secondTemplate = await registerCleaningTemplate(store, fixture, {
+      name: "Closing routine",
+      category: "closing",
+    });
+    const older = await recordRun(store, fixture, template, {
+      runAt: "2026-01-01T08:00:00.000Z",
+    });
+    const newer = await recordRun(store, fixture, template, {
+      runAt: "2026-03-01T08:00:00.000Z",
+      status: "completed",
+    });
+    const kitchen = await recordRun(store, fixture, secondTemplate, {
+      runAt: "2026-02-01T08:00:00.000Z",
+      locationId: "loc-kitchen",
+    });
+    const otherTemplate = await registerCleaningTemplate(store, fixture, {
+      organizationId: fixture.otherOrganizationId,
+      name: "Other tenant routine",
+    });
+    const otherOrg = await recordRun(store, fixture, otherTemplate, {
+      organizationId: fixture.otherOrganizationId,
+      locationId: fixture.otherLocationId,
+      runAt: "2026-04-01T08:00:00.000Z",
+    });
+
+    // Newest `run_at` first; the exact id list fails if the organization filter
+    // were dropped (the other organization's newer row would be first).
+    expect(
+      (await listChecklistRuns(store, { organizationId: fixture.organizationId })).map(
+        (row) => row.id,
+      ),
+    ).toEqual([newer.id, kitchen.id, older.id]);
+    expect(
+      (await listChecklistRuns(store, { organizationId: fixture.otherOrganizationId })).map(
+        (row) => row.id,
+      ),
+    ).toEqual([otherOrg.id]);
+
+    expect(
+      (
+        await listChecklistRuns(store, {
+          organizationId: fixture.organizationId,
+          templateId: template.id,
+        })
+      ).map((row) => row.id),
+    ).toEqual([newer.id, older.id]);
+    expect(
+      (
+        await listChecklistRuns(store, {
+          organizationId: fixture.organizationId,
+          locationId: fixture.locationId,
+        })
+      ).map((row) => row.id),
+    ).toEqual([newer.id, older.id]);
+    expect(
+      (
+        await listChecklistRuns(store, {
+          organizationId: fixture.organizationId,
+          status: "completed",
+        })
+      ).map((row) => row.id),
+    ).toEqual([newer.id]);
+    expect(
+      (
+        await listChecklistRuns(store, {
+          organizationId: fixture.organizationId,
+          limit: 1,
+          offset: 1,
+        })
+      ).map((row) => row.id),
+    ).toEqual([kitchen.id]);
   });
 });

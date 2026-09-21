@@ -2,6 +2,10 @@ import * as repo from "@aquarela/persistence";
 import type { Database, NodeDatabase } from "@aquarela/persistence";
 
 import type {
+  ChecklistRunListQuery,
+  ChecklistRunRecord,
+  ChecklistTemplateListQuery,
+  ChecklistTemplateRecord,
   CorrectiveActionListQuery,
   CorrectiveActionRecord,
   HmsStore,
@@ -11,10 +15,14 @@ import type {
   MonitoringPointRecord,
   MonitoringReadingListQuery,
   MonitoringReadingRecord,
+  NewChecklistRunRecord,
+  NewChecklistTemplateRecord,
   NewCorrectiveActionRecord,
   NewIncidentRecord,
   NewMonitoringPointRecord,
   NewMonitoringReadingRecord,
+  UpdateChecklistRunRecord,
+  UpdateChecklistTemplateRecord,
   UpdateCorrectiveActionRecord,
   UpdateIncidentRecord,
 } from "./types";
@@ -172,6 +180,69 @@ function newCorrectiveActionValues(
     actorId: input.createdBy,
   };
 }
+
+function toChecklistTemplate(row: repo.ChecklistTemplate): ChecklistTemplateRecord {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    name: row.name,
+    category: row.category,
+    frequency: row.frequency,
+    items: row.items,
+    active: row.active,
+    supersedesId: row.supersedesId,
+    createdAt: row.createdAt.toISOString(),
+    createdBy: row.createdBy,
+    updatedBy: row.updatedBy,
+  };
+}
+
+function newChecklistTemplateValues(
+  input: NewChecklistTemplateRecord,
+): repo.CreateChecklistTemplateInput {
+  return {
+    organizationId: input.organizationId,
+    name: input.name,
+    category: input.category,
+    frequency: input.frequency,
+    items: input.items,
+    active: input.active,
+    supersedesId: input.supersedesId,
+    actorId: input.createdBy,
+  };
+}
+
+function toChecklistRun(row: repo.ChecklistRun): ChecklistRunRecord {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    templateId: row.templateId,
+    locationId: row.locationId,
+    runAt: row.runAt.toISOString(),
+    performedBy: row.performedBy,
+    status: row.status,
+    results: row.results,
+    notes: row.notes,
+    createdAt: row.createdAt.toISOString(),
+    createdBy: row.createdBy,
+    updatedBy: row.updatedBy,
+  };
+}
+
+function newChecklistRunValues(input: NewChecklistRunRecord): repo.CreateChecklistRunInput {
+  return {
+    organizationId: input.organizationId,
+    templateId: input.templateId,
+    locationId: input.locationId,
+    runAt: new Date(input.runAt),
+    performedBy: input.performedBy,
+    status: input.status,
+    results: input.results,
+    notes: input.notes,
+    actorId: input.createdBy,
+  };
+}
+
 /**
  * Adapts the persistence monitoring repository to the `HmsStore` port: the
  * `timestamptz` columns become ISO strings on read and `Date`s on write, and
@@ -307,6 +378,71 @@ export function createPostgresHmsStore(db: Database): HmsStore {
         ...(query.offset === undefined ? {} : { offset: query.offset }),
       });
       return rows.map(toCorrectiveAction);
+    },
+    createChecklistTemplate: async (input) =>
+      toChecklistTemplate(
+        await repo.createChecklistTemplate(db, newChecklistTemplateValues(input)),
+      ),
+    findChecklistTemplate: async (query) => {
+      const row = await repo.findChecklistTemplate(db, {
+        organizationId: query.organizationId,
+        templateId: query.templateId,
+      });
+      return row === undefined ? undefined : toChecklistTemplate(row);
+    },
+    updateChecklistTemplate: async (input: UpdateChecklistTemplateRecord) => {
+      const row = await repo.updateChecklistTemplate(db, {
+        organizationId: input.organizationId,
+        templateId: input.templateId,
+        ...(input.name === undefined ? {} : { name: input.name }),
+        ...(input.category === undefined ? {} : { category: input.category }),
+        ...(input.frequency === undefined ? {} : { frequency: input.frequency }),
+        ...(input.items === undefined ? {} : { items: input.items }),
+        ...(input.active === undefined ? {} : { active: input.active }),
+        ...(input.updatedBy === undefined ? {} : { actorId: input.updatedBy }),
+      });
+      return row === undefined ? undefined : toChecklistTemplate(row);
+    },
+    listChecklistTemplates: async (query: ChecklistTemplateListQuery) => {
+      const rows = await repo.listChecklistTemplates(db, {
+        organizationId: query.organizationId,
+        ...(query.category === undefined ? {} : { category: query.category }),
+        ...(query.active === undefined ? {} : { active: query.active }),
+        ...(query.limit === undefined ? {} : { limit: query.limit }),
+        ...(query.offset === undefined ? {} : { offset: query.offset }),
+      });
+      return rows.map(toChecklistTemplate);
+    },
+    createChecklistRun: async (input) =>
+      toChecklistRun(await repo.createChecklistRun(db, newChecklistRunValues(input))),
+    findChecklistRun: async (query) => {
+      const row = await repo.findChecklistRun(db, {
+        organizationId: query.organizationId,
+        runId: query.runId,
+      });
+      return row === undefined ? undefined : toChecklistRun(row);
+    },
+    updateChecklistRun: async (input: UpdateChecklistRunRecord) => {
+      const row = await repo.updateChecklistRun(db, {
+        organizationId: input.organizationId,
+        runId: input.runId,
+        ...(input.status === undefined ? {} : { status: input.status }),
+        ...(input.results === undefined ? {} : { results: input.results }),
+        ...(input.notes === undefined ? {} : { notes: input.notes }),
+        ...(input.updatedBy === undefined ? {} : { actorId: input.updatedBy }),
+      });
+      return row === undefined ? undefined : toChecklistRun(row);
+    },
+    listChecklistRuns: async (query: ChecklistRunListQuery) => {
+      const rows = await repo.listChecklistRuns(db, {
+        organizationId: query.organizationId,
+        ...(query.templateId === undefined ? {} : { templateId: query.templateId }),
+        ...(query.locationId === undefined ? {} : { locationId: query.locationId }),
+        ...(query.status === undefined ? {} : { status: query.status }),
+        ...(query.limit === undefined ? {} : { limit: query.limit }),
+        ...(query.offset === undefined ? {} : { offset: query.offset }),
+      });
+      return rows.map(toChecklistRun);
     },
   };
 }

@@ -1,6 +1,10 @@
 import type { AuditInput } from "../auth";
 
 import type {
+  ChecklistRunListQuery,
+  ChecklistRunRecord,
+  ChecklistTemplateListQuery,
+  ChecklistTemplateRecord,
   CorrectiveActionListQuery,
   CorrectiveActionRecord,
   HmsStore,
@@ -10,10 +14,14 @@ import type {
   MonitoringPointRecord,
   MonitoringReadingListQuery,
   MonitoringReadingRecord,
+  NewChecklistRunRecord,
+  NewChecklistTemplateRecord,
   NewCorrectiveActionRecord,
   NewIncidentRecord,
   NewMonitoringPointRecord,
   NewMonitoringReadingRecord,
+  UpdateChecklistRunRecord,
+  UpdateChecklistTemplateRecord,
   UpdateCorrectiveActionRecord,
   UpdateIncidentRecord,
   UpdateMonitoringPointRecord,
@@ -28,6 +36,8 @@ interface HmsSnapshot {
   readonly monitoringReadings: Map<string, MonitoringReadingRecord>;
   readonly incidents: Map<string, IncidentRecord>;
   readonly correctiveActions: Map<string, CorrectiveActionRecord>;
+  readonly checklistTemplates: Map<string, ChecklistTemplateRecord>;
+  readonly checklistRuns: Map<string, ChecklistRunRecord>;
   readonly audits: AuditInput[];
 }
 
@@ -41,6 +51,8 @@ export class FakeHmsStore implements HmsStore {
   readonly monitoringReadings = new Map<string, MonitoringReadingRecord>();
   readonly incidents = new Map<string, IncidentRecord>();
   readonly correctiveActions = new Map<string, CorrectiveActionRecord>();
+  readonly checklistTemplates = new Map<string, ChecklistTemplateRecord>();
+  readonly checklistRuns = new Map<string, ChecklistRunRecord>();
   readonly audits: AuditInput[] = [];
 
   private sequence = 0;
@@ -69,6 +81,8 @@ export class FakeHmsStore implements HmsStore {
       monitoringReadings: new Map(this.monitoringReadings),
       incidents: new Map(this.incidents),
       correctiveActions: new Map(this.correctiveActions),
+      checklistTemplates: new Map(this.checklistTemplates),
+      checklistRuns: new Map(this.checklistRuns),
       audits: [...this.audits],
     };
   }
@@ -86,6 +100,12 @@ export class FakeHmsStore implements HmsStore {
     for (const [key, value] of snapshot.correctiveActions) {
       this.correctiveActions.set(key, value);
     }
+    this.checklistTemplates.clear();
+    for (const [key, value] of snapshot.checklistTemplates) {
+      this.checklistTemplates.set(key, value);
+    }
+    this.checklistRuns.clear();
+    for (const [key, value] of snapshot.checklistRuns) this.checklistRuns.set(key, value);
     this.audits.length = 0;
     this.audits.push(...snapshot.audits);
   }
@@ -327,6 +347,125 @@ export class FakeHmsStore implements HmsStore {
         const bDue = b.dueDate ?? "\uffff";
         if (aDue !== bDue) return aDue < bDue ? -1 : 1;
         return a.id < b.id ? -1 : 1;
+      });
+    const offset = query.offset ?? 0;
+    const limit = query.limit ?? rows.length;
+    return rows.slice(offset, offset + limit);
+  }
+
+  async createChecklistTemplate(
+    input: NewChecklistTemplateRecord,
+  ): Promise<ChecklistTemplateRecord> {
+    const record: ChecklistTemplateRecord = {
+      id: this.nextId("template"),
+      ...input,
+      createdAt: new Date().toISOString(),
+      updatedBy: null,
+    };
+    this.checklistTemplates.set(record.id, record);
+    return record;
+  }
+
+  async findChecklistTemplate(query: {
+    readonly organizationId: string;
+    readonly templateId: string;
+  }): Promise<ChecklistTemplateRecord | undefined> {
+    const template = this.checklistTemplates.get(query.templateId);
+    return template !== undefined && template.organizationId === query.organizationId
+      ? template
+      : undefined;
+  }
+
+  async updateChecklistTemplate(
+    input: UpdateChecklistTemplateRecord,
+  ): Promise<ChecklistTemplateRecord | undefined> {
+    const existing = await this.findChecklistTemplate({
+      organizationId: input.organizationId,
+      templateId: input.templateId,
+    });
+    if (existing === undefined) return undefined;
+    // Replace the record rather than mutate it: the transaction snapshot keeps
+    // the old object reference, so an in-place edit would survive a rollback.
+    const record: ChecklistTemplateRecord = {
+      ...existing,
+      ...(input.name === undefined ? {} : { name: input.name }),
+      ...(input.category === undefined ? {} : { category: input.category }),
+      ...(input.frequency === undefined ? {} : { frequency: input.frequency }),
+      ...(input.items === undefined ? {} : { items: input.items }),
+      ...(input.active === undefined ? {} : { active: input.active }),
+      ...(input.updatedBy === undefined ? {} : { updatedBy: input.updatedBy }),
+    };
+    this.checklistTemplates.set(record.id, record);
+    return record;
+  }
+
+  async listChecklistTemplates(
+    query: ChecklistTemplateListQuery,
+  ): Promise<readonly ChecklistTemplateRecord[]> {
+    const rows = [...this.checklistTemplates.values()]
+      .filter((template) => template.organizationId === query.organizationId)
+      .filter((template) => query.category === undefined || template.category === query.category)
+      .filter((template) => query.active === undefined || template.active === query.active)
+      .sort((a, b) => {
+        if (a.name !== b.name) return a.name < b.name ? -1 : 1;
+        return a.id < b.id ? -1 : 1;
+      });
+    const offset = query.offset ?? 0;
+    const limit = query.limit ?? rows.length;
+    return rows.slice(offset, offset + limit);
+  }
+
+  async createChecklistRun(input: NewChecklistRunRecord): Promise<ChecklistRunRecord> {
+    const record: ChecklistRunRecord = {
+      id: this.nextId("run"),
+      ...input,
+      // Match the adapter's `toChecklistRun`, which reads the `timestamptz` back
+      // as `Date(...).toISOString()`.
+      runAt: new Date(input.runAt).toISOString(),
+      createdAt: new Date().toISOString(),
+      updatedBy: null,
+    };
+    this.checklistRuns.set(record.id, record);
+    return record;
+  }
+
+  async findChecklistRun(query: {
+    readonly organizationId: string;
+    readonly runId: string;
+  }): Promise<ChecklistRunRecord | undefined> {
+    const run = this.checklistRuns.get(query.runId);
+    return run !== undefined && run.organizationId === query.organizationId ? run : undefined;
+  }
+
+  async updateChecklistRun(
+    input: UpdateChecklistRunRecord,
+  ): Promise<ChecklistRunRecord | undefined> {
+    const existing = await this.findChecklistRun({
+      organizationId: input.organizationId,
+      runId: input.runId,
+    });
+    if (existing === undefined) return undefined;
+    const record: ChecklistRunRecord = {
+      ...existing,
+      ...(input.status === undefined ? {} : { status: input.status }),
+      ...(input.results === undefined ? {} : { results: input.results }),
+      ...(input.notes === undefined ? {} : { notes: input.notes }),
+      ...(input.updatedBy === undefined ? {} : { updatedBy: input.updatedBy }),
+    };
+    this.checklistRuns.set(record.id, record);
+    return record;
+  }
+
+  async listChecklistRuns(query: ChecklistRunListQuery): Promise<readonly ChecklistRunRecord[]> {
+    const rows = [...this.checklistRuns.values()]
+      .filter((run) => run.organizationId === query.organizationId)
+      .filter((run) => query.templateId === undefined || run.templateId === query.templateId)
+      .filter((run) => query.locationId === undefined || run.locationId === query.locationId)
+      .filter((run) => query.status === undefined || run.status === query.status)
+      .sort((a, b) => {
+        // Newest `run_at` first, then `id` descending (the adapter's `desc`).
+        if (a.runAt !== b.runAt) return a.runAt < b.runAt ? 1 : -1;
+        return a.id < b.id ? 1 : -1;
       });
     const offset = query.offset ?? 0;
     const limit = query.limit ?? rows.length;

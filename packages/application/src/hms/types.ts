@@ -287,6 +287,132 @@ export interface CorrectiveActionListQuery {
   readonly offset?: number;
 }
 
+/**
+ * One `checklist_template` row (`DEC-091`/`DEC-096`, `HMS-005`). `items` is a
+ * jsonb array carried as-is across the port (validated at the command boundary,
+ * not re-typed here); `supersedesId` links a revision to the template row it
+ * replaces, so a run stays pinned to the exact row it used.
+ */
+export interface ChecklistTemplateRecord {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly name: string;
+  readonly category: string;
+  /** Reuses the shared `CHECK_FREQUENCY` vocabulary. */
+  readonly frequency: string;
+  /** jsonb array of `{ key, label, required? }` items. */
+  readonly items: unknown;
+  readonly active: boolean;
+  readonly supersedesId: string | null;
+  /** `timestamptz`, ISO. */
+  readonly createdAt: string;
+  readonly createdBy: string | null;
+  /** The actor of the last amendment, or null before any update. */
+  readonly updatedBy?: string | null;
+}
+
+export interface NewChecklistTemplateRecord {
+  readonly organizationId: string;
+  readonly name: string;
+  readonly category: string;
+  readonly frequency: string;
+  readonly items: unknown;
+  readonly active: boolean;
+  readonly supersedesId: string | null;
+  /** The acting actor; recorded as `created_by`. */
+  readonly createdBy: string | null;
+}
+
+/** One `checklist_template` patch. Omitted field = unchanged. */
+export interface ChecklistTemplatePatch {
+  readonly name?: string;
+  readonly category?: string;
+  readonly frequency?: string;
+  readonly items?: unknown;
+  readonly active?: boolean;
+}
+
+/** An organization-scoped patch of one template by id (`DEC-061`). */
+export interface UpdateChecklistTemplateRecord extends ChecklistTemplatePatch {
+  readonly organizationId: string;
+  readonly templateId: string;
+  /** The acting actor; recorded as `updated_by`. */
+  readonly updatedBy?: string | null;
+}
+
+/** Template filters for the store read. */
+export interface ChecklistTemplateListQuery {
+  readonly organizationId: string;
+  readonly category?: string;
+  readonly active?: boolean;
+  readonly limit?: number;
+  readonly offset?: number;
+}
+
+/**
+ * One `checklist_run` row (`DEC-091`/`DEC-096`, `HMS-005`). There is no
+ * completion instant: `runAt` is the run's time and `status` is validated
+ * against `CHECKLIST_RUN_STATUS` with no derived companion (unlike the incident
+ * close or corrective-action verification).
+ */
+export interface ChecklistRunRecord {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly templateId: string;
+  readonly locationId: string;
+  /** `timestamptz`, ISO: when the checklist was walked. */
+  readonly runAt: string;
+  readonly performedBy: string;
+  readonly status: string;
+  /** jsonb array of `{ key, outcome, note? }` results. */
+  readonly results: unknown;
+  readonly notes: string | null;
+  /** `timestamptz`, ISO. */
+  readonly createdAt: string;
+  readonly createdBy: string | null;
+  /** The actor of the last amendment, or null before any update. */
+  readonly updatedBy?: string | null;
+}
+
+export interface NewChecklistRunRecord {
+  readonly organizationId: string;
+  readonly templateId: string;
+  readonly locationId: string;
+  /** ISO instant. */
+  readonly runAt: string;
+  readonly performedBy: string;
+  readonly status: string;
+  readonly results: unknown;
+  readonly notes: string | null;
+  /** The acting actor; recorded as `created_by`. */
+  readonly createdBy: string | null;
+}
+
+/** One `checklist_run` patch. Omitted field = unchanged; `null` clears `notes`. */
+export interface ChecklistRunPatch {
+  readonly status?: string;
+  readonly results?: unknown;
+  readonly notes?: string | null;
+}
+
+/** An organization-scoped patch of one run by id (`DEC-061`). */
+export interface UpdateChecklistRunRecord extends ChecklistRunPatch {
+  readonly organizationId: string;
+  readonly runId: string;
+  /** The acting actor; recorded as `updated_by`. */
+  readonly updatedBy?: string | null;
+}
+
+/** Run filters for the store read. */
+export interface ChecklistRunListQuery {
+  readonly organizationId: string;
+  readonly templateId?: string;
+  readonly locationId?: string;
+  readonly status?: string;
+  readonly limit?: number;
+  readonly offset?: number;
+}
+
 export interface HmsStore {
   /**
    * Binds `fn` to one transaction so a create and its audit fact commit or roll
@@ -341,4 +467,34 @@ export interface HmsStore {
   listCorrectiveActions(
     query: CorrectiveActionListQuery,
   ): Promise<readonly CorrectiveActionRecord[]>;
+  createChecklistTemplate(input: NewChecklistTemplateRecord): Promise<ChecklistTemplateRecord>;
+  /** One template by id, organization-scoped (`DEC-061`), or `undefined`. */
+  findChecklistTemplate(query: {
+    readonly organizationId: string;
+    readonly templateId: string;
+  }): Promise<ChecklistTemplateRecord | undefined>;
+  /**
+   * Applies a patch to one template, organization-scoped (`DEC-061`);
+   * `undefined` when no row matches in the organization. `supersedes_id` is
+   * immutable after creation — a new revision is a new row (`HMS-005`).
+   */
+  updateChecklistTemplate(
+    input: UpdateChecklistTemplateRecord,
+  ): Promise<ChecklistTemplateRecord | undefined>;
+  listChecklistTemplates(
+    query: ChecklistTemplateListQuery,
+  ): Promise<readonly ChecklistTemplateRecord[]>;
+  createChecklistRun(input: NewChecklistRunRecord): Promise<ChecklistRunRecord>;
+  /** One run by id, organization-scoped (`DEC-061`), or `undefined`. */
+  findChecklistRun(query: {
+    readonly organizationId: string;
+    readonly runId: string;
+  }): Promise<ChecklistRunRecord | undefined>;
+  /**
+   * Applies a patch to one run, organization-scoped (`DEC-061`); `undefined`
+   * when no row matches in the organization. The run's provenance
+   * (`template_id`/`location_id`/`run_at`/`performed_by`) is never patchable.
+   */
+  updateChecklistRun(input: UpdateChecklistRunRecord): Promise<ChecklistRunRecord | undefined>;
+  listChecklistRuns(query: ChecklistRunListQuery): Promise<readonly ChecklistRunRecord[]>;
 }
