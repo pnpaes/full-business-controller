@@ -9,76 +9,102 @@ duplicate their content.
 
 **Say "resume the work" and start here.** A fresh session must be able to
 continue from this section alone. (This section was rewritten by the
-2026-09-21 HMS monitoring-slice handoff session.)
+2026-09-21 HMS incidents + corrective-actions handoff session.)
 
-**State:** `main` HEAD **`172aa9e`** (the HMS monitoring `feat(web)` commit; this context
-docs update is the next commit — the 5th commit of the slice), working tree
-clean before this edit; nothing pushed; nothing applied to DigitalOcean.
-Lineage: `02f7c33` (the Phase A / small-TECH handoff) → **the HMS monitoring
-slice, 5 commits**:
+**State:** `main`; HEAD before this slice's commits was **`4f917ee`**
+(`docs(context)` — the HMS monitoring-slice handoff, `DEC-089`); the branch
+was clean before these handoff edits; nothing pushed; nothing applied to
+DigitalOcean. Lineage: `4f917ee` → **the HMS incidents + corrective-actions
+slice, 6 commits** (the orchestrator commits them as the slice closes; if
+`git log --oneline` shows their hashes, use the real ones — otherwise refer
+to them as "the incidents slice, 6 commits"):
 
-1. `feat(persistence)` — `monitoring_point` + `monitoring_reading` (migration
-   `0037`), the append-only triggers incl. a TRUNCATE guard (migration
-   `0038`), the org-coherence guards (migration `0039`), the vocabulary keys,
-   the repository + tests; 2. `feat(domain)` — `isReadingInRange`; 3.
-   `feat(application)` — the HMS store port + `registerMonitoringPoint` /
-   `updateMonitoringPoint` (edit + deactivate) / `recordMonitoringReading` /
-   `findMonitoringPoint` / list queries + adapter + fake + tests; 4.
-   `feat(web)` — the `/api/v1/hms/monitoring-points` routes with role +
-   location-scope enforcement; 5. `docs(runbook)` + this `docs(context)`
-   update.
+1. `docs(decisions)` — `DEC-095`; 2. `feat(persistence)` — the incident +
+   corrective-action tables, migrations `0040`/`0041` and the repository;
+2. `feat(application)` — the commands/queries + adapter + fake; 4.
+   `feat(web)` — the incident/corrective-action routes; 5. `docs(runbook)` —
+   the migration-ledger/rehearsal entries; 6. `docs(context)` — this handoff.
 
-**Delivered (the first build slice of the HMS/IK-mat programme — `DEC-089`,
-requirement `HMS-002`):**
+**Delivered (programme step 19b — `DEC-090`, requirements
+`HMS-003`/`HMS-004`):** the HMS incident register (`hms_incident`: category,
+severity, occurred_at, reported_at, reported_by, nullable `owner_id` +
+`due_date`, title, description, `involves_personal_data`, status
+`open|investigating|resolved|closed`, `closed_at`) and corrective actions
+(`corrective_action`: nullable `incident_id`, nullable
+`monitoring_reading_id`, description, `owner_id`, `due_date`, status
+`open|in_progress|done|verified`, `completed_at`, `verified_by`,
+`verified_at`); org-scoped everywhere (`DEC-061`) with cross-org coherence
+guard triggers (`23514`) and role + location-scope enforcement on every
+route; evidence is the polymorphic `file_object` link (`DEC-085` — no
+storage integration). Derived invariants: `closed_at` non-null iff status
+`closed` (an idempotent re-close preserves the instant); `completed_at` iff
+`done`/`verified`; `verified_by`/`verified_at` iff `verified` (an idempotent
+re-verify preserves the original verifier); `created_by`/`updated_by`
+threaded from the session actor.
 
-- The fridge/freezer monitoring register + append-only reading logs
-  (decimal-only, `numeric(19,6)`); `in_range` derived from the point's target
-  range; an append-only guard rejecting UPDATE/DELETE/TRUNCATE (only `notes`
-  amendable); cross-org coherence guards (`23514`); org-scoped everywhere
-  (`DEC-061`); a point can be edited/deactivated; the API enforces the access
-  matrix (analyst read; location-scoped roles) — **the first route in the
-  repo to enforce location scope**.
+**Schema:** migrations through **`0041`**; **72 tables** (was 70). Next free
+decision id **`DEC-096`**.
 
-**Schema:** migrations through **`0039`**; **70 tables** (was 68). Next free
-decision id **`DEC-095`**.
+**Verification (exact):** `typecheck`, `lint`, `format:check`, `build` clean;
+**1574/1574 tests with `DATABASE_URL`** (149 files); `npm audit --omit=dev`
+= 0; `db:migrate` through `0041` is a no-op on re-run; **72** public base
+tables; both guard triggers present.
 
-**Verification (at HEAD `172aa9e`, exact):** `typecheck`, `lint`,
-`format:check`, `build` clean; **1459/1459 tests with `DATABASE_URL`** (143
-files); `npm audit --omit=dev` = 0; `db:migrate` through `0039` is a no-op on
-re-run; 70 tables. (One test flaked once under a concurrent build load; three
-subsequent clean runs.)
+**Migrations (ledger-pinned):** `0040_hms_incidents` (journal `idx` 40,
+`when` `1790024758839`, sha256
+`3e026ee552d93d0688e6f98da4821d773504b3148b5048eb20672f1d85e86dbf`);
+`0041_hms_incidents_org_guard` (journal `idx` 41, `when` `1790024895228`,
+sha256
+`cd6b44a2399ea48f033ab0c324933d691d94d760b9e0a4839d134737e6dfc332`). Down
+companions (unjournalled): `0040_hms_incidents_down.sql` (drops
+`corrective_action` then `hms_incident`; 72 → 70) and
+`0041_hms_incidents_org_guard_down.sql` (trigger-only; 72 → 72). Rehearsed:
+apply → 72; guard messages and vocabulary CHECK violations all `23514`; down
+`0041` → `0040` → 70; ledger rows deleted + re-apply → 72; third run a
+no-op. Note: the guard migration was renamed from a `0040_`-prefixed tag to
+`0041_hms_incidents_org_guard` so journal `idx` ↔ tag prefix ↔ snapshot name
+agree; the forward SQL content is unchanged, so the ledger hash stays valid.
 
-**Rehearsal (local dev DB):** `0037`/`0038`/`0039` apply → 70 tables; the
-append-only guard rejects UPDATE of `value`/`unit`/`measured_at`, DELETE and
-TRUNCATE, while a `notes`-only update succeeds; the org guards reject a
-cross-org location/storage-area/point (`23514`); the unique
-`(organization_id, code)` (`23505`) and the target-range/vocabulary checks
-(`23514`); down (`0039`→`0038`→`0037`) → 68 tables; ledger reset + re-apply → 70. `0038` was re-rehearsed after the TRUNCATE amendment (sha256 pinned).
+**Reviews and reconciliation:** `reviewer-qwen` (adversarial) — **no
+blockers, no majors**; minors: re-close overwrote `closed_at` (**accepted +
+fixed**), re-verify overwrote the original verifier (**accepted + fixed**),
+no `purchasing` denial test (**accepted + added**), and
+`involves_personal_data` is stored but **inert** (**declined as an action,
+recorded as an open point** — it is a recorded privacy-review input, not an
+implementation requirement). `reviewer-glm` (code-level) — first pass
+returned empty; the re-run was step-capped but found **no blockers, no
+majors**; minors: blank `reportedBy` unvalidated at the command boundary
+(**accepted + fixed**), malformed `dueDate` unvalidated at the command
+boundary (**accepted + fixed** via one shared `assertOptionalCalendarDate`
+helper), an audit fact emitted for a patch that only re-sets a field to its
+current value (**declined** — consistent with the existing convention), and
+force-clearing already-null fields adding no-op columns to the audit `after`
+payload (**declined** — harmless, consistent with the invariant style). A
+`tester` pass found four real defects, all **fixed**: `created_by`/
+`updated_by` never written by the adapter (now threaded end to end);
+`recordCorrectiveAction` wrongly rejected a standalone action although
+`DEC-090` makes both FKs nullable (now accepted); the re-close instant
+refreshed; stale filename comments in the renamed down file.
+`reviewer-glm`'s re-run did **not** complete (step cap) on three route test
+files, the `lib/guards.ts`/`lib/http.ts` internals, `incidents.postgres.test.ts`
+and the down migrations — **recorded as a residual coverage gap** (the down
+paths and journal consistency were verified by `reviewer-qwen` and the
+persistence rehearsal).
 
-**Reviews and reconciliation:** `reviewer-qwen` — 2 blockers (missing
-TRUNCATE guard; `analyst` missing from the read roles) and 3 majors
-(location scope not enforced; no edit/deactivate command), all **accepted and
-applied**; plus minors: the `notes` before/after audit trail **recorded as an
-open point**, and duplicate readings at the same instant **documented as
-intentional**. `reviewer-glm` — no blocker/major; its trigger-pattern and
-unreachable-404 notes need no action; its `writeAudit` transaction-binding
-note is **declined here** (it mirrors every existing adapter) and **recorded
-as a systemic open point**.
-
-**Next task:** the **HMS incidents + corrective actions** slice (`DEC-090`,
-requirements `HMS-003`/`HMS-004`) — the second build step of the IK-mat
-package; self-contained, no ADR gate. Programme build order after it:
-checklists/cleaning (`DEC-091`), equipment/maintenance (`DEC-092`), the
+**Next task:** the **HMS checklists / cleaning slice** (`DEC-091`, requirement
+`HMS-005`) — programme step 19c; self-contained, no ADR gate; reuse the
+monitoring + incidents slices' role + location-scope enforcement pattern.
+Programme build order after it: equipment/maintenance (`DEC-092`), the
 compliance export (`DEC-093`), the `employee` entity + personnel documents
 (`DEC-087`), the staff document library (`DEC-088`), and the `task`/`approval`
 platform tables (`DEC-094`; the `job`/worker/outbox layer gated on
 `ADR-0004` acceptance).
 
-**Scope (do):** implement the HMS incidents + corrective-actions slice
-(additive migrations + vocabularies, domain, application, web layer per the
-existing package boundaries), keeping every change organization-scoped
-(`DEC-061`) and reusing the HMS slice's location-scope enforcement pattern
-(the monitoring-points routes are the reference); rehearsed down path, a
+**Scope (do):** implement the HMS checklists / cleaning slice (additive
+migrations + vocabularies, domain, application, web layer per the existing
+package boundaries), keeping every change organization-scoped (`DEC-061`)
+and reusing the incidents slice's role + location-scope enforcement pattern
+(the `/api/v1/hms/*` routes are the reference); rehearsed down path, a
 `.test.ts` for new non-trivial logic, small atomic commits with the rollback
 approach in the body (per `AGENTS.md` Rule 2), and `CONTEXT.md` updated at
 the end. Then continue down the programme build order above.
@@ -89,32 +115,35 @@ storage integration (deferred) or resolve the `file_object`
 immutability/soft-delete posture or the five deferred file FKs silently; do
 not resolve the recorded open inputs silently — the systemic location-scope
 gap, the audit-write transaction binding, the `notes`-amendment audit trail,
-the WF-003 self-assignment login model, the privacy-review retention periods
-per file class, the FIN variance-tolerance thresholds, consumption grain A1,
-the price-version scope-resolution fallback, the OPS receipt destination
+the **corrective-action location-scope ceiling**, the
+`involves_personal_data` privacy-review input, the `DEC-095` provisional
+items, the `reviewer-glm` step-capped coverage gap, the WF-003
+self-assignment login model, the privacy-review retention periods per file
+class, the FIN variance-tolerance thresholds, consumption grain A1, the
+price-version scope-resolution fallback, the OPS receipt destination
 `storage_area_id` policy; do not deploy, `terraform apply`, or write
 externally (per `DEC-015`); do not rewrite the specification inputs
 (`00_README.md` … `13_`, `docs/phase0/`, `schemas/`, `samples/`) except for
 the already-amended programme scope.
 
-**Files/paths:** new additive migrations under `packages/persistence/drizzle/`
-(incident + corrective-action tables) + the Drizzle schema
-(`packages/persistence/src/schema/`) + repository + domain/application
-packages + `apps/web` slice + `docs/runbooks/persistence-migrations.md`;
-`12_OPEN_DECISIONS.md` if a decision is recorded; update `CONTEXT.md` at the
-end.
+**Files/paths:** new additive migrations under
+`packages/persistence/drizzle/` (checklist/cleaning tables) + the Drizzle
+schema (`packages/persistence/src/schema/`) + repository +
+domain/application packages + `apps/web` slice +
+`docs/runbooks/persistence-migrations.md`; `12_OPEN_DECISIONS.md` if a
+decision is recorded; update `CONTEXT.md` at the end.
 
 **Authoritative docs to read first:** the programme requirements
 (`HMS-001…HMS-007` and the phase map in `11_REQUIREMENTS_CATALOG.md`, the
 scope amendment in `01_PRODUCT_SCOPE.md`, the access-matrix rows in
-`07_SECURITY_AND_NFR.md`, the screens in `08_UI_UX.md`); `DEC-086`…`DEC-094`
-in `12_OPEN_DECISIONS.md` (next free id **`DEC-095`**);
-`docs/BUILD_ROADMAP.md` §1 and §4 (row 19b); this file's "Open decisions /
+`07_SECURITY_AND_NFR.md`, the screens in `08_UI_UX.md`); `DEC-086`…`DEC-095`
+in `12_OPEN_DECISIONS.md` (next free id **`DEC-096`**);
+`docs/BUILD_ROADMAP.md` §1 and §4 (row 19c); this file's "Open decisions /
 inputs"; `AGENTS.md` Rules 1–3.
 
 **Acceptance / verification:** `export NVM_DIR="$HOME/.nvm"; . "$NVM_DIR/nvm.sh";
 nvm use 22`, then `npm run typecheck` before the change, `npm run lint`,
-`npm run test` (with `DATABASE_URL` — current baseline: **1459/1459**, 143
+`npm run test` (with `DATABASE_URL` — current baseline: **1574/1574**, 149
 files), `npm run build`, `npm run format:check`, `npm audit --omit=dev` = 0;
 `db:migrate` applies any new migration, is a no-op on re-run, and its down
 path is rehearsed; after each commit re-run the suite at the clean tree and
@@ -126,40 +155,51 @@ and next steps → commit → next task. Global ruleset
 (`~/.config/kilo/AGENTS.md`): compact context at 25 %; pausing is permitted
 above USD 20 at a clean point (committed, verified, documented).
 
-**Open inputs (recorded, do not decide):** the **systemic location-scope gap**
-(HMS is the first route to enforce location scope; the other routes do not
-pass `locationId` to `isAuthorizedFor`); the **audit-write transaction
-binding** (the adapters' `writeAudit` closes over the parent `db`, so the
-audit fact is not strictly inside `withTransaction` — systemic, a separate
-cross-cutting slice); the **`notes`-amendment audit trail** (no before/after
-history yet); duplicate readings at the same instant are **intentional** (no
-dedupe); the **`ADR-0004` gate** (accepting it — the named decider — is
-required before the `job`/worker/outbox layer of `DEC-094`); the **WF-003
-self-assignment login model** (must a self-assigning employee hold an
-`app_user` login?); the **privacy-review retention periods per file class**
-(personnel documents, incident register, acknowledgements); the standing
-ones — the `file_object` immutability/soft-delete posture, the five deferred
-file FKs, the storage integration, the FIN variance-tolerance thresholds (the
-`DEC-084` producers stay unconditional/provisional pending them), the
-provisional `DEC-084` severity, consumption grain A1 (`DEC-009`), the
-price-version scope-resolution fallback, the OPS receipt destination
-`storage_area_id` policy, receipts not wired to the ledger, the unsigned
-golden fixtures, the remaining `DEC-083`-review points, the
+**Open inputs (recorded, do not decide):** from this slice — the
+**corrective-action location-scope ceiling** (`corrective_action` has no
+`location_id`, so a location-scoped caller must supply `incidentId` on the
+flat list, and a reading-linked action is fail-closed 403 for a scoped
+caller; the upgrade path is a `location_id` column or a location-joined
+query); `involves_personal_data` is stored but drives no behaviour until the
+privacy review lands; operators (kitchen/FOH) may mark a corrective action
+`in_progress`/`done` but never `verified` (by design); a standalone
+corrective action with neither FK link is allowed by `DEC-090`; the
+`DEC-095` provisional items (severity vocabulary, incident
+`owner_id`/`due_date`, the Kitchen/FOH record-vs-read reading, evidence
+shape, no state-machine coupling) still need owner/OPS confirmation; the
+`reviewer-glm` step-capped coverage gap above. Standing ones: the **systemic
+location-scope gap** (HMS is the first route to enforce location scope; the
+other routes do not pass `locationId` to `isAuthorizedFor`); the
+**audit-write transaction binding** (the adapters' `writeAudit` closes over
+the parent `db`, so the audit fact is not strictly inside
+`withTransaction` — systemic, a separate cross-cutting slice); the
+**`notes`-amendment audit trail** (no before/after history yet); duplicate
+readings at the same instant are **intentional** (no dedupe); the
+**`ADR-0004` gate** (accepting it — the named decider — is required before
+the `job`/worker/outbox layer of `DEC-094`); the **WF-003 self-assignment
+login model** (must a self-assigning employee hold an `app_user` login?);
+the **privacy-review retention periods per file class** (personnel
+documents, incident register, acknowledgements); the `file_object`
+immutability/soft-delete posture, the five deferred file FKs, the storage
+integration, the FIN variance-tolerance thresholds, consumption grain A1
+(`DEC-009`), the price-version scope-resolution fallback, the OPS receipt
+destination `storage_area_id` policy, receipts not wired to the ledger, the
+unsigned golden fixtures, the remaining `DEC-083`-review points, the
 owner/deployment inputs. Full list under "Open decisions / inputs"; next
-free decision id **`DEC-095`**.
+free decision id **`DEC-096`**.
 
 **Parallel owner action — golden-fixture sign-off:** the six golden fixtures are
 prepared as machine-readable JSON under `tests/fixtures/` (`DEC-065`) with the
 sign-off trail ready; finance + product owner sign. Until signed, no cost is
 "verified"; `I8`/`I9` still gate the real rates behind the fixtures.
 
-**Step after this one:** checklists/cleaning (`DEC-091`), then
-equipment/maintenance (`DEC-092`), the compliance export (`DEC-093`),
-`employee` + personnel documents (`DEC-087`), the staff document library
-(`DEC-088`) and the `task`/`approval` tables (`DEC-094`); the receipt→ledger
-wiring if the OPS destination `storage_area_id` policy lands; row 13 when
-history/grain quality (I11) is confirmed; the deployment rehearsal once the
-owner inputs arrive (see "Next up").
+**Step after this one:** equipment/maintenance (`DEC-092`), then the
+compliance export (`DEC-093`), `employee` + personnel documents (`DEC-087`),
+the staff document library (`DEC-088`) and the `task`/`approval` tables
+(`DEC-094`; the `job`/worker/outbox layer gated on `ADR-0004`); the
+receipt→ledger wiring if the OPS destination `storage_area_id` policy lands;
+row 13 when history/grain quality (I11) is confirmed; the deployment
+rehearsal once the owner inputs arrive (see "Next up").
 
 ## What this is
 
@@ -188,9 +228,10 @@ contract step delivered as migration `0034`), the provisional `DEC-084`
 producers, and the `DEC-085` `file_object` platform table (migration `0035`,
 with the `import_run.file_object_id` FK and the `file_object_org_guard`
 trigger `0036` — row 11 complete), with the design
-system/app shell/screens and migrations `0017`–`0039`; the
-`DEC-089` HMS monitoring-points + readings slice — the first build slice of
-the `DEC-086`–`DEC-094` programme (migrations `0037`–`0039`) — is committed; the
+system/app shell/screens and migrations `0017`–`0041`; the
+`DEC-089` HMS monitoring-points + readings slice and the `DEC-090`
+incidents + corrective-actions slice — the first two build slices of
+the `DEC-086`–`DEC-094` programme (migrations `0037`–`0041`) — are committed; the
 `DEC-072`–`DEC-085` low-risk implementations (effective-dated reconciliation
 tolerance, sales-line reversal, `MAPPING_STATE` `conflict`, typed recipe 404s,
 the `price_version` slice, the `settlement.status`/`reconciliation.scope_type`
@@ -202,8 +243,8 @@ import posting-policy enforcement).
 
 - `00_README.md` … `13_AGENT_BUILD_BRIEF.md` — the specification package
   (inputs, rarely edited). Start with `00_README.md`.
-- `12_OPEN_DECISIONS.md` — the accepted decisions (DEC-001…DEC-094); the
-  authority. New decisions are appended here (next free id `DEC-095`).
+- `12_OPEN_DECISIONS.md` — the accepted decisions (DEC-001…DEC-095); the
+  authority. New decisions are appended here (next free id `DEC-096`).
 - `docs/phase0/` — close-out plan, calculation contract, data dictionary, golden
   fixtures, source-data request, notes. See `docs/phase0/PHASE0_CLOSEOUT_PLAN.md`
   and `docs/phase0/CALCULATION_CONTRACT.md`.
@@ -222,62 +263,50 @@ import posting-policy enforcement).
 
 ## Current status
 
-- **As of:** 2026-09-21 — branch `main`; HEAD `172aa9e` (the HMS monitoring
-  `feat(web)` commit; this context docs update is the next commit — the 5th
-  commit of the slice), working tree clean before this edit. Lineage:
-  `02f7c33` (the Phase A / small-TECH handoff) → **the HMS monitoring slice,
-  5 commits**: 1. `feat(persistence)` — `monitoring_point` +
-  `monitoring_reading` (migration `0037`), the append-only triggers incl. a
-  TRUNCATE guard (migration `0038`), the org-coherence guards (migration
-  `0039`), the vocabulary keys, the repository + tests; 2. `feat(domain)` —
-  `isReadingInRange`; 3. `feat(application)` — the HMS store port +
-  `registerMonitoringPoint` / `updateMonitoringPoint` (edit + deactivate) /
-  `recordMonitoringReading` / `findMonitoringPoint` / list queries, plus the
-  adapter, the fake and tests; 4. `feat(web)` — the `/api/v1/hms/monitoring-points`
-  routes with role + location-scope enforcement; 5. `docs(runbook)` + this
-  `docs(context)` update — **all committed** once this docs commit lands
-  (see "Work log" and "Reversibility").
-  **Delivered (the first build slice of the HMS/IK-mat programme —
-  `DEC-089`, requirement `HMS-002`):** the fridge/freezer monitoring
-  register + append-only reading logs (decimal-only, `numeric(19,6)`);
-  `in_range` derived from the point's target range; an append-only guard
-  rejecting UPDATE/DELETE/TRUNCATE (only `notes` amendable); cross-org
-  coherence guards (`23514`); org-scoped everywhere (`DEC-061`); a point can
-  be edited/deactivated; the API enforces the access matrix (analyst read;
-  location-scoped roles) — **the first route in the repo to enforce location
-  scope**. **Nothing applied to DigitalOcean.**
-  **Schema:** migrations through **`0039`**; **70 tables** (was 68). Next
-  free decision id **`DEC-095`**.
-  **Rehearsal evidence (local dev DB):** `0037`/`0038`/`0039` apply →
-  70 tables; the append-only guard rejects UPDATE of
-  `value`/`unit`/`measured_at`, DELETE and TRUNCATE, while a `notes`-only
-  update succeeds; the org guards reject a cross-org
-  location/storage-area/point (`23514`); the unique
-  `(organization_id, code)` (`23505`) and the target-range/vocabulary checks
-  (`23514`); down (`0039`→`0038`→`0037`) → 68 tables; ledger reset +
-  re-apply → 70. `0038` was re-rehearsed after the TRUNCATE amendment (sha256
-  pinned).
-  **Reviews and reconciliation.** `reviewer-qwen` — 2 blockers (missing
-  TRUNCATE guard; `analyst` missing from the read roles) and 3 majors
-  (location scope not enforced; no edit/deactivate command), all **accepted
-  and applied**; plus minors: the `notes` before/after audit trail **recorded
-  as an open point**, and duplicate readings at the same instant **documented
-  as intentional**. `reviewer-glm` — no blocker/major; its trigger-pattern
-  and unreachable-404 notes need no action; its `writeAudit`
-  transaction-binding note is **declined here** (it mirrors every existing
-  adapter) and **recorded as a systemic open point**.
-  **Verification (at HEAD `172aa9e`, exact):** `typecheck`, `lint`,
-  `format:check`, `build` clean; **1459/1459 tests with `DATABASE_URL`** (143
-  files); `npm audit --omit=dev` 0; `db:migrate` through `0039` is a no-op on
-  re-run; **70 tables**; every read/write organization-scoped (`DEC-061`).
-  **Also delivered earlier this day (the `DEC-085` `file_object` slice —
-  full detail in "Reversibility" and the work log):** the `file_object`
-  platform table (migration `0035`) with `UNIQUE (organization_id,
-storage_key)`, the `import_run.file_object_id` FK and the
-  `file_object_org_guard` trigger (migration `0036`); `ADR-0006` accepted
-  2026-09-21 (the retention periods per file class remain a privacy-review
-  open item); **row 11 is complete**; the storage integration (Spaces
-  client / signed URLs / retention enforcement) stays deferred.
+- **As of:** 2026-09-21 — branch `main`; HEAD before this slice's commits was
+  `4f917ee` (the HMS monitoring-slice handoff); the incidents slice up to 6
+  commits (`docs(decisions)` `DEC-095`, `feat(persistence)`,
+  `feat(application)`, `feat(web)`, `docs(runbook)` and this docs commit); the
+  branch was clean before these handoff edits. Lineage:
+  `02f7c33` (the Phase A / small-TECH handoff) → the HMS monitoring slice,
+  5 commits → **the HMS incidents + corrective-actions slice, 6 commits**
+  — **all committed** once the orchestrator's commits land (see "Work log"
+  and "Reversibility").
+  **Delivered (programme step 19b — `DEC-090`, requirements
+  `HMS-003`/`HMS-004`):** the HMS incident register (`hms_incident`) and
+  corrective actions (`corrective_action`), org-scoped everywhere (`DEC-061`)
+  with cross-org coherence guard triggers (`23514`) and role +
+  location-scope enforcement on every route; evidence is the polymorphic
+  `file_object` link (`DEC-085`); derived invariants (`closed_at` iff
+  `closed`, `completed_at` iff `done`/`verified`, `verified_by`/`verified_at`
+  iff `verified` — idempotent re-close/re-verify preserve the original
+  instant/verifier); `created_by`/`updated_by` threaded from the session
+  actor. **Nothing applied to DigitalOcean.**
+  **Schema:** migrations through **`0041`**; **72 tables** (was 70). Next
+  free decision id **`DEC-096`**.
+  **Rehearsal evidence (local dev DB):** `0040`/`0041` apply → 72 tables;
+  guard messages and vocabulary CHECK violations all `23514`; down
+  `0041` → `0040` → 70; ledger rows deleted + re-apply → 72; third run a
+  no-op. The guard migration was renamed so journal `idx` ↔ tag prefix ↔
+  snapshot name agree; the forward SQL is unchanged (ledger hash valid).
+  **Reviews and reconciliation.** `reviewer-qwen` — no blockers, no majors;
+  three accepted minors (re-close instant, re-verify verifier, `purchasing`
+  denial test) and `involves_personal_data` inert (declined as an action,
+  recorded as an open point). `reviewer-glm` — re-run step-capped, no
+  blocker/major; two accepted command-boundary fixes (blank `reportedBy`,
+  malformed `dueDate`, shared `assertOptionalCalendarDate`); two declined
+  minors (no-change audit fact, no-op audit columns). A `tester` pass found
+  four real defects, all fixed; its step-capped residual coverage gap is
+  recorded.
+  **Verification:** `typecheck`, `lint`, `format:check`, `build` clean;
+  **1574/1574 tests with `DATABASE_URL`** (149 files); `npm audit --omit=dev`
+  = 0; `db:migrate` through `0041` is a no-op on re-run; **72 tables**;
+  organization-scoped everywhere (`DEC-061`).
+  **Also delivered earlier this day (the `DEC-089` HMS monitoring slice —
+  full detail in "Reversibility" and the work log):** the fridge/freezer
+  monitoring register + append-only reading logs (migrations
+  `0037`–`0039`); `ADR-0006` accepted 2026-09-21; the storage integration
+  (Spaces client / signed URLs / retention enforcement) stays deferred.
   **Dev server (session-scoped):** the previous session ran http://localhost:3000
   with `DATABASE_URL=postgres://aquarela:aquarela@localhost:5432/aquarela`,
   `ORGANIZATION_ID=1448a476-32f2-426f-b153-11a851011e48`; sign in `owner` /
@@ -285,14 +314,14 @@ storage_key)`, the `import_run.file_object_id` FK and the
   data is seeded including the `zettle-legacy` `import_profile`
   (`profile_version` `i19-v1`, `posting_policy` `allow_partial`); a fresh
   session must restart the server.
-  Remaining roadmap: **row 11 is complete** (`file_object` delivered
-  2026-09-21, `DEC-085`); the new programme (Phase 6 + Epics 20/21 —
-  `DEC-086`…`DEC-094`) is approved and its first build slice (HMS monitoring
-  points + readings, `DEC-089`) is **delivered**: next build slice incidents +
-  corrective actions (`DEC-090`), then checklists/cleaning, equipment/
-  maintenance, the compliance export, `employee` + personnel documents, the
-  staff document library and the `task`/`approval`
-  tables (`DEC-094`; the `job`/worker/outbox layer gated on `ADR-0004`).
+  Remaining roadmap: the HMS/personnel-documents programme (Phase 6 + Epics
+  20/21 — `DEC-086`…`DEC-094`) is approved; rows 19a (monitoring `DEC-089`)
+  and 19b (incidents + corrective actions, `DEC-090`/`DEC-095`) are
+  **delivered**: next build slice 19c checklists/cleaning (`DEC-091`), then
+  19d equipment/maintenance (`DEC-092`), 19e the compliance export
+  (`DEC-093`), `employee` + personnel documents (`DEC-087`), the staff
+  document library (`DEC-088`) and the `task`/`approval` tables
+  (`DEC-094`; the `job`/worker/outbox layer gated on `ADR-0004`).
   Beyond the programme: the receipt→ledger wiring needs the OPS destination
   `storage_area_id` policy; row 13 is data-gated
   on history/grain quality (I11); rows 15–18 blocked (data /
@@ -340,9 +369,9 @@ storage_key)`, the `import_run.file_object_id` FK and the
 - **DEC-049 closed:** drizzle-orm 0.45.2 / drizzle-kit 0.31.10 upgrade (`cc86f13`);
   `npm audit --omit=dev` = 0.
 - **Tests:** without `DATABASE_URL` the integration tests skip; with it
-  **1459/1459 passed** (143 files) — recorded 2026-09-21 at HEAD `172aa9e`
-  (all checks pass; `db:migrate` through `0039` is a no-op). Re-verify
-  with `npm run test` and update if they differ.
+  **1574/1574 passed** (149 files) — recorded 2026-09-21 at the
+  incidents-slice tree (all checks pass; `db:migrate` through `0041` is a
+  no-op). Re-verify with `npm run test` and update if they differ.
   Open verification debt: the per-process rate limiter needs a shared
   store before multi-instance deployment; the reset-token delivery is a no-op stub
   until the email slice; the palette hex values and data-viz palette semantics
@@ -419,7 +448,8 @@ storage_key)`, the `import_run.file_object_id` FK and the
   **`0038`** the append-only triggers incl. a TRUNCATE guard (only `notes`
   amendable) and **`0039`** the cross-org coherence guards (the
   `DEC-079`/`DEC-081` precedent);
-  ledger through `0039`; the `asset`
+  ledger through `0041` (`0040` the `DEC-090` incident +
+  corrective-action tables, `0041` their coherence guards); the `asset`
   register is deliberately deferred), the
   advisory-locked migrator, worker/scheduler
   stubs and the `infra/` Terraform scaffold validated offline. Not applied.
@@ -444,39 +474,45 @@ storage_key)`, the `import_run.file_object_id` FK and the
 slice, the `DEC-082` posting-policy enforcement, the `DEC-083`
 dispositions-table slice with its `0034` contract step, the `DEC-084`
 variance-producer slice and the `DEC-085` `file_object` slice —
-**row 11 is complete**; the `DEC-072`–`DEC-094`
+**row 11 is complete**; the `DEC-072`–`DEC-095`
 decisions + low-risk implementations are done,
 committed `aaec400`–`8b22468` plus the slice commits; the new programme
-(Phase 6 + Epics 20/21, `DEC-086`…`DEC-094`) is approved and its first build
-slice — HMS monitoring points + readings (`DEC-089`) — is **delivered**;
+(Phase 6 + Epics 20/21, `DEC-086`…`DEC-094`) is approved and its first two
+build slices — HMS monitoring points + readings (`DEC-089`) and HMS
+incidents + corrective actions (`DEC-090`) — are **delivered**;
 further original rows are
 gated — row 13 on data (I11),
 rows 15–18 on data/ADRs; row 14 becomes buildable once `employee` lands).
 The list below is the short narrative form.
 
-1. **HMS incidents + corrective actions (`DEC-090`, requirements
-   `HMS-003`/`HMS-004`) — the lead item:** the second build step of the
-   IK-mat package; self-contained, no ADR gate; reuse the monitoring slice's
+1. **HMS checklists / cleaning (`DEC-091`, requirement `HMS-005`) — the lead
+   item:** programme step 19c; the third build step of the IK-mat package;
+   self-contained, no ADR gate; reuse the incidents slice's role +
    location-scope enforcement pattern.
-2. **Programme build order after the incidents slice (`DEC-086`…`DEC-094`):**
-   checklists/cleaning (`DEC-091`), equipment/maintenance (`DEC-092`), the
-   compliance export (`DEC-093`), then the `employee` entity +
-   personnel documents (`DEC-087`), the staff document library (`DEC-088`),
-   and the `task`/`approval` platform tables
+2. **Programme build order after the checklists slice (`DEC-086`…`DEC-094`):**
+   equipment/maintenance (`DEC-092`), the compliance export (`DEC-093`),
+   then the `employee` entity + personnel documents (`DEC-087`), the staff
+   document library (`DEC-088`), and the `task`/`approval` platform tables
    (`DEC-094` — the `job`/worker/outbox layer stays gated on **`ADR-0004`
    acceptance**). Scheduling/shifts (row 14) becomes buildable once
    `employee` lands, subject to the **WF-003 self-assignment login input**
    (must a self-assigning employee hold an `app_user` login?) and the
    privacy-review retention periods per file class.
-3. **New open points from the monitoring slice (recorded, do not resolve
-   silently):** the **systemic location-scope gap** (the HMS
-   monitoring-points routes are the first to enforce location scope; the
-   other routes do not pass `locationId` to `isAuthorizedFor`); the
-   **audit-write transaction binding** (the adapters' `writeAudit` closes
-   over the parent `db`, so the audit fact is not strictly inside
-   `withTransaction` — systemic, a separate cross-cutting slice); the
-   **`notes`-amendment audit trail** (no before/after history yet); duplicate
-   readings at the same instant are **intentional** (no dedupe).
+3. **New open points from the incidents slice (recorded, do not resolve
+   silently):** the **corrective-action location-scope ceiling**
+   (`corrective_action` has no `location_id`; a scoped caller must supply
+   `incidentId`, and a reading-linked action is fail-closed 403 — upgrade
+   path: a `location_id` column or a location-joined query); `involves_personal_data`
+   stored but inert until the privacy review; the `DEC-095` provisional
+   items (severity vocabulary, incident `owner_id`/`due_date`, the
+   Kitchen/FOH record-vs-read reading, evidence shape, no state-machine
+   coupling) awaiting owner/OPS confirmation; the `reviewer-glm`
+   step-capped coverage gap; carried over from the monitoring slice — the
+   **systemic location-scope gap** (HMS first; the other routes do not pass
+   `locationId` to `isAuthorizedFor`); the **audit-write transaction
+   binding** (`writeAudit` closes over the parent `db`); the
+   **`notes`-amendment audit trail**; duplicate readings at the same
+   instant are **intentional**.
 4. **Owner/OPS/data inputs** (gate the remaining roadmap items): the **OPS
    receipt destination `storage_area_id` policy** (unblocks the receipt→ledger
    wiring); the **FIN variance-tolerance thresholds** (un-provisionalises the
@@ -530,6 +566,28 @@ The list below is the short narrative form.
 
 ## Open decisions / inputs (do not block development)
 
+- **Recorded this session (2026-09-21, from the `DEC-090` HMS
+  incidents-slice reviews and reconciliation; recorded, not decided — do
+  not resolve silently):** the **corrective-action location-scope ceiling**
+  (`corrective_action` carries no `location_id`, so a location-scoped
+  caller must supply `incidentId` on the flat list, and a reading-linked
+  action is fail-closed 403 for a scoped caller; the upgrade path is a
+  `location_id` column or a location-joined query); `involves_personal_data`
+  is stored but **inert** — a recorded privacy-review input, no behaviour
+  until the privacy review lands; a standalone corrective action with
+  neither FK link is allowed by `DEC-090` (by design); operators
+  (kitchen/FOH) may mark an action `in_progress`/`done` but never
+  `verified` (by design); the **`DEC-095` provisional items** (severity
+  vocabulary, incident `owner_id`/`due_date`, the Kitchen/FOH
+  record-vs-read reading, evidence shape, no state-machine coupling) still
+  need owner/OPS confirmation; the **`reviewer-glm` step-capped coverage
+  gap** (three route test files, `lib/guards.ts`/`lib/http.ts` internals,
+  `incidents.postgres.test.ts`, the down migrations — the down paths and
+  journal consistency were verified by `reviewer-qwen` and the persistence
+  rehearsal).
+  **The `DEC-090` incidents slice is delivered** (programme step 19b;
+  migrations `0040`/`0041`; 72 tables). Next free decision id
+  **`DEC-096`**.
 - **Recorded this session (2026-09-21, from the `DEC-089` HMS monitoring-slice
   reviews; recorded, not decided — do not resolve silently):**
   (i) the **systemic location-scope gap** — the HMS monitoring-points routes
@@ -567,12 +625,13 @@ The list below is the short narrative form.
   **privacy-review retention periods per file class** (personnel documents,
   incident register, acknowledgements). **Build order:** ~~HMS monitoring
   points + readings (`DEC-089`)~~ **delivered 2026-09-21** (see the bullet
-  above) → incidents + corrective actions
-  (`DEC-090`) → `employee` + personnel documents (`DEC-087`) → staff
-  document library (`DEC-088`) → checklists/cleaning (`DEC-091`) →
-  equipment/maintenance (`DEC-092`) → compliance export (`DEC-093`) →
+  above) → ~~incidents + corrective actions
+  (`DEC-090`)~~ **delivered 2026-09-21** → checklists/cleaning
+  (`DEC-091`) → equipment/maintenance (`DEC-092`) → compliance export
+  (`DEC-093`) → `employee` + personnel documents (`DEC-087`) → staff
+  document library (`DEC-088`) →
   `task`/`approval` (`DEC-094`, job layer gated). Next free decision id
-  **`DEC-095`**.
+  **`DEC-096`**.
 - **Resolved this session (2026-09-21, commits `bda0b6b` / `8b22468` /
   `02f7c33`):** the **`numeric(19,6)` digit cap** in `packages/domain/src/decimal.ts` —
   `parseDecimal` now rejects a value beyond the `numeric(19, scale)` storage
@@ -821,7 +880,7 @@ The list below is the short narrative form.
   `0034`, closing the tracked contract step). Also a
   live-check left one dev `import_run` row in the local database (see "Local
   dev-DB cleanup" below). Record each resolution in `12_OPEN_DECISIONS.md`
-  (next free id **`DEC-095`**); do not resolve silently.
+  (next free id **`DEC-096`**); do not resolve silently.
 - **Row-12 sales/reconciliation open points (2026-09-20; also tracked in
   `docs/BUILD_ROADMAP.md` §5 "Row-12 sales/reconciliation open points";
   recorded, not decided — do not resolve silently):** consumption grain A1
@@ -837,7 +896,7 @@ The list below is the short narrative form.
   `pending`). Row 13 is data-gated on history/grain quality (I11); row 14 is
   owner-gated on the privacy review / access matrix; rows 15–18 remain blocked
   (data / `ADR-0009`–`0011`). Record each resolution in
-  `12_OPEN_DECISIONS.md` (next free id **`DEC-095`**); do not resolve silently.
+  `12_OPEN_DECISIONS.md` (next free id **`DEC-096`**); do not resolve silently.
 - **Slice-9/10 open owner questions (2026-09-20; also tracked in
   `docs/BUILD_ROADMAP.md` §5 "Slice-9/10 open owner questions"):** output-cost
   allocation across multiple outputs/by-products (FIN); ~~yield-variance tolerance
@@ -852,7 +911,7 @@ The list below is the short narrative form.
   ledger (TECH); ~~`lotTracked` unenforced (TECH)~~ resolved 2026-09-21
   (`DEC-078`); `DEC-009` daily theoretical
   consumption not implemented (TECH). Record each resolution in
-  `12_OPEN_DECISIONS.md` (next free id **`DEC-095`**); do not resolve silently.
+  `12_OPEN_DECISIONS.md` (next free id **`DEC-096`**); do not resolve silently.
 - **Deployment prerequisite inputs (owner; before any real `apply`):** `ADR-0004`
   acceptance; a real scoped `DIGITALOCEAN_TOKEN`; a provisioned private Spaces
   state bucket + state credentials; the sanitized-data owner; the legacy
@@ -1076,6 +1135,21 @@ and Spaces credentials via `-backend-config` / `AWS_ACCESS_KEY_ID` +
 (see `docs/runbooks/deployment.md`).
 
 ## Reversibility
+
+- **2026-09-21 HMS incidents + corrective-actions slice (`DEC-090`/
+  `DEC-095`; up to 6 commits incl. this docs commit; nothing pushed)**:
+  1. `docs(decisions)` — `DEC-095`; 2. `feat(persistence)` — the incident +
+     corrective-action tables (migration `0040`) + the repository + tests;
+  2. `feat(application)` — the commands/queries + adapter + fake; 4.
+     `feat(web)` — the incident/corrective-action routes; 5. `docs(runbook)`
+     — the migration-ledger/rehearsal entries; 6. this `docs(context)`
+     commit — each independently revertible with `git revert <sha>`.
+     Migration **`0040` adds two tables** (additive; down drops
+     `corrective_action` then `hms_incident`, 72 → 70); **`0041` is
+     trigger-only** (down 72 → 72); the rehearsed down order is
+     **`0041`→`0040`**. If the DB is rolled back, delete the two ledger rows
+     (`created_at` `1790024758839` / `1790024895228`) and re-migrate; 72
+     tables after re-apply. Nothing pushed; nothing applied to DigitalOcean.
 
 - **2026-09-21 HMS monitoring slice (`DEC-089`; 5 commits incl. this docs
   commit; nothing pushed)**: 1. `feat(persistence)` — `monitoring_point` +
@@ -1331,12 +1405,13 @@ scale)` cap in `parseDecimal` + `packages/domain/src/decimal.test.ts`;
   them with `git revert` if needed. **No cloud resource was created — only offline
   `fmt`/`validate`/`plan` ran, never `apply`; no Terraform state exists, and
   nothing has been applied to DigitalOcean.**
-- Migrations 0000–0039 are additive with tested down paths (`0011` down drops the
+- Migrations 0000–0041 are additive with tested down paths (`0011` down drops the
   four slice-6 tables; `0012` down drops the three EXCLUDE constraints; `0015`/
-  `0016` down drop their indexes/invariant — rehearsed; `0017`–`0039` down are
+  `0016` down drop their indexes/invariant — rehearsed; `0017`–`0041` down are
   rehearsed — see the slice-8 bullet, the slice-9/10, row-11, row-12,
   DEC-072–076, price-version, `DEC-078`, `DEC-079`, `DEC-080`, `DEC-081`,
-  `DEC-083`, `DEC-085` `file_object` and `DEC-089` HMS monitoring
+  `DEC-083`, `DEC-085` `file_object`, `DEC-089` HMS monitoring and
+  `DEC-090` HMS incidents
   bullets
   above). While the
   database is
@@ -1348,6 +1423,95 @@ CASCADE; CREATE SCHEMA public; npm run db:migrate` (see the runbook). Once data
   (`DEC-015`).
 
 ## Work log (append-only, newest first)
+
+### 2026-09-21 — HMS incidents + corrective actions delivered (DEC-090/DEC-095, migrations 0040–0041); the second IK-mat build slice; handoff updated
+
+`main`; HEAD before the slice was `4f917ee` (the HMS monitoring-slice
+handoff); the slice lands as up to 6 commits, of which this context docs
+update is the last (the orchestrator commits them as the slice closes —
+if `git log --oneline` shows their hashes, use the real ones; nothing
+pushed; nothing applied to DigitalOcean). **6 commits** in order:
+`docs(decisions)` — `DEC-095`; `feat(persistence)` — the incident +
+corrective-action tables (migrations `0040`/`0041`) + the repository +
+tests; `feat(application)` — the commands/queries + adapter + fake + tests;
+`feat(web)` — the incident/corrective-action routes with role +
+location-scope enforcement; `docs(runbook)` — the migration-ledger/
+rehearsal entries; this `docs(context)` update.
+
+- **Delivered (`DEC-090`, requirements `HMS-003`/`HMS-004` — the second
+  build slice of the HMS/IK-mat programme, step 19b):** the HMS incident
+  register (`hms_incident`: category, severity, occurred_at, reported_at,
+  reported_by, nullable `owner_id` + `due_date`, title, description,
+  `involves_personal_data`, status
+  `open|investigating|resolved|closed`, `closed_at`) and corrective actions
+  (`corrective_action`: nullable `incident_id`, nullable
+  `monitoring_reading_id`, description, `owner_id`, `due_date`, status
+  `open|in_progress|done|verified`, `completed_at`, `verified_by`,
+  `verified_at`); org-scoped everywhere (`DEC-061`); cross-org coherence
+  guard triggers (`23514`); role + location-scope enforcement on every
+  route; evidence is the polymorphic `file_object` link (`DEC-085`, no
+  storage integration); derived invariants (`closed_at` iff `closed`,
+  `completed_at` iff `done`/`verified`, `verified_by`/`verified_at` iff
+  `verified` — idempotent re-close/re-verify preserve the original
+  instant/verifier); `created_by`/`updated_by` threaded from the session
+  actor. **Schema:** migrations through `0041`; **72 tables** (was 70).
+  Next free decision id **`DEC-096`**.
+- **Migrations:** `0040_hms_incidents` (journal `idx` 40, `when`
+  `1790024758839`, sha256
+  `3e026ee552d93d0688e6f98da4821d773504b3148b5048eb20672f1d85e86dbf`);
+  `0041_hms_incidents_org_guard` (journal `idx` 41, `when` `1790024895228`,
+  sha256
+  `cd6b44a2399ea48f033ab0c324933d691d94d760b9e0a4839d134737e6dfc332`); down
+  companions unjournalled. The guard migration was renamed (backward tags →
+  `0041_hms_incidents_org_guard`) so journal `idx` ↔ tag prefix ↔ snapshot
+  name agree; the forward SQL is unchanged, so the ledger hash stays valid.
+- **Rehearsal evidence (local dev DB):** `0040`/`0041` apply → 72 tables;
+  guard messages and vocabulary CHECK violations all `23514`; down
+  `0041` → `0040` → 70; ledger rows deleted + re-apply → 72; third run a
+  no-op.
+- **Reviews and reconciliation.** `reviewer-qwen` (adversarial) — no
+  blockers, no majors; accepted minors: re-close overwrote `closed_at`,
+  re-verify overwrote the original verifier, no `purchasing` denial test
+  (all fixed/added); declined: `involves_personal_data` inert (recorded as
+  an open point — a privacy-review input, not an implementation
+  requirement). `reviewer-glm` (code-level) — first pass empty; re-run
+  step-capped, no blocker/major; accepted minors: blank `reportedBy` and
+  malformed `dueDate` unvalidated at the command boundary (fixed via the
+  shared `assertOptionalCalendarDate` helper); declined: an audit fact for
+  a patch that only re-sets a field to its current value, and no-op columns
+  in the audit `after` payload (both consistent with the existing
+  convention). A `tester` pass found four real defects, all fixed:
+  `created_by`/`updated_by` never written by the adapter (threaded end to
+  end); `recordCorrectiveAction` wrongly rejected a standalone action
+  (`DEC-090` makes both FKs nullable); the re-close instant refresh; stale
+  filename comments in the renamed down file. `reviewer-glm`'s re-run did
+  not complete (step cap) on three route test files, `lib/guards.ts`/
+  `lib/http.ts` internals, `incidents.postgres.test.ts` and the down
+  migrations — recorded as a residual coverage gap (verified elsewhere by
+  `reviewer-qwen` and the rehearsal).
+- **New open points (recorded, do not decide):** the **corrective-action
+  location-scope ceiling**; `involves_personal_data` inert until the
+  privacy review; the `DEC-095` provisional items awaiting owner/OPS
+  confirmation; the `reviewer-glm` step-capped coverage gap. See the first
+  bullet under "Open decisions / inputs".
+- **Verification (exact):** `typecheck`, `lint`, `format:check`, `build`
+  clean; **1574/1574 tests with `DATABASE_URL`** (149 files);
+  `npm audit --omit=dev` = 0; `db:migrate` through `0041` is a no-op on
+  re-run; **72** public base tables; both guard triggers present.
+- **Next step:** the **HMS checklists / cleaning** slice (`DEC-091`,
+  requirement `HMS-005`) — programme step 19c; then the programme build
+  order (equipment/maintenance `DEC-092`, compliance export `DEC-093`,
+  `employee` + personnel documents `DEC-087`, staff document library
+  `DEC-088`, `task`/`approval` `DEC-094` with the `job`/worker/outbox layer
+  gated on `ADR-0004`). Next free decision id **`DEC-096`**.
+
+Rollback: each of the slice's commits is independently `git revert`-able;
+migration `0040` adds two tables (additive), `0041` is trigger-only; the
+rehearsed down order is `0041`→`0040`; `0040` down drops `corrective_action`
+then `hms_incident` (72 → 70), `0041` down is trigger-only (72 → 72); if the
+DB is rolled back, delete the two ledger rows (`created_at` `1790024758839`
+/ `1790024895228`) and re-migrate (72 tables); nothing pushed; nothing
+applied to DigitalOcean.
 
 ### 2026-09-21 — HMS monitoring points + readings delivered (DEC-089, migrations 0037–0039); the first IK-mat build slice; handoff updated
 
