@@ -8,78 +8,70 @@ duplicate their content.
 ## Resume here (next session)
 
 **Say "resume the work" and start here.** A fresh session must be able to
-continue from this section alone. (This section was just rewritten by the
-`DEC-083` handoff pass; the next commit is this docs update itself.)
+continue from this section alone. (This section was rewritten by the `DEC-084`
+handoff pass; this context docs update is the last of the slice's five commits.)
 
-**State:** `main` HEAD **`7b86165`** (the roadmap docs commit; this context
-docs update is the next commit), working tree **clean** before this edit,
-nothing pushed; **7 commits** this slice: `4587564` docs(decisions) accept
-`DEC-083`; `dbb7d97` feat(persistence) `import_disposition` table (migration
-`0033`) + jsonb backfill; `64a7cfc` feat(imports) read and write dispositions
-via the table; `0f8b7b1` docs(web); `b2dc8ac` docs(runbook); `7b86165`
-docs(roadmap); plus this context docs update.
-**Nothing applied to DigitalOcean.**
+**State:** `main` HEAD **`46d6ad7`** (the `DEC-084` docs commit; this context
+docs update is the next commit), working tree clean before this edit, nothing
+pushed; **5 commits** this slice: 1.
+`refactor(application)` — extract the shared `data-quality` module
+(`packages/application/src/data-quality/`: `types.ts`, `postgres.ts`,
+`test-support.ts`, `index.ts`) holding the `DEC-080`
+`DataQualityExceptionRecord`/`NewDataQualityExceptionRecord` DTOs, the
+`DataQualityExceptionStore` port, the postgres mapper/creator and the fake
+helper; `transfers` refactored to consume it (behaviour-preserving;
+`TransferStore` extends `DataQualityExceptionStore`); 2. `feat(counts)` —
+`approveStockCount` records exactly one `count_variance`
+`data_quality_exception` (entity `stock_count`) in the same transaction as the
+postings when any line variance is non-zero; `exception_id` added to the
+approval audit; 3. `feat(production)` — `completeProductionBatch` records
+exactly one `yield_variance` exception (entity `production_batch`) in the same
+transaction when `yield_variance_pct` is non-zero; `exception_id` in the
+completion audit; the two `apps/web` production open-point comments corrected;
+the runbook slice-10 point **(g)** closed citing `DEC-080`/`DEC-084`; 4. `docs(decisions)` — `DEC-084` accepted (provisional);
+`docs/BUILD_ROADMAP.md` §1/§5; persistence comments in
+`packages/persistence/src/schema/platform.ts` and
+`packages/persistence/src/repositories/data-quality-exception.ts`; 5. `docs(context)` — this handoff update.
+**Nothing pushed; nothing applied to DigitalOcean.**
 
-**Delivered (`DEC-083`):** import dispositions moved from
-`import_run.diagnostics.dispositions` jsonb into a first-class
-**`import_disposition`** table — FK → `import_staging_row`
-(`ON DELETE cascade`) + `UNIQUE(import_staging_row_id)` (**one disposition per
-row; a repeat is refused**, where the old jsonb array could accumulate
-duplicates), `disposition` checked `{unmapped, rejected, ignored}`, `reason`,
-required `actor_id` (app_user FK deferred), `created_at` = the approval
-instant, plus the standard audit columns. **No `organization_id`** — scoped
-through `import_staging_row` → `import_run` (`DEC-061` via the join), so no
-`DEC-079`-style guard. Migration `0033` is additive, journalled, and backfills
-the existing jsonb (latest record per staging row wins; malformed
-uuid/vocabulary/orphan records skipped; a malformed `at` aborts — the runbook
-preflight flags both); the jsonb keys are retained **frozen**
-(expand → migrate → contract). The unjournaled down companion **rebuilds
-`diagnostics.dispositions` from the table then drops it** → **lossless**
-(rehearsed); it restores one record per row ordered by `source_row_no`, so it
-is value-identical, not order-identical, to the original append order.
-Application: `disposeStagingRow` inserts the one disposition (the unique key
-is the guard; a repeat throws a `DomainError` and rolls back), then updates
-the staging row's mapping state, then audits; `getImportRun`,
-`previewImportRun`, `listImportRuns` (one grouped count query, `?? 0` when
-none), `postImportRun`'s `DEC-082` resolution and `reconcileImportRun`'s
-`DEC-035` close gate read the table. The dead jsonb reader
-(`readDispositions` + the `dispositions` diagnostic key) is removed;
-`IMPORT_DISPOSITIONS` derives from the persistence `IMPORT_DISPOSITION`
-constant.
+**Delivered (`DEC-084`, provisional):** the `PROD-003` variance exceptions are
+recorded **unconditionally** through the `DEC-080` `data_quality_exception`
+repository, in the **same transaction** as the fact: `approveStockCount` writes
+one `count_variance` and `completeProductionBatch` one `yield_variance`
+whenever the variance is non-zero. No tolerance threshold is applied because
+the FIN variance-tolerance thresholds remain an open input — so the producers
+are provisional (the `DEC-055` precedent); `severity` is the schema default
+`medium` (provisional); `detected_at` is the fact instant (count approval /
+batch completion); `entity_id` is the count/batch id; one exception per
+document. `DEC-084` is accepted provisional (TECH + FIN). **No schema change:**
+migrations through **`0033`**; **67 tables**; `db:migrate` through `0033` is a
+no-op on re-run. Next free decision id **`DEC-085`**.
 
-**Schema:** migrations through **`0033`**; **67 tables** (was 66).
+**Tests added:** counts unit (a non-zero variance records exactly one exception
+incl. `detected_at` = approval instant + audit `exception_id`; an exact count
+records none); counts postgres (read-back of the persisted row;
+exact-vs-variance in one rolled-back transaction); production unit (non-zero
+yield variance records exactly one exception and the input-line variance alone
+records none; exact output records none; an idempotent replay with a non-zero
+variance does not create a second exception); production postgres (non-zero
+completion records one row; exact completion records none, existing test
+extended).
 
-**Verification at `b2dc8ac` (docs-only commits since):** `typecheck`, `lint`, `build`, `format:check`
-clean; **1366/1366 tests with `DATABASE_URL`** (135 files);
-`npm audit --omit=dev` = 0; `db:migrate` through `0033` is a no-op on re-run;
-the `0033` down/re-apply rehearsed (lossless); **67 tables**; every read/write
+**Verification (at the `DEC-084` working tree, exact):** `typecheck`, `lint`,
+`format:check`, `build` clean; **1373/1373 tests with `DATABASE_URL`** (135
+files); `npm audit --omit=dev` = 0; **67 tables**; every read/write
 organization-scoped (`DEC-061`).
 
-**Reviews and reconciliation:** `reviewer-qwen` — **no blocker/major**; two
-minors **accepted and applied** (the `0033` backfill comment claimed malformed
-records are "skipped" while a malformed `at` aborts — corrected, and the
-runbook preflight now flags a malformed `at`; the down rebuild is
-value-identical but not order-identical — the wording was qualified).
-`reviewer-minimax` — **no blocker**; **accepted** M2 (the frozen jsonb needed
-a tracked contract step), M3 (document that the down restores one record per
-row and supersedes pre-migration duplicates), m2 (the `at` preflight clause)
-and m6 (record the missing `domain-enums.yaml` key); **declined with reasons**
-M1 (drop the FK cascade / add reject-immutable triggers — the cascade
-preserves the pre-migration lifecycle since the dispositions were embedded in
-the run row, there is no run-delete path, and a posted run is already
-undeletable via `sales_transaction.import_run_id` NO ACTION; a
-reject-immutable trigger set is a new invariant, recorded as an open point),
-m1 (drop `updated_at`/`updated_by`/`version` — the repo-wide `auditColumns()`
-convention; `stock_movement` is append-only and still carries them; same
-recorded open point), m3 (a DB-level org guard on `createImportDisposition` —
-`DEC-083` records the no-`organization_id` design by the
-`import_staging_row` precedent, the application verifies the run and staging
-row org-scoped in the same transaction, persistence `create*` functions are
-conventionally not org-filtered, and a guard needs a new migration; recorded
-as an open point), m4 (retro-editing `DEC-035` — `DEC-083` already records the
-repeat-refusal; accepted decisions are not rewritten) and m5 (the audit
-`after.at` vs `created_at` sub-millisecond drift — the codebase-wide
-convention of app-authored audit instants vs DB `now()`).
+**Reviews and reconciliation:** `reviewer-qwen` — **no blocker/major**;
+**accepted and applied** M2 (add a replay non-duplication assertion) and M3
+(the runbook cited only `DEC-080` for the producer; now `DEC-080`/`DEC-084`);
+**declined with reason** M1 (the count fake's `withTransaction` has no
+rollback, unlike the production fake — a pre-existing fake-fidelity gap, not a
+regression, no test depends on it, and the Postgres `inRollback` integration
+tests cover the real transaction; recorded as a new open point below).
+`reviewer-glm` — **no blocker/major**; **accepted and applied** its single
+minor (a dead `toDataQualityException` barrel re-export removed; the function
+is now module-private).
 
 **Dev server (session-scoped):** the previous session ran a dev server at
 http://localhost:3000 with
@@ -90,67 +82,61 @@ data is seeded (including the `zettle-legacy` `import_profile`:
 `profile_version` `i19-v1`, `posting_policy` `allow_partial`). **A fresh session
 must restart the server** — the process does not survive the session end.
 
-**Next buildable code task:** the **`PROD-003` count-variance/yield-variance
-exception producers** using the `DEC-080` `data_quality_exception` table. The
-variance tolerance thresholds are a recorded FIN open point — build the
-producer with a recorded provisional threshold or record the variance
-unconditionally, per the `DEC-055` provisional-figures precedent. TECH-owned
-and buildable without owner input. Record any genuinely new decision from
-**`DEC-084`** (append to `12_OPEN_DECISIONS.md` — never invent silently).
+**Next buildable code task:** the **`file_object`** platform table (row-11
+import-framework point 6) — so `import_run.file_object_id` becomes a real FK.
+TECH-owned and buildable without owner input. Record any genuinely new decision
+from **`DEC-085`** (append to `12_OPEN_DECISIONS.md` — never invent silently).
 
-**Scope (do):** wire the two producers onto the existing posting paths — count
-posting (`packages/application/src/counts/**`, which posts through the
-inventory ledger) creates a `count_variance` exception and production
-completion (`completeProductionBatch`, `packages/application/src/production/**`)
-creates a `yield_variance` exception — each written through the `DEC-080`
-repository in the **same transaction** as the fact, following the
-`receiveStockTransfer` `transfer_discrepancy` producer precedent; choose
-**recorded provisional thresholds or unconditional recording** and mark the
-choice provisional per the `DEC-055` precedent (record it from **`DEC-084`**
-if it is a decision); add/update the `.test.ts` covering the happy path and an
-edge case (e.g. within-tolerance posts no exception); small atomic commits
-with the rollback approach in the body (per `AGENTS.md` Rule 2); update
-`CONTEXT.md` at the end.
+**Scope (do):** add the `file_object` platform table per the data dictionary,
+**additively** — `npm run db:generate` (migration **`0034`+**, never editing
+migrations `0000–0033`) with a rehearsed down path — and make
+`import_run.file_object_id` a real FK to it (follow the runbook's additive-FK
+guidance: `NOT VALID` → `VALIDATE` when the table may already hold rows);
+document `0034` in `docs/runbooks/persistence-migrations.md`; keep every
+read/write organization-scoped (`DEC-061`); add/update the `.test.ts` covering
+the happy path and an edge case; small atomic commits with the rollback
+approach in the body (per `AGENTS.md` Rule 2); update `CONTEXT.md` at the end.
 
-**Scope (do not):** prefer **no schema change** — the `data_quality_exception`
-table already exists; if a change is truly needed, additive only via
-`npm run db:generate` (migration **`0034`+**, never editing migrations
-`0000–0033`) with a rehearsed down path. Do not resolve the recorded FIN
-tolerance-threshold open point silently — record a provisional threshold or
-record the variance unconditionally. Do not start the still owner/data-gated
-work — the receipt→ledger wiring (needs the OPS destination `storage_area_id`
-policy); row 13 (data-gated on history/grain quality, I11); row 14
-(owner-gated on the privacy review); rows 15–18 (blocked: data /
-`ADR-0009`–`0011`); the price-version scope-resolution fallback; consumption
-grain A1. Do not delete the frozen `diagnostics.dispositions` keys yet (that
-is the tracked `DEC-083` contract step, scheduled after `file_object`); do not
-deploy, `terraform apply`, or write externally (per `DEC-015`); do not resolve
-the recorded owner inputs silently; do not rewrite the specification inputs
+**Scope (do not):** no schema change beyond `file_object` (additive only, with
+a rehearsed down path). Do not delete the frozen `diagnostics.dispositions`
+keys yet (that is the tracked `DEC-083` contract step, scheduled after
+`file_object`). Do not resolve the recorded FIN variance-tolerance thresholds
+silently — the `DEC-084` producers stay unconditional/provisional pending
+them. Do not start the still owner/data-gated work — the receipt→ledger wiring
+(needs the OPS destination `storage_area_id` policy); row 13 (data-gated on
+history/grain quality, I11); row 14 (owner-gated on the privacy review);
+rows 15–18 (blocked: data / `ADR-0009`–`0011`); the price-version
+scope-resolution fallback; consumption grain A1. Do not deploy,
+`terraform apply`, or write externally (per `DEC-015`); do not resolve the
+recorded owner inputs silently; do not rewrite the specification inputs
 (`00_README.md` … `13_`, `docs/phase0/`, `schemas/`, `samples/`).
 
-**Files/paths:** `packages/application/src/counts/**` and
-`packages/application/src/production/**` (the two producers),
-`packages/persistence/src/repositories/**` (the `data_quality_exception`
-repository — extend only if a needed finder/creator shape is missing),
-`packages/domain/src/**` if a pure variance helper belongs there, the
-`.test.ts` files alongside them; `12_OPEN_DECISIONS.md` for `DEC-084` if a
-decision is recorded; update `CONTEXT.md` at the end.
+**Files/paths:** `packages/persistence/src/schema/platform.ts` (the new
+`file_object` table), `packages/persistence/src/schema/**` (the
+`import_run.file_object_id` FK lives with the import-run schema;
+`vocabularies.ts` only if a vocabulary is needed),
+`packages/persistence/drizzle/` (migration `0034`+),
+`packages/persistence/src/repositories/**` (the file-object repository),
+`packages/application/src/**` (the port/adapter wiring as needed), the
+`.test.ts` files alongside them; `12_OPEN_DECISIONS.md` for `DEC-085` if a
+decision is recorded; `docs/runbooks/persistence-migrations.md` for the
+`0034` entries; update `CONTEXT.md` at the end.
 
 **Authoritative docs to read first:** `docs/BUILD_ROADMAP.md` §1 (current
-position) and §4–§5 (the Slice-9/10 owner questions carry the yield-variance
-tolerance point); `11_REQUIREMENTS_CATALOG.md` `PROD-003`;
-`12_OPEN_DECISIONS.md` (`DEC-080` the `data_quality_exception` table and its
-producer pattern, `DEC-067` count-variance valuation, `DEC-055` the
-provisional-figures precedent, `DEC-083` the just-landed slice, next free id
-**`DEC-084`**); this file's "Open decisions / inputs"; `AGENTS.md` Rules 1–3.
+position) and §5 ("Row-11 import-framework open points" — the `file_object`
+point); `12_OPEN_DECISIONS.md` (`DEC-084` the just-landed provisional
+producers, `DEC-080` the `data_quality_exception` table and its producer
+pattern, `DEC-083` the dispositions table and its frozen-jsonb contract step,
+next free id **`DEC-085`**); this file's "Open decisions / inputs";
+`AGENTS.md` Rules 1–3.
 
 **Acceptance / verification:** `export NVM_DIR="$HOME/.nvm"; . "$NVM_DIR/nvm.sh";
 nvm use 22`, then `npm run typecheck` before the change, `npm run lint`,
-`npm run test` (with `DATABASE_URL` — current baseline: **1366/1366**, 135
+`npm run test` (with `DATABASE_URL` — current baseline: **1373/1373**, 135
 files), `npm run build`, `npm run format:check`, `npm audit --omit=dev` = 0;
-no migration expected — `db:migrate` through `0033` stays a no-op on re-run
-and the table count stays **67**; after each commit re-run the suite at the
-clean tree and confirm HEAD advanced.
+`db:migrate` applies `0034`, is a no-op on re-run, and the down path is
+rehearsed; after each commit re-run the suite at the clean tree and confirm
+HEAD advanced.
 
 **Programme direction (standing user instruction):** proceed autonomously — per
 task: parallel background agents → adversarial review + fixes → document status
@@ -158,32 +144,31 @@ and next steps → commit → next task. Global ruleset
 (`~/.config/kilo/AGENTS.md`): compact context at 25 %; pausing is permitted
 above USD 20 at a clean point (committed, verified, documented).
 
-**Open inputs (recorded, do not decide):** consumption grain A1 (`DEC-009`
-daily-per-location vs a single `sales_line` source); the price-version
-**scope-resolution fallback** (exact-scope only today — see "Open decisions /
-inputs"); the OPS receipt destination `storage_area_id` policy; `file_object`
-absent so `import_run.file_object_id` is a plain uuid; the **variance
-tolerance thresholds for the `PROD-003` producers** (FIN — build with a
-recorded provisional threshold or record unconditionally); the four
+**Open inputs (recorded, do not decide):** the FIN **variance-tolerance
+thresholds** (the `DEC-084` producers record unconditionally pending them); the
+provisional `DEC-084` severity `medium`; the **`FakeCountStore.withTransaction`
+no-rollback** fake-fidelity gap (the new open point below); the four
 `DEC-083`-review open points (the frozen `diagnostics.dispositions` contract
 step; the `import_disposition` immutability/cascade posture; the missing
 `schemas/domain-enums.yaml` key for `IMPORT_DISPOSITION`; the app-level org
-guard on `createImportDisposition`); receipts not wired to the ledger; the
-owner/deployment inputs. Full list under "Open decisions / inputs"; next free
-decision id **`DEC-084`**.
+guard on `createImportDisposition`); consumption grain A1 (`DEC-009`
+daily-per-location vs a single `sales_line` source); the price-version
+**scope-resolution fallback** (exact-scope only today — see "Open decisions /
+inputs"); the OPS receipt destination `storage_area_id` policy; receipts not
+wired to the ledger; the golden fixtures unsigned; the owner/deployment inputs.
+Full list under "Open decisions / inputs"; next free decision id **`DEC-085`**.
 
 **Parallel owner action — golden-fixture sign-off:** the six golden fixtures are
 prepared as machine-readable JSON under `tests/fixtures/` (`DEC-065`) with the
 sign-off trail ready; finance + product owner sign. Until signed, no cost is
 "verified"; `I8`/`I9` still gate the real rates behind the fixtures.
 
-**Step after this one:** `file_object`, then the small tracked `DEC-083`
-**contract step** (delete the frozen `diagnostics.dispositions` keys once
-nothing depends on them), then the receipt→ledger wiring if the OPS
-destination `storage_area_id` policy lands; row 13 (close + dashboards + menu
-engineering) when history/grain quality (I11) is confirmed; then row 14 when
-the privacy review lands; the deployment rehearsal once the owner inputs
-arrive (see "Next up").
+**Step after this one:** the tracked `DEC-083` **contract step** (delete the
+frozen `diagnostics.dispositions` jsonb keys once nothing depends on them),
+then the receipt→ledger wiring if the OPS destination `storage_area_id` policy
+lands; row 13 (close + dashboards + menu engineering) when history/grain
+quality (I11) is confirmed; then row 14 when the privacy review lands; the
+deployment rehearsal once the owner inputs arrive (see "Next up").
 
 ## What this is
 
@@ -198,7 +183,7 @@ slice 7 (cost card + snapshots + price scenario + approval), slice 8 (stock
 ledger + balances + lots/storage), slices 9 (counts + transfers + waste), slice
 10 (production planning + batches, including the web layer), row 11 (import
 framework + external mappings) and row 12 (sales + settlements + reconciliation)
-— **all committed** (through HEAD `7b86165`; rows 11 and 12 complete; the
+— **all committed** (through HEAD `46d6ad7`; rows 11 and 12 complete; the
 price-version slice — `price_version` with approval-driven effective versions
 — complete, the `DEC-078` vocabulary/`lotTracked`, `DEC-079`
 cross-organization coherence, `DEC-080` `data_quality_exception` and `DEC-081`
@@ -206,9 +191,11 @@ import-profile integrity points, the `DEC-082` `postImportRun`
 posting-policy enforcement — the run's recorded `diagnostics.posting_policy`
 snapshot governs, `all_or_nothing` refuses pre-write with a `DomainError` naming
 the blocking rows — and the `DEC-083` `import_disposition` table, which moved
-the dispositions out of the `diagnostics.dispositions` jsonb), with the design
+the dispositions out of the `diagnostics.dispositions` jsonb; and the
+provisional `DEC-084` `PROD-003` count-variance/yield-variance exception
+producers), with the design
 system/app shell/screens and migrations `0017`–`0033`; the
-`DEC-072`–`DEC-083` low-risk implementations (effective-dated reconciliation
+`DEC-072`–`DEC-084` low-risk implementations (effective-dated reconciliation
 tolerance, sales-line reversal, `MAPPING_STATE` `conflict`, typed recipe 404s,
 the `price_version` slice, the `settlement.status`/`reconciliation.scope_type`
 vocabularies, `lotTracked` enforcement, the cross-organization coherence
@@ -219,7 +206,7 @@ import posting-policy enforcement).
 
 - `00_README.md` … `13_AGENT_BUILD_BRIEF.md` — the specification package
   (inputs, rarely edited). Start with `00_README.md`.
-- `12_OPEN_DECISIONS.md` — the accepted decisions (DEC-001…DEC-083); the
+- `12_OPEN_DECISIONS.md` — the accepted decisions (DEC-001…DEC-084); the
   authority. New decisions are appended here.
 - `docs/phase0/` — close-out plan, calculation contract, data dictionary, golden
   fixtures, source-data request, notes. See `docs/phase0/PHASE0_CLOSEOUT_PLAN.md`
@@ -239,60 +226,47 @@ import posting-policy enforcement).
 
 ## Current status
 
-- **As of:** 2026-09-21 — branch `main`; HEAD `7b86165` (the roadmap docs
-  commit; this context docs commit is next);
-  working tree **clean** before this edit; nothing pushed. **7 commits** this
-  slice: `4587564` docs(decisions) accept `DEC-083`; `dbb7d97` feat(persistence)
-  `import_disposition` table (migration `0033`) + jsonb backfill; `64a7cfc`
-  feat(imports) read and write dispositions via the table; `0f8b7b1` docs(web);
-  `b2dc8ac` docs(runbook); `7b86165` docs(roadmap); plus this context docs
-  update — **all committed** once this docs commit lands
-  (see "Work log" and "Reversibility").
-  **Delivered (`DEC-083`):** import dispositions moved from
-  `import_run.diagnostics.dispositions` jsonb into a first-class
-  `import_disposition` table — FK → `import_staging_row`
-  (`ON DELETE cascade`) + `UNIQUE(import_staging_row_id)` (one disposition per
-  row; a repeat is refused, where the old jsonb array could accumulate
-  duplicates), `disposition` checked `{unmapped, rejected, ignored}`, `reason`,
-  required `actor_id` (app_user FK deferred), `created_at` = the approval
-  instant, plus the standard audit columns. No `organization_id` — scoped
-  through `import_staging_row` → `import_run` (`DEC-061` via the join), so no
-  `DEC-079`-style guard. Migration `0033` is additive, journalled, and
-  backfills the existing jsonb (latest record per staging row wins; malformed
-  uuid/vocabulary/orphan records skipped; a malformed `at` aborts — the
-  runbook preflight flags both); the jsonb keys are retained frozen
-  (expand → migrate → contract). The unjournaled down companion rebuilds
-  `diagnostics.dispositions` from the table then drops it → lossless
-  (rehearsed); it restores one record per row ordered by `source_row_no`, so
-  it is value-identical, not order-identical, to the original append order.
-  Application: `disposeStagingRow` inserts the one disposition (the unique key
-  is the guard; a repeat throws a `DomainError` and rolls back), then updates
-  the staging row's mapping state, then audits; `getImportRun`,
-  `previewImportRun`, `listImportRuns` (one grouped count query, `?? 0` when
-  none), `postImportRun`'s `DEC-082` resolution and `reconcileImportRun`'s
-  `DEC-035` close gate read the table. The dead jsonb reader
-  (`readDispositions` + the `dispositions` diagnostic key) is removed;
-  `IMPORT_DISPOSITIONS` derives from the persistence `IMPORT_DISPOSITION`
-  constant. The row-11 import-framework point 7 is closed; the remaining
-  row-11 point is `file_object` absent (point 6).
-  **Schema:** migrations through **`0033`**; **67 tables** (was 66).
-  **Reviews and reconciliation:** `reviewer-qwen` — **no blocker/major**; two
-  minors **accepted and applied** (the `0033` backfill comment claimed
-  malformed records are "skipped" while a malformed `at` aborts — corrected,
-  and the runbook preflight now flags a malformed `at`; the down rebuild is
-  value-identical but not order-identical — the wording was qualified).
-  `reviewer-minimax` — **no blocker**; **accepted** M2 (the frozen jsonb
-  needed a tracked contract step), M3 (document that the down restores one
-  record per row and supersedes pre-migration duplicates), m2 (the `at`
-  preflight clause) and m6 (record the missing `domain-enums.yaml` key);
-  **declined with reasons** M1 (drop the FK cascade / add reject-immutable
-  triggers), m1 (drop `updated_at`/`updated_by`/`version`), m3 (a DB-level
-  org guard on `createImportDisposition`), m4 (retro-editing `DEC-035`) and
-  m5 (the audit `after.at` vs `created_at` sub-millisecond drift) — each with
-  the recorded reason and, for M1/m1/m3, an open point (see the work log and
-  "Open decisions / inputs").
-  **Verification at `b2dc8ac` (docs-only commits since):** `typecheck`, `lint`, `build`, `format:check`
-  clean; **1366/1366 tests with `DATABASE_URL`** (135
+- **As of:** 2026-09-21 — branch `main`; HEAD `46d6ad7` (the `DEC-084` docs
+  commit; this context docs update is the next commit), working tree clean
+  before this edit; nothing pushed. **5 commits** this slice: `accb44c`
+  `refactor(application)` extract the shared `data-quality` module
+  (`packages/application/src/data-quality/`) and refactor `transfers` onto it
+  (behaviour-preserving; `TransferStore` extends `DataQualityExceptionStore`);
+  `a819925` `feat(counts)` the `count_variance` producer in `approveStockCount`;
+  `875b0ba` `feat(production)` the `yield_variance` producer in
+  `completeProductionBatch` (plus the `apps/web` open-point comment corrections
+  and the runbook slice-10 point (g) closed citing `DEC-080`/`DEC-084`);
+  `46d6ad7` `docs(decisions)` accept `DEC-084` (provisional) +
+  `docs/BUILD_ROADMAP.md` §1/§5 + persistence comments; `docs(context)` this
+  handoff update — **all committed** once this docs commit lands (see "Work
+  log" and "Reversibility").
+  **Nothing applied to DigitalOcean.**
+  **Delivered (`DEC-084`, provisional):** the `PROD-003` variance exceptions
+  are recorded **unconditionally** through the `DEC-080`
+  `data_quality_exception` repository, in the **same transaction** as the
+  fact: `approveStockCount` writes one `count_variance` and
+  `completeProductionBatch` one `yield_variance` whenever the variance is
+  non-zero. No tolerance threshold is applied because the FIN
+  variance-tolerance thresholds remain an open input — so the producers are
+  provisional (the `DEC-055` precedent); `severity` is the schema default
+  `medium` (provisional); `detected_at` is the fact instant (count approval /
+  batch completion); `entity_id` is the count/batch id; one exception per
+  document. `DEC-084` is accepted provisional (TECH + FIN). The row-11
+  import-framework point 7 is closed; the remaining row-11 point is
+  `file_object` absent (point 6) — the next task.
+  **Schema:** no change — migrations through **`0033`**; **67 tables**.
+  **Reviews and reconciliation:** `reviewer-qwen` — **no blocker/major**;
+  **accepted and applied** M2 (add a replay non-duplication assertion) and M3
+  (the runbook cited only `DEC-080` for the producer; now `DEC-080`/`DEC-084`);
+  **declined with reason** M1 (the count fake's `withTransaction` has no
+  rollback, unlike the production fake — a pre-existing fake-fidelity gap, not
+  a regression, no test depends on it, and the Postgres `inRollback`
+  integration tests cover the real transaction; recorded as a new open point,
+  see "Open decisions / inputs"). `reviewer-glm` — **no blocker/major**;
+  **accepted and applied** its single minor (a dead `toDataQualityException`
+  barrel re-export removed; the function is now module-private).
+  **Verification (at the `DEC-084` working tree, exact):** `typecheck`, `lint`,
+  `build`, `format:check` clean; **1373/1373 tests with `DATABASE_URL`** (135
   files);
   `npm audit --omit=dev` 0; `db:migrate` through `0033` is a no-op; **67
   tables**; every read/write
@@ -304,19 +278,15 @@ import posting-policy enforcement).
   data is seeded including the `zettle-legacy` `import_profile`
   (`profile_version` `i19-v1`, `posting_policy` `allow_partial`); a fresh
   session must restart the server.
-  Remaining roadmap: the next unblocked task is the
-  **`PROD-003` count-variance/yield-variance exception producers** (using the
-  `DEC-080` `data_quality_exception` table; the variance tolerance thresholds
-  are a recorded FIN open point — build with a recorded provisional threshold
-  or record unconditionally, per the `DEC-055` precedent) — TECH-owned —
-  after which the remaining buildable technical items are smaller
-  (`file_object`, then the tracked `DEC-083` contract step deleting the frozen
-  `diagnostics.dispositions` keys); then
-  the receipt→ledger wiring if the OPS policy lands; row 13 is data-gated on
-  history/grain quality
-  (I11); row 14 owner-gated on the privacy review / access matrix; rows 15–18
-  blocked (data / `ADR-0009`–`0011`); the deployment rehearsal is parked on
-  owner inputs.
+  Remaining roadmap: the next unblocked task is the **`file_object`** platform
+  table (row-11 import-framework point 6), so `import_run.file_object_id`
+  becomes a real FK — TECH-owned — after which the remaining buildable
+  technical items are smaller (the tracked `DEC-083` contract step deleting
+  the frozen `diagnostics.dispositions` keys); then the receipt→ledger wiring
+  if the OPS destination `storage_area_id` policy lands; row 13 is data-gated
+  on history/grain quality (I11); row 14 owner-gated on the privacy review /
+  access matrix; rows 15–18 blocked (data / `ADR-0009`–`0011`); the
+  deployment rehearsal is parked on owner inputs.
   Programme direction (user instruction): proceed autonomously — review/fix,
   document status + next steps, commit, then the next unblocked task.
   Nothing has been applied to DigitalOcean.
@@ -360,8 +330,8 @@ import posting-policy enforcement).
 - **DEC-049 closed:** drizzle-orm 0.45.2 / drizzle-kit 0.31.10 upgrade (`cc86f13`);
   `npm audit --omit=dev` = 0.
 - **Tests:** without `DATABASE_URL` the integration tests skip; with it
-  **1366/1366 passed** (135 files) — recorded
-  2026-09-21 at the slice's tree `b2dc8ac` (all
+  **1373/1373 passed** (135 files) — recorded 2026-09-21 at the `DEC-084`
+  slice's tree (HEAD `46d6ad7`; all
   checks pass; `db:migrate` through `0033` is a
   no-op). Re-verify
   with `npm run test` and update if they differ.
@@ -447,27 +417,24 @@ import posting-policy enforcement).
 
 `docs/BUILD_ROADMAP.md` is the ordered execution tracker for these slices (slice 0,
 1a–1e and 2–12 done, incl. row 11 and row 12 and the `DEC-081` import-profile
-slice, the `DEC-082` posting-policy enforcement and the `DEC-083`
-dispositions-table slice; the `DEC-072`–`DEC-083`
+slice, the `DEC-082` posting-policy enforcement, the `DEC-083`
+dispositions-table slice and the `DEC-084` variance-producer slice pending in
+the working tree; the `DEC-072`–`DEC-084`
 decisions + low-risk implementations are done,
-committed `aaec400`–`7b86165`; further rows are gated — row 13 on data (I11),
+committed `aaec400`–`7b86165` plus the pending slice commits; further rows are
+gated — row 13 on data (I11),
 row 14 owner-only, rows 15–18 on data/ADRs).
 The list below is the short narrative form.
 
-1. **`PROD-003` count-variance/yield-variance exception producers** — wire the
-   two producers onto the existing posting paths (count posting and
-   `completeProductionBatch`), each writing a `count_variance` /
-   `yield_variance` exception through the `DEC-080` `data_quality_exception`
-   repository in the same transaction as the fact (the `receiveStockTransfer`
-   `transfer_discrepancy` precedent). The variance tolerance thresholds are a
-   recorded FIN open point — build with a recorded provisional threshold or
-   record the variance unconditionally, per the `DEC-055` provisional-figures
-   precedent. TECH-owned and buildable without owner input; record any needed
-   decision from `DEC-084`. Programme direction: proceed
+1. **`file_object`** — the platform file-object table (row-11
+   import-framework point 6), so `import_run.file_object_id` becomes a real
+   FK. Additive migration `0034`+ with a rehearsed down path. TECH-owned and
+   buildable without owner input. Programme direction: proceed
    autonomously (agents → review/fix → document → commit → next task).
-2. **Smaller TECH items** — `file_object`; then the tracked `DEC-083` contract
-   step (delete the frozen `diagnostics.dispositions` jsonb keys once nothing
-   depends on them).
+2. **Smaller TECH items** — the tracked `DEC-083` contract step (delete the
+   frozen `diagnostics.dispositions` jsonb keys once nothing depends on
+   them); then the receipt→ledger wiring if the OPS destination
+   `storage_area_id` policy lands.
 3. **Row 13 — close + dashboards + menu engineering** — `ADR-0007` is accepted
    (2026-09-20); **data-gated** on history/grain quality (I11) — synthetic
    fixtures until real data.
@@ -502,6 +469,27 @@ The list below is the short narrative form.
 
 ## Open decisions / inputs (do not block development)
 
+- **Resolved this session (2026-09-21, `DEC-084`):** the **`PROD-003`
+  count-variance/yield-variance exception producers** are delivered
+  **provisional** — `approveStockCount` records exactly one `count_variance`
+  and `completeProductionBatch` one `yield_variance` `data_quality_exception`
+  (entity the count/batch id; `detected_at` the fact instant; `severity` the
+  schema default `medium`, provisional; one exception per document), written
+  **unconditionally** through the `DEC-080` repository in the same transaction
+  as the fact — no tolerance threshold is applied because the FIN
+  variance-tolerance thresholds remain an open input (the `DEC-055`
+  provisional-figures precedent; accepted provisional, TECH + FIN). The shared
+  `data-quality` module (`packages/application/src/data-quality/`) was
+  extracted and `transfers` refactored onto it (behaviour-preserving). No
+  schema change (still **67 tables**, migrations through `0033`). Next free
+  decision id **`DEC-085`**.
+- **Recorded this session (2026-09-21, from the `DEC-084` reviews; recorded,
+  not decided — do not resolve silently):** the **`FakeCountStore`
+  `withTransaction` runs inline with no snapshot/rollback** (unlike
+  `FakeProductionStore`), so a fake-store count test cannot assert rollback
+  fidelity — a pre-existing fake-fidelity gap, not a regression; no test
+  depends on it and the real transaction is covered by the Postgres
+  `inRollback` integration tests. Not resolved.
 - **Resolved this session (2026-09-21, `DEC-083`):** the **`import_disposition`
   table** is delivered — import dispositions moved out of the
   `import_run.diagnostics.dispositions` jsonb into a first-class table (FK →
@@ -516,7 +504,7 @@ The list below is the short narrative form.
   `DEC-082` resolution and `reconcileImportRun`'s `DEC-035` close gate; the dead
   jsonb reader removed) (commits `4587564`/`dbb7d97`/`64a7cfc`/`0f8b7b1`).
   **67 tables.** The row-11 import-framework point 7 is closed; point 6
-  (`file_object` absent) remains. Next free decision id **`DEC-084`**.
+  (`file_object` absent) remains. Next free decision id **`DEC-085`**.
 - **Recorded this session (2026-09-21, from the `DEC-083` reviews; recorded, not
   decided — do not resolve silently):**
   (i) the frozen `diagnostics.dispositions` jsonb keys still exist and need a
@@ -547,7 +535,7 @@ The list below is the short narrative form.
   import-framework point 4 ("no import-profile table") was closed by `DEC-081`;
   point 7 (dispositions in `diagnostics.dispositions` jsonb, not a table) was
   closed by `DEC-083` (see above). Next free decision id
-  **`DEC-084`**.
+  **`DEC-085`**.
 - **Resolved this session (2026-09-21, `DEC-081`):** the
   **import-profile table** is delivered — `import_profile` keyed
   `(organization_id, source)` (unique) carrying `profile_version`,
@@ -561,7 +549,7 @@ The list below is the short narrative form.
   and the web layer (commits `2997587`/`f4a8110`/`e9ec176`/`1914795`/`cb3aff5`).
   The row-11 "no import-profile table exists" point is closed; the profile's
   posting policy is now **enforced** by `postImportRun` (`DEC-082`, committed
-  `22b67c1`). Next free decision id **`DEC-084`**.
+  `22b67c1`). Next free decision id **`DEC-085`**.
 - **Resolved this session (2026-09-21, `DEC-080`, DQ-001):** the
   `data_quality_exception` table is delivered (migration `0030`) —
   `DEC-066`'s replacement for the interim `stock_transfer.discrepancy_note`
@@ -572,7 +560,7 @@ The list below is the short narrative form.
   the same transaction as the receive, alongside the note (commits
   `40b5d7e`/`d1d0fad`/`ddc9e06`). The "no transfer-discrepancy exception
   table exists" point from the slice-9 open list is closed. Next free
-  decision id **`DEC-084`**.
+  decision id **`DEC-085`**.
 - **Resolved this session (2026-09-21, `DEC-079`, closing `DEC-054`):** the
   cross-organization referential-integrity / deferred-FK hardening is
   delivered — coherence on `recipe_allergen.allergen_id`,
@@ -659,13 +647,14 @@ The list below is the short narrative form.
   pre-write with a `DomainError` naming the blocking rows, commits
   `12f0377`/`22b67c1`);
   `file_object` is absent, so
-  `import_run.file_object_id` is a plain uuid (TECH); ~~dispositions live in
+  `import_run.file_object_id` is a plain uuid (TECH — the next task);
+  ~~dispositions live in
   `diagnostics.dispositions` jsonb, not a table (TECH)~~ resolved 2026-09-21
   (`DEC-083` — the `import_disposition` table, migration `0033`; the frozen
   jsonb keys are retained pending the tracked contract step). Also a
   live-check left one dev `import_run` row in the local database (see "Local
   dev-DB cleanup" below). Record each resolution in `12_OPEN_DECISIONS.md`
-  (next free id **`DEC-084`**); do not resolve silently.
+  (next free id **`DEC-085`**); do not resolve silently.
 - **Row-12 sales/reconciliation open points (2026-09-20; also tracked in
   `docs/BUILD_ROADMAP.md` §5 "Row-12 sales/reconciliation open points";
   recorded, not decided — do not resolve silently):** consumption grain A1
@@ -681,11 +670,14 @@ The list below is the short narrative form.
   `pending`). Row 13 is data-gated on history/grain quality (I11); row 14 is
   owner-gated on the privacy review / access matrix; rows 15–18 remain blocked
   (data / `ADR-0009`–`0011`). Record each resolution in
-  `12_OPEN_DECISIONS.md` (next free id **`DEC-084`**); do not resolve silently.
+  `12_OPEN_DECISIONS.md` (next free id **`DEC-085`**); do not resolve silently.
 - **Slice-9/10 open owner questions (2026-09-20; also tracked in
   `docs/BUILD_ROADMAP.md` §5 "Slice-9/10 open owner questions"):** output-cost
-  allocation across multiple outputs/by-products (FIN); yield-variance tolerance
-  and exception store (`PROD-003`, FIN+TECH); work-in-progress/source-draw storage
+  allocation across multiple outputs/by-products (FIN); ~~yield-variance tolerance
+  and exception store (`PROD-003`, FIN+TECH)~~ the exception store and its
+  producers are resolved 2026-09-21 (`DEC-080` the table; `DEC-084` the
+  provisional producers); the **variance-tolerance thresholds** remain open
+  (FIN); work-in-progress/source-draw storage
   area (OPS+TECH); `production_plan` line/quantity model and status vocabulary
   (OPS+TECH); lot-tracked cross-location transfer policy (OPS); per-source stock
   reversal semantics (`DEC-028` — the sales-line variant is now implemented via
@@ -693,7 +685,7 @@ The list below is the short narrative form.
   ledger (TECH); ~~`lotTracked` unenforced (TECH)~~ resolved 2026-09-21
   (`DEC-078`); `DEC-009` daily theoretical
   consumption not implemented (TECH). Record each resolution in
-  `12_OPEN_DECISIONS.md` (next free id **`DEC-084`**); do not resolve silently.
+  `12_OPEN_DECISIONS.md` (next free id **`DEC-085`**); do not resolve silently.
 - **Deployment prerequisite inputs (owner; before any real `apply`):** `ADR-0004`
   acceptance; a real scoped `DIGITALOCEAN_TOKEN`; a provisioned private Spaces
   state bucket + state credentials; the sanitized-data owner; the legacy
@@ -915,6 +907,18 @@ and Spaces credentials via `-backend-config` / `AWS_ACCESS_KEY_ID` +
 
 ## Reversibility
 
+- **`DEC-084` PROD-003 variance-producer slice (committed as five commits since
+  the `1f06d34` baseline; nothing pushed)**: `accb44c` (`refactor(application)`
+  the shared `data-quality` module + the `transfers` refactor), `a819925`
+  (`feat(counts)` the `count_variance` producer in `approveStockCount`),
+  `875b0ba` (`feat(production)` the `yield_variance` producer in
+  `completeProductionBatch` + the web/runbook docs), `46d6ad7`
+  (`docs(decisions)` `DEC-084` + roadmap + persistence comments) and this
+  context docs update — each independently revertible with `git revert <sha>`;
+  revert in reverse order — production/counts before the `data-quality`
+  refactor — if reverting a cohort. **No schema change:** migrations stay
+  through `0033` (67 tables), no data migration, nothing rewrites existing
+  schema objects. Nothing pushed; nothing applied to DigitalOcean.
 - **`DEC-083` import-disposition-table slice (committed as seven commits since
   the `36f3c30` baseline; nothing pushed)**: `4587564` (the `DEC-083` decision
   entry), `dbb7d97` (persistence — the `import_disposition` table, migration
@@ -1102,6 +1106,84 @@ CASCADE; CREATE SCHEMA public; npm run db:migrate` (see the runbook). Once data
   (`DEC-015`).
 
 ## Work log (append-only, newest first)
+
+### 2026-09-21 — DEC-084 accepted and implemented (PROD-003 count-variance/yield-variance producers, provisional); handoff updated
+
+`main` HEAD `46d6ad7`; the slice is committed as five commits — `accb44c`,
+`a819925`, `875b0ba`, `46d6ad7` and this context docs update (nothing pushed;
+nothing applied to DigitalOcean); the tree was clean at `1f06d34` before the
+slice. **5 commits** in order: `refactor(application)` extract the shared
+`data-quality` module (`packages/application/src/data-quality/`: `types.ts`,
+`postgres.ts`, `test-support.ts`, `index.ts`) holding the `DEC-080`
+`DataQualityExceptionRecord`/`NewDataQualityExceptionRecord` DTOs, the
+`DataQualityExceptionStore` port, the postgres mapper/creator and the fake
+helper, with `transfers` refactored to consume it (behaviour-preserving;
+`TransferStore` extends `DataQualityExceptionStore`); `feat(counts)`
+`approveStockCount` records exactly one `count_variance`
+`data_quality_exception` (entity `stock_count`) in the same transaction as the
+postings when any line variance is non-zero, `exception_id` added to the
+approval audit; `feat(production)` `completeProductionBatch` records exactly
+one `yield_variance` exception (entity `production_batch`) in the same
+transaction when `yield_variance_pct` is non-zero, `exception_id` in the
+completion audit, the two `apps/web` production open-point comments corrected
+and the runbook slice-10 point (g) closed citing `DEC-080`/`DEC-084`;
+`docs(decisions)` accept `DEC-084` (provisional) with `docs/BUILD_ROADMAP.md`
+§1/§5 and persistence comments in
+`packages/persistence/src/schema/platform.ts` and
+`packages/persistence/src/repositories/data-quality-exception.ts`;
+`docs(context)` this handoff update.
+
+- **Delivered (`DEC-084`, provisional):** the `PROD-003` variance exceptions
+  are recorded **unconditionally** through the `DEC-080`
+  `data_quality_exception` repository, in the **same transaction** as the
+  fact: `approveStockCount` writes one `count_variance` and
+  `completeProductionBatch` one `yield_variance` whenever the variance is
+  non-zero. No tolerance threshold is applied because the FIN
+  variance-tolerance thresholds remain an open input — so the producers are
+  provisional (the `DEC-055` precedent); `severity` is the schema default
+  `medium` (provisional); `detected_at` is the fact instant (count approval /
+  batch completion); `entity_id` is the count/batch id; one exception per
+  document. `DEC-084` is accepted provisional (TECH + FIN).
+- **Tests added:** counts unit (a non-zero variance records exactly one
+  exception incl. `detected_at` = approval instant + audit `exception_id`; an
+  exact count records none); counts postgres (read-back of the persisted row;
+  exact-vs-variance in one rolled-back transaction); production unit (non-zero
+  yield variance records exactly one exception and the input-line variance
+  alone records none; exact output records none; an idempotent replay with a
+  non-zero variance does not create a second exception); production postgres
+  (non-zero completion records one row; exact completion records none,
+  existing test extended).
+- **Reviews and reconciliation.** Two independent passes. `reviewer-qwen` —
+  **no blocker/major**; **accepted and applied** M2 (add a replay
+  non-duplication assertion) and M3 (the runbook cited only `DEC-080` for the
+  producer; now `DEC-080`/`DEC-084`); **declined with reason** M1 (the count
+  fake's `withTransaction` has no rollback, unlike the production fake — a
+  pre-existing fake-fidelity gap, not a regression, no test depends on it, and
+  the Postgres `inRollback` integration tests cover the real transaction;
+  recorded as a new open point). `reviewer-glm` — **no blocker/major**;
+  **accepted and applied** its single minor (a dead `toDataQualityException`
+  barrel re-export removed; the function is now module-private).
+- **New open point recorded (from qwen M1):** `FakeCountStore.withTransaction`
+  runs inline with no snapshot/rollback (unlike `FakeProductionStore`), so a
+  fake-store count test cannot assert rollback fidelity; the real transaction
+  is covered by the Postgres `inRollback` tests. Not resolved.
+- **Verification (working tree, exact):** `typecheck`, `lint`, `format:check`,
+  `build` clean; **1373/1373 tests with `DATABASE_URL`** (135 files);
+  `npm audit --omit=dev` = 0; no migration touched — `db:migrate` through
+  `0033` is a no-op on re-run; **67 tables**; every read/write
+  organization-scoped (`DEC-061`).
+- **Resume task:** the `file_object` platform table (row-11 import-framework
+  point 6), then the tracked `DEC-083` contract step (delete the frozen
+  `diagnostics.dispositions` keys) — see "Resume here". A dev server was
+  running at http://localhost:3000 (owner/LocalDevPass123, MFA disabled for
+  `owner`, demo-seeded including the `zettle-legacy` `import_profile`); a
+  fresh session must restart it (session-scoped).
+
+Rollback: each of the five commits is independently `git revert`-able
+(`accb44c`, `a819925`, `875b0ba`, `46d6ad7` and the context docs update);
+revert in reverse order — production/counts before the `data-quality`
+refactor — if reverting a cohort; no migration was touched (migrations stay
+through `0033`, 67 tables); nothing pushed; nothing applied to DigitalOcean.
 
 ### 2026-09-21 — DEC-083 accepted and implemented (import_disposition table, migration 0033); handoff updated
 
