@@ -61,9 +61,17 @@ export type {
 export { createPostgresPriceScenarioStore } from "./price-scenario-postgres-store";
 export type {
   NewPriceScenarioRecord,
+  NewPriceVersionRecord,
   PriceScenarioRecord,
   PriceScenarioStore,
+  PriceVersionRecord,
 } from "./price-scenario-types";
+export { getPriceVersion, listPriceVersions } from "./price-version";
+export type {
+  GetPriceVersionInput,
+  ListPriceVersionsInput,
+  ListPriceVersionsResult,
+} from "./price-version";
 export { registerAllocationRule } from "./register-allocation-rule";
 export type {
   RegisterAllocationRuleInput,
@@ -78,7 +86,13 @@ export type {
   RegisterOperatingCostInput,
   RegisterOperatingCostResult,
 } from "./register-operating-cost";
-export { assertEffectiveRange, assertIsoDate, assertOptionalIsoDate } from "./validation";
+export {
+  assertEffectiveRange,
+  assertInstantRange,
+  assertIsoDate,
+  assertIsoInstant,
+  assertOptionalIsoDate,
+} from "./validation";
 export type {
   AllocationRuleRecord,
   CostCenterRecord,

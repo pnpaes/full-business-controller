@@ -2,10 +2,12 @@ import type { AuditInput } from "../auth";
 
 /**
  * Application-level ports and DTOs for the slice-7 price scenarios (PRICE-001–
- * 005). The store is a narrow port over `@aquarela/persistence` so the commands
- * can be unit-tested against an in-memory fake; `createPostgresPriceScenarioStore`
- * is the real adapter. Record types are structural subsets of the persistence
- * rows; `createdAt` is carried as an ISO string and the jsonb columns are
+ * 005) and the price versions they produce (PRICE-002/003; `DEC-064`,
+ * `DEC-077`). The store is a narrow port over `@aquarela/persistence` so the
+ * commands can be unit-tested against an in-memory fake;
+ * `createPostgresPriceScenarioStore` is the real adapter. Record types are
+ * structural subsets of the persistence rows; `createdAt` is carried as an ISO
+ * string, `timestamptz` columns as ISO instants, and the jsonb columns are
  * defaulted to `{}` by the adapter.
  */
 
@@ -39,6 +41,36 @@ export interface NewPriceScenarioRecord {
   readonly state?: string;
 }
 
+/** An approved, effective price for one exact scope (`price_version`). */
+export interface PriceVersionRecord {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly productVariantId: string;
+  readonly locationId: string | null;
+  readonly channelId: string | null;
+  readonly grossPrice: string;
+  readonly netPrice: string;
+  readonly effectiveFrom: string;
+  readonly effectiveTo: string | null;
+  readonly approvedBy: string;
+  readonly approvedAt: string;
+  readonly sourceScenarioId: string;
+}
+
+export interface NewPriceVersionRecord {
+  readonly organizationId: string;
+  readonly productVariantId: string;
+  readonly locationId: string | null;
+  readonly channelId: string | null;
+  readonly grossPrice: string;
+  readonly netPrice: string;
+  readonly effectiveFrom: string;
+  readonly effectiveTo: string | null;
+  readonly approvedBy: string;
+  readonly approvedAt: string;
+  readonly sourceScenarioId: string;
+}
+
 export interface PriceScenarioStore {
   /** Binds `fn` to one transaction so the state change and its audit row commit together. */
   withTransaction<T>(fn: (store: PriceScenarioStore) => Promise<T>): Promise<T>;
@@ -62,6 +94,16 @@ export interface PriceScenarioStore {
       readonly netPrice?: string | null;
     },
   ): Promise<PriceScenarioRecord>;
+  /**
+   * Compare-and-swap `draft`/`submitted` → `approved`, organization-scoped
+   * (PRICE-003). Returns `undefined` when the scenario is unknown, foreign, or
+   * no longer approvable, so a lost concurrent-approval race cannot create a
+   * second effective `price_version`.
+   */
+  markPriceScenarioApproved(query: {
+    readonly organizationId: string;
+    readonly priceScenarioId: string;
+  }): Promise<PriceScenarioRecord | undefined>;
   createCalculationSnapshot(input: {
     readonly organizationId: string;
     readonly costCardId?: string | null;
@@ -75,6 +117,31 @@ export interface PriceScenarioStore {
     readonly ruleVersion: string;
     readonly totals: Record<string, unknown>;
   }): Promise<{ readonly id: string }>;
+  createPriceVersion(input: NewPriceVersionRecord): Promise<PriceVersionRecord>;
+  findPriceVersion(query: {
+    readonly organizationId: string;
+    readonly priceVersionId: string;
+  }): Promise<PriceVersionRecord | undefined>;
+  listPriceVersions(query: {
+    readonly organizationId: string;
+    readonly limit?: number;
+    readonly offset?: number;
+  }): Promise<readonly PriceVersionRecord[]>;
+  /** The approved price versions for one scope, oldest `effectiveFrom` first. */
+  listPriceVersionsForScope(query: {
+    readonly organizationId: string;
+    readonly productVariantId: string;
+    readonly locationId: string | null;
+    readonly channelId: string | null;
+  }): Promise<readonly PriceVersionRecord[]>;
+  /** The one version effective for a scope at `asOf` (half-open window), if any. */
+  findEffectivePriceVersion(query: {
+    readonly organizationId: string;
+    readonly productVariantId: string;
+    readonly locationId: string | null;
+    readonly channelId: string | null;
+    readonly asOf: Date;
+  }): Promise<PriceVersionRecord | undefined>;
   /** Append-only audit fact; the caller must not pass secrets (ADR-0003 convention). */
   writeAudit(input: AuditInput): Promise<void>;
 }

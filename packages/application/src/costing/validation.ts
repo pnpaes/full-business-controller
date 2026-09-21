@@ -1,5 +1,9 @@
 import { DomainError } from "@aquarela/domain";
 
+import { assertIsoInstant } from "../inventory/validation";
+
+export { assertIsoInstant };
+
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
@@ -25,6 +29,22 @@ export function assertEffectiveRange(from: string, to: string | null | undefined
   assertIsoDate(from, "effectiveFrom");
   assertOptionalIsoDate(to, "effectiveTo");
   if (to !== null && to !== undefined && to <= from) {
+    throw new DomainError("effectiveTo must be after effectiveFrom");
+  }
+}
+
+/**
+ * The `timestamptz` counterpart of `assertEffectiveRange`: both values must be
+ * ISO-8601 instants and, when `to` is present, strictly after `from`. Compared
+ * by parsed time, so an offset or differing precision cannot invert the order.
+ */
+export function assertInstantRange(from: string, to: string | null | undefined): void {
+  assertIsoInstant(from, "effectiveFrom");
+  if (to === null || to === undefined) {
+    return;
+  }
+  assertIsoInstant(to, "effectiveTo");
+  if (Date.parse(to) <= Date.parse(from)) {
     throw new DomainError("effectiveTo must be after effectiveFrom");
   }
 }

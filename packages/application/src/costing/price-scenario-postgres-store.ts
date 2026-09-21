@@ -2,7 +2,11 @@ import * as repo from "@aquarela/persistence";
 import type { Database, NodeDatabase } from "@aquarela/persistence";
 
 import { asJsonObject } from "./json";
-import type { PriceScenarioRecord, PriceScenarioStore } from "./price-scenario-types";
+import type {
+  PriceScenarioRecord,
+  PriceScenarioStore,
+  PriceVersionRecord,
+} from "./price-scenario-types";
 
 /** A transaction handle has no `transaction` method of its own. */
 function isNodeDatabase(db: Database): db is NodeDatabase {
@@ -33,6 +37,23 @@ function toPriceScenario(row: repo.PriceScenario): PriceScenarioRecord {
     outcome: asJsonObject(row.outcome),
     state: row.state,
     createdAt: row.createdAt.toISOString(),
+  };
+}
+
+function toPriceVersion(row: repo.PriceVersion): PriceVersionRecord {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    productVariantId: row.productVariantId,
+    locationId: row.locationId,
+    channelId: row.channelId,
+    grossPrice: row.grossPrice,
+    netPrice: row.netPrice,
+    effectiveFrom: row.effectiveFrom.toISOString(),
+    effectiveTo: row.effectiveTo === null ? null : row.effectiveTo.toISOString(),
+    approvedBy: row.approvedBy,
+    approvedAt: row.approvedAt.toISOString(),
+    sourceScenarioId: row.sourceScenarioId,
   };
 }
 
@@ -73,9 +94,41 @@ export function createPostgresPriceScenarioStore(db: Database): PriceScenarioSto
     },
     updatePriceScenario: async (priceScenarioId, patch) =>
       toPriceScenario(await repo.updatePriceScenario(db, priceScenarioId, patch)),
+    markPriceScenarioApproved: async (query) => {
+      const row = await repo.approvePriceScenarioIfApprovable(db, query);
+      return row === undefined ? undefined : toPriceScenario(row);
+    },
     createCalculationSnapshot: async (input) => {
       const row = await repo.createCalculationSnapshot(db, input);
       return { id: row.id };
+    },
+    createPriceVersion: async (input) =>
+      toPriceVersion(
+        await repo.createPriceVersion(db, {
+          organizationId: input.organizationId,
+          productVariantId: input.productVariantId,
+          locationId: input.locationId,
+          channelId: input.channelId,
+          grossPrice: input.grossPrice,
+          netPrice: input.netPrice,
+          effectiveFrom: new Date(input.effectiveFrom),
+          effectiveTo: input.effectiveTo === null ? null : new Date(input.effectiveTo),
+          approvedBy: input.approvedBy,
+          approvedAt: new Date(input.approvedAt),
+          sourceScenarioId: input.sourceScenarioId,
+        }),
+      ),
+    findPriceVersion: async (query) => {
+      const row = await repo.findPriceVersion(db, query);
+      return row === undefined ? undefined : toPriceVersion(row);
+    },
+    listPriceVersions: async (query) =>
+      (await repo.listPriceVersions(db, query)).map(toPriceVersion),
+    listPriceVersionsForScope: async (query) =>
+      (await repo.listPriceVersionsForScope(db, query)).map(toPriceVersion),
+    findEffectivePriceVersion: async (query) => {
+      const row = await repo.findEffectivePriceVersion(db, query);
+      return row === undefined ? undefined : toPriceVersion(row);
     },
     writeAudit: async (input) => {
       await repo.writeAuditEvent(db, input);

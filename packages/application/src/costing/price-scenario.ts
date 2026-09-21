@@ -9,6 +9,7 @@ import {
   includedTax as includedTaxFn,
   parseDecimal,
   presentedMoney,
+  priceVersionWindowsOverlap,
   requiredNetPrice as requiredNetPriceFn,
   unitContribution as unitContributionFn,
   unitNetSales,
@@ -22,6 +23,7 @@ import type {
   PriceScenarioRecord,
   PriceScenarioStore,
 } from "./price-scenario-types";
+import { assertInstantRange } from "./validation";
 
 /**
  * Audit action vocabulary for price scenarios (PRICE-001–005). Values are the
@@ -31,6 +33,7 @@ import type {
 export const PRICE_SCENARIO_AUDIT_ACTIONS = {
   calculated: "costing.price_scenario.calculated",
   approved: "costing.price_scenario.approved",
+  priceVersionCreated: "costing.price_version.created",
 } as const;
 
 /**
@@ -139,10 +142,8 @@ function toFeeBreakdown(
  * to `@aquarela/domain`; the application layer only validates inputs and
  * sequences the calls. Validation and the pure maths run before the transaction.
  *
- * NOTE: PRICE-002/003 (`PriceVersion` creation and "an unapproved price can
- * never become effective") is deliberately **not** implemented here — no
- * `price_version` table exists yet. This slice only produces the scenario and
- * the approval state.
+ * This produces the scenario and its approval state; `approvePriceScenario`
+ * turns an approved scenario into an effective `price_version` (PRICE-002/003).
  */
 export async function calculatePriceScenario(
   store: PriceScenarioStore,
@@ -320,18 +321,30 @@ export interface ApprovePriceScenarioInput {
   readonly organizationId: string;
   readonly actorId: string;
   readonly priceScenarioId: string;
+  /** ISO instant the version becomes effective at; defaults to the approval instant. */
+  readonly effectiveFrom?: string;
+  /** ISO instant the version stops being effective (exclusive); null/omitted = open. */
+  readonly effectiveTo?: string | null;
 }
 
 export interface ApprovePriceScenarioResult {
   readonly priceScenarioId: string;
   readonly state: "approved";
+  /** The effective `price_version` this approval created. */
+  readonly priceVersionId: string;
 }
 
 /**
- * Approves a price scenario (PRICE-005). Only a `draft` or `submitted` scenario
- * can be approved; the state change and its audit row share one transaction.
- * `PriceVersion` creation/effectiveness (PRICE-002/003) is out of scope until a
- * `price_version` table exists.
+ * Approves a price scenario (PRICE-005) and, in the same transaction, creates the
+ * effective `price_version` for its exact scope (PRICE-002/003; `DEC-064`,
+ * `DEC-077`). Only a `draft` or `submitted` scenario with a solved gross and net
+ * price can be approved, so an unapproved or unpriced scenario can never become
+ * effective. The version window is half-open `[effectiveFrom, effectiveTo)`; it
+ * must not overlap an existing version for the same scope — an overlapping
+ * approval is rejected rather than silently superseding the earlier price.
+ *
+ * Validation runs before the transaction; both the state change and the version
+ * are committed together with their audit rows.
  */
 export async function approvePriceScenario(
   store: PriceScenarioStore,
@@ -340,6 +353,11 @@ export async function approvePriceScenario(
   assertNonEmpty(input.organizationId, "organizationId");
   assertNonEmpty(input.actorId, "actorId");
   assertNonEmpty(input.priceScenarioId, "priceScenarioId");
+
+  const approvedAt = new Date();
+  const effectiveFrom = input.effectiveFrom ?? approvedAt.toISOString();
+  const effectiveTo = input.effectiveTo ?? null;
+  assertInstantRange(effectiveFrom, effectiveTo);
 
   return store.withTransaction(async (tx) => {
     const scenario: PriceScenarioRecord | undefined = await tx.findPriceScenario(
@@ -354,8 +372,71 @@ export async function approvePriceScenario(
     if (scenario.state !== "draft" && scenario.state !== "submitted") {
       throw new DomainError(`price scenario cannot be approved from state ${scenario.state}`);
     }
+    if (scenario.grossPrice === null || scenario.netPrice === null) {
+      throw new DomainError("price scenario has no solved price and cannot become effective");
+    }
 
-    const updated = await tx.updatePriceScenario(input.priceScenarioId, { state: "approved" });
+    const window = { effectiveFrom, effectiveTo };
+    const existing = await tx.listPriceVersionsForScope({
+      organizationId: scenario.organizationId,
+      productVariantId: scenario.productVariantId,
+      locationId: scenario.locationId,
+      channelId: scenario.channelId,
+    });
+    if (
+      existing.some((version) =>
+        priceVersionWindowsOverlap(
+          { effectiveFrom: version.effectiveFrom, effectiveTo: version.effectiveTo },
+          window,
+        ),
+      )
+    ) {
+      throw new DomainError("price version window overlaps an existing version for this scope");
+    }
+
+    // Compare-and-swap the state transition *before* creating the version: two
+    // concurrent approvals both pass the check above, but only one wins the
+    // conditional UPDATE and creates a `price_version`; the loser gets
+    // `undefined` and its transaction rolls back (PRICE-003).
+    const updated = await tx.markPriceScenarioApproved({
+      organizationId: scenario.organizationId,
+      priceScenarioId: input.priceScenarioId,
+    });
+    if (updated === undefined) {
+      throw new DomainError("price scenario is not in an approvable state");
+    }
+
+    const version = await tx.createPriceVersion({
+      organizationId: scenario.organizationId,
+      productVariantId: scenario.productVariantId,
+      locationId: scenario.locationId,
+      channelId: scenario.channelId,
+      grossPrice: scenario.grossPrice,
+      netPrice: scenario.netPrice,
+      effectiveFrom,
+      effectiveTo,
+      approvedBy: input.actorId,
+      approvedAt: approvedAt.toISOString(),
+      sourceScenarioId: scenario.id,
+    });
+
+    await tx.writeAudit({
+      organizationId: input.organizationId,
+      actorId: input.actorId,
+      action: PRICE_SCENARIO_AUDIT_ACTIONS.priceVersionCreated,
+      entityType: "price_version",
+      entityId: version.id,
+      after: {
+        price_scenario_id: scenario.id,
+        product_variant_id: version.productVariantId,
+        location_id: version.locationId,
+        channel_id: version.channelId,
+        gross_price: version.grossPrice,
+        net_price: version.netPrice,
+        effective_from: version.effectiveFrom,
+        effective_to: version.effectiveTo,
+      },
+    });
 
     await tx.writeAudit({
       organizationId: input.organizationId,
@@ -367,6 +448,6 @@ export async function approvePriceScenario(
       after: { state: updated.state },
     });
 
-    return { priceScenarioId: updated.id, state: "approved" };
+    return { priceScenarioId: updated.id, state: "approved", priceVersionId: version.id };
   });
 }

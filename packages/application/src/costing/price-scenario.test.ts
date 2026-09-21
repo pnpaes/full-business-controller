@@ -274,7 +274,11 @@ describe("approvePriceScenario", () => {
       priceScenarioId,
     });
 
-    expect(result).toEqual({ priceScenarioId, state: "approved" });
+    expect(result).toEqual({
+      priceScenarioId,
+      state: "approved",
+      priceVersionId: expect.any(String),
+    });
     expect(store.priceScenarios.get(priceScenarioId)?.state).toBe("approved");
     expect(store.audits.at(-1)).toMatchObject({
       action: "costing.price_scenario.approved",
@@ -295,6 +299,57 @@ describe("approvePriceScenario", () => {
     );
   });
 
+  it("compare-and-swaps the approval: a second mark returns undefined", async () => {
+    const store = new FakePriceScenarioStore();
+    const { priceScenarioId } = await seedDraft(store);
+
+    const first = await store.markPriceScenarioApproved({
+      organizationId: ORG,
+      priceScenarioId,
+    });
+    expect(first?.state).toBe("approved");
+
+    // The row is now `approved`, so the conditional UPDATE matches no row.
+    expect(
+      await store.markPriceScenarioApproved({ organizationId: ORG, priceScenarioId }),
+    ).toBeUndefined();
+    expect(store.priceScenarios.get(priceScenarioId)?.state).toBe("approved");
+  });
+
+  it("markPriceScenarioApproved is org-scoped and refuses non-approvable states", async () => {
+    const store = new FakePriceScenarioStore();
+    const { priceScenarioId } = await seedDraft(store);
+
+    expect(
+      await store.markPriceScenarioApproved({ organizationId: OTHER_ORG, priceScenarioId }),
+    ).toBeUndefined();
+    expect(store.priceScenarios.get(priceScenarioId)?.state).toBe("draft");
+
+    const draft = store.priceScenarios.get(priceScenarioId)!;
+    store.priceScenarios.set(priceScenarioId, { ...draft, state: "rejected" });
+    expect(
+      await store.markPriceScenarioApproved({ organizationId: ORG, priceScenarioId }),
+    ).toBeUndefined();
+  });
+
+  it("rejects approval when the compare-and-swap loses the race", async () => {
+    // The scenario reads as approvable, but the conditional UPDATE matches no
+    // row, as if a concurrent approval won between the read and the swap.
+    class LosingRaceStore extends FakePriceScenarioStore {
+      override markPriceScenarioApproved(): Promise<undefined> {
+        return Promise.resolve(undefined);
+      }
+    }
+    const store = new LosingRaceStore();
+    const { priceScenarioId } = await seedDraft(store);
+
+    await expect(
+      approvePriceScenario(store, { organizationId: ORG, actorId: ACTOR, priceScenarioId }),
+    ).rejects.toThrow(/not in an approvable state/);
+    expect(store.priceVersions.size).toBe(0);
+    expect(store.priceScenarios.get(priceScenarioId)?.state).toBe("draft");
+  });
+
   it("approves a submitted scenario", async () => {
     const store = new FakePriceScenarioStore();
     const { priceScenarioId } = await seedDraft(store);
@@ -307,7 +362,11 @@ describe("approvePriceScenario", () => {
       priceScenarioId,
     });
 
-    expect(result).toEqual({ priceScenarioId, state: "approved" });
+    expect(result).toEqual({
+      priceScenarioId,
+      state: "approved",
+      priceVersionId: expect.any(String),
+    });
     expect(store.priceScenarios.get(priceScenarioId)?.state).toBe("approved");
     expect(store.audits.at(-1)).toMatchObject({
       action: "costing.price_scenario.approved",
@@ -345,5 +404,115 @@ describe("approvePriceScenario", () => {
     await expect(
       approvePriceScenario(store, { organizationId: OTHER_ORG, actorId: ACTOR, priceScenarioId }),
     ).rejects.toThrow(/belongs to another organization/);
+  });
+
+  it("creates an effective price version for the scenario scope and window", async () => {
+    const store = new FakePriceScenarioStore();
+    const { priceScenarioId } = await seedDraft(store);
+
+    const result = await approvePriceScenario(store, {
+      organizationId: ORG,
+      actorId: ACTOR,
+      priceScenarioId,
+      effectiveFrom: "2026-03-01T00:00:00Z",
+      effectiveTo: "2026-04-01T00:00:00Z",
+    });
+
+    expect(store.priceVersions.get(result.priceVersionId)).toMatchObject({
+      organizationId: ORG,
+      productVariantId: VARIANT,
+      locationId: null,
+      channelId: null,
+      grossPrice: "39.00",
+      netPrice: "33.9130",
+      effectiveFrom: "2026-03-01T00:00:00Z",
+      effectiveTo: "2026-04-01T00:00:00Z",
+      approvedBy: ACTOR,
+      sourceScenarioId: priceScenarioId,
+      approvedAt: expect.any(String),
+    });
+    expect(store.audits).toContainEqual(
+      expect.objectContaining({
+        action: "costing.price_version.created",
+        entityType: "price_version",
+        entityId: result.priceVersionId,
+      }),
+    );
+  });
+
+  it("defaults the version window to the approval instant and an open end", async () => {
+    const store = new FakePriceScenarioStore();
+    const { priceScenarioId } = await seedDraft(store);
+
+    const before = Date.now();
+    const result = await approvePriceScenario(store, {
+      organizationId: ORG,
+      actorId: ACTOR,
+      priceScenarioId,
+    });
+    const version = store.priceVersions.get(result.priceVersionId)!;
+
+    expect(version.effectiveTo).toBeNull();
+    expect(version.effectiveFrom).toBe(version.approvedAt);
+    expect(Date.parse(version.effectiveFrom)).toBeGreaterThanOrEqual(before);
+    expect(Date.parse(version.effectiveFrom)).toBeLessThanOrEqual(Date.now());
+  });
+
+  it("rejects approving a scenario with no solved price", async () => {
+    const store = new FakePriceScenarioStore();
+    seedVariant(store);
+    const draft = await calculatePriceScenario(store, cheeseBunInput({ grossPrice: null }));
+
+    await expect(
+      approvePriceScenario(store, {
+        organizationId: ORG,
+        actorId: ACTOR,
+        priceScenarioId: draft.priceScenarioId,
+      }),
+    ).rejects.toThrow(/no solved price/);
+    expect(store.priceVersions.size).toBe(0);
+    expect(store.priceScenarios.get(draft.priceScenarioId)?.state).toBe("draft");
+  });
+
+  it("rejects a window that overlaps an existing version in the same scope", async () => {
+    const store = new FakePriceScenarioStore();
+    const first = await seedDraft(store);
+    const second = await seedDraft(store);
+
+    await approvePriceScenario(store, {
+      organizationId: ORG,
+      actorId: ACTOR,
+      priceScenarioId: first.priceScenarioId,
+      effectiveFrom: "2026-03-01T00:00:00Z",
+    });
+
+    await expect(
+      approvePriceScenario(store, {
+        organizationId: ORG,
+        actorId: ACTOR,
+        priceScenarioId: second.priceScenarioId,
+        effectiveFrom: "2026-03-15T00:00:00Z",
+        effectiveTo: "2026-05-01T00:00:00Z",
+      }),
+    ).rejects.toThrow(/overlaps an existing version/);
+    expect(store.priceVersions.size).toBe(1);
+    expect(store.priceScenarios.get(second.priceScenarioId)?.state).toBe("draft");
+  });
+
+  it("rejects a window that does not end after it starts", async () => {
+    const store = new FakePriceScenarioStore();
+    const { priceScenarioId } = await seedDraft(store);
+
+    await expect(
+      approvePriceScenario(store, {
+        organizationId: ORG,
+        actorId: ACTOR,
+        priceScenarioId,
+        effectiveFrom: "2026-03-01T00:00:00Z",
+        effectiveTo: "2026-03-01T00:00:00Z",
+      }),
+    ).rejects.toThrow(/effectiveTo must be after effectiveFrom/);
+    expect(store.priceVersions.size).toBe(0);
+    expect(store.priceScenarios.get(priceScenarioId)?.state).toBe("draft");
   });
 });

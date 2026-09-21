@@ -1,8 +1,12 @@
+import { isEffectiveAt, priceVersionWindowsOverlap } from "@aquarela/domain";
+
 import type { AuditInput } from "../auth";
 import type {
   NewPriceScenarioRecord,
+  NewPriceVersionRecord,
   PriceScenarioRecord,
   PriceScenarioStore,
+  PriceVersionRecord,
 } from "./price-scenario-types";
 
 type SnapshotInput = Parameters<PriceScenarioStore["createCalculationSnapshot"]>[0];
@@ -20,6 +24,7 @@ export class FakePriceScenarioStore implements PriceScenarioStore {
   readonly locations = new Map<string, { readonly id: string; readonly organizationId: string }>();
   readonly channels = new Map<string, { readonly id: string; readonly organizationId: string }>();
   readonly priceScenarios = new Map<string, PriceScenarioRecord>();
+  readonly priceVersions = new Map<string, PriceVersionRecord>();
   readonly snapshots: Array<SnapshotInput & { readonly id: string }> = [];
   readonly audits: AuditInput[] = [];
 
@@ -98,6 +103,129 @@ export class FakePriceScenarioStore implements PriceScenarioStore {
     };
     this.priceScenarios.set(priceScenarioId, updated);
     return Promise.resolve(updated);
+  }
+
+  /**
+   * Mirrors `approvePriceScenarioIfApprovable`'s conditional UPDATE: only a
+   * `draft`/`submitted` scenario in the same organization flips to `approved`;
+   * anything else returns `undefined` (a lost approval race).
+   */
+  markPriceScenarioApproved(query: {
+    readonly organizationId: string;
+    readonly priceScenarioId: string;
+  }): Promise<PriceScenarioRecord | undefined> {
+    const existing = this.priceScenarios.get(query.priceScenarioId);
+    if (
+      existing === undefined ||
+      existing.organizationId !== query.organizationId ||
+      (existing.state !== "draft" && existing.state !== "submitted")
+    ) {
+      return Promise.resolve(undefined);
+    }
+    const updated: PriceScenarioRecord = { ...existing, state: "approved" };
+    this.priceScenarios.set(query.priceScenarioId, updated);
+    return Promise.resolve(updated);
+  }
+
+  createPriceVersion(input: NewPriceVersionRecord): Promise<PriceVersionRecord> {
+    // Mirrors the `price_version_no_overlap` EXCLUDE constraint so the fake
+    // enforces DEC-077 exactly as the database does.
+    const overlaps = [...this.priceVersions.values()].some(
+      (version) =>
+        version.organizationId === input.organizationId &&
+        version.productVariantId === input.productVariantId &&
+        version.locationId === input.locationId &&
+        version.channelId === input.channelId &&
+        priceVersionWindowsOverlap(
+          { effectiveFrom: version.effectiveFrom, effectiveTo: version.effectiveTo },
+          { effectiveFrom: input.effectiveFrom, effectiveTo: input.effectiveTo },
+        ),
+    );
+    if (overlaps) {
+      return Promise.reject(
+        new Error("price version window overlaps an existing version for this scope"),
+      );
+    }
+    const record: PriceVersionRecord = { id: this.nextId("price-version"), ...input };
+    this.priceVersions.set(record.id, record);
+    return Promise.resolve(record);
+  }
+
+  findPriceVersion(query: {
+    readonly organizationId: string;
+    readonly priceVersionId: string;
+  }): Promise<PriceVersionRecord | undefined> {
+    const version = this.priceVersions.get(query.priceVersionId);
+    return Promise.resolve(
+      version !== undefined && version.organizationId === query.organizationId
+        ? version
+        : undefined,
+    );
+  }
+
+  listPriceVersions(query: {
+    readonly organizationId: string;
+    readonly limit?: number;
+    readonly offset?: number;
+  }): Promise<readonly PriceVersionRecord[]> {
+    const versions = this.versionsFor(query.organizationId).sort((a, b) =>
+      a.effectiveFrom === b.effectiveFrom
+        ? b.id.localeCompare(a.id)
+        : b.effectiveFrom.localeCompare(a.effectiveFrom),
+    );
+    const offset = query.offset ?? 0;
+    const page =
+      query.limit === undefined
+        ? versions.slice(offset)
+        : versions.slice(offset, offset + query.limit);
+    return Promise.resolve(page);
+  }
+
+  listPriceVersionsForScope(query: {
+    readonly organizationId: string;
+    readonly productVariantId: string;
+    readonly locationId: string | null;
+    readonly channelId: string | null;
+  }): Promise<readonly PriceVersionRecord[]> {
+    const versions = this.versionsFor(query.organizationId)
+      .filter(
+        (version) =>
+          version.productVariantId === query.productVariantId &&
+          version.locationId === query.locationId &&
+          version.channelId === query.channelId,
+      )
+      .sort((a, b) => a.effectiveFrom.localeCompare(b.effectiveFrom));
+    return Promise.resolve(versions);
+  }
+
+  findEffectivePriceVersion(query: {
+    readonly organizationId: string;
+    readonly productVariantId: string;
+    readonly locationId: string | null;
+    readonly channelId: string | null;
+    readonly asOf: Date;
+  }): Promise<PriceVersionRecord | undefined> {
+    const asOf = query.asOf.toISOString();
+    const effective = this.versionsFor(query.organizationId).filter(
+      (version) =>
+        version.productVariantId === query.productVariantId &&
+        version.locationId === query.locationId &&
+        version.channelId === query.channelId &&
+        isEffectiveAt(
+          { effectiveFrom: version.effectiveFrom, effectiveTo: version.effectiveTo },
+          asOf,
+        ),
+    );
+    // Non-overlap (enforced above) guarantees at most one; newest `effectiveFrom`
+    // is only a defensive tie-break, as in the persistence query.
+    effective.sort((a, b) => b.effectiveFrom.localeCompare(a.effectiveFrom));
+    return Promise.resolve(effective[0]);
+  }
+
+  private versionsFor(organizationId: string): PriceVersionRecord[] {
+    return [...this.priceVersions.values()].filter(
+      (version) => version.organizationId === organizationId,
+    );
   }
 
   createCalculationSnapshot(input: SnapshotInput): Promise<{ readonly id: string }> {
