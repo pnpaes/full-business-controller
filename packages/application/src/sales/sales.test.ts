@@ -2,6 +2,15 @@ import { describe, expect, it, vi } from "vitest";
 
 import { DomainError } from "@aquarela/domain";
 
+import {
+  createImportRun,
+  disposeStagingRow,
+  mapImportRows,
+  stageImportRows,
+  validateImportRun,
+} from "../imports";
+import { seedImportFixture } from "../imports/test-support";
+
 import { getSalesTransaction } from "./get-sales-transaction";
 import { DEFAULT_SALES_LIMIT, listSalesTransactions } from "./list-sales-transactions";
 import { postImportRun } from "./post-import-run";
@@ -317,6 +326,89 @@ describe("postImportRun", () => {
     expect(stagingRow(store, rowIds[1]!).linkedSalesLineId).toBeNull();
   });
 
+  it("drives all_or_nothing end-to-end from upload through disposition to partial posting (DEC-082)", async () => {
+    const store = new FakeSalesStore();
+    const fixture = seedImportFixture(store);
+
+    const created = await createImportRun(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      source: fixture.source,
+      profileVersion: "v1",
+      fileHash: "hash-integration-1",
+      periodStart: "2026-01-01",
+      periodEnd: "2026-02-28",
+      postingPolicy: "all_or_nothing",
+    });
+    expect(created.status).toBe("uploaded");
+
+    await stageImportRows(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      importRunId: created.importRunId,
+      rows: [
+        { sourceRowNo: 1, raw: {}, normalized: normalized({ sku: fixture.itemSku }) },
+        {
+          sourceRowNo: 2,
+          raw: {},
+          normalized: normalized({ external_line_id: "line-2", currency: "USD" }),
+        },
+      ],
+    });
+
+    const validated = await validateImportRun(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      importRunId: created.importRunId,
+      rules: { expectedCurrency: "NOK" },
+    });
+    expect(validated).toMatchObject({ status: "needs_review", errorCount: 1 });
+    const invalidRowId = validated.issues[0]!.stagingRowId;
+
+    const mapped = await mapImportRows(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      importRunId: created.importRunId,
+      sourceSystem: fixture.sourceSystem,
+      entityType: "item",
+    });
+    expect(mapped).toMatchObject({ mappedCount: 1, skippedCount: 1 });
+
+    await disposeStagingRow(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      importRunId: created.importRunId,
+      stagingRowId: invalidRowId,
+      disposition: "rejected",
+      reason: "currency mismatch",
+    });
+
+    const result = await postImportRun(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      importRunId: created.importRunId,
+    });
+
+    expect(result).toMatchObject({
+      importRunId: created.importRunId,
+      status: "partially_posted",
+      postedCount: 1,
+      notPostedCount: 1,
+      transactionCount: 1,
+    });
+    expect(store.salesLines.size).toBe(1);
+    const rows = await store.listImportStagingRows({
+      organizationId: fixture.organizationId,
+      importRunId: created.importRunId,
+    });
+    expect(rows.find((row) => row.sourceRowNo === 1)!.linkedSalesLineId).not.toBeNull();
+    expect(rows.find((row) => row.sourceRowNo === 2)!.linkedSalesLineId).toBeNull();
+    expect(store.importRuns.get(created.importRunId)!.rowCounts).toMatchObject({
+      posted: 1,
+      not_posted: 1,
+    });
+  });
+
   it("all_or_nothing posts normally when every row is postable (DEC-082)", async () => {
     const store = new FakeSalesStore();
     const { importRunId, rowIds } = await seedImportRun(
@@ -380,6 +472,24 @@ describe("postImportRun", () => {
     await expect(
       postImportRun(store, { organizationId: ORG, actorId: ACTOR, importRunId }),
     ).rejects.toThrow(/best_effort/);
+    expect(store.salesTransactions.size).toBe(0);
+    expect(store.salesLines.size).toBe(0);
+  });
+
+  it("rejects a non-string posting-policy snapshot as corrupt rather than coercing it (DEC-082)", async () => {
+    const store = new FakeSalesStore();
+    const { importRunId } = await seedImportRun(
+      store,
+      { organizationId: ORG },
+      {
+        diagnostics: { posting_policy: ["all_or_nothing"] },
+        rows: [{ sourceRowNo: 1, normalized: normalized() }],
+      },
+    );
+
+    await expect(
+      postImportRun(store, { organizationId: ORG, actorId: ACTOR, importRunId }),
+    ).rejects.toThrow(/non-string posting policy: \["all_or_nothing"\]/);
     expect(store.salesTransactions.size).toBe(0);
     expect(store.salesLines.size).toBe(0);
   });

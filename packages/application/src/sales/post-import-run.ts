@@ -123,18 +123,26 @@ function toPostableRow(row: ImportStagingRowRecord): PostableRow | null {
 /**
  * The posting policy the run was created under, read from its recorded
  * `diagnostics.posting_policy` snapshot (`DEC-081`/`DEC-082`). Absent or blank
- * falls back to `DEC-025`'s `allow_partial`; a present value outside
- * `import_posting_policy` means the run's diagnostics are corrupt, so it is
- * rejected rather than silently defaulted. The run's own snapshot governs, not
- * the profile's current value, so editing a profile cannot change an existing
- * run's posting behaviour.
+ * falls back to `DEC-025`'s `allow_partial`; **only a string is accepted**, so
+ * any other present value — an array, number, object — is corrupt and rejected
+ * rather than coerced (an empty array must not collapse to blank, and
+ * `["all_or_nothing"]` must not stringify into a vocabulary member). A string
+ * outside `import_posting_policy` is likewise rejected rather than silently
+ * defaulted. The run's own snapshot governs, not the profile's current value,
+ * so editing a profile cannot change an existing run's posting behaviour.
  */
 function resolvePostingPolicy(diagnostics: Readonly<Record<string, unknown>>): string {
   const raw = diagnostics[IMPORT_DIAGNOSTIC_KEYS.postingPolicy];
   if (raw === undefined || raw === null) {
     return DEFAULT_IMPORT_POSTING_POLICY;
   }
-  const value = typeof raw === "string" ? raw.trim() : String(raw);
+  if (typeof raw !== "string") {
+    throw new DomainError(
+      `import run records a non-string posting policy: ${JSON.stringify(raw)}; ` +
+        "expected one of import_posting_policy (DEC-082)",
+    );
+  }
+  const value = raw.trim();
   if (value === "") {
     return DEFAULT_IMPORT_POSTING_POLICY;
   }
