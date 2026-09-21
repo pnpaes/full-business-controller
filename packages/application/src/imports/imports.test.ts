@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { DomainError } from "@aquarela/domain";
 
 import { createImportRun } from "./create-import-run";
+import { IMPORT_DIAGNOSTIC_KEYS } from "./diagnostics";
 import { disposeStagingRow } from "./dispose-staging-row";
 import { getImportRun } from "./get-import-run";
 import { listImportRuns } from "./list-import-runs";
@@ -609,6 +610,12 @@ describe("disposeStagingRow", () => {
         disposition: "ignored",
       }),
     ).rejects.toThrow(DomainError);
+  });
+});
+
+describe("import diagnostics keys (DEC-083 contract)", () => {
+  it("no longer carries the removed dispositions key", () => {
+    expect(Object.values(IMPORT_DIAGNOSTIC_KEYS)).not.toContain("dispositions");
   });
 });
 

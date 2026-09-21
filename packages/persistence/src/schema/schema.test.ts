@@ -140,6 +140,19 @@ const CORE_MIGRATION_SQL = readFileSync(
   "utf8",
 );
 
+/** The `DEC-083` contract pair: `0034` drops the frozen
+ * `import_run.diagnostics.dispositions` key now that the `import_disposition`
+ * table is the source of truth; its unjournalled down rebuilds the key from the
+ * table without dropping it. */
+const CONTRACT_MIGRATION_SQL = readFileSync(
+  new URL("../../drizzle/0034_import_disposition_contract.sql", import.meta.url),
+  "utf8",
+);
+const CONTRACT_MIGRATION_DOWN_SQL = readFileSync(
+  new URL("../../drizzle/0034_import_disposition_contract_down.sql", import.meta.url),
+  "utf8",
+);
+
 /** Approved numeric precision/scale pairs from `DATA_DICTIONARY.md`. */
 const APPROVED_NUMERIC_SCALES = new Set([
   "19,4", // money
@@ -183,6 +196,14 @@ describe("phase 1-2 schema metadata", () => {
         `${constraint} missing from 0001_phase1_core.sql`,
       ).toBe(true);
     }
+  });
+
+  it("drops the frozen diagnostics.dispositions key in the 0034 contract step", () => {
+    expect(CONTRACT_MIGRATION_SQL).toContain("- 'dispositions'");
+    expect(CONTRACT_MIGRATION_SQL).toContain("? 'dispositions'");
+    // The down rebuilds the key from the table and must not drop it.
+    expect(CONTRACT_MIGRATION_DOWN_SQL).toContain("jsonb_set(");
+    expect(CONTRACT_MIGRATION_DOWN_SQL).toContain("'{dispositions}'");
   });
 
   it("gives every table a UUID primary key named id", () => {

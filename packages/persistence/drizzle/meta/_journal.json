@@ -239,6 +239,13 @@
       "when": 1789977792561,
       "tag": "0033_import_disposition",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1789989056234,
+      "tag": "0034_import_disposition_contract",
+      "breakpoints": true
     }
   ]
 }
