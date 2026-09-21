@@ -273,11 +273,10 @@ export const MAPPING_STATE = ["unmapped", "mapped", "ignored", "error", "conflic
 export const IMPORT_POSTING_POLICY = ["all_or_nothing", "allow_partial"] as const;
 
 // `DEC-083`: the approved-disposition vocabulary for a non-posted import row
-// (`DEC-035`). Authority is the application constant
-// (`packages/application/src/imports/vocabularies.ts`); it is not yet a
-// `schemas/domain-enums.yaml` key (recorded open point), so this mirrors it
-// provisionally (the `DEC-071` precedent) to back the
-// `import_disposition_disposition_check` constraint.
+// (`DEC-035`), from `schemas/domain-enums.yaml` (`import_disposition`). Backs
+// the `import_disposition_disposition_check` constraint; the application
+// constant (`packages/application/src/imports/vocabularies.ts`) derives from
+// this rather than redeclaring it.
 export const IMPORT_DISPOSITION = ["unmapped", "rejected", "ignored"] as const;
 
 // Slice 12 (sales + settlements + reconciliation), from

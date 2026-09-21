@@ -70,6 +70,8 @@ reconciliation_scope_type: [import_run, sales_source, settlement, supplier_invoi
 exception_severity: [low, medium, high, critical]
 exception_status: [open, acknowledged, resolved, dismissed]
 import_posting_policy: [all_or_nothing, allow_partial]
+# DEC-083: the approved disposition for a non-posted import staging row.
+import_disposition: [unmapped, rejected, ignored]
 allocation_driver:
   - direct_location_assignment
   - occupied_area

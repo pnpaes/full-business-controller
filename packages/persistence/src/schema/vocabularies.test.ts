@@ -78,12 +78,11 @@ describe("vocabularies vs schemas/domain-enums.yaml", () => {
   });
 
   // Exported vocabularies deliberately not (yet) in `schemas/domain-enums.yaml`.
-  // `IMPORT_DISPOSITION` is the `DEC-083` approved-disposition vocabulary: it
-  // mirrors the application constant
-  // (`packages/application/src/imports/vocabularies.ts`) provisionally and stays
-  // a recorded open point until the yaml gains its key. Adding to this list
-  // fails the guard below until the exemption is acknowledged there too.
-  const YAML_ABSENT_VOCABULARIES: string[] = ["IMPORT_DISPOSITION"];
+  // Currently empty: `IMPORT_DISPOSITION` was the last exemption and its yaml
+  // key (`import_disposition`) now exists, so the forward check below covers
+  // every exported vocabulary. The guard keeps this list from regrowing
+  // silently.
+  const YAML_ABSENT_VOCABULARIES: string[] = [];
 
   it("matches every exported vocabulary that has a yaml key", () => {
     for (const [name, values] of vocabEntries) {
@@ -96,17 +95,11 @@ describe("vocabularies vs schemas/domain-enums.yaml", () => {
     }
   });
 
-  it("keeps only documented exemptions, each still absent from the yaml", () => {
-    // The list must hold exactly the documented open points (no silent regrowth)
-    // and each exemption must genuinely lack a yaml key, so the entry is removed
-    // once its yaml key lands.
-    expect(YAML_ABSENT_VOCABULARIES).toEqual(["IMPORT_DISPOSITION"]);
-    for (const name of YAML_ABSENT_VOCABULARIES) {
-      expect(
-        yamlEnums[name.toLowerCase()],
-        `${name} exemption is stale: schemas/domain-enums.yaml now defines the key`,
-      ).toBeUndefined();
-    }
+  it("keeps no exported vocabulary exempt from the yaml guard", () => {
+    // The list must stay empty: every exported vocabulary is now backed by a
+    // `schemas/domain-enums.yaml` key, so a new exemption is a deliberate change
+    // that fails here until it is acknowledged.
+    expect(YAML_ABSENT_VOCABULARIES).toEqual([]);
     for (const [name] of vocabEntries) {
       if (YAML_ABSENT_VOCABULARIES.includes(name)) continue;
       expect(

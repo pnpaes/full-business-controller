@@ -21,10 +21,9 @@ export const DEFAULT_IMPORT_POSTING_POLICY = "allow_partial";
 
 /**
  * Approved dispositions for a non-posted row (`DEC-035`, `SALE-007`). The
- * dispositions now live in the `import_disposition` table (`DEC-083`); the
- * persistence vocabulary is a provisional mirror (`schemas/domain-enums.yaml`
- * has no disposition key yet), so this derives from it rather than
- * redeclaring it.
+ * authority is the `import_disposition` key in `schemas/domain-enums.yaml`
+ * (`DEC-083`); the persistence constant `IMPORT_DISPOSITION` derives from it,
+ * so this derives from that rather than redeclaring the values.
  */
 export const IMPORT_DISPOSITIONS: readonly string[] = CANONICAL_IMPORT_DISPOSITION;
 export type ImportDispositionKind = (typeof CANONICAL_IMPORT_DISPOSITION)[number];
