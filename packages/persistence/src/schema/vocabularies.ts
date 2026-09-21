@@ -327,3 +327,13 @@ export const ADJUSTMENT_REASON = [
   "transfer_discrepancy",
   "other",
 ] as const;
+
+// `DEC-080` (`DQ-001`): the `data_quality_exception` severity and lifecycle
+// state. `severity` defaults to `medium`; `status` defaults to `open` and moves
+// through acknowledgement to a resolution or dismissal. `rule_code` is
+// deliberately left as provisional free text (no closed vocabulary yet, the
+// `DEC-071` precedent). From `schemas/domain-enums.yaml` (`exception_severity`,
+// `exception_status`).
+export const EXCEPTION_SEVERITY = ["low", "medium", "high", "critical"] as const;
+
+export const EXCEPTION_STATUS = ["open", "acknowledged", "resolved", "dismissed"] as const;

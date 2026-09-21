@@ -66,6 +66,9 @@ option_kind: [standalone, attached, included]
 reconciliation_tolerance_kind: [sales_settlement, supplier_invoice]
 settlement_status: [received, paid, void]
 reconciliation_scope_type: [import_run, sales_source, settlement, supplier_invoice]
+# DEC-080 (DQ-001): the data_quality_exception severity / lifecycle state.
+exception_severity: [low, medium, high, critical]
+exception_status: [open, acknowledged, resolved, dismissed]
 import_posting_policy: [all_or_nothing, allow_partial]
 allocation_driver:
   - direct_location_assignment

@@ -4,6 +4,7 @@ import type { Database, DatabaseTransaction, NodeDatabase } from "../client";
 import {
   channel,
   costCenter,
+  dataQualityException,
   externalMapping,
   importRun,
   importStagingRow,
@@ -685,6 +686,29 @@ export async function createTestReconciliationTolerance(
       rate: "0.005",
       floorAmount: "5.0000",
       effectiveFrom: "2026-01-01",
+      ...overrides,
+    })
+    .returning();
+  return rows[0]!;
+}
+
+/**
+ * A `DEC-080` data-quality exception. `severity` defaults to `medium` and
+ * `status` to `open` (the schema defaults); `rule_code` gets a unique test
+ * value and `entity_id` a random uuid because the target is polymorphic.
+ */
+export async function createTestDataQualityException(
+  db: Database,
+  organizationId: string,
+  overrides: Partial<typeof dataQualityException.$inferInsert> = {},
+): Promise<typeof dataQualityException.$inferSelect> {
+  const rows = await db
+    .insert(dataQualityException)
+    .values({
+      organizationId,
+      ruleCode: uniqueName("rule"),
+      entityType: "stock_transfer",
+      entityId: randomUUID(),
       ...overrides,
     })
     .returning();

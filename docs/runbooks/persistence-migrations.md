@@ -170,11 +170,20 @@ because its target table varies by `source_type`.
 ## Pre-apply preflight for validating constraints and indexes
 
 Migrations 0014, 0016, 0017, 0018, 0019, 0020, 0021, 0022, 0023, 0024, 0025,
-0026, 0027, 0028 and 0029 add objects that validate or build, so a failure aborts
-the whole transactional migration (drizzle-kit runs each file in one
+0026, 0027, 0028, 0029 and 0030 add objects that validate or build, so a failure
+aborts the whole transactional migration (drizzle-kit runs each file in one
 transaction). Run the matching preflight against the target database **before**
 applying and reconcile any hits; drizzle-kit cannot detect them because these
 files diff against existing data.
+
+- **`0030_data_quality_exception.sql`** — one new, empty table
+  (`data_quality_exception`) with its two checks
+  (`data_quality_exception_severity_check`, `data_quality_exception_status_check`),
+  the organization FK and the `data_quality_exception_org_status_idx` /
+  `data_quality_exception_org_entity_idx` indexes. All are cheap at first apply
+  because the table is empty; the checks validate nothing existing and the
+  non-concurrent indexes build an empty table. It adds no hand-written statement
+  and touches no existing table. No separate preflight query is needed.
 
 - **`0029_org_coherence_guards.sql`** — the `VALIDATE CONSTRAINT` step scans
   `goods_receipt_line` for `supplier_item_id` values with no matching
@@ -827,6 +836,26 @@ only, so the down file is an explicit operator action, not an automatic one.
   the application. Apply it manually with
   `psql "$DATABASE_URL" -f packages/persistence/drizzle/0029_org_coherence_guards_down.sql`.
 
+- **0030 adds the `DEC-080` (`DQ-001`) data-quality exception table and follows
+  the down convention:** `0030_data_quality_exception.sql` is generated DDL for
+  `data_quality_exception` (`organization_id`, the provisional-text `rule_code`,
+  `severity` with the `exception_severity` check and default `medium`, the
+  polymorphic `entity_type`/`entity_id` (the latter a plain uuid, no FK),
+  `detected_at` defaulting to `now()`, the nullable `owner_id` (a plain uuid) and
+  `due_date` (`date`), `status` with the `exception_status` check and default
+  `open`, `resolution`, and the audit columns, plus the organization FK and the
+  `data_quality_exception_org_status_idx` / `data_quality_exception_org_entity_idx`
+  indexes). Its first producer is `receiveStockTransfer`'s
+  `transfer_discrepancy` exception. It adds one table and no hand-written
+  statement.
+  `0030_data_quality_exception_down.sql` drops the table inside one
+  `BEGIN;`/`COMMIT;` (with `DROP TABLE IF EXISTS` so a half-applied manual run
+  cannot wedge); its checks, FK and indexes drop with the table. It is
+  **destructive** — every recorded exception (including the transfer
+  discrepancies) is lost — so run it only while those exceptions need not be
+  preserved (AGENTS.md Rule 2). Apply it manually with
+  `psql "$DATABASE_URL" -f packages/persistence/drizzle/0030_data_quality_exception_down.sql`.
+
 **Re-applying after a manual down:** drizzle-kit tracks applied migrations in
 `drizzle.__drizzle_migrations`, not by comparing the schema, so a plain
 `npm run db:migrate` after any down file is a no-op — the migration is still
@@ -846,8 +875,9 @@ for 0003, `… = 1789850858806` for 0004, `… = 1789851925634` for 0005,
 `… = 1789938630318` for 0024, `… = 1789938645539` for 0025,
 `… = 1789940067864` for 0026,
 `… = 1789949551665` for 0027,
-`… = 1789951616253` for 0028 and
-`… = 1789952943481` for 0029, then
+`… = 1789951616253` for 0028,
+`… = 1789952943481` for 0029 and
+`… = 1789954073839` for 0030, then
 `npm run db:migrate` (0003 verified 2026-09-19; 0005 rehearsed in the slice-3
 review follow-up; 0006 rehearsed with the slice-4 receiving work; 0007 and
 0008 rehearsed with the slice-4 review follow-up; 0009 rehearsed with the
@@ -877,7 +907,10 @@ row changes, then deleting its ledger row and re-applying restored the default
 and both checks; 0029's down dropped the three `DEC-079` org-coherence guard
 triggers, their functions and the `goods_receipt_line.supplier_item_id` FK with
 no row changes, then deleting its ledger row and re-applying restored the three
-guards and the FK).
+guards and the FK; 0030's down dropped the `data_quality_exception` table (which
+held no rows in the local dev database), then deleting its ledger row and
+re-applying restored the table, its two checks, its organization FK and its two
+indexes — 65 tables).
 A **full 0011 down** drops the tables the three 0012 constraints live on, so its
 replay must clear **both** ledger rows, not just 0011's:
 `DELETE FROM drizzle.__drizzle_migrations WHERE created_at IN (1789862475550, 1789862630158);`
@@ -971,9 +1004,12 @@ implements it:
     `reverseStockMovement` for the slice-9 sources (count adjustment, transfer,
     waste); the downstream-sales reconciliation gate is deferred to the sales
     slice.
-  - **(f)** There is no exception table for transfer discrepancies
+  - **(f)** ~~There is no exception table for transfer discrepancies
     (`data_quality_exception` is deferred); `discrepancy_note` is the only
-    recorded difference today.
+    recorded difference today.~~ **Closed by `DEC-080` (migration `0030`):** the
+    `data_quality_exception` table now exists (see its entry below), and
+    `receiveStockTransfer` records a `transfer_discrepancy` exception alongside
+    the human `discrepancy_note`.
 - **Slice-11 import-framework open (owner/TECH) points — recorded, do not
   resolve silently** (also in the `packages/persistence/src/schema/sales.ts`
   comment block; append each resolution to `12_OPEN_DECISIONS.md`):
@@ -1141,6 +1177,7 @@ session will not serialise against each other.
 | 0027 | `0027_price_version.sql` | Generated + hand-written: the `DEC-064`/`DEC-077` `price_version` table (`organization_id`, `product_variant_id`, nullable `location_id`/`channel_id`, `gross_price`/`net_price` numeric(19,4), the `effective_from`/`effective_to` window, `approved_by`/`approved_at`, the required `source_scenario_id` FK, `created_at`, the `price_version_price_check` / `price_version_effective_range_check` constraints, the five FKs and `price_version_scope_idx`). Hand-written: the `price_version_no_overlap` EXCLUDE constraint on the scope columns and `tstzrange(effective_from, effective_to, '[)')`, normalizing a null `location_id`/`channel_id` to a single "any" scope with a COALESCE sentinel. Down companion: `0027_price_version_down.sql` (drops the constraint then the table — destructive) |
 | 0028 | `0028_settlement_reconciliation_vocabularies.sql` | Generated: adds the `settlement.status` default `received` and `settlement_status_check` (`DEC-078` (a)) plus `reconciliation_scope_type_check` on `reconciliation.scope_type` (`DEC-078` (b), the distinct `RECONCILIATION_SCOPE_TYPE` vocabulary). No table and no hand-written statement. Down companion: `0028_settlement_reconciliation_vocabularies_down.sql` (drops both checks and the `settlement.status` default — no row is touched) |
 | 0029 | `0029_org_coherence_guards.sql` | Hand-written (`DEC-079`, closing `DEC-054`'s open point): the `goods_receipt_line.supplier_item_id` existence FK (`NOT VALID` → `VALIDATE CONSTRAINT`) and three `BEFORE INSERT OR UPDATE FOR EACH ROW` guard triggers — `recipe_allergen_org_guard`, `recipe_line_org_guard` and `goods_receipt_line_org_guard` — that reject a reference whose parent resolves to another organization (and, for a receipt line, a supplier item from another supplier or for a different item). No table and no TypeScript schema change. Down companion: `0029_org_coherence_guards_down.sql` (drops the three triggers, their functions and the FK — no row is touched) |
+| 0030 | `0030_data_quality_exception.sql` | Generated (`DEC-080`, `DQ-001`): the `data_quality_exception` table — `organization_id`, the provisional-text `rule_code`, `severity` (`data_quality_exception_severity_check`, default `medium`), the polymorphic `entity_type`/`entity_id`, `detected_at` (default `now()`), the nullable `owner_id`/`due_date`, `status` (`data_quality_exception_status_check`, default `open`), `resolution` and the audit columns, with the organization FK and the `data_quality_exception_org_status_idx` / `data_quality_exception_org_entity_idx` indexes. No hand-written statement. Down companion: `0030_data_quality_exception_down.sql` (drops the table — destructive) |
 
 Order matters: extensions before DDL that calls `gen_random_uuid()`, and before
 the exclusion constraints. Verify with:
@@ -1170,7 +1207,7 @@ DATABASE_URL=postgres://aquarela:aquarela@localhost:5432/aquarela npm run db:mig
 `public` alone leaves the ledger intact, so `db:migrate` reports success while
 restoring nothing. `DROP SCHEMA drizzle CASCADE` clears the ledger so all
 migrations replay from 0000. Verified: after this sequence `db:migrate`
-re-applies 0000–0029 and the database has all 64 tables plus both extensions
+re-applies 0000–0030 and the database has all 65 tables plus both extensions
 (0004 adds the four slice-3 master-data tables; 0006 adds the two slice-4
 receiving tables; 0007 adds the `goods_receipt_line` guard trigger — no table;
 0008 relaxes the `supplier_price` range check — no table; 0009 adds the two
@@ -1202,15 +1239,18 @@ EXCLUDE constraint — one table; 0028 adds the `settlement.status` default and
 check and the `reconciliation.scope_type` check — no table; 0029 adds the
 `goods_receipt_line.supplier_item_id` existence FK and the three `DEC-079`
 org-coherence guard triggers (`recipe_allergen_org_guard`,
-`recipe_line_org_guard`, `goods_receipt_line_org_guard`) — no table).
+`recipe_line_org_guard`, `goods_receipt_line_org_guard`) — no table; 0030 adds
+the `DEC-080` `data_quality_exception` table — one table).
 0013–0019 were added after this replay was verified; all are additive and
-table-count-neutral. `0020`, `0021`, `0022`, `0023`, `0024` and `0027` are the
-only migrations after the replay was written to add tables (four, four, three,
-four, one and one respectively), so the 64-table figure above is the expected
-post-`0029` count (51 after `0020`, 55 after `0021`, 58 after `0022`, 62 after
-`0023`, 63 after `0024`); `0025`, `0026`, `0028` and `0029` are table-neutral.
-`0014`–`0029`'s
-apply/re-run/down/re-apply was rehearsed on the local dev database 2026-09-20.
+table-count-neutral. `0020`, `0021`, `0022`, `0023`, `0024`, `0027` and `0030`
+are the only migrations after the replay was written to add tables (four, four,
+three, four, one, one and one respectively), so the 65-table figure above is the
+expected post-`0030` count (51 after `0020`, 55 after `0021`, 58 after `0022`,
+62 after `0023`, 63 after `0024`, 64 after `0029`); `0025`, `0026` and `0028`
+are table-neutral.
+`0014`–`0030`'s
+apply/re-run/down/re-apply was rehearsed on the local dev database 2026-09-20
+(0030 on 2026-09-21).
 
 Once real data exists, this path is no longer acceptable: use small atomic
 commits, expand → migrate → contract for schema changes, and a tested
@@ -1403,6 +1443,14 @@ After applying to an empty database the following were verified with `psql`:
   accepted, and a `supplier_item_id` that names no `supplier_item` is rejected by
   `goods_receipt_line_supplier_item_id_supplier_item_id_fk`. The guards are
   forward-only (they do not re-validate rows written before the migration).
+- `data_quality_exception` (0030, `DEC-080`): a `severity` outside
+  `{low, medium, high, critical}` is rejected by
+  `data_quality_exception_severity_check` and a `status` outside
+  `{open, acknowledged, resolved, dismissed}` by
+  `data_quality_exception_status_check`; omitting them stores the defaults
+  `medium`/`open` and `detected_at` defaults to `now()`. A create with the other
+  organization's `organization_id` is invisible to the org-scoped `find`/`list`
+  (`DEC-061`).
 - Deferrable FKs: a `calculation_snapshot` and its `cost_card` can be inserted
   in the same transaction in either order and commit together.
 - `calculation_snapshot`: a plain `TRUNCATE` is blocked first by the FK from

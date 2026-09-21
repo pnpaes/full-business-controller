@@ -37,10 +37,14 @@ import { TRANSFER_STATUS } from "./vocabularies";
  *     sources (count adjustment, transfer, waste) have no dedicated reversal
  *     behaviour, and the "blocked when reconciled downstream sales depend on the
  *     original" gate is deferred to the sales slice.
- * (f) There is no **exception table** for transfer discrepancies (DEC-029 says
+ * (f) ~~There is no **exception table** for transfer discrepancies (DEC-029 says
  *     "dispatched-vs-received differences become exceptions", but no exception
  *     table exists in any authority and `data_quality_exception` is deferred).
- *     `discrepancy_note` is the only recorded difference today.
+ *     `discrepancy_note` is the only recorded difference today.~~
+ *     **Closed by `DEC-080` (migration `0030`):** the platform
+ *     `data_quality_exception` table exists in `./platform.ts`, and
+ *     `receiveStockTransfer` records a `transfer_discrepancy` exception
+ *     (severity `high`, entity `stock_transfer`) alongside `discrepancy_note`.
  *
  * (c) the waste-event `value_method`/`value` vs the ledger moving-average
  *     outbound value is recorded in `./waste.ts`.
