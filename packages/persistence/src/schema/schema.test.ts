@@ -14,7 +14,7 @@ import * as schema from "./index";
 
 const tables = Object.values(schema).filter((value) => is(value, PgTable));
 
-/** The 74 in-scope Phase 1-2 tables: the 35 core tables, the slice-3
+/** The 76 in-scope Phase 1-2 tables: the 35 core tables, the slice-3
  * master-data additions (`unit_conversion`, `supplier`, `supplier_item`,
  * `cost_center`), the slice-4 receiving additions (`goods_receipt`,
  * `goods_receipt_line`), the slice-5 allergen additions (`allergen`,
@@ -32,8 +32,9 @@ const tables = Object.values(schema).filter((value) => is(value, PgTable));
  * `DEC-083` `import_disposition` table, the `ADR-0006`/`DEC-085`
  * `file_object` table and the `DEC-089` HMS monitoring slice
  * (`monitoring_point`, `monitoring_reading`), and the `DEC-090`/`DEC-095` HMS
- * incident slice (`hms_incident`, `corrective_action`), and the `DEC-091` HMS
- * checklist slice (`checklist_template`, `checklist_run`), from
+ * incident slice (`hms_incident`, `corrective_action`), the `DEC-091` HMS
+ * checklist slice (`checklist_template`, `checklist_run`) and the `DEC-092` HMS
+ * equipment/maintenance slice (`equipment`, `maintenance_log`), from
  * `schemas/phase1_2_draft.sql` / `DATA_DICTIONARY`. */
 const EXPECTED_TABLES = [
   "addon_applicability",
@@ -54,6 +55,7 @@ const EXPECTED_TABLES = [
   "cost_pool",
   "data_ownership",
   "data_quality_exception",
+  "equipment",
   "exchange_rate",
   "external_mapping",
   "file_object",
@@ -67,6 +69,7 @@ const EXPECTED_TABLES = [
   "item",
   "labor_rate",
   "location",
+  "maintenance_log",
   "monitoring_point",
   "monitoring_reading",
   "operating_cost",

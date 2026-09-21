@@ -8,6 +8,7 @@ import {
   costCenter,
   correctiveAction,
   dataQualityException,
+  equipment,
   externalMapping,
   fileObject,
   hmsIncident,
@@ -17,6 +18,7 @@ import {
   importStagingRow,
   item,
   location,
+  maintenanceLog,
   monitoringPoint,
   organization,
   product,
@@ -917,6 +919,56 @@ export async function createTestChecklistRun(
       templateId: refs.templateId,
       locationId: refs.locationId,
       runAt: new Date("2026-01-01T08:00:00.000Z"),
+      performedBy: randomUUID(),
+      ...overrides,
+    })
+    .returning();
+  return rows[0]!;
+}
+
+/**
+ * A `DEC-092`/`HMS-006` equipment register row. `code` gets a unique test value
+ * because `(organization_id, code)` is unique; `kind` is free text, so a test
+ * need only override the field under test.
+ */
+export async function createTestEquipment(
+  db: Database,
+  organizationId: string,
+  locationId: string,
+  overrides: Partial<typeof equipment.$inferInsert> = {},
+): Promise<typeof equipment.$inferSelect> {
+  const rows = await db
+    .insert(equipment)
+    .values({
+      organizationId,
+      locationId,
+      code: uniqueName("equip"),
+      name: "Test Equipment",
+      kind: "other",
+      ...overrides,
+    })
+    .returning();
+  return rows[0]!;
+}
+
+/**
+ * A `DEC-092`/`HMS-006` maintenance-log fact. `performed_by` gets a random uuid
+ * (the `app_user` FK is deferred); `file_object_id` stays null unless a test
+ * sets it.
+ */
+export async function createTestMaintenanceLog(
+  db: Database,
+  organizationId: string,
+  equipmentId: string,
+  overrides: Partial<typeof maintenanceLog.$inferInsert> = {},
+): Promise<typeof maintenanceLog.$inferSelect> {
+  const rows = await db
+    .insert(maintenanceLog)
+    .values({
+      organizationId,
+      equipmentId,
+      kind: "service",
+      performedAt: new Date("2026-01-01T08:00:00.000Z"),
       performedBy: randomUUID(),
       ...overrides,
     })

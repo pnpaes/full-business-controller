@@ -137,3 +137,8 @@ corrective_action_status: [open, in_progress, done, verified]
 checklist_category: [opening, closing, cleaning, hygiene, food_safety, other]
 checklist_run_status: [in_progress, completed]
 checklist_item_outcome: [pass, fail, not_applicable]
+
+# DEC-092 (HMS-006): the equipment maintenance-log kind (service/repair/
+# inspection), backing `maintenance_log_kind_check`. `equipment.kind` is
+# deliberately left as provisional free text — DEC-092 names no vocabulary.
+maintenance_kind: [service, repair, inspection]

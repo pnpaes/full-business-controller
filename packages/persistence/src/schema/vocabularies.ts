@@ -404,3 +404,9 @@ export const CHECKLIST_CATEGORY = [
 export const CHECKLIST_RUN_STATUS = ["in_progress", "completed"] as const;
 
 export const CHECKLIST_ITEM_OUTCOME = ["pass", "fail", "not_applicable"] as const;
+
+// `DEC-092` (`HMS-006`): the equipment maintenance-log kind. Backs
+// `maintenance_log_kind_check`; `DEC-092` names no vocabulary for
+// `equipment.kind`, which stays free text (no CHECK — the `DEC-071` precedent).
+// From `schemas/domain-enums.yaml` (`maintenance_kind`).
+export const MAINTENANCE_KIND = ["service", "repair", "inspection"] as const;

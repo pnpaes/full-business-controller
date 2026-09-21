@@ -14,6 +14,7 @@ import {
 
 import { auditColumns, enumCheck, orgId, quantity, tstz, uuidPk } from "./columns";
 import { location, organization, storageArea } from "./organization";
+import { fileObject } from "./platform";
 import {
   CHECK_FREQUENCY,
   CHECKLIST_CATEGORY,
@@ -22,6 +23,7 @@ import {
   INCIDENT_CATEGORY,
   INCIDENT_SEVERITY,
   INCIDENT_STATUS,
+  MAINTENANCE_KIND,
   MONITORING_POINT_KIND,
 } from "./vocabularies";
 
@@ -269,5 +271,85 @@ export const checklistRun = pgTable(
     index("checklist_run_org_location_run_idx").on(t.organizationId, t.locationId, t.runAt),
     index("checklist_run_org_template_idx").on(t.organizationId, t.templateId),
     index("checklist_run_org_status_idx").on(t.organizationId, t.status),
+  ],
+);
+
+/*
+ * `DEC-092` (`HMS-006`): the equipment register and its maintenance log. One
+ * `equipment` row is one registered machine or fixture at a location — its code,
+ * name, free-text `kind` (`DEC-092` names no vocabulary, so the column stays
+ * free text with no CHECK — the `DEC-071` precedent), optional serial number and
+ * install/warranty dates. `(organization_id, code)` is unique, so a code
+ * identifies exactly one equipment row within an organization (the
+ * `monitoring_point`/`location` precedent); `serial_no` is nullable and **not**
+ * unique. `active` retires a row without deleting it, and the non-empty checks
+ * keep a blank `code`/`name` out of the register.
+ *
+ * This is **not** the deferred finance `asset` register: equipment is the
+ * operational machine list the maintenance log hangs off.
+ */
+export const equipment = pgTable(
+  "equipment",
+  {
+    id: uuidPk(),
+    organizationId: orgId().references(() => organization.id),
+    locationId: uuid("location_id")
+      .notNull()
+      .references(() => location.id),
+    code: text("code").notNull(),
+    name: text("name").notNull(),
+    kind: text("kind").notNull(),
+    serialNo: text("serial_no"),
+    installedAt: date("installed_at"),
+    warrantyUntil: date("warranty_until"),
+    active: boolean("active").notNull().default(true),
+    ...auditColumns(),
+  },
+  (t) => [
+    unique("equipment_organization_id_code_key").on(t.organizationId, t.code),
+    check("equipment_code_nonempty_check", sql`length(btrim(${t.code})) > 0`),
+    check("equipment_name_nonempty_check", sql`length(btrim(${t.name})) > 0`),
+    index("equipment_org_location_idx").on(t.organizationId, t.locationId),
+    index("equipment_org_active_idx").on(t.organizationId, t.active),
+  ],
+);
+
+/*
+ * `DEC-092` (`HMS-006`): the equipment maintenance fact log. One row is one
+ * service, repair or inspection performed at an instant by an operator
+ * (`performed_by` is a plain uuid — the `app_user` FK is deferred repo-wide).
+ * `equipment_id` is NOT NULL, so an unregistered-equipment maintenance is
+ * rejected by the FK rather than accepted as free text. `kind` is checked
+ * against the `maintenance_kind` vocabulary (service/repair/inspection), and the
+ * optional `file_object_id` is a **real** FK (deliberately unlike the incident
+ * slice's polymorphic evidence link) so a maintenance record can carry a
+ * document. The table is a fact log — the repository exposes create + read only
+ * — and `DEC-092` declares neither this table nor `equipment` append-only, so
+ * there is no append-only trigger (only the cross-organization guards of
+ * `0045`).
+ */
+export const maintenanceLog = pgTable(
+  "maintenance_log",
+  {
+    id: uuidPk(),
+    organizationId: orgId().references(() => organization.id),
+    equipmentId: uuid("equipment_id")
+      .notNull()
+      .references(() => equipment.id),
+    kind: text("kind").notNull(),
+    performedAt: tstz("performed_at").notNull(),
+    performedBy: uuid("performed_by").notNull(),
+    notes: text("notes"),
+    fileObjectId: uuid("file_object_id").references(() => fileObject.id),
+    ...auditColumns(),
+  },
+  (t) => [
+    check("maintenance_log_kind_check", enumCheck(t.kind, MAINTENANCE_KIND)),
+    index("maintenance_log_org_equipment_performed_idx").on(
+      t.organizationId,
+      t.equipmentId,
+      t.performedAt,
+    ),
+    index("maintenance_log_org_kind_idx").on(t.organizationId, t.kind),
   ],
 );
