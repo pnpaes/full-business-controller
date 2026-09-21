@@ -288,9 +288,9 @@ const DISPOSITION_OPTIONS = [
 
 /**
  * Records an approved disposition for a non-posted row (`SALE-007`, `DEC-035`):
- * a run cannot close while a row lacks one. There is no disposition table or
- * approval workflow, so the actor recording it is the approval and the record is
- * appended to the run's diagnostics.
+ * a run cannot close while a row lacks one. Dispositions live in the first-class
+ * `import_disposition` table, one row per staging row (`DEC-083`), so the actor
+ * recording it is the approval — there is no separate approval workflow.
  */
 export function DispositionForm({
   runId,

@@ -326,7 +326,7 @@ export default async function ImportRunDetailPage({
       {detail.dispositions.length > 0 ? (
         <SectionCard title="Dispositions" meta={`${detail.dispositions.length} recorded (DEC-035)`}>
           <Table
-            caption="Approved dispositions for non-posted rows. There is no disposition table; the record is appended to the run diagnostics."
+            caption="Each row has at most one approved disposition, recorded in the import_disposition table (DEC-083)."
             columnCount={5}
           >
             <thead>

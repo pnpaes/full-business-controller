@@ -18,9 +18,11 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * Records an approved disposition for a non-posted row (`SALE-007`, `DEC-035`):
- * the run cannot close while a non-posted row lacks one. The actor recording it
- * is the approval — there is no disposition table or approval workflow in this
- * slice, so the record is appended to the run's `diagnostics.dispositions`.
+ * the run cannot close while a non-posted row lacks one. Dispositions live in
+ * the first-class `import_disposition` table, one row per staging row
+ * (`DEC-083`); the actor recording it is the approval — there is no approval
+ * workflow in this slice. `disposeStagingRow` refuses a second disposition for a
+ * row (the unique key), which surfaces as a 400 via the `DomainError` handling.
  *
  * A `rejected` disposition requires a reason, and a row already linked to a
  * posted sales line cannot be dispositioned (correcting it is a slice-12
