@@ -1,5 +1,6 @@
 import {
   createDb,
+  dataQualityException,
   goodsReceipt,
   item,
   location,
@@ -194,6 +195,99 @@ describe.skipIf(!databaseUrl)("counts against PostgreSQL", () => {
         countedQty: "8.000000",
         varianceQty: "-2.000000",
       });
+
+      // Exactly one count_variance exception, in the same transaction as the
+      // postings and the header update (DEC-080).
+      const exceptions = (await tx.select().from(dataQualityException)).filter(
+        (row) => row.entityId === opened.stockCountId,
+      );
+      expect(exceptions).toHaveLength(1);
+      expect(exceptions[0]).toMatchObject({
+        organizationId: orgId,
+        ruleCode: "count_variance",
+        severity: "medium",
+        entityType: "stock_count",
+        status: "open",
+        resolution: null,
+        createdBy: actorId,
+      });
+      expect(exceptions[0]?.detectedAt).toBeInstanceOf(Date);
+    });
+  });
+
+  it("records a count_variance exception only when the count has a non-zero variance", async () => {
+    await inRollback(client.db, async (tx) => {
+      const fixture = await seedFixture(tx, orgId);
+      const store = createPostgresCountStore(tx);
+      const actorId = randomUUID();
+
+      await postStockMovement(store, {
+        organizationId: orgId,
+        actorId,
+        locationId: fixture.locationId,
+        storageAreaId: fixture.storageAreaId,
+        itemId: fixture.itemId,
+        movementType: "receipt",
+        sourceType: "goods_receipt",
+        sourceId: fixture.receiptId,
+        quantityDelta: "10.000000",
+        unitCost: "5.0000",
+        occurredAt: "2026-01-01T10:00:00.000Z",
+      });
+
+      const exactCount = await openStockCount(store, {
+        organizationId: orgId,
+        actorId,
+        locationId: fixture.locationId,
+        cutoff: CUTOFF,
+        blind: false,
+      });
+      await recordCountedLines(store, {
+        organizationId: orgId,
+        actorId,
+        stockCountId: exactCount.stockCountId,
+        lines: [
+          {
+            itemId: fixture.itemId,
+            storageAreaId: fixture.storageAreaId,
+            countedQty: "10.000000",
+          },
+        ],
+      });
+      await approveStockCount(store, {
+        organizationId: orgId,
+        actorId,
+        stockCountId: exactCount.stockCountId,
+      });
+
+      const varianceCount = await openStockCount(store, {
+        organizationId: orgId,
+        actorId,
+        locationId: fixture.locationId,
+        cutoff: CUTOFF,
+        blind: false,
+      });
+      await recordCountedLines(store, {
+        organizationId: orgId,
+        actorId,
+        stockCountId: varianceCount.stockCountId,
+        lines: [
+          {
+            itemId: fixture.itemId,
+            storageAreaId: fixture.storageAreaId,
+            countedQty: "8.000000",
+          },
+        ],
+      });
+      await approveStockCount(store, {
+        organizationId: orgId,
+        actorId,
+        stockCountId: varianceCount.stockCountId,
+      });
+
+      const rows = await tx.select().from(dataQualityException);
+      expect(rows.filter((row) => row.entityId === varianceCount.stockCountId)).toHaveLength(1);
+      expect(rows.filter((row) => row.entityId === exactCount.stockCountId)).toHaveLength(0);
     });
   });
 });

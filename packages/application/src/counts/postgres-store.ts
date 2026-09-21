@@ -1,6 +1,7 @@
 import * as repo from "@aquarela/persistence";
 import type { Database, NodeDatabase } from "@aquarela/persistence";
 
+import { createPostgresDataQualityException } from "../data-quality";
 import { createPostgresInventoryStore } from "../inventory";
 
 import type {
@@ -199,5 +200,6 @@ export function createPostgresCountStore(db: Database): CountStore {
     writeAudit: async (input) => {
       await repo.writeAuditEvent(db, input);
     },
+    createDataQualityException: (input) => createPostgresDataQualityException(db, input),
   };
 }

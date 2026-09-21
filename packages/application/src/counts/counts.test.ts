@@ -361,6 +361,77 @@ describe("approveStockCount", () => {
     });
   });
 
+  it("records exactly one count_variance exception when a non-zero variance is approved (DEC-080)", async () => {
+    const store = new FakeCountStore();
+    const fixture = seedCountFixture(store);
+    await postOpeningReceipt(store, fixture);
+    const stockCountId = await openSightedCount(store, fixture);
+    await recordCountedLines(store, {
+      organizationId: fixture.organizationId,
+      actorId: "actor",
+      stockCountId,
+      lines: [
+        { itemId: fixture.itemId, storageAreaId: fixture.storageAreaId, countedQty: "8.000000" },
+      ],
+    });
+
+    const result = await approveStockCount(store, {
+      organizationId: fixture.organizationId,
+      actorId: "actor",
+      stockCountId,
+    });
+
+    // One exception for the whole count, not one per line (unconditional
+    // recording pending the FIN tolerance thresholds).
+    expect(result.varianceCount).toBe(1);
+    const exceptions = [...store.dataQualityExceptions.values()];
+    expect(exceptions).toHaveLength(1);
+    expect(exceptions[0]).toMatchObject({
+      organizationId: fixture.organizationId,
+      ruleCode: "count_variance",
+      severity: "medium",
+      entityType: "stock_count",
+      entityId: stockCountId,
+      status: "open",
+      resolution: null,
+    });
+
+    // The detected instant is the approval instant, and the audit payload
+    // carries the exception id beside the movement count.
+    const detail = await getStockCount(store, {
+      organizationId: fixture.organizationId,
+      stockCountId,
+    });
+    expect(exceptions[0]?.detectedAt).toBe(detail?.count.approvedAt);
+    const approvedAudit = store.audits.find(
+      (entry) => entry.action === "inventory.stock_count.approved",
+    );
+    expect(approvedAudit?.after).toMatchObject({ exception_id: exceptions[0]?.id });
+  });
+
+  it("records no exception when every counted line matches expected (DEC-080)", async () => {
+    const store = new FakeCountStore();
+    const fixture = seedCountFixture(store);
+    await postOpeningReceipt(store, fixture);
+    const stockCountId = await openSightedCount(store, fixture);
+    await recordCountedLines(store, {
+      organizationId: fixture.organizationId,
+      actorId: "actor",
+      stockCountId,
+      lines: [
+        { itemId: fixture.itemId, storageAreaId: fixture.storageAreaId, countedQty: "10.000000" },
+      ],
+    });
+
+    await approveStockCount(store, {
+      organizationId: fixture.organizationId,
+      actorId: "actor",
+      stockCountId,
+    });
+
+    expect([...store.dataQualityExceptions.values()]).toHaveLength(0);
+  });
+
   it("rejects a positive variance when neither a unit cost nor a current_cost exists", async () => {
     const store = new FakeCountStore();
     const fixture = seedCountFixture(store);

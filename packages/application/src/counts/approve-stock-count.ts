@@ -48,6 +48,14 @@ export interface ApproveStockCountResult {
  * the header status and the audit fact commit or roll back together. A negative
  * variance that would drive a balance below zero still hits the `DEC-010` guard.
  *
+ * `DEC-080` (`PROD-003`): the approval also records exactly **one**
+ * `count_variance` `data_quality_exception` when any line has a non-zero
+ * variance, in the same transaction as the postings, so a failed write rolls
+ * back the whole approval. The recording is **unconditional** — provisional
+ * pending the FIN tolerance thresholds (an open point), so no threshold is
+ * applied: any non-zero variance is recorded. A count whose lines are all zero
+ * or uncounted records none.
+ *
  * A count-discovered waste is posted here as a `count_adjustment` **only**. The
  * waste slice must not also post a `waste` movement for the same event
  * (`WASTE-002`); the count's `sourceId` is the traceable origin.
@@ -159,6 +167,25 @@ export async function approveStockCount(
       approvedAt,
     });
 
+    // `DEC-080` (`PROD-003`): one exception for the whole count when any line
+    // moved, written in the same transaction as the postings and the header
+    // update above so a failure rolls the approval back. Unconditional pending
+    // the FIN tolerance thresholds (open point) — no threshold is applied.
+    const varianceException =
+      variances.length > 0
+        ? await tx.createDataQualityException({
+            organizationId: input.organizationId,
+            ruleCode: "count_variance",
+            severity: "medium",
+            entityType: "stock_count",
+            entityId: count.id,
+            detectedAt: approvedAt,
+            status: "open",
+            resolution: null,
+            createdBy: input.actorId,
+          })
+        : null;
+
     await tx.writeAudit({
       organizationId: input.organizationId,
       actorId: input.actorId,
@@ -170,6 +197,7 @@ export async function approveStockCount(
         movement_count: results.length,
         reason_code: reasonCode,
         approved_at: approvedAt,
+        exception_id: varianceException?.id ?? null,
       },
     });
 

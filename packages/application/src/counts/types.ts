@@ -1,4 +1,5 @@
 import type { AuditInput } from "../auth";
+import type { DataQualityExceptionStore } from "../data-quality";
 import type { InventoryStore } from "../inventory";
 
 /**
@@ -122,7 +123,7 @@ export interface UpdateStockCountLineValues {
   readonly recount?: boolean;
 }
 
-export interface CountStore extends InventoryStore {
+export interface CountStore extends InventoryStore, DataQualityExceptionStore {
   /** Binds `fn` to one transaction so the count writes and the ledger post commit together. */
   withTransaction<T>(fn: (store: CountStore) => Promise<T>): Promise<T>;
   /** One count by id, organization-scoped (`DEC-061`), or `undefined`. */

@@ -1,4 +1,9 @@
 import {
+  createFakeDataQualityException,
+  type DataQualityExceptionRecord,
+  type NewDataQualityExceptionRecord,
+} from "../data-quality";
+import {
   FakeInventoryStore,
   seedInventoryFixture,
   type InventoryFixture,
@@ -31,6 +36,8 @@ export class FakeCountStore extends FakeInventoryStore implements CountStore {
   readonly stockCountLines = new Map<string, StockCountLineRecord>();
   /** Item running cost keyed by item id; missing = never costed (null). */
   readonly itemCosts = new Map<string, string>();
+  /** `DEC-080` data-quality exceptions, in insertion order. */
+  readonly dataQualityExceptions = new Map<string, DataQualityExceptionRecord>();
 
   private countSequence = 0;
 
@@ -191,6 +198,12 @@ export class FakeCountStore extends FakeInventoryStore implements CountStore {
       return Promise.resolve(undefined);
     }
     return Promise.resolve({ ...item, currentCost: this.itemCosts.get(itemId) ?? null });
+  }
+
+  createDataQualityException(
+    input: NewDataQualityExceptionRecord,
+  ): Promise<DataQualityExceptionRecord> {
+    return createFakeDataQualityException(this.dataQualityExceptions, input);
   }
 }
 
