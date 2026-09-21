@@ -13,9 +13,10 @@ import {
 } from "@aquarela/ui";
 import { notFound } from "next/navigation";
 
-import { getCostingReadContext, loadPriceScenarioDetail } from "../../data";
+import { getCostingReadContext, loadPriceScenarioDetail, loadPriceVersions } from "../../data";
 import {
   formatInstant,
+  formatInstantWindow,
   formatMoney,
   formatPercent,
   formatQuantity,
@@ -23,6 +24,8 @@ import {
   stateTone,
 } from "../../format";
 import { uuidOrNotFound } from "../../../../../lib/route-params";
+
+import { ApproveScenarioForm } from "./approve-scenario-form";
 
 export const dynamic = "force-dynamic";
 
@@ -71,6 +74,13 @@ export default async function PriceScenarioDetailPage({
   if (scenario === undefined) {
     notFound();
   }
+
+  // An approved scenario created exactly one effective version; find it by its
+  // source scenario. The version is the stored row, so nothing is recomputed.
+  const approvedVersion =
+    scenario.state === "approved"
+      ? (await loadPriceVersions(context)).find((version) => version.sourceScenarioId === id)
+      : undefined;
 
   const currency = context.currency;
   const money = (value: string | null): string =>
@@ -241,6 +251,53 @@ export default async function PriceScenarioDetailPage({
                 </tr>
               </tbody>
             </Table>
+            {scenario.state === "draft" || scenario.state === "submitted" ? (
+              <ApproveScenarioForm priceScenarioId={scenario.id} />
+            ) : approvedVersion === undefined ? null : (
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: spacing[2],
+                  marginTop: spacing[3],
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: spacing[2],
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <StatusPill tone="success">Effective version</StatusPill>
+                  <span
+                    style={{
+                      fontFamily: typography.fontFamily.mono,
+                      fontSize: typography.fontSize.xs,
+                      color: color.text.muted,
+                    }}
+                  >
+                    {approvedVersion.id}
+                  </span>
+                </div>
+                <p
+                  style={{
+                    margin: 0,
+                    fontSize: typography.fontSize.sm,
+                    color: color.text.secondary,
+                  }}
+                >
+                  {money(approvedVersion.grossPrice)} gross · {money(approvedVersion.netPrice)} net
+                  ·{" "}
+                  {formatInstantWindow(approvedVersion.effectiveFrom, approvedVersion.effectiveTo)}{" "}
+                  · approved {formatInstant(approvedVersion.approvedAt)}
+                </p>
+                <a href="/costs/price-versions" style={{ fontSize: typography.fontSize.sm }}>
+                  All price versions
+                </a>
+              </div>
+            )}
           </SectionCard>
         </>
       )}

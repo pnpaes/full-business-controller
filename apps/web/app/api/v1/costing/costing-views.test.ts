@@ -3,6 +3,7 @@ import type {
   CostCardDetailRecord,
   CostCardRecord,
   PriceScenarioRecord,
+  PriceVersionRecord,
   SnapshotComponentRecord,
 } from "@aquarela/application";
 import { describe, expect, it } from "vitest";
@@ -13,6 +14,8 @@ import {
   toCostCardRows,
   toOperatingCostRows,
   toPriceScenarioRow,
+  toPriceVersionRow,
+  toPriceVersionRows,
   type CostingRefs,
 } from "./costing-views";
 
@@ -205,6 +208,43 @@ describe("costing view mapping", () => {
       breakEvenUnits: "30.845157",
       volumeAssumption: "100.000000",
     });
+  });
+
+  it("maps price versions with references and filters foreign organizations", () => {
+    const version: PriceVersionRecord = {
+      id: "pv",
+      organizationId: ORG,
+      productVariantId: "v",
+      locationId: "l",
+      channelId: null,
+      grossPrice: "49.0000",
+      netPrice: "39.2000",
+      effectiveFrom: "2026-10-01T00:00:00.000Z",
+      effectiveTo: null,
+      approvedBy: "user-1",
+      approvedAt: "2026-09-25T10:00:00.000Z",
+      sourceScenarioId: "s",
+    };
+
+    const rows = toPriceVersionRows(
+      ORG,
+      [version, { ...version, id: "foreign", organizationId: OTHER }],
+      refs(),
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      productVariantName: "Flat White",
+      locationName: "Main",
+      channelId: null,
+      channelName: null,
+      grossPrice: "49.0000",
+      netPrice: "39.2000",
+      effectiveTo: null,
+      sourceScenarioId: "s",
+    });
+
+    const single = toPriceVersionRow(ORG, version, refs());
+    expect(single.locationName).toBe("Main");
   });
 
   it("maps operating costs and allocation rules", () => {

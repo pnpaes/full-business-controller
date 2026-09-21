@@ -1,18 +1,22 @@
 import {
   createPostgresCostingReadStore,
+  createPostgresPriceScenarioStore,
   getCostCardDetail,
   getPriceScenarioDetail,
+  getPriceVersion,
   listAllocationRules,
   listCostCards,
   listCostPools,
   listLaborRates,
   listOperatingCosts,
   listPriceScenarios,
+  listPriceVersions,
 } from "@aquarela/application";
 import {
   costCardRefRequest,
   loadCostingRefs,
   priceScenarioRefRequest,
+  priceVersionRefRequest,
   toAllocationRuleRows,
   toCostCardDetailView,
   toCostCardRows,
@@ -21,6 +25,8 @@ import {
   toOperatingCostRows,
   toPriceScenarioRow,
   toPriceScenarioRows,
+  toPriceVersionRow,
+  toPriceVersionRows,
   type AllocationRuleRow,
   type CostCardDetailView,
   type CostCardRow,
@@ -28,6 +34,7 @@ import {
   type LaborRateRow,
   type OperatingCostRow,
   type PriceScenarioRow,
+  type PriceVersionRow,
 } from "../../api/v1/costing/costing-views";
 import { getDb } from "../../../lib/db";
 import { resolveOrganization } from "../../../lib/organization";
@@ -99,6 +106,35 @@ export async function loadPriceScenarioDetail(
     channelIds: scenario.channelId === null ? [] : [scenario.channelId],
   });
   return toPriceScenarioRow(organizationId, scenario, refs);
+}
+
+export async function loadPriceVersions(
+  context: CostingReadContext,
+  query: { readonly limit?: number; readonly offset?: number } = {},
+): Promise<readonly PriceVersionRow[]> {
+  const { organizationId, store } = context;
+  const scenarioStore = createPostgresPriceScenarioStore(getDb().db);
+  const { versions } = await listPriceVersions(scenarioStore, { organizationId, ...query });
+  const refs = await loadCostingRefs(store, priceVersionRefRequest(versions));
+  return toPriceVersionRows(organizationId, versions, refs);
+}
+
+export async function loadPriceVersion(
+  context: CostingReadContext,
+  priceVersionId: string,
+): Promise<PriceVersionRow | undefined> {
+  const { organizationId, store } = context;
+  const scenarioStore = createPostgresPriceScenarioStore(getDb().db);
+  const version = await getPriceVersion(scenarioStore, { organizationId, priceVersionId });
+  if (version === undefined) {
+    return undefined;
+  }
+  const refs = await loadCostingRefs(store, {
+    productVariantIds: [version.productVariantId],
+    locationIds: version.locationId === null ? [] : [version.locationId],
+    channelIds: version.channelId === null ? [] : [version.channelId],
+  });
+  return toPriceVersionRow(organizationId, version, refs);
 }
 
 export async function loadOperatingCosts(

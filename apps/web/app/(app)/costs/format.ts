@@ -51,6 +51,13 @@ export function formatWindow(from: string, to: string | null): string {
   return to === null ? `${from} → open` : `${from} → ${to}`;
 }
 
+/** An ISO-instant effective window → "2026-10-01 00:00 UTC → open". */
+export function formatInstantWindow(from: string, to: string | null): string {
+  return to === null
+    ? `${formatInstant(from)} → open`
+    : `${formatInstant(from)} → ${formatInstant(to)}`;
+}
+
 export type StateTone = "info" | "success" | "warning" | "danger";
 
 /** State → status tone; unknown states read as informational. */

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   formatInstant,
+  formatInstantWindow,
   formatMoney,
   formatPercent,
   formatQuantity,
@@ -29,6 +30,12 @@ describe("costs display formatting", () => {
     expect(formatInstant("2026-09-20T12:42:00.000Z")).toBe("2026-09-20 12:42 UTC");
     expect(formatWindow("2026-01-01", null)).toBe("2026-01-01 → open");
     expect(formatWindow("2026-01-01", "2026-06-01")).toBe("2026-01-01 → 2026-06-01");
+    expect(formatInstantWindow("2026-10-01T00:00:00.000Z", null)).toBe(
+      "2026-10-01 00:00 UTC → open",
+    );
+    expect(formatInstantWindow("2026-10-01T00:00:00.000Z", "2026-11-01T00:00:00.000Z")).toBe(
+      "2026-10-01 00:00 UTC → 2026-11-01 00:00 UTC",
+    );
     expect(orDash(null)).toBe("—");
     expect(orDash("")).toBe("—");
     expect(orDash("MAIN")).toBe("MAIN");

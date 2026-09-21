@@ -18,6 +18,7 @@ const TABS: readonly CostsTab[] = [
   { href: "/costs", label: "Overview" },
   { href: "/costs/cost-cards", label: "Cost cards" },
   { href: "/costs/price-scenarios", label: "Price scenarios" },
+  { href: "/costs/price-versions", label: "Price versions" },
   { href: "/costs/operating-costs", label: "Operating costs" },
   { href: "/costs/labor-rates", label: "Labour rates" },
   { href: "/costs/cost-pools", label: "Cost pools" },

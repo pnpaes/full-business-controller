@@ -13,6 +13,7 @@ import type {
   LaborRateRecord,
   OperatingCostRecord,
   PriceScenarioRecord,
+  PriceVersionRecord,
   SnapshotComponentRecord,
 } from "@aquarela/application";
 
@@ -427,6 +428,82 @@ export function priceScenarioRefRequest(
     ),
     channelIds: scenarios.flatMap((scenario) =>
       scenario.channelId === null ? [] : [scenario.channelId],
+    ),
+  };
+}
+
+/* ------------------------------ price versions ----------------------------- */
+
+export interface PriceVersionRow {
+  readonly id: string;
+  readonly productVariantId: string;
+  readonly productVariantCode: string | null;
+  readonly productVariantName: string | null;
+  readonly locationId: string | null;
+  readonly locationName: string | null;
+  readonly channelId: string | null;
+  readonly channelName: string | null;
+  readonly grossPrice: string;
+  readonly netPrice: string;
+  readonly effectiveFrom: string;
+  readonly effectiveTo: string | null;
+  readonly approvedBy: string;
+  readonly approvedAt: string;
+  readonly sourceScenarioId: string;
+}
+
+/**
+ * One effective price version (`price_version`; PRICE-002/003) as the screens and
+ * `/api/v1/costing` serialize it. A null `locationId`/`channelId` is the single
+ * "any location"/"any channel" scope, not a missing value; the reference lookups
+ * resolve only same-organization rows, so a foreign name never leaks
+ * (08_UI_UX.md §8.4).
+ */
+export function toPriceVersionRow(
+  organizationId: string,
+  version: PriceVersionRecord,
+  refs: CostingRefs,
+): PriceVersionRow {
+  const variant = owned(refs, "productVariants", version.productVariantId, organizationId);
+  const location = owned(refs, "locations", version.locationId, organizationId);
+  const channel = owned(refs, "channels", version.channelId, organizationId);
+  return {
+    id: version.id,
+    productVariantId: version.productVariantId,
+    productVariantCode: variant?.code ?? null,
+    productVariantName: variant?.name ?? null,
+    locationId: version.locationId,
+    locationName: location?.name ?? null,
+    channelId: version.channelId,
+    channelName: channel?.name ?? null,
+    grossPrice: version.grossPrice,
+    netPrice: version.netPrice,
+    effectiveFrom: version.effectiveFrom,
+    effectiveTo: version.effectiveTo,
+    approvedBy: version.approvedBy,
+    approvedAt: version.approvedAt,
+    sourceScenarioId: version.sourceScenarioId,
+  };
+}
+
+export function toPriceVersionRows(
+  organizationId: string,
+  versions: readonly PriceVersionRecord[],
+  refs: CostingRefs,
+): readonly PriceVersionRow[] {
+  return versions
+    .filter((version) => version.organizationId === organizationId)
+    .map((version) => toPriceVersionRow(organizationId, version, refs));
+}
+
+export function priceVersionRefRequest(versions: readonly PriceVersionRecord[]): CostingRefRequest {
+  return {
+    productVariantIds: versions.map((version) => version.productVariantId),
+    locationIds: versions.flatMap((version) =>
+      version.locationId === null ? [] : [version.locationId],
+    ),
+    channelIds: versions.flatMap((version) =>
+      version.channelId === null ? [] : [version.channelId],
     ),
   };
 }
