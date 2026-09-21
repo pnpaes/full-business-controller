@@ -15,8 +15,10 @@ export type NewDataQualityException = typeof dataQualityException.$inferInsert;
  * (`input.organizationId`). `entity_id` is a polymorphic plain uuid (no FK) and
  * `rule_code` is provisional free text; `severity`/`status` are constrained by
  * the `exception_severity`/`exception_status` vocabularies in the schema. The
- * first producer is the transfer receive discrepancy; the count and
- * yield-variance producers land later.
+ * first producer is the transfer receive discrepancy; the count- and
+ * yield-variance producers landed 2026-09-21 (`DEC-084`) — `count_variance`
+ * from count approval and `yield_variance` from batch completion, recorded
+ * unconditionally pending the FIN tolerance thresholds.
  */
 
 export async function createDataQualityException(

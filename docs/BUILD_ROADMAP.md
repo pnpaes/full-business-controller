@@ -50,12 +50,14 @@ direction: proceed autonomously, per task — parallel background agents →
 adversarial review + fixes → document status and next steps → commit → next
 task. **Remaining roadmap:** row 13 is **data-gated** on history/grain
 quality (I11); row 14 is **owner-gated** on a privacy review / access
-matrix; rows 15–18 remain blocked (data / `ADR-0009`–`0011`). **Next
-unblocked task:** the **`PROD-003` count-variance/yield-variance exception
-producers** using the `DEC-080` `data_quality_exception` table (the variance
-tolerance thresholds stay a recorded FIN open point); after it, `file_object`
-(row-11 import-framework point 6). Most other rows remain owner/data-gated.
-Next free decision id `DEC-084`.
+matrix; rows 15–18 remain blocked (data / `ADR-0009`–`0011`). **Done
+2026-09-21:** the **`PROD-003` count-variance/yield-variance exception
+producers** using the `DEC-080` `data_quality_exception` table (`DEC-084` —
+recorded unconditionally whenever the variance is non-zero, pending the FIN
+variance-tolerance thresholds, which stay a recorded FIN open point). **Next
+unblocked task:** `file_object` (row-11 import-framework point 6). Most other
+rows remain owner/data-gated.
+Next free decision id `DEC-085`.
 
 ## 2. The execution loop (per slice)
 
@@ -426,7 +428,12 @@ dates assigned):
    not resolve silently:
    1. Output-cost allocation across multiple outputs/by-products of one batch.
      owner/FIN.
-  2. Yield-variance tolerance and the exception store (`PROD-003`). owner/FIN+TECH.
+   2. Yield-variance tolerance and the exception store (`PROD-003`).
+      owner/FIN+TECH. ~~The exception store half~~ resolved 2026-09-21
+      (`DEC-084` — `approveStockCount` records a `count_variance` exception
+      and `completeProductionBatch` a `yield_variance` exception, in the same
+      transaction as the fact and unconditional pending the tolerance
+      thresholds); the **tolerance half stays an open FIN input**. owner/FIN.
   3. Work-in-progress / source-draw storage area for production batches.
      owner/OPS+TECH.
   4. `production_plan` line/quantity model and status vocabulary. owner/OPS+TECH.
@@ -510,7 +517,7 @@ dates assigned):
   privacy review / access matrix; rows 15–18 blocked on data /
   `ADR-0009`–`0011`), no roadmap slice is buildable purely from code without
   owner inputs or real history. The recorded low-risk open points resolved so
-  far are decisions `DEC-072`–`DEC-083` (2026-09-20/21; tolerance table
+  far are decisions `DEC-072`–`DEC-084` (2026-09-20/21; tolerance table
   `DEC-072`, sales-line reversal `DEC-073`, `MAPPING_STATE` `conflict`
   `DEC-074`, `tax_rule_id`/`applied_tax_rate` `DEC-075`, typed not-found error
   `DEC-076`, the price-version slice `DEC-077`, the `settlement.status`/
@@ -518,16 +525,15 @@ dates assigned):
   `DEC-078`, the cross-organization coherence guards `DEC-079`, the
   `data_quality_exception` table + transfer-discrepancy producer `DEC-080`,
   the `import_profile` table + run→profile org-coherence guard `DEC-081`, the
-  `postImportRun` posting-policy enforcement `DEC-082`, and the first-class
-  `import_disposition` table (migration `0033`) `DEC-083` — committed
+  `postImportRun` posting-policy enforcement `DEC-082`, the first-class
+  `import_disposition` table (migration `0033`) `DEC-083`, and the `PROD-003`
+  count-variance/yield-variance exception producers (`DEC-084`) — committed
   `dbb7d97`/`64a7cfc`).
-  The next buildable TECH-owned task is the **`PROD-003`
-  count-variance/yield-variance exception producers** using the `DEC-080`
-  `data_quality_exception` table (the variance tolerance thresholds stay a
-  recorded FIN open point); after it, `file_object` (row-11 import-framework
-  point 6). Most other rows remain owner/data-gated.
+  The next buildable TECH-owned task is `file_object` (row-11 import-framework
+  point 6); the variance tolerance thresholds stay a recorded FIN open point.
+  Most other rows remain owner/data-gated.
   The remaining recorded open points above stay open. Next free decision id
-  **`DEC-084`**.
+  **`DEC-085`**.
 - **Unit `m` vs the missing `length` dimension** — a dimension-vocabulary mismatch in
   `schemas/domain-enums.yaml` surfaced by slice 3; owner/TECH to resolve (FND-003).
 - **`numeric(19,6)` digit cap in `packages/domain/src/decimal.ts`** — the domain decimal

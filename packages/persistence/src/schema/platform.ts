@@ -62,9 +62,11 @@ export const auditEvent = pgTable(
  * growing and has no closed vocabulary yet (the `DEC-071` precedent).
  *
  * The first producer is `receiveStockTransfer`'s transfer discrepancy
- * (`transfer_discrepancy`, severity `high`, entity `stock_transfer`); the count
- * and yield variances (`PROD-003`) are expected producers later, which is why
- * `rule_code`/`entity_type` are plain text.
+ * (`transfer_discrepancy`, severity `high`, entity `stock_transfer`); the
+ * count- and yield-variance producers landed 2026-09-21 (`DEC-084`) —
+ * `count_variance` from count approval and `yield_variance` from batch
+ * completion, recorded unconditionally pending the FIN tolerance thresholds.
+ * `rule_code`/`entity_type` stay plain text because the rule set is open.
  */
 export const dataQualityException = pgTable(
   "data_quality_exception",
