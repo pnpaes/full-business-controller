@@ -2,9 +2,17 @@ import { DomainError } from "./errors";
 
 const DECIMAL_PATTERN = /^[+-]?\d+(?:\.\d+)?$/;
 
+// Storage precision of the numeric(19, scale) columns this domain writes to:
+// money is numeric(19,4) and quantities are numeric(19,6), so at most 19
+// significant digits. Reject an oversized integer part here rather than let it
+// fail later at the DB write. ponytail: the numeric(9,6) rate columns are a
+// separate, looser concern and are not covered by this cap.
+const MAX_NUMERIC_PRECISION = 19;
+
 /**
  * Parses a base-10 string into an integer scaled by `scale`, rejecting anything
- * that is not a plain decimal or that carries more precision than `scale`.
+ * that is not a plain decimal, that carries more precision than `scale`, or that
+ * would not fit the numeric(19, scale) storage precision.
  * Values are kept as BigInt: money and quantities are never represented as floats.
  */
 export function parseDecimal(value: string, scale: number): bigint {
@@ -19,6 +27,11 @@ export function parseDecimal(value: string, scale: number): bigint {
 
   if (fraction.length > scale) {
     throw new DomainError(`"${value}" has more than ${scale} decimal places`);
+  }
+
+  const wholeDigits = whole.replace(/^0+/, "");
+  if (wholeDigits.length > MAX_NUMERIC_PRECISION - scale) {
+    throw new DomainError(`"${value}" exceeds numeric(19,${scale}) precision`);
   }
 
   const digits = `${whole}${fraction.padEnd(scale, "0")}`.replace(/^0+(?=\d)/, "");
