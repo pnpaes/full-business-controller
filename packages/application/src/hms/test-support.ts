@@ -7,9 +7,13 @@ import type {
   ChecklistTemplateRecord,
   CorrectiveActionListQuery,
   CorrectiveActionRecord,
+  EquipmentListQuery,
+  EquipmentRecord,
   HmsStore,
   IncidentListQuery,
   IncidentRecord,
+  MaintenanceLogListQuery,
+  MaintenanceLogRecord,
   MonitoringPointListQuery,
   MonitoringPointRecord,
   MonitoringReadingListQuery,
@@ -17,12 +21,15 @@ import type {
   NewChecklistRunRecord,
   NewChecklistTemplateRecord,
   NewCorrectiveActionRecord,
+  NewEquipmentRecord,
   NewIncidentRecord,
+  NewMaintenanceLogRecord,
   NewMonitoringPointRecord,
   NewMonitoringReadingRecord,
   UpdateChecklistRunRecord,
   UpdateChecklistTemplateRecord,
   UpdateCorrectiveActionRecord,
+  UpdateEquipmentRecord,
   UpdateIncidentRecord,
   UpdateMonitoringPointRecord,
 } from "./types";
@@ -38,6 +45,8 @@ interface HmsSnapshot {
   readonly correctiveActions: Map<string, CorrectiveActionRecord>;
   readonly checklistTemplates: Map<string, ChecklistTemplateRecord>;
   readonly checklistRuns: Map<string, ChecklistRunRecord>;
+  readonly equipment: Map<string, EquipmentRecord>;
+  readonly maintenanceLogs: Map<string, MaintenanceLogRecord>;
   readonly audits: AuditInput[];
 }
 
@@ -53,6 +62,8 @@ export class FakeHmsStore implements HmsStore {
   readonly correctiveActions = new Map<string, CorrectiveActionRecord>();
   readonly checklistTemplates = new Map<string, ChecklistTemplateRecord>();
   readonly checklistRuns = new Map<string, ChecklistRunRecord>();
+  readonly equipment = new Map<string, EquipmentRecord>();
+  readonly maintenanceLogs = new Map<string, MaintenanceLogRecord>();
   readonly audits: AuditInput[] = [];
 
   private sequence = 0;
@@ -83,6 +94,8 @@ export class FakeHmsStore implements HmsStore {
       correctiveActions: new Map(this.correctiveActions),
       checklistTemplates: new Map(this.checklistTemplates),
       checklistRuns: new Map(this.checklistRuns),
+      equipment: new Map(this.equipment),
+      maintenanceLogs: new Map(this.maintenanceLogs),
       audits: [...this.audits],
     };
   }
@@ -106,6 +119,10 @@ export class FakeHmsStore implements HmsStore {
     }
     this.checklistRuns.clear();
     for (const [key, value] of snapshot.checklistRuns) this.checklistRuns.set(key, value);
+    this.equipment.clear();
+    for (const [key, value] of snapshot.equipment) this.equipment.set(key, value);
+    this.maintenanceLogs.clear();
+    for (const [key, value] of snapshot.maintenanceLogs) this.maintenanceLogs.set(key, value);
     this.audits.length = 0;
     this.audits.push(...snapshot.audits);
   }
@@ -465,6 +482,100 @@ export class FakeHmsStore implements HmsStore {
       .sort((a, b) => {
         // Newest `run_at` first, then `id` descending (the adapter's `desc`).
         if (a.runAt !== b.runAt) return a.runAt < b.runAt ? 1 : -1;
+        return a.id < b.id ? 1 : -1;
+      });
+    const offset = query.offset ?? 0;
+    const limit = query.limit ?? rows.length;
+    return rows.slice(offset, offset + limit);
+  }
+
+  async createEquipment(input: NewEquipmentRecord): Promise<EquipmentRecord> {
+    const record: EquipmentRecord = {
+      id: this.nextId("equipment"),
+      ...input,
+      createdAt: new Date().toISOString(),
+      updatedBy: null,
+    };
+    this.equipment.set(record.id, record);
+    return record;
+  }
+
+  async findEquipment(query: {
+    readonly organizationId: string;
+    readonly equipmentId: string;
+  }): Promise<EquipmentRecord | undefined> {
+    const row = this.equipment.get(query.equipmentId);
+    return row !== undefined && row.organizationId === query.organizationId ? row : undefined;
+  }
+
+  async updateEquipment(input: UpdateEquipmentRecord): Promise<EquipmentRecord | undefined> {
+    const existing = await this.findEquipment({
+      organizationId: input.organizationId,
+      equipmentId: input.equipmentId,
+    });
+    if (existing === undefined) return undefined;
+    // Replace the record rather than mutate it: the transaction snapshot keeps
+    // the old object reference, so an in-place edit would survive a rollback.
+    const record: EquipmentRecord = {
+      ...existing,
+      ...(input.name === undefined ? {} : { name: input.name }),
+      ...(input.kind === undefined ? {} : { kind: input.kind }),
+      ...(input.serialNo === undefined ? {} : { serialNo: input.serialNo }),
+      ...(input.installedAt === undefined ? {} : { installedAt: input.installedAt }),
+      ...(input.warrantyUntil === undefined ? {} : { warrantyUntil: input.warrantyUntil }),
+      ...(input.active === undefined ? {} : { active: input.active }),
+      ...(input.updatedBy === undefined ? {} : { updatedBy: input.updatedBy }),
+    };
+    this.equipment.set(record.id, record);
+    return record;
+  }
+
+  async listEquipment(query: EquipmentListQuery): Promise<readonly EquipmentRecord[]> {
+    const rows = [...this.equipment.values()]
+      .filter((row) => row.organizationId === query.organizationId)
+      .filter((row) => query.locationId === undefined || row.locationId === query.locationId)
+      .filter((row) => query.kind === undefined || row.kind === query.kind)
+      .filter((row) => query.active === undefined || row.active === query.active)
+      .sort((a, b) => {
+        if (a.code !== b.code) return a.code < b.code ? -1 : 1;
+        return a.id < b.id ? -1 : 1;
+      });
+    const offset = query.offset ?? 0;
+    const limit = query.limit ?? rows.length;
+    return rows.slice(offset, offset + limit);
+  }
+
+  async createMaintenanceLog(input: NewMaintenanceLogRecord): Promise<MaintenanceLogRecord> {
+    const record: MaintenanceLogRecord = {
+      id: this.nextId("maintenance-log"),
+      ...input,
+      // Match the adapter's `toMaintenanceLog`, which reads the `timestamptz`
+      // back as `Date(...).toISOString()`.
+      performedAt: new Date(input.performedAt).toISOString(),
+      createdAt: new Date().toISOString(),
+    };
+    this.maintenanceLogs.set(record.id, record);
+    return record;
+  }
+
+  async findMaintenanceLog(query: {
+    readonly organizationId: string;
+    readonly maintenanceLogId: string;
+  }): Promise<MaintenanceLogRecord | undefined> {
+    const row = this.maintenanceLogs.get(query.maintenanceLogId);
+    return row !== undefined && row.organizationId === query.organizationId ? row : undefined;
+  }
+
+  async listMaintenanceLogs(
+    query: MaintenanceLogListQuery,
+  ): Promise<readonly MaintenanceLogRecord[]> {
+    const rows = [...this.maintenanceLogs.values()]
+      .filter((row) => row.organizationId === query.organizationId)
+      .filter((row) => query.equipmentId === undefined || row.equipmentId === query.equipmentId)
+      .filter((row) => query.kind === undefined || row.kind === query.kind)
+      .sort((a, b) => {
+        // Newest `performed_at` first, then `id` descending (the adapter's `desc`).
+        if (a.performedAt !== b.performedAt) return a.performedAt < b.performedAt ? 1 : -1;
         return a.id < b.id ? 1 : -1;
       });
     const offset = query.offset ?? 0;

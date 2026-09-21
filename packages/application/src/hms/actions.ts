@@ -1,14 +1,14 @@
 /**
  * Audit action vocabulary for the HMS monitoring slice (`HMS-002`, `DEC-089`),
- * the incidents + corrective-actions slice (`DEC-090`, `HMS-003`/`HMS-004`) and
- * the checklists slice (`DEC-091`, `HMS-005`). Values are the
- * `audit_event.action` strings; keeping them here stops a handler from drifting
- * into near-duplicate names.
+ * the incidents + corrective-actions slice (`DEC-090`, `HMS-003`/`HMS-004`),
+ * the checklists slice (`DEC-091`, `HMS-005`) and the equipment/maintenance
+ * slice (`DEC-092`, `HMS-006`). Values are the `audit_event.action` strings;
+ * keeping them here stops a handler from drifting into near-duplicate names.
  *
  * A patch that makes the `closed`/`completed`/`verified` transition records the
  * specific action; any other amendment records the generic `updated` one. The
- * checklist tables have no derived transition (`DEC-096`), so they only use
- * `created`/`updated`/`recorded`.
+ * checklist and equipment/maintenance tables have no derived transition
+ * (`DEC-092`/`DEC-096`), so they only use `created`/`updated`/`recorded`.
  */
 export const HMS_AUDIT_ACTIONS = {
   monitoringPointCreated: "hms.monitoring_point.created",
@@ -25,4 +25,7 @@ export const HMS_AUDIT_ACTIONS = {
   checklistTemplateUpdated: "hms.checklist_template.updated",
   checklistRunRecorded: "hms.checklist_run.recorded",
   checklistRunUpdated: "hms.checklist_run.updated",
+  equipmentCreated: "hms.equipment.created",
+  equipmentUpdated: "hms.equipment.updated",
+  maintenanceLogRecorded: "hms.maintenance_log.recorded",
 } as const;

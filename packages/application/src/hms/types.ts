@@ -413,6 +413,131 @@ export interface ChecklistRunListQuery {
   readonly offset?: number;
 }
 
+/**
+ * One `equipment` row (`DEC-092`, `HMS-006`). `code` is the register key
+ * (`(organization_id, code)` is unique), so it is immutable after creation.
+ * `kind` is free text (`DEC-092` names no vocabulary). `installed_at` /
+ * `warranty_until` are `date` columns crossing the port as `YYYY-MM-DD` strings;
+ * `createdAt` is a `timestamptz` crossing as an ISO string.
+ */
+export interface EquipmentRecord {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly locationId: string;
+  readonly code: string;
+  readonly name: string;
+  /** Free text (`DEC-092` names no vocabulary); no CHECK backs it. */
+  readonly kind: string;
+  readonly serialNo: string | null;
+  /** `date`, `YYYY-MM-DD`, or null. */
+  readonly installedAt: string | null;
+  /** `date`, `YYYY-MM-DD`, or null. */
+  readonly warrantyUntil: string | null;
+  readonly active: boolean;
+  /** `timestamptz`, ISO. */
+  readonly createdAt: string;
+  readonly createdBy: string | null;
+  /** The actor of the last amendment, or null before any update. */
+  readonly updatedBy?: string | null;
+}
+
+export interface NewEquipmentRecord {
+  readonly organizationId: string;
+  readonly locationId: string;
+  readonly code: string;
+  readonly name: string;
+  /** Free text. */
+  readonly kind: string;
+  readonly serialNo: string | null;
+  /** `date`, `YYYY-MM-DD`, or null. */
+  readonly installedAt: string | null;
+  /** `date`, `YYYY-MM-DD`, or null. */
+  readonly warrantyUntil: string | null;
+  readonly active: boolean;
+  /** The acting actor; recorded as `created_by`. */
+  readonly createdBy: string | null;
+}
+
+/**
+ * One `equipment` patch. `code` is immutable (the register key), and so is
+ * `location_id` (like the monitoring point), so a correction changes the
+ * descriptive fields or `active` only. `undefined` means "leave as is"; `null`
+ * clears an optional field.
+ */
+export interface EquipmentPatch {
+  readonly name?: string;
+  readonly kind?: string;
+  readonly serialNo?: string | null;
+  /** `date`, `YYYY-MM-DD`, or null to clear it. */
+  readonly installedAt?: string | null;
+  /** `date`, `YYYY-MM-DD`, or null to clear it. */
+  readonly warrantyUntil?: string | null;
+  readonly active?: boolean;
+}
+
+/** An organization-scoped patch of one equipment row by id (`DEC-061`). */
+export interface UpdateEquipmentRecord extends EquipmentPatch {
+  readonly organizationId: string;
+  readonly equipmentId: string;
+  /** The acting actor; recorded as `updated_by`. */
+  readonly updatedBy?: string | null;
+}
+
+/** Equipment filters for the store read. */
+export interface EquipmentListQuery {
+  readonly organizationId: string;
+  readonly locationId?: string;
+  readonly kind?: string;
+  readonly active?: boolean;
+  readonly limit?: number;
+  readonly offset?: number;
+}
+
+/**
+ * One `maintenance_log` row (`DEC-092`, `HMS-006`) — a fact log holding only
+ * create + read (there is no update or delete command). `kind` is validated
+ * against `MAINTENANCE_KIND`; `performedAt` is a `timestamptz` crossing as an
+ * ISO string; `fileObjectId` is a real FK to `file_object` (nullable).
+ */
+export interface MaintenanceLogRecord {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly equipmentId: string;
+  /** One of `MAINTENANCE_KIND`. */
+  readonly kind: string;
+  /** `timestamptz`, ISO: when the maintenance was performed. */
+  readonly performedAt: string;
+  readonly performedBy: string;
+  readonly notes: string | null;
+  readonly fileObjectId: string | null;
+  /** `timestamptz`, ISO. */
+  readonly createdAt: string;
+  readonly createdBy: string | null;
+}
+
+export interface NewMaintenanceLogRecord {
+  readonly organizationId: string;
+  readonly equipmentId: string;
+  /** One of `MAINTENANCE_KIND`. */
+  readonly kind: string;
+  /** ISO instant. */
+  readonly performedAt: string;
+  readonly performedBy: string;
+  readonly notes: string | null;
+  readonly fileObjectId: string | null;
+  /** The acting actor; recorded as `created_by`. */
+  readonly createdBy: string | null;
+}
+
+/** Maintenance-log filters for the store read. */
+export interface MaintenanceLogListQuery {
+  readonly organizationId: string;
+  readonly equipmentId?: string;
+  readonly kind?: string;
+  readonly limit?: number;
+  readonly offset?: number;
+}
+
 export interface HmsStore {
   /**
    * Binds `fn` to one transaction so a create and its audit fact commit or roll
@@ -497,4 +622,25 @@ export interface HmsStore {
    */
   updateChecklistRun(input: UpdateChecklistRunRecord): Promise<ChecklistRunRecord | undefined>;
   listChecklistRuns(query: ChecklistRunListQuery): Promise<readonly ChecklistRunRecord[]>;
+  createEquipment(input: NewEquipmentRecord): Promise<EquipmentRecord>;
+  /** One equipment row by id, organization-scoped (`DEC-061`), or `undefined`. */
+  findEquipment(query: {
+    readonly organizationId: string;
+    readonly equipmentId: string;
+  }): Promise<EquipmentRecord | undefined>;
+  /**
+   * Applies a patch to one equipment row, organization-scoped (`DEC-061`);
+   * `undefined` when no row matches in the organization. `code` and
+   * `location_id` are immutable after creation.
+   */
+  updateEquipment(input: UpdateEquipmentRecord): Promise<EquipmentRecord | undefined>;
+  listEquipment(query: EquipmentListQuery): Promise<readonly EquipmentRecord[]>;
+  /** Appends one maintenance-log fact. */
+  createMaintenanceLog(input: NewMaintenanceLogRecord): Promise<MaintenanceLogRecord>;
+  /** One maintenance log by id, organization-scoped (`DEC-061`), or `undefined`. */
+  findMaintenanceLog(query: {
+    readonly organizationId: string;
+    readonly maintenanceLogId: string;
+  }): Promise<MaintenanceLogRecord | undefined>;
+  listMaintenanceLogs(query: MaintenanceLogListQuery): Promise<readonly MaintenanceLogRecord[]>;
 }

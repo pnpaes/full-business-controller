@@ -8,9 +8,13 @@ import type {
   ChecklistTemplateRecord,
   CorrectiveActionListQuery,
   CorrectiveActionRecord,
+  EquipmentListQuery,
+  EquipmentRecord,
   HmsStore,
   IncidentListQuery,
   IncidentRecord,
+  MaintenanceLogListQuery,
+  MaintenanceLogRecord,
   MonitoringPointListQuery,
   MonitoringPointRecord,
   MonitoringReadingListQuery,
@@ -18,12 +22,15 @@ import type {
   NewChecklistRunRecord,
   NewChecklistTemplateRecord,
   NewCorrectiveActionRecord,
+  NewEquipmentRecord,
   NewIncidentRecord,
+  NewMaintenanceLogRecord,
   NewMonitoringPointRecord,
   NewMonitoringReadingRecord,
   UpdateChecklistRunRecord,
   UpdateChecklistTemplateRecord,
   UpdateCorrectiveActionRecord,
+  UpdateEquipmentRecord,
   UpdateIncidentRecord,
 } from "./types";
 
@@ -243,6 +250,69 @@ function newChecklistRunValues(input: NewChecklistRunRecord): repo.CreateCheckli
   };
 }
 
+function toEquipment(row: repo.Equipment): EquipmentRecord {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    locationId: row.locationId,
+    code: row.code,
+    name: row.name,
+    kind: row.kind,
+    serialNo: row.serialNo,
+    // `date` columns cross the port as `YYYY-MM-DD` strings (already strings
+    // at the persistence layer, like `hms_incident.due_date`).
+    installedAt: row.installedAt,
+    warrantyUntil: row.warrantyUntil,
+    active: row.active,
+    createdAt: row.createdAt.toISOString(),
+    createdBy: row.createdBy,
+    updatedBy: row.updatedBy,
+  };
+}
+
+function newEquipmentValues(input: NewEquipmentRecord): repo.CreateEquipmentInput {
+  return {
+    organizationId: input.organizationId,
+    locationId: input.locationId,
+    code: input.code,
+    name: input.name,
+    kind: input.kind,
+    serialNo: input.serialNo,
+    installedAt: input.installedAt,
+    warrantyUntil: input.warrantyUntil,
+    active: input.active,
+    actorId: input.createdBy,
+  };
+}
+
+function toMaintenanceLog(row: repo.MaintenanceLog): MaintenanceLogRecord {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    equipmentId: row.equipmentId,
+    kind: row.kind,
+    performedAt: row.performedAt.toISOString(),
+    performedBy: row.performedBy,
+    notes: row.notes,
+    fileObjectId: row.fileObjectId,
+    createdAt: row.createdAt.toISOString(),
+    createdBy: row.createdBy,
+  };
+}
+
+function newMaintenanceLogValues(input: NewMaintenanceLogRecord): repo.CreateMaintenanceLogInput {
+  return {
+    organizationId: input.organizationId,
+    equipmentId: input.equipmentId,
+    kind: input.kind,
+    performedAt: new Date(input.performedAt),
+    performedBy: input.performedBy,
+    notes: input.notes,
+    fileObjectId: input.fileObjectId,
+    actorId: input.createdBy,
+  };
+}
+
 /**
  * Adapts the persistence monitoring repository to the `HmsStore` port: the
  * `timestamptz` columns become ISO strings on read and `Date`s on write, and
@@ -443,6 +513,59 @@ export function createPostgresHmsStore(db: Database): HmsStore {
         ...(query.offset === undefined ? {} : { offset: query.offset }),
       });
       return rows.map(toChecklistRun);
+    },
+    createEquipment: async (input) =>
+      toEquipment(await repo.createEquipment(db, newEquipmentValues(input))),
+    findEquipment: async (query) => {
+      const row = await repo.findEquipment(db, {
+        organizationId: query.organizationId,
+        equipmentId: query.equipmentId,
+      });
+      return row === undefined ? undefined : toEquipment(row);
+    },
+    updateEquipment: async (input: UpdateEquipmentRecord) => {
+      const row = await repo.updateEquipment(db, {
+        organizationId: input.organizationId,
+        equipmentId: input.equipmentId,
+        ...(input.name === undefined ? {} : { name: input.name }),
+        ...(input.kind === undefined ? {} : { kind: input.kind }),
+        ...(input.serialNo === undefined ? {} : { serialNo: input.serialNo }),
+        ...(input.installedAt === undefined ? {} : { installedAt: input.installedAt }),
+        ...(input.warrantyUntil === undefined ? {} : { warrantyUntil: input.warrantyUntil }),
+        ...(input.active === undefined ? {} : { active: input.active }),
+        ...(input.updatedBy === undefined ? {} : { actorId: input.updatedBy }),
+      });
+      return row === undefined ? undefined : toEquipment(row);
+    },
+    listEquipment: async (query: EquipmentListQuery) => {
+      const rows = await repo.listEquipment(db, {
+        organizationId: query.organizationId,
+        ...(query.locationId === undefined ? {} : { locationId: query.locationId }),
+        ...(query.kind === undefined ? {} : { kind: query.kind }),
+        ...(query.active === undefined ? {} : { active: query.active }),
+        ...(query.limit === undefined ? {} : { limit: query.limit }),
+        ...(query.offset === undefined ? {} : { offset: query.offset }),
+      });
+      return rows.map(toEquipment);
+    },
+    createMaintenanceLog: async (input) =>
+      toMaintenanceLog(await repo.createMaintenanceLog(db, newMaintenanceLogValues(input))),
+    findMaintenanceLog: async (query) => {
+      const row = await repo.findMaintenanceLog(db, {
+        organizationId: query.organizationId,
+        maintenanceLogId: query.maintenanceLogId,
+      });
+      return row === undefined ? undefined : toMaintenanceLog(row);
+    },
+    listMaintenanceLogs: async (query: MaintenanceLogListQuery) => {
+      const rows = await repo.listMaintenanceLogs(db, {
+        organizationId: query.organizationId,
+        ...(query.equipmentId === undefined ? {} : { equipmentId: query.equipmentId }),
+        ...(query.kind === undefined ? {} : { kind: query.kind }),
+        ...(query.limit === undefined ? {} : { limit: query.limit }),
+        ...(query.offset === undefined ? {} : { offset: query.offset }),
+      });
+      return rows.map(toMaintenanceLog);
     },
   };
 }

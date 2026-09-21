@@ -1,6 +1,7 @@
 import { NotFoundError } from "@aquarela/domain";
 import {
   createDb,
+  createMaintenanceLog as createMaintenanceLogRow,
   location,
   organization,
   type DatabaseTransaction,
@@ -13,24 +14,31 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { findChecklistRun } from "./find-checklist-run";
 import { findChecklistTemplate } from "./find-checklist-template";
 import { findCorrectiveAction } from "./find-corrective-action";
+import { findEquipment } from "./find-equipment";
 import { findIncident } from "./find-incident";
+import { findMaintenanceLog } from "./find-maintenance-log";
 import { findMonitoringPoint } from "./find-monitoring-point";
 import { listChecklistRuns } from "./list-checklist-runs";
 import { listChecklistTemplates } from "./list-checklist-templates";
 import { listCorrectiveActions } from "./list-corrective-actions";
+import { listEquipment } from "./list-equipment";
 import { listIncidents } from "./list-incidents";
+import { listMaintenanceLogs } from "./list-maintenance-logs";
 import { listMonitoringPoints } from "./list-monitoring-points";
 import { listMonitoringReadings } from "./list-monitoring-readings";
 import { createPostgresHmsStore } from "./postgres-store";
 import { recordChecklistRun } from "./record-checklist-run";
 import { recordCorrectiveAction } from "./record-corrective-action";
+import { recordMaintenanceLog } from "./record-maintenance-log";
 import { recordMonitoringReading } from "./record-monitoring-reading";
 import { registerChecklistTemplate } from "./register-checklist-template";
+import { registerEquipment } from "./register-equipment";
 import { registerIncident } from "./register-incident";
 import { registerMonitoringPoint } from "./register-monitoring-point";
 import { updateChecklistRun } from "./update-checklist-run";
 import { updateChecklistTemplate } from "./update-checklist-template";
 import { updateCorrectiveAction } from "./update-corrective-action";
+import { updateEquipment } from "./update-equipment";
 import { updateIncident } from "./update-incident";
 import { updateMonitoringPoint } from "./update-monitoring-point";
 
@@ -737,6 +745,292 @@ describe.skipIf(!databaseUrl)("HMS monitoring against PostgreSQL", () => {
       );
       expect(errorCode(cause)).toBe("23514");
       expect(cause.message).toMatch(/checklist_run\.location_id/);
+    });
+  });
+
+  it("registers, updates and lists equipment against PostgreSQL", async () => {
+    await inRollback(client.db, async (tx) => {
+      const locationId = await seedLocation(tx, orgId, `hms_eq_${suffix}`);
+      const store = createPostgresHmsStore(tx);
+      const actorId = randomUUID();
+      const editorId = randomUUID();
+
+      const equipment = await registerEquipment(store, {
+        organizationId: orgId,
+        actorId,
+        locationId,
+        code: `eq_${suffix}`,
+        name: "Ice machine",
+        kind: "refrigeration",
+        serialNo: "SN-123",
+        installedAt: "2025-05-01",
+        warrantyUntil: "2027-05-01",
+      });
+      expect(equipment).toMatchObject({
+        organizationId: orgId,
+        locationId,
+        code: `eq_${suffix}`,
+        name: "Ice machine",
+        kind: "refrigeration",
+        serialNo: "SN-123",
+        installedAt: "2025-05-01",
+        warrantyUntil: "2027-05-01",
+        active: true,
+        createdBy: actorId,
+      });
+
+      const found = await findEquipment(store, {
+        organizationId: orgId,
+        equipmentId: equipment.id,
+      });
+      expect(found).toMatchObject({ installedAt: "2025-05-01", active: true, createdBy: actorId });
+
+      const updated = await updateEquipment(store, {
+        organizationId: orgId,
+        actorId: editorId,
+        equipmentId: equipment.id,
+        name: "Ice machine (bar)",
+        active: false,
+        warrantyUntil: null,
+      });
+      expect(updated).toMatchObject({
+        id: equipment.id,
+        code: `eq_${suffix}`,
+        name: "Ice machine (bar)",
+        active: false,
+        warrantyUntil: null,
+        createdBy: actorId,
+        updatedBy: editorId,
+      });
+
+      const listed = await listEquipment(store, { organizationId: orgId });
+      expect(listed.map((row) => row.id)).toEqual([equipment.id]);
+      expect(listed[0]?.installedAt).toBe("2025-05-01");
+    });
+  });
+
+  it("records maintenance logs against PostgreSQL", async () => {
+    await inRollback(client.db, async (tx) => {
+      const locationId = await seedLocation(tx, orgId, `hms_log_${suffix}`);
+      const store = createPostgresHmsStore(tx);
+      const actorId = randomUUID();
+      const technicianId = randomUUID();
+
+      const equipment = await registerEquipment(store, {
+        organizationId: orgId,
+        actorId,
+        locationId,
+        code: `eq_log_${suffix}`,
+        name: "Ice machine",
+        kind: "refrigeration",
+      });
+
+      const older = await recordMaintenanceLog(store, {
+        organizationId: orgId,
+        actorId,
+        equipmentId: equipment.id,
+        kind: "service",
+        performedAt: "2026-01-01T09:00:00.000Z",
+        performedBy: technicianId,
+      });
+      const newer = await recordMaintenanceLog(store, {
+        organizationId: orgId,
+        actorId,
+        equipmentId: equipment.id,
+        kind: "inspection",
+        performedAt: "2026-03-01T09:00:00.000Z",
+        performedBy: technicianId,
+        notes: "annual check",
+      });
+      expect(older).toMatchObject({
+        organizationId: orgId,
+        equipmentId: equipment.id,
+        kind: "service",
+        performedAt: "2026-01-01T09:00:00.000Z",
+        performedBy: technicianId,
+        fileObjectId: null,
+        createdBy: actorId,
+      });
+      // `created_by` is the acting actor, not the technician who performed it.
+      expect(newer.createdBy).toBe(actorId);
+
+      const found = await findMaintenanceLog(store, {
+        organizationId: orgId,
+        maintenanceLogId: older.id,
+      });
+      expect(found?.kind).toBe("service");
+
+      const listed = await listMaintenanceLogs(store, { organizationId: orgId });
+      expect(listed.map((row) => row.id)).toEqual([newer.id, older.id]);
+      expect(
+        (await listMaintenanceLogs(store, { organizationId: orgId, kind: "service" })).map(
+          (row) => row.id,
+        ),
+      ).toEqual([older.id]);
+    });
+  });
+
+  it("keeps another organization's equipment and maintenance logs out of scope", async () => {
+    await inRollback(client.db, async (tx) => {
+      const store = createPostgresHmsStore(tx);
+      const actorId = randomUUID();
+      const otherOrg = await tx
+        .insert(organization)
+        .values({ legalName: `HMS IT eq other ${suffix}` })
+        .returning();
+      const otherOrgId = otherOrg[0]!.id;
+      const otherLocationId = await seedLocation(tx, otherOrgId, `hms_eq_other_${suffix}`);
+      const ownLocationId = await seedLocation(tx, orgId, `hms_eq_own_${suffix}`);
+
+      const otherEquipment = await registerEquipment(store, {
+        organizationId: otherOrgId,
+        actorId,
+        locationId: otherLocationId,
+        code: `eq_other_${suffix}`,
+        name: "Other tenant machine",
+        kind: "refrigeration",
+      });
+      const otherLog = await recordMaintenanceLog(store, {
+        organizationId: otherOrgId,
+        actorId,
+        equipmentId: otherEquipment.id,
+        kind: "service",
+        performedAt: "2026-02-01T09:00:00.000Z",
+        performedBy: actorId,
+      });
+      const ownEquipment = await registerEquipment(store, {
+        organizationId: orgId,
+        actorId,
+        locationId: ownLocationId,
+        code: `eq_own_${suffix}`,
+        name: "Own machine",
+        kind: "refrigeration",
+      });
+
+      expect(
+        await findEquipment(store, { organizationId: orgId, equipmentId: otherEquipment.id }),
+      ).toBeUndefined();
+      expect(
+        await findMaintenanceLog(store, { organizationId: orgId, maintenanceLogId: otherLog.id }),
+      ).toBeUndefined();
+      // The org filter is load-bearing: these lists would contain the other
+      // tenant's rows if it were dropped.
+      expect((await listEquipment(store, { organizationId: orgId })).map((row) => row.id)).toEqual([
+        ownEquipment.id,
+      ]);
+      expect(
+        (await listMaintenanceLogs(store, { organizationId: orgId })).map((row) => row.id),
+      ).toEqual([]);
+
+      await expect(
+        updateEquipment(store, {
+          organizationId: orgId,
+          actorId,
+          equipmentId: otherEquipment.id,
+          name: "Hijacked",
+        }),
+      ).rejects.toThrow(NotFoundError);
+      // The equipment resolve is org-scoped, so a foreign id cannot be logged.
+      await expect(
+        recordMaintenanceLog(store, {
+          organizationId: orgId,
+          actorId,
+          equipmentId: otherEquipment.id,
+          kind: "service",
+          performedAt: "2026-02-01T09:00:00.000Z",
+          performedBy: actorId,
+        }),
+      ).rejects.toThrow(NotFoundError);
+    });
+  });
+
+  it("refuses equipment at another organization's location (0045 guard, 23514)", async () => {
+    await inRollback(client.db, async (tx) => {
+      const store = createPostgresHmsStore(tx);
+      const actorId = randomUUID();
+      const otherOrg = await tx
+        .insert(organization)
+        .values({ legalName: `HMS IT eq guard other ${suffix}` })
+        .returning();
+      const otherLocationId = await seedLocation(tx, otherOrg[0]!.id, `hms_eq_guard_${suffix}`);
+
+      const cause = await rejectionCause(
+        registerEquipment(store, {
+          organizationId: orgId,
+          actorId,
+          locationId: otherLocationId,
+          code: `eq_guard_${suffix}`,
+          name: "Wrong organization location",
+          kind: "refrigeration",
+        }),
+      );
+      expect(errorCode(cause)).toBe("23514");
+      expect(cause.message).toMatch(/equipment\.location_id/);
+    });
+  });
+
+  it("refuses a maintenance log for another organization's equipment (0045 guard, 23514)", async () => {
+    await inRollback(client.db, async (tx) => {
+      const store = createPostgresHmsStore(tx);
+      const actorId = randomUUID();
+      const otherOrg = await tx
+        .insert(organization)
+        .values({ legalName: `HMS IT log guard other ${suffix}` })
+        .returning();
+      const otherOrgId = otherOrg[0]!.id;
+      const otherLocationId = await seedLocation(tx, otherOrgId, `hms_log_guard_loc_${suffix}`);
+      const otherEquipment = await registerEquipment(store, {
+        organizationId: otherOrgId,
+        actorId,
+        locationId: otherLocationId,
+        code: `eq_log_guard_${suffix}`,
+        name: "Other tenant machine",
+        kind: "refrigeration",
+      });
+
+      // The command resolves the equipment organization-scoped and refuses the
+      // foreign id as a typed miss before the insert; bypass the command to
+      // exercise the `maintenance_log.equipment_id` 23514 backstop directly.
+      const cause = await rejectionCause(
+        createMaintenanceLogRow(tx, {
+          organizationId: orgId,
+          equipmentId: otherEquipment.id,
+          kind: "service",
+          performedAt: new Date("2026-02-01T09:00:00.000Z"),
+          performedBy: actorId,
+        }),
+      );
+      expect(errorCode(cause)).toBe("23514");
+      expect(cause.message).toMatch(/maintenance_log\.equipment_id/);
+    });
+  });
+
+  it("refuses a duplicate equipment code (23505)", async () => {
+    await inRollback(client.db, async (tx) => {
+      const store = createPostgresHmsStore(tx);
+      const actorId = randomUUID();
+      const locationId = await seedLocation(tx, orgId, `hms_eq_dup_${suffix}`);
+      const code = `eq_dup_${suffix}`;
+
+      await registerEquipment(store, {
+        organizationId: orgId,
+        actorId,
+        locationId,
+        code,
+        name: "First machine",
+        kind: "refrigeration",
+      });
+      const cause = await rejectionCause(
+        registerEquipment(store, {
+          organizationId: orgId,
+          actorId,
+          locationId,
+          code,
+          name: "Second machine",
+          kind: "refrigeration",
+        }),
+      );
+      expect(errorCode(cause)).toBe("23505");
     });
   });
 });

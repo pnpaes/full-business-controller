@@ -4,21 +4,29 @@ import { describe, expect, it } from "vitest";
 import { findChecklistRun } from "./find-checklist-run";
 import { findChecklistTemplate } from "./find-checklist-template";
 import { findCorrectiveAction } from "./find-corrective-action";
+import { findEquipment } from "./find-equipment";
 import { findIncident } from "./find-incident";
+import { findMaintenanceLog } from "./find-maintenance-log";
 import { findMonitoringPoint } from "./find-monitoring-point";
 import { listChecklistRuns } from "./list-checklist-runs";
 import { listChecklistTemplates } from "./list-checklist-templates";
 import { listCorrectiveActions } from "./list-corrective-actions";
+import { listEquipment } from "./list-equipment";
 import { listIncidents } from "./list-incidents";
+import { listMaintenanceLogs } from "./list-maintenance-logs";
 import { listMonitoringPoints } from "./list-monitoring-points";
 import { listMonitoringReadings } from "./list-monitoring-readings";
 import { recordChecklistRun } from "./record-checklist-run";
 import type { RecordChecklistRunInput } from "./record-checklist-run";
 import { recordCorrectiveAction } from "./record-corrective-action";
 import type { RecordCorrectiveActionInput } from "./record-corrective-action";
+import { recordMaintenanceLog } from "./record-maintenance-log";
+import type { RecordMaintenanceLogInput } from "./record-maintenance-log";
 import { recordMonitoringReading } from "./record-monitoring-reading";
 import { registerChecklistTemplate } from "./register-checklist-template";
 import type { RegisterChecklistTemplateInput } from "./register-checklist-template";
+import { registerEquipment } from "./register-equipment";
+import type { RegisterEquipmentInput } from "./register-equipment";
 import { registerIncident } from "./register-incident";
 import type { RegisterIncidentInput } from "./register-incident";
 import { registerMonitoringPoint } from "./register-monitoring-point";
@@ -28,7 +36,9 @@ import type {
   ChecklistRunRecord,
   ChecklistTemplateRecord,
   CorrectiveActionRecord,
+  EquipmentRecord,
   IncidentRecord,
+  MaintenanceLogRecord,
   MonitoringPointRecord,
 } from "./types";
 import { updateChecklistRun } from "./update-checklist-run";
@@ -37,6 +47,8 @@ import { updateChecklistTemplate } from "./update-checklist-template";
 import type { UpdateChecklistTemplateInput } from "./update-checklist-template";
 import { updateCorrectiveAction } from "./update-corrective-action";
 import type { UpdateCorrectiveActionInput } from "./update-corrective-action";
+import { updateEquipment } from "./update-equipment";
+import type { UpdateEquipmentInput } from "./update-equipment";
 import { updateIncident } from "./update-incident";
 import type { UpdateIncidentInput } from "./update-incident";
 import { updateMonitoringPoint } from "./update-monitoring-point";
@@ -191,6 +203,53 @@ function updateRun(
     organizationId: fixture.organizationId,
     actorId: fixture.actorId,
     runId: run.id,
+    ...overrides,
+  });
+}
+
+function registerIceMachine(
+  store: FakeHmsStore,
+  fixture: HmsFixture,
+  overrides: Partial<RegisterEquipmentInput> = {},
+): Promise<EquipmentRecord> {
+  return registerEquipment(store, {
+    organizationId: fixture.organizationId,
+    actorId: fixture.actorId,
+    locationId: fixture.locationId,
+    code: "eq-ice",
+    name: "Ice machine",
+    kind: "refrigeration",
+    ...overrides,
+  });
+}
+
+function updateIceMachine(
+  store: FakeHmsStore,
+  fixture: HmsFixture,
+  equipment: EquipmentRecord,
+  overrides: Partial<UpdateEquipmentInput> = {},
+): Promise<EquipmentRecord> {
+  return updateEquipment(store, {
+    organizationId: fixture.organizationId,
+    actorId: fixture.actorId,
+    equipmentId: equipment.id,
+    ...overrides,
+  });
+}
+
+function recordService(
+  store: FakeHmsStore,
+  fixture: HmsFixture,
+  equipment: EquipmentRecord,
+  overrides: Partial<RecordMaintenanceLogInput> = {},
+): Promise<MaintenanceLogRecord> {
+  return recordMaintenanceLog(store, {
+    organizationId: fixture.organizationId,
+    actorId: fixture.actorId,
+    equipmentId: equipment.id,
+    kind: "service",
+    performedAt: "2026-02-01T09:00:00.000Z",
+    performedBy: fixture.actorId,
     ...overrides,
   });
 }
@@ -681,6 +740,58 @@ describe("FakeHmsStore.withTransaction", () => {
     expect(store.checklistTemplates.size).toBe(baseline.checklistTemplates);
     expect(store.checklistTemplates.has(existing.id)).toBe(true);
     expect(store.checklistRuns.size).toBe(baseline.checklistRuns);
+    expect(store.audits).toHaveLength(baseline.audits);
+  });
+
+  it("rolls back equipment and maintenance-log writes when the callback throws", async () => {
+    const { store, fixture } = setup();
+    const existing = await registerIceMachine(store, fixture);
+
+    const baseline = {
+      equipment: store.equipment.size,
+      maintenanceLogs: store.maintenanceLogs.size,
+      audits: store.audits.length,
+    };
+
+    await expect(
+      store.withTransaction(async (tx) => {
+        const created = await tx.createEquipment({
+          organizationId: fixture.organizationId,
+          locationId: fixture.locationId,
+          code: "eq-rolled-back",
+          name: "Rolled-back machine",
+          kind: "refrigeration",
+          serialNo: null,
+          installedAt: null,
+          warrantyUntil: null,
+          active: true,
+          createdBy: fixture.actorId,
+        });
+        await tx.createMaintenanceLog({
+          organizationId: fixture.organizationId,
+          equipmentId: created.id,
+          kind: "service",
+          performedAt: "2026-02-01T09:00:00.000Z",
+          performedBy: fixture.actorId,
+          notes: null,
+          fileObjectId: null,
+          createdBy: fixture.actorId,
+        });
+        await tx.writeAudit({
+          organizationId: fixture.organizationId,
+          actorId: fixture.actorId,
+          action: "hms.equipment.created",
+          entityType: "equipment",
+          entityId: created.id,
+          after: { rolled_back: false },
+        });
+        throw new Error("boom");
+      }),
+    ).rejects.toThrow("boom");
+
+    expect(store.equipment.size).toBe(baseline.equipment);
+    expect(store.equipment.has(existing.id)).toBe(true);
+    expect(store.maintenanceLogs.size).toBe(baseline.maintenanceLogs);
     expect(store.audits).toHaveLength(baseline.audits);
   });
 });
@@ -2024,5 +2135,555 @@ describe("listChecklistTemplates and listChecklistRuns", () => {
         })
       ).map((row) => row.id),
     ).toEqual([kitchen.id]);
+  });
+});
+
+describe("registerEquipment", () => {
+  it("registers active equipment, trims text and writes its audit fact", async () => {
+    const { store, fixture } = setup();
+
+    const equipment = await registerIceMachine(store, fixture, {
+      code: "  eq-ice  ",
+      name: "  Ice machine  ",
+      kind: "  refrigeration  ",
+      serialNo: "SN-123",
+      installedAt: "2025-05-01",
+      warrantyUntil: "2027-05-01",
+    });
+
+    expect(equipment).toMatchObject({
+      organizationId: fixture.organizationId,
+      locationId: fixture.locationId,
+      code: "eq-ice",
+      name: "Ice machine",
+      kind: "refrigeration",
+      serialNo: "SN-123",
+      installedAt: "2025-05-01",
+      warrantyUntil: "2027-05-01",
+      active: true,
+      createdBy: fixture.actorId,
+    });
+    expect(store.equipment.size).toBe(1);
+    expect(store.audits).toHaveLength(1);
+    expect(store.audits[0]).toMatchObject({
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      action: "hms.equipment.created",
+      entityType: "equipment",
+      entityId: equipment.id,
+      after: {
+        location_id: fixture.locationId,
+        code: "eq-ice",
+        name: "Ice machine",
+        kind: "refrigeration",
+        serial_no: "SN-123",
+        installed_at: "2025-05-01",
+        warranty_until: "2027-05-01",
+        active: true,
+      },
+    });
+  });
+
+  it("defaults active to true but honours an explicit false and a cleared serial", async () => {
+    const { store, fixture } = setup();
+
+    const active = await registerIceMachine(store, fixture);
+    expect(active.active).toBe(true);
+    expect(active.serialNo).toBeNull();
+    expect(active.installedAt).toBeNull();
+    expect(active.warrantyUntil).toBeNull();
+
+    const retired = await registerIceMachine(store, fixture, { code: "eq-old", active: false });
+    expect(retired.active).toBe(false);
+  });
+
+  it("rejects blank code, name or kind, a missing location and a malformed date without writing", async () => {
+    const { store, fixture } = setup();
+
+    await expect(registerIceMachine(store, fixture, { code: "   " })).rejects.toThrow(DomainError);
+    await expect(registerIceMachine(store, fixture, { name: "  " })).rejects.toThrow(DomainError);
+    await expect(registerIceMachine(store, fixture, { kind: "  " })).rejects.toThrow(DomainError);
+    await expect(registerIceMachine(store, fixture, { locationId: "" })).rejects.toThrow(
+      DomainError,
+    );
+    await expect(registerIceMachine(store, fixture, { installedAt: "2026-02-31" })).rejects.toThrow(
+      /installedAt must be a date/,
+    );
+    await expect(registerIceMachine(store, fixture, { warrantyUntil: "nope" })).rejects.toThrow(
+      /warrantyUntil must be a date/,
+    );
+
+    expect(store.equipment.size).toBe(0);
+    expect(store.audits).toHaveLength(0);
+  });
+
+  it("rejects text over the field ceilings, accepting the boundary", async () => {
+    const { store, fixture } = setup();
+
+    // The ceiling itself is accepted (the check is `> max`, not `>= max`).
+    const atBoundary = await registerIceMachine(store, fixture, { code: "c".repeat(64) });
+    expect(atBoundary.code).toBe("c".repeat(64));
+
+    await expect(registerIceMachine(store, fixture, { code: "c".repeat(65) })).rejects.toThrow(
+      /code must be at most 64 characters/,
+    );
+    await expect(registerIceMachine(store, fixture, { name: "n".repeat(201) })).rejects.toThrow(
+      /name must be at most 200 characters/,
+    );
+    await expect(registerIceMachine(store, fixture, { kind: "k".repeat(33) })).rejects.toThrow(
+      /kind must be at most 32 characters/,
+    );
+    await expect(registerIceMachine(store, fixture, { serialNo: "s".repeat(201) })).rejects.toThrow(
+      /serialNo must be at most 200 characters/,
+    );
+
+    // Only the accepted boundary row was written.
+    expect(store.equipment.size).toBe(1);
+    expect(store.audits).toHaveLength(1);
+  });
+});
+
+describe("updateEquipment", () => {
+  it("patches fields and audits before/after in snake_case", async () => {
+    const { store, fixture } = setup();
+    const equipment = await registerIceMachine(store, fixture, {
+      serialNo: "SN-123",
+      installedAt: "2025-05-01",
+    });
+
+    const updated = await updateIceMachine(store, fixture, equipment, {
+      name: "Ice machine (bar)",
+      kind: "ice",
+      serialNo: "SN-999",
+      installedAt: "2025-06-01",
+      warrantyUntil: "2028-06-01",
+      active: false,
+    });
+
+    expect(updated).toMatchObject({
+      id: equipment.id,
+      code: "eq-ice",
+      name: "Ice machine (bar)",
+      kind: "ice",
+      serialNo: "SN-999",
+      installedAt: "2025-06-01",
+      warrantyUntil: "2028-06-01",
+      active: false,
+      createdBy: fixture.actorId,
+      updatedBy: fixture.actorId,
+    });
+
+    const audit = store.audits.find((row) => row.action === "hms.equipment.updated");
+    expect(audit).toMatchObject({
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      entityType: "equipment",
+      entityId: equipment.id,
+      before: {
+        name: "Ice machine",
+        kind: "refrigeration",
+        serial_no: "SN-123",
+        installed_at: "2025-05-01",
+        warranty_until: null,
+        active: true,
+      },
+      after: {
+        name: "Ice machine (bar)",
+        kind: "ice",
+        serial_no: "SN-999",
+        installed_at: "2025-06-01",
+        warranty_until: "2028-06-01",
+        active: false,
+      },
+    });
+  });
+
+  it("clears an optional field with an explicit null", async () => {
+    const { store, fixture } = setup();
+    const equipment = await registerIceMachine(store, fixture, { serialNo: "SN-123" });
+
+    const updated = await updateIceMachine(store, fixture, equipment, { serialNo: null });
+    expect(updated.serialNo).toBeNull();
+
+    const audit = store.audits.find((row) => row.action === "hms.equipment.updated");
+    expect(audit).toMatchObject({ before: { serial_no: "SN-123" }, after: { serial_no: null } });
+  });
+
+  it("rejects an empty patch, blank text and a malformed date without writing", async () => {
+    const { store, fixture } = setup();
+    const equipment = await registerIceMachine(store, fixture);
+
+    await expect(updateIceMachine(store, fixture, equipment, {})).rejects.toThrow(DomainError);
+    await expect(updateIceMachine(store, fixture, equipment, { name: "  " })).rejects.toThrow(
+      DomainError,
+    );
+    await expect(updateIceMachine(store, fixture, equipment, { kind: "  " })).rejects.toThrow(
+      DomainError,
+    );
+    await expect(
+      updateIceMachine(store, fixture, equipment, { installedAt: "2026-02-31" }),
+    ).rejects.toThrow(/installedAt must be a date/);
+    await expect(
+      updateIceMachine(store, fixture, equipment, { warrantyUntil: "nope" }),
+    ).rejects.toThrow(/warrantyUntil must be a date/);
+
+    expect(store.equipment.get(equipment.id)).toMatchObject({
+      name: "Ice machine",
+      kind: "refrigeration",
+      active: true,
+    });
+    expect(store.audits.filter((row) => row.action === "hms.equipment.updated")).toHaveLength(0);
+  });
+
+  it("rejects patched text over the field ceilings without writing", async () => {
+    const { store, fixture } = setup();
+    const equipment = await registerIceMachine(store, fixture);
+
+    await expect(
+      updateIceMachine(store, fixture, equipment, { name: "n".repeat(201) }),
+    ).rejects.toThrow(/name must be at most 200 characters/);
+    await expect(
+      updateIceMachine(store, fixture, equipment, { kind: "k".repeat(33) }),
+    ).rejects.toThrow(/kind must be at most 32 characters/);
+    await expect(
+      updateIceMachine(store, fixture, equipment, { serialNo: "s".repeat(201) }),
+    ).rejects.toThrow(/serialNo must be at most 200 characters/);
+
+    expect(store.equipment.get(equipment.id)).toMatchObject({
+      name: "Ice machine",
+      kind: "refrigeration",
+      serialNo: null,
+    });
+    expect(store.audits.filter((row) => row.action === "hms.equipment.updated")).toHaveLength(0);
+  });
+
+  it("reports an unknown or cross-organization row as NotFoundError", async () => {
+    const { store, fixture } = setup();
+    const other = await registerIceMachine(store, fixture, {
+      organizationId: fixture.otherOrganizationId,
+      locationId: fixture.otherLocationId,
+      code: "eq-other",
+    });
+
+    await expect(
+      updateEquipment(store, {
+        organizationId: fixture.organizationId,
+        actorId: fixture.actorId,
+        equipmentId: "missing",
+        name: "Nonexistent",
+      }),
+    ).rejects.toThrow(NotFoundError);
+    // The org filter is load-bearing: dropping it would edit the other row.
+    await expect(
+      updateEquipment(store, {
+        organizationId: fixture.organizationId,
+        actorId: fixture.actorId,
+        equipmentId: other.id,
+        name: "Hijacked",
+      }),
+    ).rejects.toThrow(NotFoundError);
+
+    expect(store.equipment.get(other.id)?.name).toBe("Ice machine");
+  });
+});
+
+describe("recordMaintenanceLog", () => {
+  it("records a maintenance fact with its operator and audit fact", async () => {
+    const { store, fixture } = setup();
+    const equipment = await registerIceMachine(store, fixture);
+
+    const log = await recordService(store, fixture, equipment, { notes: "replaced the filter" });
+
+    expect(log).toMatchObject({
+      organizationId: fixture.organizationId,
+      equipmentId: equipment.id,
+      kind: "service",
+      performedAt: "2026-02-01T09:00:00.000Z",
+      performedBy: fixture.actorId,
+      notes: "replaced the filter",
+      fileObjectId: null,
+      createdBy: fixture.actorId,
+    });
+    expect(store.maintenanceLogs.size).toBe(1);
+
+    const audit = store.audits.find((row) => row.action === "hms.maintenance_log.recorded");
+    expect(audit).toMatchObject({
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      entityType: "maintenance_log",
+      entityId: log.id,
+      after: {
+        equipment_id: equipment.id,
+        kind: "service",
+        performed_at: "2026-02-01T09:00:00.000Z",
+        performed_by: fixture.actorId,
+        notes: "replaced the filter",
+        file_object_id: null,
+      },
+    });
+  });
+
+  it("accepts a repair and an inspection", async () => {
+    const { store, fixture } = setup();
+    const equipment = await registerIceMachine(store, fixture);
+
+    expect((await recordService(store, fixture, equipment, { kind: "repair" })).kind).toBe(
+      "repair",
+    );
+    expect((await recordService(store, fixture, equipment, { kind: "inspection" })).kind).toBe(
+      "inspection",
+    );
+  });
+
+  it("trims a padded kind before the vocabulary check", async () => {
+    const { store, fixture } = setup();
+    const equipment = await registerIceMachine(store, fixture);
+
+    // The web parser trims, so a direct caller passing " service" must agree
+    // rather than get a DomainError the API would have accepted.
+    const log = await recordService(store, fixture, equipment, { kind: "  service  " });
+
+    expect(log.kind).toBe("service");
+    expect(store.maintenanceLogs.size).toBe(1);
+  });
+
+  it("rejects a bad kind, a malformed instant or a blank operator/equipment without writing", async () => {
+    const { store, fixture } = setup();
+    const equipment = await registerIceMachine(store, fixture);
+
+    await expect(recordService(store, fixture, equipment, { kind: "cleaning" })).rejects.toThrow(
+      DomainError,
+    );
+    await expect(
+      recordService(store, fixture, equipment, { performedAt: "yesterday" }),
+    ).rejects.toThrow(/performedAt must be an ISO-8601 instant/);
+    await expect(recordService(store, fixture, equipment, { performedBy: "  " })).rejects.toThrow(
+      DomainError,
+    );
+    await expect(recordService(store, fixture, equipment, { equipmentId: "" })).rejects.toThrow(
+      DomainError,
+    );
+
+    expect(store.maintenanceLogs.size).toBe(0);
+    expect(
+      store.audits.filter((row) => row.action === "hms.maintenance_log.recorded"),
+    ).toHaveLength(0);
+  });
+
+  it("reports an unregistered or cross-organization equipment id as NotFoundError", async () => {
+    const { store, fixture } = setup();
+    const other = await registerIceMachine(store, fixture, {
+      organizationId: fixture.otherOrganizationId,
+      locationId: fixture.otherLocationId,
+      code: "eq-other",
+    });
+
+    await expect(
+      recordMaintenanceLog(store, {
+        organizationId: fixture.organizationId,
+        actorId: fixture.actorId,
+        equipmentId: "missing",
+        kind: "service",
+        performedAt: "2026-02-01T09:00:00.000Z",
+        performedBy: fixture.actorId,
+      }),
+    ).rejects.toThrow(NotFoundError);
+    // A cross-organization id does not leak: the resolve is org-scoped, so the
+    // foreign row is invisible before the append.
+    await expect(
+      recordMaintenanceLog(store, {
+        organizationId: fixture.organizationId,
+        actorId: fixture.actorId,
+        equipmentId: other.id,
+        kind: "service",
+        performedAt: "2026-02-01T09:00:00.000Z",
+        performedBy: fixture.actorId,
+      }),
+    ).rejects.toThrow(NotFoundError);
+
+    expect(store.maintenanceLogs.size).toBe(0);
+    expect(
+      store.audits.filter((row) => row.action === "hms.maintenance_log.recorded"),
+    ).toHaveLength(0);
+  });
+});
+
+describe("findEquipment and findMaintenanceLog", () => {
+  it("return the row for its organization and undefined for a scoped miss", async () => {
+    const { store, fixture } = setup();
+    const equipment = await registerIceMachine(store, fixture);
+    const log = await recordService(store, fixture, equipment);
+    const otherEquipment = await registerIceMachine(store, fixture, {
+      organizationId: fixture.otherOrganizationId,
+      locationId: fixture.otherLocationId,
+      code: "eq-other",
+    });
+    const otherLog = await recordService(store, fixture, otherEquipment, {
+      organizationId: fixture.otherOrganizationId,
+    });
+
+    expect(
+      (
+        await findEquipment(store, {
+          organizationId: fixture.organizationId,
+          equipmentId: equipment.id,
+        })
+      )?.id,
+    ).toBe(equipment.id);
+    // The org filter is load-bearing: dropping it would return the other row.
+    expect(
+      await findEquipment(store, {
+        organizationId: fixture.organizationId,
+        equipmentId: otherEquipment.id,
+      }),
+    ).toBeUndefined();
+    expect(
+      await findEquipment(store, {
+        organizationId: fixture.organizationId,
+        equipmentId: "missing",
+      }),
+    ).toBeUndefined();
+
+    expect(
+      (
+        await findMaintenanceLog(store, {
+          organizationId: fixture.organizationId,
+          maintenanceLogId: log.id,
+        })
+      )?.id,
+    ).toBe(log.id);
+    expect(
+      await findMaintenanceLog(store, {
+        organizationId: fixture.organizationId,
+        maintenanceLogId: otherLog.id,
+      }),
+    ).toBeUndefined();
+    expect(
+      await findMaintenanceLog(store, {
+        organizationId: fixture.organizationId,
+        maintenanceLogId: "missing",
+      }),
+    ).toBeUndefined();
+  });
+});
+
+describe("listEquipment and listMaintenanceLogs", () => {
+  it("lists equipment by code with filters and paging, scoped to the organization", async () => {
+    const { store, fixture } = setup();
+    const beta = await registerIceMachine(store, fixture, { code: "eq-b" });
+    const alpha = await registerIceMachine(store, fixture, { code: "eq-a", kind: "oven" });
+    const retired = await registerIceMachine(store, fixture, {
+      code: "eq-c",
+      kind: "oven",
+      active: false,
+    });
+    const otherOrg = await registerIceMachine(store, fixture, {
+      organizationId: fixture.otherOrganizationId,
+      locationId: fixture.otherLocationId,
+      code: "eq-a",
+    });
+
+    // Code ascending; the exact id list fails if the org filter were dropped
+    // (the other organization's row would be appended).
+    expect(
+      (await listEquipment(store, { organizationId: fixture.organizationId })).map((row) => row.id),
+    ).toEqual([alpha.id, beta.id, retired.id]);
+    expect(
+      (await listEquipment(store, { organizationId: fixture.otherOrganizationId })).map(
+        (row) => row.id,
+      ),
+    ).toEqual([otherOrg.id]);
+
+    expect(
+      (await listEquipment(store, { organizationId: fixture.organizationId, kind: "oven" })).map(
+        (row) => row.id,
+      ),
+    ).toEqual([alpha.id, retired.id]);
+    expect(
+      (await listEquipment(store, { organizationId: fixture.organizationId, active: true })).map(
+        (row) => row.id,
+      ),
+    ).toEqual([alpha.id, beta.id]);
+    expect(
+      (
+        await listEquipment(store, {
+          organizationId: fixture.organizationId,
+          locationId: "loc-none",
+        })
+      ).map((row) => row.id),
+    ).toEqual([]);
+    expect(
+      (
+        await listEquipment(store, {
+          organizationId: fixture.organizationId,
+          limit: 1,
+          offset: 1,
+        })
+      ).map((row) => row.id),
+    ).toEqual([beta.id]);
+  });
+
+  it("lists maintenance logs newest first with filters and paging, scoped to the organization", async () => {
+    const { store, fixture } = setup();
+    const first = await registerIceMachine(store, fixture, { code: "eq-a" });
+    const second = await registerIceMachine(store, fixture, { code: "eq-b" });
+    const older = await recordService(store, fixture, first, {
+      performedAt: "2026-01-01T09:00:00.000Z",
+    });
+    const newer = await recordService(store, fixture, first, {
+      kind: "inspection",
+      performedAt: "2026-03-01T09:00:00.000Z",
+    });
+    const other = await recordService(store, fixture, second, {
+      performedAt: "2026-02-01T09:00:00.000Z",
+    });
+    const foreignEquipment = await registerIceMachine(store, fixture, {
+      organizationId: fixture.otherOrganizationId,
+      locationId: fixture.otherLocationId,
+      code: "eq-foreign",
+    });
+    const foreign = await recordService(store, fixture, foreignEquipment, {
+      organizationId: fixture.otherOrganizationId,
+      performedAt: "2026-04-01T09:00:00.000Z",
+    });
+
+    // Newest performed_at first; the exact id list fails if the org filter were
+    // dropped (the foreign, newest row would be first).
+    expect(
+      (await listMaintenanceLogs(store, { organizationId: fixture.organizationId })).map(
+        (row) => row.id,
+      ),
+    ).toEqual([newer.id, other.id, older.id]);
+    expect(
+      (await listMaintenanceLogs(store, { organizationId: fixture.otherOrganizationId })).map(
+        (row) => row.id,
+      ),
+    ).toEqual([foreign.id]);
+
+    expect(
+      (
+        await listMaintenanceLogs(store, {
+          organizationId: fixture.organizationId,
+          equipmentId: first.id,
+        })
+      ).map((row) => row.id),
+    ).toEqual([newer.id, older.id]);
+    expect(
+      (
+        await listMaintenanceLogs(store, {
+          organizationId: fixture.organizationId,
+          kind: "service",
+        })
+      ).map((row) => row.id),
+    ).toEqual([other.id, older.id]);
+    expect(
+      (
+        await listMaintenanceLogs(store, {
+          organizationId: fixture.organizationId,
+          limit: 1,
+          offset: 1,
+        })
+      ).map((row) => row.id),
+    ).toEqual([other.id]);
   });
 });
