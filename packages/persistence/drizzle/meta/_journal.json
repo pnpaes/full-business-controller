@@ -281,6 +281,20 @@
       "when": 1789996231921,
       "tag": "0039_hms_monitoring_org_guard",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1790024758839,
+      "tag": "0040_hms_incidents",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1790024895228,
+      "tag": "0041_hms_incidents_org_guard",
+      "breakpoints": true
     }
   ]
 }

@@ -359,3 +359,27 @@ export const MONITORING_POINT_KIND = [
 ] as const;
 
 export const CHECK_FREQUENCY = ["daily", "twice_daily", "weekly", "monthly", "other"] as const;
+
+// `DEC-090` / `DEC-095` (`HMS-003`, `HMS-004`): the HMS incident register and
+// its corrective actions. `category` and `status` back the
+// `hms_incident_category_check` / `hms_incident_status_check`, and
+// `corrective_action.status` backs `corrective_action_status_check`. The
+// `DEC-095` clarification adds `incident_severity` as its own vocabulary
+// (NOT NULL, no default) backing `hms_incident_severity_check`; it deliberately
+// reuses the same four levels as `EXCEPTION_SEVERITY` but is a separate yaml key
+// so the two can diverge. From `schemas/domain-enums.yaml` (`incident_category`,
+// `incident_severity`, `incident_status`, `corrective_action_status`).
+export const INCIDENT_CATEGORY = [
+  "work_accident",
+  "electrical",
+  "equipment",
+  "fire",
+  "near_miss",
+  "other",
+] as const;
+
+export const INCIDENT_SEVERITY = ["low", "medium", "high", "critical"] as const;
+
+export const INCIDENT_STATUS = ["open", "investigating", "resolved", "closed"] as const;
+
+export const CORRECTIVE_ACTION_STATUS = ["open", "in_progress", "done", "verified"] as const;

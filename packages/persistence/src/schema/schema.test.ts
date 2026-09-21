@@ -14,7 +14,7 @@ import * as schema from "./index";
 
 const tables = Object.values(schema).filter((value) => is(value, PgTable));
 
-/** The 70 in-scope Phase 1-2 tables: the 35 core tables, the slice-3
+/** The 72 in-scope Phase 1-2 tables: the 35 core tables, the slice-3
  * master-data additions (`unit_conversion`, `supplier`, `supplier_item`,
  * `cost_center`), the slice-4 receiving additions (`goods_receipt`,
  * `goods_receipt_line`), the slice-5 allergen additions (`allergen`,
@@ -31,7 +31,8 @@ const tables = Object.values(schema).filter((value) => is(value, PgTable));
  * `data_quality_exception` table, the `DEC-081` `import_profile` table, the
  * `DEC-083` `import_disposition` table, the `ADR-0006`/`DEC-085`
  * `file_object` table and the `DEC-089` HMS monitoring slice
- * (`monitoring_point`, `monitoring_reading`), from
+ * (`monitoring_point`, `monitoring_reading`), and the `DEC-090`/`DEC-095` HMS
+ * incident slice (`hms_incident`, `corrective_action`), from
  * `schemas/phase1_2_draft.sql` / `DATA_DICTIONARY`. */
 const EXPECTED_TABLES = [
   "addon_applicability",
@@ -43,6 +44,7 @@ const EXPECTED_TABLES = [
   "calculation_snapshot",
   "channel",
   "channel_fee_rule",
+  "corrective_action",
   "cost_card",
   "cost_center",
   "cost_observation",
@@ -54,6 +56,7 @@ const EXPECTED_TABLES = [
   "file_object",
   "goods_receipt",
   "goods_receipt_line",
+  "hms_incident",
   "import_disposition",
   "import_profile",
   "import_run",

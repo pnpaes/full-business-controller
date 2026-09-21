@@ -4,9 +4,11 @@ import type { Database, DatabaseTransaction, NodeDatabase } from "../client";
 import {
   channel,
   costCenter,
+  correctiveAction,
   dataQualityException,
   externalMapping,
   fileObject,
+  hmsIncident,
   importDisposition,
   importProfile,
   importRun,
@@ -814,6 +816,57 @@ export async function createTestMonitoringPoint(
       targetMin: "0",
       targetMax: "4",
       checkFrequency: "daily",
+      ...overrides,
+    })
+    .returning();
+  return rows[0]!;
+}
+
+/**
+ * A `DEC-090`/`DEC-095` HMS incident. `reported_by` gets a random uuid (the
+ * `app_user` FK is deferred) and the vocabulary columns take valid defaults, so
+ * a test need only override the field under test. `owner_id` stays null.
+ */
+export async function createTestHmsIncident(
+  db: Database,
+  organizationId: string,
+  locationId: string,
+  overrides: Partial<typeof hmsIncident.$inferInsert> = {},
+): Promise<typeof hmsIncident.$inferSelect> {
+  const rows = await db
+    .insert(hmsIncident)
+    .values({
+      organizationId,
+      locationId,
+      category: "other",
+      severity: "low",
+      occurredAt: new Date("2026-01-01T08:00:00.000Z"),
+      reportedAt: new Date("2026-01-01T09:00:00.000Z"),
+      reportedBy: randomUUID(),
+      title: "Test Incident",
+      involvesPersonalData: false,
+      status: "open",
+      ...overrides,
+    })
+    .returning();
+  return rows[0]!;
+}
+
+/**
+ * A `DEC-090`/`DEC-095` corrective action. Both links (`incident_id`,
+ * `monitoring_reading_id`) are nullable and stay null unless a test sets them.
+ */
+export async function createTestCorrectiveAction(
+  db: Database,
+  organizationId: string,
+  overrides: Partial<typeof correctiveAction.$inferInsert> = {},
+): Promise<typeof correctiveAction.$inferSelect> {
+  const rows = await db
+    .insert(correctiveAction)
+    .values({
+      organizationId,
+      description: "Test corrective action",
+      status: "open",
       ...overrides,
     })
     .returning();

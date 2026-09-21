@@ -121,3 +121,11 @@ price_scenario_state: [draft, submitted, approved, rejected]
 # DEC-089 (HMS-002): the HMS monitoring-point kind and reading cadence.
 monitoring_point_kind: [refrigerator, freezer, cooler, hot_holding, other]
 check_frequency: [daily, twice_daily, weekly, monthly, other]
+
+# DEC-090 / DEC-095 (HMS-003, HMS-004): the HMS incident register and its
+# corrective actions. `incident_severity` is the DEC-095 clarification: a
+# dedicated severity vocabulary, NOT NULL with no default.
+incident_category: [work_accident, electrical, equipment, fire, near_miss, other]
+incident_severity: [low, medium, high, critical]
+incident_status: [open, investigating, resolved, closed]
+corrective_action_status: [open, in_progress, done, verified]

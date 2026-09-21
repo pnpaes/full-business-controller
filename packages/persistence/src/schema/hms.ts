@@ -1,9 +1,16 @@
 import { sql } from "drizzle-orm";
-import { boolean, check, index, pgTable, text, unique, uuid } from "drizzle-orm/pg-core";
+import { boolean, check, date, index, pgTable, text, unique, uuid } from "drizzle-orm/pg-core";
 
 import { auditColumns, enumCheck, orgId, quantity, tstz, uuidPk } from "./columns";
 import { location, organization, storageArea } from "./organization";
-import { CHECK_FREQUENCY, MONITORING_POINT_KIND } from "./vocabularies";
+import {
+  CHECK_FREQUENCY,
+  CORRECTIVE_ACTION_STATUS,
+  INCIDENT_CATEGORY,
+  INCIDENT_SEVERITY,
+  INCIDENT_STATUS,
+  MONITORING_POINT_KIND,
+} from "./vocabularies";
 
 /*
  * `DEC-089` (`HMS-002`): the HMS & food-safety (IK-mat) monitoring slice. One
@@ -85,5 +92,89 @@ export const monitoringReading = pgTable(
       t.monitoringPointId,
       t.measuredAt,
     ),
+  ],
+);
+
+/*
+ * `DEC-090` (`HMS-003`): the HMS incident register. One row is one reported
+ * incident — an accident, an electrical/equipment/fire event or a near miss —
+ * at a location, with when it happened and when it was reported, who reported
+ * it and (per the `DEC-095` clarification) an optional owner and due date.
+ * `severity` uses the `DEC-095` `incident_severity` vocabulary (NOT NULL, no
+ * default); `category` and `status` are checked against their vocabularies too.
+ *
+ * `reported_by` and `owner_id` are plain uuids: the `app_user` FK is deferred
+ * repo-wide (the `monitoring_reading.recorded_by` precedent), and `owner_id` is
+ * nullable because the `DEC-095` clarification adds it to satisfy `HMS-003`'s
+ * incident owner/due-date screen. `involves_personal_data` flags the privacy
+ * review `DEC-090` records (the register may hold personal data). The incident
+ * is not append-only, so it carries `auditColumns()` with no trigger, and the
+ * `(organization_id, status, occurred_at)` index covers the register read.
+ */
+export const hmsIncident = pgTable(
+  "hms_incident",
+  {
+    id: uuidPk(),
+    organizationId: orgId().references(() => organization.id),
+    locationId: uuid("location_id")
+      .notNull()
+      .references(() => location.id),
+    category: text("category").notNull(),
+    severity: text("severity").notNull(),
+    occurredAt: tstz("occurred_at").notNull(),
+    reportedAt: tstz("reported_at").notNull(),
+    reportedBy: uuid("reported_by").notNull(),
+    ownerId: uuid("owner_id"),
+    title: text("title").notNull(),
+    description: text("description"),
+    dueDate: date("due_date"),
+    involvesPersonalData: boolean("involves_personal_data").notNull(),
+    status: text("status").notNull(),
+    closedAt: tstz("closed_at"),
+    ...auditColumns(),
+  },
+  (t) => [
+    check("hms_incident_category_check", enumCheck(t.category, INCIDENT_CATEGORY)),
+    check("hms_incident_severity_check", enumCheck(t.severity, INCIDENT_SEVERITY)),
+    check("hms_incident_status_check", enumCheck(t.status, INCIDENT_STATUS)),
+    index("hms_incident_org_status_occurred_idx").on(t.organizationId, t.status, t.occurredAt),
+    index("hms_incident_org_location_idx").on(t.organizationId, t.locationId),
+  ],
+);
+
+/*
+ * `DEC-090` (`HMS-004`): the corrective actions raised from an incident or from
+ * an out-of-range monitoring reading. Both links are nullable and independent,
+ * so an action can hang off an incident, a reading, or neither (a standalone
+ * improvement action); `incident_id` FKs `hms_incident` and
+ * `monitoring_reading_id` FKs `monitoring_reading`. `owner_id` and `verified_by`
+ * are plain uuids (the deferred `app_user` FK), `due_date` is the target date,
+ * and the `open → in_progress → done → verified` lifecycle is checked against
+ * `CORRECTIVE_ACTION_STATUS`.
+ *
+ * Evidence/photos ride the existing polymorphic `file_object` link rather than a
+ * second FK column (`DEC-090`, `DEC-085`), and like the incident the table is
+ * not append-only: it carries `auditColumns()` with no trigger.
+ */
+export const correctiveAction = pgTable(
+  "corrective_action",
+  {
+    id: uuidPk(),
+    organizationId: orgId().references(() => organization.id),
+    incidentId: uuid("incident_id").references(() => hmsIncident.id),
+    monitoringReadingId: uuid("monitoring_reading_id").references(() => monitoringReading.id),
+    description: text("description").notNull(),
+    ownerId: uuid("owner_id"),
+    dueDate: date("due_date"),
+    status: text("status").notNull(),
+    completedAt: tstz("completed_at"),
+    verifiedBy: uuid("verified_by"),
+    verifiedAt: tstz("verified_at"),
+    ...auditColumns(),
+  },
+  (t) => [
+    check("corrective_action_status_check", enumCheck(t.status, CORRECTIVE_ACTION_STATUS)),
+    index("corrective_action_org_incident_idx").on(t.organizationId, t.incidentId),
+    index("corrective_action_org_status_due_idx").on(t.organizationId, t.status, t.dueDate),
   ],
 );

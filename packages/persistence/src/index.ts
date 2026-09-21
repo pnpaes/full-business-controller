@@ -12,6 +12,7 @@ export * from "./repositories/counts";
 export * from "./repositories/data-quality-exception";
 export * from "./repositories/file-object";
 export * from "./repositories/imports";
+export * from "./repositories/incidents";
 export * from "./repositories/inventory";
 export * from "./repositories/master-data";
 export * from "./repositories/monitoring";
