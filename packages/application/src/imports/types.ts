@@ -146,6 +146,29 @@ export interface UpdateImportStagingRowValues {
   readonly linkedSalesLineId?: string | null;
 }
 
+/** One approved disposition for a non-posted row (`DEC-035`/`DEC-083`, `SALE-007`). */
+export interface ImportDispositionRecord {
+  readonly stagingRowId: string;
+  readonly sourceRowNo: number;
+  readonly disposition: string;
+  readonly reason: string | null;
+  readonly actorId: string;
+  /** `timestamptz`, ISO. */
+  readonly at: string;
+}
+
+export interface NewImportDispositionRecord {
+  readonly stagingRowId: string;
+  readonly disposition: string;
+  readonly reason: string | null;
+  readonly actorId: string;
+}
+
+export interface ImportDispositionCount {
+  readonly importRunId: string;
+  readonly count: number;
+}
+
 /**
  * An `external_mapping` row (`SALE-002`). `sku` is the preferred match key
  * (`DEC-041`); the effective window is carried but this slice reads the rows
@@ -222,6 +245,22 @@ export interface ImportStore {
     id: string,
     values: UpdateImportStagingRowValues,
   ): Promise<ImportStagingRowRecord>;
+  /** One run's approved dispositions (`DEC-035`), organization-scoped, in source order. */
+  listImportDispositions(query: {
+    readonly organizationId: string;
+    readonly importRunId: string;
+  }): Promise<readonly ImportDispositionRecord[]>;
+  /** Disposition counts for a set of runs (one grouped query); omitted runs count 0. */
+  countImportDispositionsByRun(query: {
+    readonly organizationId: string;
+    readonly importRunIds: readonly string[];
+  }): Promise<readonly ImportDispositionCount[]>;
+  /**
+   * Records the one disposition for a staging row (`DEC-083`). Returns `false`
+   * when that row already has one: the `import_disposition_staging_row_key`
+   * unique key is the guard, safe against concurrent double-disposition.
+   */
+  createImportDisposition(input: NewImportDispositionRecord): Promise<boolean>;
   listExternalMappings(query: ListExternalMappingsQuery): Promise<readonly ExternalMappingRecord[]>;
   /**
    * The internal entity for a platform-owned SKU (`DEC-041`), organization- and

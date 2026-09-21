@@ -22,22 +22,10 @@ export interface ImportMappingConflict {
   readonly externalIds: readonly string[];
 }
 
-/** One approved disposition for a non-posted row (`DEC-035`, `SALE-007`). */
-export interface ImportDispositionRecord {
-  readonly stagingRowId: string;
-  readonly sourceRowNo: number;
-  readonly disposition: string;
-  readonly reason: string | null;
-  readonly actorId: string;
-  /** `timestamptz`, ISO. */
-  readonly at: string;
-}
-
 export const IMPORT_DIAGNOSTIC_KEYS = {
   postingPolicy: "posting_policy",
   issues: "issues",
   conflicts: "conflicts",
-  dispositions: "dispositions",
   totals: "totals",
 } as const;
 
@@ -95,31 +83,6 @@ export function readConflicts(
         kind,
         internalEntityIds: asStringArray(item.internalEntityIds),
         externalIds: asStringArray(item.externalIds),
-      },
-    ];
-  });
-}
-
-export function readDispositions(
-  diagnostics: Readonly<Record<string, unknown>>,
-): readonly ImportDispositionRecord[] {
-  return asArray(diagnostics[IMPORT_DIAGNOSTIC_KEYS.dispositions]).flatMap((item) => {
-    if (!isPlainObject(item)) {
-      return [];
-    }
-    const stagingRowId = asString(item.stagingRowId);
-    const disposition = asString(item.disposition);
-    if (stagingRowId === null || disposition === null) {
-      return [];
-    }
-    return [
-      {
-        stagingRowId,
-        sourceRowNo: typeof item.sourceRowNo === "number" ? item.sourceRowNo : 0,
-        disposition,
-        reason: asString(item.reason),
-        actorId: asString(item.actorId) ?? "",
-        at: asString(item.at) ?? "",
       },
     ];
   });

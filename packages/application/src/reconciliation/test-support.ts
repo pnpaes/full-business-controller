@@ -134,6 +134,20 @@ export class FakeReconciliationStore implements ReconciliationStore {
     return this.imports.updateImportStagingRow(id, values);
   }
 
+  listImportDispositions(query: Parameters<FakeImportStore["listImportDispositions"]>[0]) {
+    return this.imports.listImportDispositions(query);
+  }
+
+  countImportDispositionsByRun(
+    query: Parameters<FakeImportStore["countImportDispositionsByRun"]>[0],
+  ) {
+    return this.imports.countImportDispositionsByRun(query);
+  }
+
+  createImportDisposition(input: Parameters<FakeImportStore["createImportDisposition"]>[0]) {
+    return this.imports.createImportDisposition(input);
+  }
+
   listExternalMappings(query: Parameters<FakeImportStore["listExternalMappings"]>[0]) {
     return this.imports.listExternalMappings(query);
   }

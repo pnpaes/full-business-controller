@@ -492,7 +492,7 @@ describe("mapImportRows", () => {
 });
 
 describe("disposeStagingRow", () => {
-  it("records an approved disposition in diagnostics and on the row", async () => {
+  it("records an approved disposition in the table and on the row", async () => {
     const store = new FakeImportStore();
     const fixture = seedImportFixture(store);
     const importRunId = await stageAndValidate(store, fixture, [
@@ -522,6 +522,47 @@ describe("disposeStagingRow", () => {
       stagingRowId,
       disposition: "unmapped",
       actorId: fixture.actorId,
+    });
+  });
+
+  it("refuses a second disposition for the same row, leaving exactly one (DEC-083)", async () => {
+    const store = new FakeImportStore();
+    const fixture = seedImportFixture(store);
+    const importRunId = await stageAndValidate(store, fixture, [
+      row(1, { external_id: "ext-missing" }),
+    ]);
+    const stagingRowId = (await getImportRun(store, {
+      organizationId: fixture.organizationId,
+      importRunId,
+    }))!.rows[0]!.id;
+
+    await disposeStagingRow(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      importRunId,
+      stagingRowId,
+      disposition: "unmapped",
+      reason: "not sold in this channel",
+    });
+
+    await expect(
+      disposeStagingRow(store, {
+        organizationId: fixture.organizationId,
+        actorId: fixture.actorId,
+        importRunId,
+        stagingRowId,
+        disposition: "ignored",
+      }),
+    ).rejects.toThrow(DomainError);
+
+    const detail = await getImportRun(store, {
+      organizationId: fixture.organizationId,
+      importRunId,
+    });
+    expect(detail?.dispositions).toHaveLength(1);
+    expect(detail?.dispositions[0]).toMatchObject({
+      stagingRowId,
+      disposition: "unmapped",
     });
   });
 

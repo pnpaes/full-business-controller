@@ -1,4 +1,3 @@
-import { readDispositions } from "./diagnostics";
 import type { ImportRunRecord, ImportStore, ListImportRunsQuery } from "./types";
 
 export interface ImportRunSummary {
@@ -19,8 +18,9 @@ function countOf(run: ImportRunRecord, key: string): number {
 /**
  * Runs for one organization, newest first (the repository orders them), each
  * summarised for the import list screen. The counts come from `row_counts`
- * (written by the commands) and the disposition count from `diagnostics`; no
- * per-run staging read is issued, so the list stays one query.
+ * (written by the commands) and the disposition counts from one grouped
+ * `import_disposition` table query (`DEC-083`); no per-run staging read is
+ * issued, so the list stays one query.
  *
  * `limit` defaults to 50 and the API caps it at 200.
  */
@@ -35,6 +35,11 @@ export async function listImportRuns(
     limit: query.limit ?? 50,
     ...(query.offset === undefined ? {} : { offset: query.offset }),
   });
+  const counts = await store.countImportDispositionsByRun({
+    organizationId: query.organizationId,
+    importRunIds: runs.map((run) => run.id),
+  });
+  const dispositionCounts = new Map(counts.map((entry) => [entry.importRunId, entry.count]));
 
   return runs.map((run) => ({
     run,
@@ -42,6 +47,6 @@ export async function listImportRuns(
     mappedCount: countOf(run, "mapped"),
     unmappedCount: countOf(run, "unmapped"),
     errorCount: countOf(run, "error"),
-    dispositionCount: readDispositions(run.diagnostics).length,
+    dispositionCount: dispositionCounts.get(run.id) ?? 0,
   }));
 }

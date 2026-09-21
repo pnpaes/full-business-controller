@@ -6,7 +6,7 @@ import {
   withinTolerance,
 } from "@aquarela/domain";
 
-import { readDispositions, readTotals } from "../imports/diagnostics";
+import { readTotals } from "../imports/diagnostics";
 import type { ImportStagingRowRecord } from "../imports";
 import { isPlainObject, readText } from "../imports/validation";
 import { readMoneyOrNull } from "../sales/validation";
@@ -99,7 +99,12 @@ export async function reconcileImportRun(
       importRunId: run.id,
     });
     const dispositioned = new Set(
-      readDispositions(run.diagnostics).map((disposition) => disposition.stagingRowId),
+      (
+        await tx.listImportDispositions({
+          organizationId: input.organizationId,
+          importRunId: run.id,
+        })
+      ).map((disposition) => disposition.stagingRowId),
     );
 
     // DEC-035: an import cannot close while a non-posted row lacks an approved

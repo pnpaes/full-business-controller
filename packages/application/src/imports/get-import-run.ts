@@ -1,12 +1,15 @@
 import {
   readConflicts,
-  readDispositions,
   readIssues,
-  type ImportDispositionRecord,
   type ImportMappingConflict,
   type ImportRowIssue,
 } from "./diagnostics";
-import type { ImportRunRecord, ImportStagingRowRecord, ImportStore } from "./types";
+import type {
+  ImportDispositionRecord,
+  ImportRunRecord,
+  ImportStagingRowRecord,
+  ImportStore,
+} from "./types";
 
 export interface ImportRunDetail {
   readonly run: ImportRunRecord;
@@ -36,12 +39,16 @@ export async function getImportRun(
     organizationId: query.organizationId,
     importRunId: run.id,
   });
+  const dispositions = await store.listImportDispositions({
+    organizationId: query.organizationId,
+    importRunId: run.id,
+  });
 
   return {
     run,
     rows,
     issues: readIssues(run.diagnostics),
     conflicts: readConflicts(run.diagnostics),
-    dispositions: readDispositions(run.diagnostics),
+    dispositions,
   };
 }

@@ -1,14 +1,8 @@
 export { IMPORTS_AUDIT_ACTIONS } from "./actions";
 export { createImportRun } from "./create-import-run";
 export type { CreateImportRunInput, CreateImportRunResult } from "./create-import-run";
-export {
-  IMPORT_DIAGNOSTIC_KEYS,
-  readConflicts,
-  readDispositions,
-  readIssues,
-  readTotals,
-} from "./diagnostics";
-export type { ImportDispositionRecord, ImportMappingConflict, ImportRowIssue } from "./diagnostics";
+export { IMPORT_DIAGNOSTIC_KEYS, readConflicts, readIssues, readTotals } from "./diagnostics";
+export type { ImportMappingConflict, ImportRowIssue } from "./diagnostics";
 export { disposeStagingRow } from "./dispose-staging-row";
 export type { DisposeStagingRowInput, DisposeStagingRowResult } from "./dispose-staging-row";
 export { getImportRun } from "./get-import-run";
@@ -30,12 +24,15 @@ export type {
   ExternalMappingRecord,
   FindImportProfileQuery,
   FindImportRunQuery,
+  ImportDispositionCount,
+  ImportDispositionRecord,
   ImportProfileRecord,
   ImportRunRecord,
   ImportStagingRowRecord,
   ImportStore,
   ListExternalMappingsQuery,
   ListImportRunsQuery,
+  NewImportDispositionRecord,
   NewImportProfileRecord,
   NewImportRunRecord,
   NewImportStagingRowRecord,

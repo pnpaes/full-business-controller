@@ -11,7 +11,6 @@ import {
   DEFAULT_IMPORT_POSTING_POLICY,
   IMPORT_DIAGNOSTIC_KEYS,
   IMPORT_POSTING_POLICY,
-  readDispositions,
 } from "../imports";
 import type { ImportStagingRowRecord } from "../imports";
 import { isBlank, isPlainObject } from "../imports/validation";
@@ -239,7 +238,12 @@ export async function postImportRun(
           resolvedRowIds.add(row.id);
         }
       }
-      for (const disposition of readDispositions(run.diagnostics)) {
+      // `DEC-083`: approved dispositions are their own table, keyed one per
+      // staging row.
+      for (const disposition of await tx.listImportDispositions({
+        organizationId: input.organizationId,
+        importRunId: run.id,
+      })) {
         resolvedRowIds.add(disposition.stagingRowId);
       }
       const blockers = rows.filter((row) => !resolvedRowIds.has(row.id));

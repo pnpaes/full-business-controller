@@ -1,6 +1,6 @@
 import { DomainError } from "@aquarela/domain";
 
-import { readDispositions, readTotals } from "./diagnostics";
+import { readTotals } from "./diagnostics";
 import type { ImportStagingRowRecord, ImportStore } from "./types";
 import { isDecimalString, readText, subtractMoney, sumMoney } from "./validation";
 import type { MoneyTotals } from "./validation";
@@ -36,8 +36,10 @@ export interface ImportRunPreview {
   readonly canClose: boolean;
 }
 
-function dispositionedRowIds(diagnostics: Readonly<Record<string, unknown>>): Set<string> {
-  return new Set(readDispositions(diagnostics).map((disposition) => disposition.stagingRowId));
+function dispositionedRowIds(
+  dispositions: readonly { readonly stagingRowId: string }[],
+): Set<string> {
+  return new Set(dispositions.map((disposition) => disposition.stagingRowId));
 }
 
 function isUndecided(row: ImportStagingRowRecord, dispositioned: ReadonlySet<string>): boolean {
@@ -78,8 +80,12 @@ export async function previewImportRun(
     organizationId: input.organizationId,
     importRunId: run.id,
   });
+  const dispositions = await store.listImportDispositions({
+    organizationId: input.organizationId,
+    importRunId: run.id,
+  });
 
-  const dispositioned = dispositionedRowIds(run.diagnostics);
+  const dispositioned = dispositionedRowIds(dispositions);
   const undecidedRowIds = rows
     .filter((row) => isUndecided(row, dispositioned))
     .map((row) => row.id);

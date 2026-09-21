@@ -25,7 +25,9 @@ import type {
  * `import_run.period_start`/`period_end` are `date` columns (`yyyy-mm-dd`) and
  * stay strings; `timestamptz` values become ISO strings; the `row_counts`/
  * `diagnostics`/`raw`/`normalized` jsonb columns come back as `unknown` and are
- * narrowed defensively.
+ * narrowed defensively. The approved dispositions are a real table
+ * (`DEC-083`, `import_disposition`), not diagnostics; `createdAt` becomes the
+ * port's `at` ISO string.
  *
  * Two repository gaps are bridged here rather than in persistence (which this
  * slice must not edit), both recorded as open points:
@@ -261,6 +263,32 @@ export function createPostgresImportStore(db: Database): ImportStore {
       }
       return toStagingRow(row);
     },
+    listImportDispositions: async (query) =>
+      (
+        await repo.listImportDispositions(db, {
+          organizationId: query.organizationId,
+          importRunId: query.importRunId,
+        })
+      ).map((row) => ({
+        stagingRowId: row.importStagingRowId,
+        sourceRowNo: row.sourceRowNo,
+        disposition: row.disposition,
+        reason: row.reason,
+        actorId: row.actorId,
+        at: row.createdAt.toISOString(),
+      })),
+    countImportDispositionsByRun: async (query) =>
+      repo.countImportDispositionsByRun(db, {
+        organizationId: query.organizationId,
+        importRunIds: query.importRunIds,
+      }),
+    createImportDisposition: async (input) =>
+      (await repo.createImportDisposition(db, {
+        importStagingRowId: input.stagingRowId,
+        disposition: input.disposition,
+        reason: input.reason,
+        actorId: input.actorId,
+      })) !== undefined,
     listExternalMappings: async (query: ListExternalMappingsQuery) =>
       (
         await repo.listExternalMappings(db, {

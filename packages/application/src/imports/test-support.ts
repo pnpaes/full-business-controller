@@ -4,12 +4,15 @@ import type {
   ExternalMappingRecord,
   FindImportProfileQuery,
   FindImportRunQuery,
+  ImportDispositionCount,
+  ImportDispositionRecord,
   ImportProfileRecord,
   ImportRunRecord,
   ImportStagingRowRecord,
   ImportStore,
   ListExternalMappingsQuery,
   ListImportRunsQuery,
+  NewImportDispositionRecord,
   NewImportProfileRecord,
   NewImportRunRecord,
   NewImportStagingRowRecord,
@@ -31,6 +34,7 @@ export class FakeImportStore implements ImportStore {
   readonly importRuns = new Map<string, ImportRunRecord>();
   readonly importProfiles = new Map<string, ImportProfileRecord>();
   readonly stagingRows = new Map<string, ImportStagingRowRecord>();
+  readonly importDispositions = new Map<string, ImportDispositionRecord>();
   readonly externalMappings = new Map<string, ExternalMappingRecord>();
   readonly internalEntitiesBySku = new Map<string, { readonly internalEntityId: string }>();
   readonly auditEvents: AuditInput[] = [];
@@ -197,6 +201,64 @@ export class FakeImportStore implements ImportStore {
     };
     this.stagingRows.set(id, record);
     return record;
+  }
+
+  async createImportDisposition(input: NewImportDispositionRecord): Promise<boolean> {
+    if (this.importDispositions.has(input.stagingRowId)) {
+      return false;
+    }
+    const stagingRow = this.stagingRows.get(input.stagingRowId);
+    if (stagingRow === undefined) {
+      throw new Error(`staging row ${input.stagingRowId} not found for disposition`);
+    }
+    const record: ImportDispositionRecord = {
+      stagingRowId: input.stagingRowId,
+      sourceRowNo: stagingRow.sourceRowNo,
+      disposition: input.disposition,
+      reason: input.reason,
+      actorId: input.actorId,
+      at: new Date().toISOString(),
+    };
+    this.importDispositions.set(record.stagingRowId, record);
+    return true;
+  }
+
+  async listImportDispositions(query: {
+    readonly organizationId: string;
+    readonly importRunId: string;
+  }): Promise<readonly ImportDispositionRecord[]> {
+    const run = this.importRuns.get(query.importRunId);
+    if (run === undefined || run.organizationId !== query.organizationId) {
+      return [];
+    }
+    return [...this.importDispositions.values()]
+      .filter(
+        (disposition) =>
+          this.stagingRows.get(disposition.stagingRowId)?.importRunId === query.importRunId,
+      )
+      .sort((a, b) => a.sourceRowNo - b.sourceRowNo);
+  }
+
+  async countImportDispositionsByRun(query: {
+    readonly organizationId: string;
+    readonly importRunIds: readonly string[];
+  }): Promise<readonly ImportDispositionCount[]> {
+    if (query.importRunIds.length === 0) {
+      return [];
+    }
+    const counts = new Map<string, number>();
+    for (const disposition of this.importDispositions.values()) {
+      const stagingRow = this.stagingRows.get(disposition.stagingRowId);
+      if (stagingRow === undefined || !query.importRunIds.includes(stagingRow.importRunId)) {
+        continue;
+      }
+      const run = this.importRuns.get(stagingRow.importRunId);
+      if (run === undefined || run.organizationId !== query.organizationId) {
+        continue;
+      }
+      counts.set(stagingRow.importRunId, (counts.get(stagingRow.importRunId) ?? 0) + 1);
+    }
+    return [...counts.entries()].map(([importRunId, count]) => ({ importRunId, count }));
   }
 
   async listExternalMappings(

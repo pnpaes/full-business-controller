@@ -297,20 +297,11 @@ describe("postImportRun", () => {
         ],
       },
     );
-    await store.updateImportRun(importRunId, {
-      diagnostics: {
-        posting_policy: "all_or_nothing",
-        dispositions: [
-          {
-            stagingRowId: rowIds[1]!,
-            sourceRowNo: 2,
-            disposition: "unmapped",
-            reason: null,
-            actorId: ACTOR,
-            at: OCCURRED_AT,
-          },
-        ],
-      },
+    await store.createImportDisposition({
+      stagingRowId: rowIds[1]!,
+      disposition: "unmapped",
+      reason: null,
+      actorId: ACTOR,
     });
 
     const result = await postImportRun(store, { organizationId: ORG, actorId: ACTOR, importRunId });

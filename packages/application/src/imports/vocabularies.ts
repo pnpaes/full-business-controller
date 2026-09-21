@@ -1,4 +1,5 @@
 import {
+  IMPORT_DISPOSITION as CANONICAL_IMPORT_DISPOSITION,
   IMPORT_POSTING_POLICY as CANONICAL_IMPORT_POSTING_POLICY,
   IMPORT_STATUS as CANONICAL_IMPORT_STATUS,
   MAPPING_STATE as CANONICAL_MAPPING_STATE,
@@ -19,10 +20,11 @@ export const IMPORT_POSTING_POLICY: readonly string[] = CANONICAL_IMPORT_POSTING
 export const DEFAULT_IMPORT_POSTING_POLICY = "allow_partial";
 
 /**
- * Approved dispositions for a non-posted row (`DEC-035`, `SALE-007`). These are
- * the categories reconciliation counts against the source totals; there is no
- * disposition table, so the application records them in the run diagnostics
- * (recorded open point).
+ * Approved dispositions for a non-posted row (`DEC-035`, `SALE-007`). The
+ * dispositions now live in the `import_disposition` table (`DEC-083`); the
+ * persistence vocabulary is a provisional mirror (`schemas/domain-enums.yaml`
+ * has no disposition key yet), so this derives from it rather than
+ * redeclaring it.
  */
-export const IMPORT_DISPOSITIONS = ["unmapped", "rejected", "ignored"] as const;
-export type ImportDispositionKind = (typeof IMPORT_DISPOSITIONS)[number];
+export const IMPORT_DISPOSITIONS: readonly string[] = CANONICAL_IMPORT_DISPOSITION;
+export type ImportDispositionKind = (typeof CANONICAL_IMPORT_DISPOSITION)[number];

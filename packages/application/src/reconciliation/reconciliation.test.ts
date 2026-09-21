@@ -70,23 +70,25 @@ async function seedRun(
     });
     rowIds.push(created.id);
   }
-  const dispositions = options.rows
-    .map((row, index) => ({ row, stagingRowId: rowIds[index]! }))
-    .filter((entry) => entry.row.disposition !== undefined)
-    .map((entry, index) => ({
-      stagingRowId: entry.stagingRowId,
-      sourceRowNo: index + 1,
-      disposition: entry.row.disposition,
+  // Approved dispositions live in the `import_disposition` table (`DEC-083`),
+  // so seed them through the store after the staging rows exist.
+  for (const [index, row] of options.rows.entries()) {
+    if (row.disposition === undefined) {
+      continue;
+    }
+    const created = await store.imports.createImportDisposition({
+      stagingRowId: rowIds[index]!,
+      disposition: row.disposition,
       reason: "test disposition",
       actorId: ACTOR,
-      at: "2026-02-01T00:00:00.000Z",
-    }));
+    });
+    if (!created) {
+      throw new Error(`failed to seed disposition for staging row ${rowIds[index]}`);
+    }
+  }
   const diagnostics: Record<string, unknown> = {};
   if (options.totals !== undefined) {
     diagnostics.totals = options.totals;
-  }
-  if (dispositions.length > 0) {
-    diagnostics.dispositions = dispositions;
   }
   await store.updateImportRun(run.id, { diagnostics });
   return { importRunId: run.id, rowIds };

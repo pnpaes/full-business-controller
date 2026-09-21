@@ -1,7 +1,6 @@
 import { DomainError } from "@aquarela/domain";
 
 import { IMPORTS_AUDIT_ACTIONS } from "./actions";
-import { IMPORT_DIAGNOSTIC_KEYS, readDispositions } from "./diagnostics";
 import type { ImportStore } from "./types";
 import { IMPORT_DISPOSITIONS, type ImportDispositionKind } from "./vocabularies";
 
@@ -44,9 +43,9 @@ function mappingStateFor(disposition: ImportDispositionKind): {
 /**
  * Records an approved disposition for a non-posted row (`SALE-007`, `DEC-035`):
  * the run cannot close while a non-posted row lacks one. The actor recording it
- * is the approval — there is no disposition table or approval workflow in this
- * slice, so the record (actor, timestamp, reason) is appended to
- * `diagnostics.dispositions` (recorded open point).
+ * is the approval — the record (actor, timestamp, reason) is the
+ * `import_disposition` row (`DEC-083`), exactly one per staging row and no
+ * longer appended to `diagnostics.dispositions`.
  *
  * A row already linked to a posted sales line cannot be dispositioned:
  * correcting a posted row is an explicit reversal in slice 12, never a staging
@@ -89,24 +88,20 @@ export async function disposeStagingRow(
     }
 
     const { mappingState, errorCode } = mappingStateFor(input.disposition);
+    const created = await tx.createImportDisposition({
+      stagingRowId: row.id,
+      disposition: input.disposition,
+      reason: input.reason ?? null,
+      actorId: input.actorId,
+    });
+    if (!created) {
+      throw new DomainError(
+        "this staging row already has an approved disposition; dispositions cannot be recorded twice",
+      );
+    }
     await tx.updateImportStagingRow(row.id, { mappingState, errorCode });
 
     const at = new Date().toISOString();
-    const dispositions = [
-      ...readDispositions(run.diagnostics),
-      {
-        stagingRowId: row.id,
-        sourceRowNo: row.sourceRowNo,
-        disposition: input.disposition,
-        reason: input.reason ?? null,
-        actorId: input.actorId,
-        at,
-      },
-    ];
-    await tx.updateImportRun(run.id, {
-      diagnostics: { ...run.diagnostics, [IMPORT_DIAGNOSTIC_KEYS.dispositions]: dispositions },
-    });
-
     await tx.writeAudit({
       organizationId: input.organizationId,
       actorId: input.actorId,
