@@ -13,54 +13,40 @@ This file is **updated at the end of every slice** — statuses and the "current
 line move with the work; `CONTEXT.md` keeps the narrative handoff and the immediate
 `Resume here` section.
 
-**Current position:** HEAD `0f8b7b1` on `main` (nothing pushed; nothing applied to
+**Current position:** HEAD `2d4b98b` on `main` (nothing pushed; nothing applied to
 DigitalOcean). Slice 0, auth slices 1a–1e, slices 2–10, row 11
 (import framework + external mappings), row 12 (sales + settlements +
 reconciliation), the **price-version slice (`DEC-064`, PRICE-002/003)**, the
 **`DEC-078` low-risk vocabulary/integrity open points**, the **`DEC-079`
 cross-organization coherence guards**, the **`DEC-080`
 `data_quality_exception` table**, the **`DEC-081` import-profile table**, the
-**`DEC-082` import posting-policy enforcement** and the **`DEC-083`
-first-class `import_disposition` table (migration `0033`)**
-are `done` and committed;
+**`DEC-082` import posting-policy enforcement**, the **`DEC-083`
+first-class `import_disposition` table (migration `0033`)** and the
+**`DEC-084` `PROD-003` variance producers** are `done` and committed;
 `ADR-0007` and `ADR-0008` accepted 2026-09-20 (owner-delegated, revertible).
-The `DEC-083` slice delivered (commits `4587564`, `dbb7d97`, `64a7cfc`,
-`0f8b7b1`, plus the runbook/context docs commits): import dispositions moved
-from `import_run.diagnostics.dispositions` jsonb into a first-class
-**`import_disposition`** table — one disposition per staging row, FK cascade
-to `import_staging_row` + `UNIQUE(import_staging_row_id)`, `disposition`
-checked `{unmapped,rejected,ignored}`, `reason`, required `actor_id`,
-`created_at` = the approval instant, no `organization_id` (scoped via
-`import_staging_row` →
-`import_run`); migration `0033` is additive and backfills the existing jsonb
-(latest record per row; malformed/orphan records skipped, a malformed `at`
-aborts — the runbook preflight flags both), jsonb keys retained frozen
-(expand → migrate → contract), and the unjournaled down companion rebuilds
-`diagnostics.dispositions` from the table before dropping it (lossless
-rollback). `disposeStagingRow` inserts the one disposition (the unique key
-refuses a repeat with a `DomainError` and rolls back), and
-`getImportRun`/`previewImportRun`/`listImportRuns`/`postImportRun`/`reconcileImportRun`
-read the table; the dead jsonb reader is removed. Verification at `0f8b7b1`:
-`typecheck`/`lint`/`build`/`format:check` clean; **1366/1366 tests with
+**Done 2026-09-21:** the tracked `DEC-083` **contract step** — the data-only
+migration `0034_import_disposition_contract` (commits `4326dec`, `66b0d51`
+tooling fix, `2d4b98b` runbook docs) dropped the frozen
+`diagnostics.dispositions` jsonb key from every run that still carried it
+(the down rebuilds the key from `import_disposition`; no schema change, still
+67 tables; no new decision — it executes accepted `DEC-083`).
+Verification at `2d4b98b`:
+`typecheck`/`lint`/`build`/`format:check` clean; **1375/1375 tests with
 `DATABASE_URL`**
-(135 files); `npm audit --omit=dev` 0; `db:migrate` through `0033` is a no-op
-on re-run; 67 tables (was 66); the `0033` down/re-apply rehearsed (lossless).
+(135 files); `npm audit --omit=dev` 0; `db:migrate` through `0034` is a no-op
+on re-run; 67 tables; the `0034` down/re-apply rehearsed locally.
 Programme
 direction: proceed autonomously, per task — parallel background agents →
 adversarial review + fixes → document status and next steps → commit → next
 task. **Remaining roadmap:** row 13 is **data-gated** on history/grain
 quality (I11); row 14 is **owner-gated** on a privacy review / access
-matrix; rows 15–18 remain blocked (data / `ADR-0009`–`0011`). **Done
-2026-09-21:** the **`PROD-003` count-variance/yield-variance exception
-producers** using the `DEC-080` `data_quality_exception` table (`DEC-084` —
-recorded unconditionally whenever the variance is non-zero, pending the FIN
-variance-tolerance thresholds, which stay a recorded FIN open point).
+matrix; rows 15–18 remain blocked (data / `ADR-0009`–`0011`).
 **Next task `file_object` is gated:** it requires `ADR-0006` (File storage
 and retention), which is `Proposed` and names
-`file_object.retention_policy` — raised to the owner on 2026-09-21. The
-next unblocked TECH item meanwhile is the tracked `DEC-083` **contract
-step** (delete the frozen `diagnostics.dispositions` jsonb keys once
-nothing depends on them). Most other rows remain owner/data-gated.
+`file_object.retention_policy` — raised to the owner on 2026-09-21. With the
+contract step done, no TECH-owned unblocked task remains: the owner decision
+on `ADR-0006` (then `file_object`) is the only remaining blocker. Most other
+rows remain owner/data-gated.
 Next free decision id `DEC-085`.
 
 ## 2. The execution loop (per slice)
@@ -480,7 +466,12 @@ dates assigned):
    7. ~~Dispositions live in `import_run.diagnostics.dispositions` (jsonb), not a
        table.~~ resolved 2026-09-21 (`DEC-083` — the first-class
        `import_disposition` table, migration `0033`, one disposition per
-       staging row; commits `dbb7d97`/`64a7cfc`). The remaining row-11 point
+       staging row; commits `dbb7d97`/`64a7cfc`); ~~the frozen jsonb keys are
+       retained pending the tracked contract step~~ **resolved 2026-09-21**
+       (the data-only migration `0034_import_disposition_contract`, commit
+       `4326dec`, removed the frozen key from every run that still carried
+       it; the down rebuilds it from `import_disposition`; rehearsed
+       locally). The remaining row-11 point
        is `file_object` absent (point 6).
   8. ~~Two routes return 404 by matching the text `/not found/i` on the
       `DomainError` message~~ resolved 2026-09-20 (`DEC-076`): a typed
@@ -520,7 +511,8 @@ dates assigned):
   8. A local dev-DB side effect: the demo import run left a
      `partially_posted` import run and a reconciliation reopened to `pending`
      in the local database. Local dev-data artefact, no repository impact.
-- **Next unblocked task (2026-09-21, after `DEC-083`):** with rows 13–18 gated
+- **Next unblocked task (2026-09-21, after the `DEC-083` contract step):**
+  with rows 13–18 gated
   (row 13 data-gated on history/grain quality I11; row 14 owner-gated on the
   privacy review / access matrix; rows 15–18 blocked on data /
   `ADR-0009`–`0011`), no roadmap slice is buildable purely from code without
@@ -536,11 +528,16 @@ dates assigned):
   `postImportRun` posting-policy enforcement `DEC-082`, the first-class
   `import_disposition` table (migration `0033`) `DEC-083`, and the `PROD-003`
   count-variance/yield-variance exception producers (`DEC-084`) — committed
-  `dbb7d97`/`64a7cfc`).
+  `dbb7d97`/`64a7cfc`), plus the `DEC-083` **contract step** (data-only
+  migration `0034`, commits `4326dec`/`66b0d51`/`2d4b98b`) removing the
+  frozen `diagnostics.dispositions` keys — done 2026-09-21.
   The previously-planned next buildable TECH-owned task, `file_object` (row-11
-  import-framework point 6), is now **gated on `ADR-0006`** (`Proposed`; raised to the
-  owner 2026-09-21); the next unblocked TECH item meanwhile is the tracked `DEC-083`
-  **contract step**. The variance tolerance thresholds stay a recorded FIN open point.
+  import-framework point 6), remains **gated on `ADR-0006`** (`Proposed`; raised
+  to the
+  owner 2026-09-21); with the contract step done, no TECH-owned unblocked
+  task remains — the owner decision on `ADR-0006` (then `file_object`) is
+  the only remaining blocker. The variance tolerance thresholds stay a
+  recorded FIN open point.
   Most other rows remain owner/data-gated.
   The remaining recorded open points above stay open. Next free decision id
   **`DEC-085`**.

@@ -9,69 +9,52 @@ duplicate their content.
 
 **Say "resume the work" and start here.** A fresh session must be able to
 continue from this section alone. (This section was rewritten by the
-2026-09-21 gate-pause pass, after the `DEC-084` handoff slice.)
+2026-09-21 `DEC-083` contract-step pass.)
 
-**State:** `main` HEAD **`9a3d60b`** (clean tree, slice committed and verified
-1373/1373), nothing pushed; the last slice was the `DEC-084` five-commit
-cohort: 1.
-`refactor(application)` — extract the shared `data-quality` module
-(`packages/application/src/data-quality/`: `types.ts`, `postgres.ts`,
-`test-support.ts`, `index.ts`) holding the `DEC-080`
-`DataQualityExceptionRecord`/`NewDataQualityExceptionRecord` DTOs, the
-`DataQualityExceptionStore` port, the postgres mapper/creator and the fake
-helper; `transfers` refactored to consume it (behaviour-preserving;
-`TransferStore` extends `DataQualityExceptionStore`); 2. `feat(counts)` —
-`approveStockCount` records exactly one `count_variance`
-`data_quality_exception` (entity `stock_count`) in the same transaction as the
-postings when any line variance is non-zero; `exception_id` added to the
-approval audit; 3. `feat(production)` — `completeProductionBatch` records
-exactly one `yield_variance` exception (entity `production_batch`) in the same
-transaction when `yield_variance_pct` is non-zero; `exception_id` in the
-completion audit; the two `apps/web` production open-point comments corrected;
-the runbook slice-10 point **(g)** closed citing `DEC-080`/`DEC-084`; 4. `docs(decisions)` — `DEC-084` accepted (provisional);
-`docs/BUILD_ROADMAP.md` §1/§5; persistence comments in
-`packages/persistence/src/schema/platform.ts` and
-`packages/persistence/src/repositories/data-quality-exception.ts`; 5. `docs(context)` — this handoff update.
+**State:** `main` HEAD **`2d4b98b`** (clean tree before this docs edit,
+verified 1375/1375), nothing pushed. Lineage: `3abe72f` (the `ADR-0006`
+gate-pause docs) → **4 commits this slice**: 1. `4326dec` `feat(persistence)`
+— migration `0034_import_disposition_contract` (forward + down + journal +
+snapshot) + structural guards; 2. `66b0d51` `fix(tooling)` — the root
+`db:generate` wrapper now forwards extra args to drizzle-kit (before the fix
+it swallowed them, so the runbook's documented
+`npm run db:generate -- --name=…` never named a migration); 3. `2d4b98b`
+`docs(runbook)` — document `0034`; 4. `docs(context)` — this handoff update.
 **Nothing pushed; nothing applied to DigitalOcean.**
 
-**Delivered (`DEC-084`, provisional):** the `PROD-003` variance exceptions are
-recorded **unconditionally** through the `DEC-080` `data_quality_exception`
-repository, in the **same transaction** as the fact: `approveStockCount` writes
-one `count_variance` and `completeProductionBatch` one `yield_variance`
-whenever the variance is non-zero. No tolerance threshold is applied because
-the FIN variance-tolerance thresholds remain an open input — so the producers
-are provisional (the `DEC-055` precedent); `severity` is the schema default
-`medium` (provisional); `detected_at` is the fact instant (count approval /
-batch completion); `entity_id` is the count/batch id; one exception per
-document. `DEC-084` is accepted provisional (TECH + FIN). **No schema change:**
-migrations through **`0033`**; **67 tables**; `db:migrate` through `0033` is a
-no-op on re-run. Next free decision id **`DEC-085`**.
+**Delivered (closes the tracked `DEC-083` contract step):** the data-only
+migration `0034` drops the retained-frozen
+`import_run.diagnostics.dispositions` jsonb key from every run that still
+carries it (`UPDATE "import_run" SET "diagnostics" = "diagnostics" -
+'dispositions' WHERE "diagnostics" ? 'dispositions';` — the other
+`diagnostics` keys are untouched). The unjournalled down rebuilds the key
+from `import_disposition` (via `import_staging_row`, `jsonb_agg … ORDER BY
+source_row_no`; value-identical but not order-identical; drops nothing).
+**No new decision** — it executes accepted `DEC-083`; accepted decisions are
+not rewritten. The `DEC-083` contract-step open point is now **closed**.
+**No schema change:** migrations through **`0034`**; still **67 tables**
+(data-only). Next free decision id **`DEC-085`**.
 
-**Tests added:** counts unit (a non-zero variance records exactly one exception
-incl. `detected_at` = approval instant + audit `exception_id`; an exact count
-records none); counts postgres (read-back of the persisted row;
-exact-vs-variance in one rolled-back transaction); production unit (non-zero
-yield variance records exactly one exception and the input-line variance alone
-records none; exact output records none; an idempotent replay with a non-zero
-variance does not create a second exception); production postgres (non-zero
-completion records one row; exact completion records none, existing test
-extended).
+**Rehearsal evidence (local dev DB):** preflight — 2 runs carried the key
+(both had matching `import_disposition` rows), 67 tables; apply → 0 keys,
+other `diagnostics` keys preserved; no-op re-run (ledger 35 rows, exactly one
+for `0034`); down → both runs' keys rebuilt value-identically; ledger reset
+(`created_at` `1789989056234`) + re-apply → key gone; a rolled-back fixture
+proved the down rebuild field-for-field (13/13: ordered by `source_row_no`,
+NULL reason preserved, ISO-ms UTC `at`, per-record match). Final state:
+`0034` applied, key absent, 67 tables.
 
-**Verification (at the `DEC-084` working tree, exact):** `typecheck`, `lint`,
-`format:check`, `build` clean; **1373/1373 tests with `DATABASE_URL`** (135
-files); `npm audit --omit=dev` = 0; **67 tables**; every read/write
-organization-scoped (`DEC-061`).
+**Verification (at HEAD `2d4b98b`, exact):** `typecheck`, `lint`,
+`format:check`, `build` clean; **1375/1375 tests with `DATABASE_URL`** (135
+files); `npm audit --omit=dev` = 0; `db:migrate` through `0034` is a no-op on
+re-run; 67 tables.
 
 **Reviews and reconciliation:** `reviewer-qwen` — **no blocker/major**;
-**accepted and applied** M2 (add a replay non-duplication assertion) and M3
-(the runbook cited only `DEC-080` for the producer; now `DEC-080`/`DEC-084`);
-**declined with reason** M1 (the count fake's `withTransaction` has no
-rollback, unlike the production fake — a pre-existing fake-fidelity gap, not a
-regression, no test depends on it, and the Postgres `inRollback` integration
-tests cover the real transaction; recorded as a new open point below).
-`reviewer-glm` — **no blocker/major**; **accepted and applied** its single
-minor (a dead `toDataQualityException` barrel re-export removed; the function
-is now module-private).
+**declined with reason** its minors 1/2/4 (the redundant `COALESCE`s and the
+ms-precision `to_char` are inherited verbatim from the proven `0033` down so
+the two paths stay identical); **accepted as-is** minor 3 (the substring test
+guards are light; the rehearsal is the real test) and minor 5 no action (the
+script fix is correct). `reviewer-glm` — **no findings**.
 
 **Dev server (session-scoped):** the previous session ran a dev server at
 http://localhost:3000 with
@@ -84,72 +67,69 @@ must restart the server** — the process does not survive the session end.
 
 **RAISED GATE (the loop pauses here):** the next task, the **`file_object`**
 platform table (row-11 import-framework point 6, so `import_run.file_object_id`
-becomes a real FK), requires **`ADR-0006`** (File storage and retention), which
-is **`Proposed`** — per `docs/BUILD_ROADMAP.md` §3 a Proposed ADR required by
-the slice is a stop condition: raised to the owner, the loop pauses (HEAD
-**`9a3d60b`**, clean, committed, verified 1373/1373). Two resolutions: (a) the
-owner accepts/amends `ADR-0006` in `docs/adr/0006-file-storage-and-retention.md`
-(`Accepted` + date) — then `file_object` proceeds as a **schema-only slice**
-with the storage client / signed URLs / retention enforcement explicitly
-deferred (no reliance on the ADR before acceptance); or (b) meanwhile proceed
-with the tracked `DEC-083` **contract step** (delete the frozen
-`diagnostics.dispositions` jsonb keys once nothing depends on them) —
-TECH-owned, no ADR gate, described as the recommended next task below.
+becomes a real FK), requires **`ADR-0006`** (File storage and retention),
+which is **`Proposed`** — per `docs/BUILD_ROADMAP.md` §3 a Proposed ADR
+required by the slice is a stop condition: raised to the owner, the loop
+pauses (HEAD **`2d4b98b`**, clean, committed, verified 1375/1375). **The gate
+is now the only remaining blocker** — with the `DEC-083` contract step done,
+no TECH-owned unblocked task remains: `file_object` gated; the receipt→ledger
+wiring needs the OPS destination `storage_area_id` policy; row 13 is
+data-gated (I11); row 14 owner-gated; rows 15–18 blocked;
+deployment/rehearsal owner-gated; the golden fixtures unsigned. Resolution:
+the owner accepts/amends `ADR-0006` in
+`docs/adr/0006-file-storage-and-retention.md` (`Accepted` + date) — then
+`file_object` proceeds as a **schema-only slice** with the storage client /
+signed URLs / retention enforcement explicitly deferred (no reliance on the
+ADR before acceptance).
 
-**Scope (do, recommended contract step):** the tracked `DEC-083`
-**contract/cleanup step** — a data migration deleting the frozen
-`diagnostics.dispositions` jsonb keys from `import_run.diagnostics` once
-nothing depends on them (`DELETE` nothing, `UPDATE` only): an additive
-migration via `npm run db:generate` (migration **`0034`+**, never editing
-migrations `0000–0033`) with a rehearsed down path that rebuilds
-`diagnostics.dispositions` from `import_disposition`; document `0034` in
+**Scope (do, once `ADR-0006` is accepted):** the **`file_object`** schema-only
+slice (row-11 import-framework point 6): an additive migration `0035`+ (never
+editing migrations `0000–0034`) giving `import_run.file_object_id` a real FK
+target, with a rehearsed down path; document the migration in
 `docs/runbooks/persistence-migrations.md`; keep every read/write
-organization-scoped (`DEC-061`); add/update the `.test.ts` covering the
-happy path and an edge case; small atomic commits with the rollback
-approach in the body (per `AGENTS.md` Rule 2); update `CONTEXT.md` at the end.
+organization-scoped (`DEC-061`); add/update the `.test.ts` covering the happy
+path and an edge case; small atomic commits with the rollback approach in the
+body (per `AGENTS.md` Rule 2); update `CONTEXT.md` at the end.
 
-**Scope (do not):** do not start the gated **`file_object`** slice (or touch
-any `file_object` schema/storage client) until `ADR-0006` is `Accepted` —
-per the ADR, the implementation must not rely on it before acceptance. No
-schema change beyond the `diagnostics.dispositions` cleanup (additive only,
-with a rehearsed down path; the additive rule always applies to schema).
-Do not resolve the recorded FIN variance-tolerance thresholds silently — the
-`DEC-084` producers stay unconditional/provisional pending them. Do not
-start the still owner/data-gated work — the receipt→ledger wiring (needs the
-OPS destination `storage_area_id` policy); row 13 (data-gated on history/grain
-quality, I11); row 14 (owner-gated on the privacy review); rows 15–18
-(blocked: data / `ADR-0009`–`0011`); the price-version scope-resolution
-fallback; consumption grain A1. Do not deploy, `terraform apply`, or write
-externally (per `DEC-015`); do not resolve the recorded owner inputs
-silently; do not rewrite the specification inputs (`00_README.md` … `13_`,
-`docs/phase0/`, `schemas/`, `samples/`).
+**Scope (do not):** do not start the `file_object` slice (or touch any
+`file_object` schema/storage client) until `ADR-0006` is `Accepted` — per the
+ADR, the implementation must not rely on it before acceptance. No schema
+change beyond the gated `file_object` table (additive only, with a rehearsed
+down path; the additive rule always applies to schema). Do not resolve the
+recorded FIN variance-tolerance thresholds silently — the `DEC-084` producers
+stay unconditional/provisional pending them. Do not start the still
+owner/data-gated work — the receipt→ledger wiring (needs the OPS destination
+`storage_area_id` policy); row 13 (data-gated on history/grain quality, I11);
+row 14 (owner-gated on the privacy review); rows 15–18 (blocked: data /
+`ADR-0009`–`0011`); the price-version scope-resolution fallback; consumption
+grain A1. Do not deploy, `terraform apply`, or write externally (per
+`DEC-015`); do not resolve the recorded owner inputs silently; do not rewrite
+the specification inputs (`00_README.md` … `13_`, `docs/phase0/`, `schemas/`,
+`samples/`).
 
-**Files/paths:** `packages/persistence/drizzle/` (migration `0034`+ — the jsonb
-key cleanup), `packages/persistence/src/schema/**` only if a vocabulary/
-comment update is needed, `packages/persistence/src/repositories/**` and
-`packages/application/src/imports/**` only if a reader/writer references the
-removed keys; the `.test.ts` files alongside them;
+**Files/paths:** `packages/persistence/drizzle/` (additive migration `0035`+
+— the `file_object` table), `packages/persistence/src/schema/**` (the table +
+the `import_run.file_object_id` FK), `packages/persistence/src/repositories/**`
+only if a reader/writer needs it; the `.test.ts` files alongside them;
 `12_OPEN_DECISIONS.md` for `DEC-085` if a decision is recorded;
-`docs/runbooks/persistence-migrations.md` for the `0034` entries; update
+`docs/runbooks/persistence-migrations.md` for the `0035` entries; update
 `CONTEXT.md` at the end.
 
 **Authoritative docs to read first:** `docs/BUILD_ROADMAP.md` §1 (current
 position) and §5 ("Row-11 import-framework open points" — the gated
 `file_object` point); `docs/adr/0006-file-storage-and-retention.md` (the
-gate); `12_OPEN_DECISIONS.md` (`DEC-084` the just-landed provisional
-producers, `DEC-080` the `data_quality_exception` table and its producer
-pattern, `DEC-083` the dispositions table and its frozen-jsonb contract step,
-next free id **`DEC-085`**); this file's "Open decisions / inputs";
-`AGENTS.md` Rules 1–3.
+gate); `12_OPEN_DECISIONS.md` (`DEC-083` the `import_disposition` table whose
+frozen-jsonb contract step `0034` just executed, `DEC-084` the provisional
+variance producers, next free id **`DEC-085`**); this file's "Open decisions
+/ inputs"; `AGENTS.md` Rules 1–3.
 
 **Acceptance / verification:** `export NVM_DIR="$HOME/.nvm"; . "$NVM_DIR/nvm.sh";
 nvm use 22`, then `npm run typecheck` before the change, `npm run lint`,
-`npm run test` (with `DATABASE_URL` — current baseline: **1373/1373**, 135
+`npm run test` (with `DATABASE_URL` — current baseline: **1375/1375**, 135
 files), `npm run build`, `npm run format:check`, `npm audit --omit=dev` = 0;
-`db:migrate` applies `0034`, is a no-op on re-run, and the down path
-(rebuilding `diagnostics.dispositions` from `import_disposition`) is
-rehearsed; after each commit re-run the suite at the clean tree and confirm
-HEAD advanced.
+`db:migrate` applies the new migration, is a no-op on re-run, and its down
+path is rehearsed; after each commit re-run the suite at the clean tree and
+confirm HEAD advanced.
 
 **Programme direction (standing user instruction):** proceed autonomously — per
 task: parallel background agents → adversarial review + fixes → document status
@@ -158,30 +138,31 @@ and next steps → commit → next task. Global ruleset
 above USD 20 at a clean point (committed, verified, documented).
 
 **Open inputs (recorded, do not decide):** the **`ADR-0006` gate** (owner
-input, raised 2026-09-21 — the `file_object` slice is paused on it; the
-storage client / signed URLs / retention enforcement stay deferred until
-acceptance); the FIN **variance-tolerance
-thresholds** (the `DEC-084` producers record unconditionally pending them); the
-provisional `DEC-084` severity `medium`; the **`FakeCountStore.withTransaction`
-no-rollback** fake-fidelity gap (the new open point below); the four
-`DEC-083`-review open points (the frozen `diagnostics.dispositions` contract
-step; the `import_disposition` immutability/cascade posture; the missing
-`schemas/domain-enums.yaml` key for `IMPORT_DISPOSITION`; the app-level org
-guard on `createImportDisposition`); consumption grain A1 (`DEC-009`
-daily-per-location vs a single `sales_line` source); the price-version
-**scope-resolution fallback** (exact-scope only today — see "Open decisions /
-inputs"); the OPS receipt destination `storage_area_id` policy; receipts not
-wired to the ledger; the golden fixtures unsigned; the owner/deployment inputs.
-Full list under "Open decisions / inputs"; next free decision id **`DEC-085`**.
+input, raised 2026-09-21 — now the **only** remaining blocker; the
+`file_object` slice is paused on it; the storage client / signed URLs /
+retention enforcement stay deferred until acceptance); the FIN
+**variance-tolerance thresholds** (the `DEC-084` producers record
+unconditionally pending them); the provisional `DEC-084` severity `medium`;
+the **`FakeCountStore.withTransaction` no-rollback** fake-fidelity gap; the
+remaining three `DEC-083`-review open points (the `import_disposition`
+immutability/cascade posture; the missing `schemas/domain-enums.yaml` key for
+`IMPORT_DISPOSITION`; the app-level org guard on `createImportDisposition` —
+the fourth, the frozen-key contract step, is resolved by migration `0034`);
+consumption grain A1 (`DEC-009` daily-per-location vs a single `sales_line`
+source); the price-version **scope-resolution fallback** (exact-scope only
+today — see "Open decisions / inputs"); the OPS receipt destination
+`storage_area_id` policy; receipts not wired to the ledger; the golden
+fixtures unsigned; the owner/deployment inputs. Full list under "Open
+decisions / inputs"; next free decision id **`DEC-085`**.
 
 **Parallel owner action — golden-fixture sign-off:** the six golden fixtures are
 prepared as machine-readable JSON under `tests/fixtures/` (`DEC-065`) with the
 sign-off trail ready; finance + product owner sign. Until signed, no cost is
 "verified"; `I8`/`I9` still gate the real rates behind the fixtures.
 
-**Step after this one:** the still-gated **`file_object`** slice once
-`ADR-0006` is accepted (schema-only, storage/retention deferred); then the
-receipt→ledger wiring if the OPS destination `storage_area_id` policy lands; row 13 (close + dashboards + menu engineering) when history/grain
+**Step after this one:** the receipt→ledger wiring if the OPS destination
+`storage_area_id` policy lands; row 13 (close + dashboards + menu engineering)
+when history/grain
 quality (I11) is confirmed; then row 14 when the privacy review lands; the
 deployment rehearsal once the owner inputs arrive (see "Next up").
 
@@ -198,7 +179,7 @@ slice 7 (cost card + snapshots + price scenario + approval), slice 8 (stock
 ledger + balances + lots/storage), slices 9 (counts + transfers + waste), slice
 10 (production planning + batches, including the web layer), row 11 (import
 framework + external mappings) and row 12 (sales + settlements + reconciliation)
-— **all committed** (through HEAD `46d6ad7`; rows 11 and 12 complete; the
+— **all committed** (rows 11 and 12 complete; the
 price-version slice — `price_version` with approval-driven effective versions
 — complete, the `DEC-078` vocabulary/`lotTracked`, `DEC-079`
 cross-organization coherence, `DEC-080` `data_quality_exception` and `DEC-081`
@@ -206,10 +187,11 @@ import-profile integrity points, the `DEC-082` `postImportRun`
 posting-policy enforcement — the run's recorded `diagnostics.posting_policy`
 snapshot governs, `all_or_nothing` refuses pre-write with a `DomainError` naming
 the blocking rows — and the `DEC-083` `import_disposition` table, which moved
-the dispositions out of the `diagnostics.dispositions` jsonb; and the
+the dispositions out of the `diagnostics.dispositions` jsonb (its frozen-key
+contract step delivered as migration `0034`); and the
 provisional `DEC-084` `PROD-003` count-variance/yield-variance exception
 producers), with the design
-system/app shell/screens and migrations `0017`–`0033`; the
+system/app shell/screens and migrations `0017`–`0034`; the
 `DEC-072`–`DEC-084` low-risk implementations (effective-dated reconciliation
 tolerance, sales-line reversal, `MAPPING_STATE` `conflict`, typed recipe 404s,
 the `price_version` slice, the `settlement.status`/`reconciliation.scope_type`
@@ -222,7 +204,7 @@ import posting-policy enforcement).
 - `00_README.md` … `13_AGENT_BUILD_BRIEF.md` — the specification package
   (inputs, rarely edited). Start with `00_README.md`.
 - `12_OPEN_DECISIONS.md` — the accepted decisions (DEC-001…DEC-084); the
-  authority. New decisions are appended here.
+  authority. New decisions are appended here (next free id `DEC-085`).
 - `docs/phase0/` — close-out plan, calculation contract, data dictionary, golden
   fixtures, source-data request, notes. See `docs/phase0/PHASE0_CLOSEOUT_PLAN.md`
   and `docs/phase0/CALCULATION_CONTRACT.md`.
@@ -241,52 +223,49 @@ import posting-policy enforcement).
 
 ## Current status
 
-- **As of:** 2026-09-21 — branch `main`; HEAD `9a3d60b` (the `DEC-084` slice
-  fully committed, tree clean, verified 1373/1373); nothing pushed. **5
-  commits** this slice: `accb44c`
-  `refactor(application)` extract the shared `data-quality` module
-  (`packages/application/src/data-quality/`) and refactor `transfers` onto it
-  (behaviour-preserving; `TransferStore` extends `DataQualityExceptionStore`);
-  `a819925` `feat(counts)` the `count_variance` producer in `approveStockCount`;
-  `875b0ba` `feat(production)` the `yield_variance` producer in
-  `completeProductionBatch` (plus the `apps/web` open-point comment corrections
-  and the runbook slice-10 point (g) closed citing `DEC-080`/`DEC-084`);
-  `46d6ad7` `docs(decisions)` accept `DEC-084` (provisional) +
-  `docs/BUILD_ROADMAP.md` §1/§5 + persistence comments; `docs(context)` this
-  handoff update — **all committed** once this docs commit lands (see "Work
-  log" and "Reversibility").
+- **As of:** 2026-09-21 — branch `main`; HEAD `2d4b98b` (clean tree before
+  this docs edit, verified 1375/1375); nothing pushed. Lineage:
+  `3abe72f` (the `ADR-0006` gate docs) → **4 commits** this slice:
+  `4326dec` `feat(persistence)` — migration
+  `0034_import_disposition_contract` (forward + down + journal + snapshot) +
+  structural guards; `66b0d51` `fix(tooling)` — the root `db:generate`
+  wrapper now forwards extra args to drizzle-kit (before the fix it swallowed
+  them, so the runbook's documented `npm run db:generate -- --name=…` never
+  named a migration); `2d4b98b` `docs(runbook)` — document `0034`;
+  `docs(context)` this handoff update — **all committed** once this docs
+  commit lands (see "Work log" and "Reversibility").
   **Nothing applied to DigitalOcean.**
-  **Delivered (`DEC-084`, provisional):** the `PROD-003` variance exceptions
-  are recorded **unconditionally** through the `DEC-080`
-  `data_quality_exception` repository, in the **same transaction** as the
-  fact: `approveStockCount` writes one `count_variance` and
-  `completeProductionBatch` one `yield_variance` whenever the variance is
-  non-zero. No tolerance threshold is applied because the FIN
-  variance-tolerance thresholds remain an open input — so the producers are
-  provisional (the `DEC-055` precedent); `severity` is the schema default
-  `medium` (provisional); `detected_at` is the fact instant (count approval /
-  batch completion); `entity_id` is the count/batch id; one exception per
-  document. `DEC-084` is accepted provisional (TECH + FIN). The row-11
-  import-framework point 7 is closed; the remaining row-11 point is
-  `file_object` absent (point 6) — **gated on `ADR-0006`** (`Proposed`,
-  raised to the owner 2026-09-21); the unblocked alternative meanwhile is
-  the tracked `DEC-083` contract step.
-  **Schema:** no change — migrations through **`0033`**; **67 tables**.
+  **Delivered (closes the tracked `DEC-083` contract step):** the data-only
+  migration `0034` drops the retained-frozen
+  `import_run.diagnostics.dispositions` jsonb key from every run that still
+  carries it (the other `diagnostics` keys are untouched); the unjournalled
+  down rebuilds the key from `import_disposition` (value-identical, not
+  order-identical; drops nothing). **No new decision** — it executes accepted
+  `DEC-083`; accepted decisions are not rewritten. The `DEC-083`
+  contract-step open point is now **closed**. The row-11 import-framework
+  point 7's cleanup is done; the remaining row-11 point is `file_object`
+  absent (point 6) — **gated on `ADR-0006`** (`Proposed`, raised to the
+  owner 2026-09-21) — and with the contract step done it is the **only**
+  remaining blocker (no TECH-owned unblocked task remains).
+  **Schema:** no change — migrations through **`0034`** (data-only); still
+  **67 tables**.
+  **Rehearsal evidence (local dev DB):** preflight — 2 runs carried the key
+  (both had matching `import_disposition` rows), 67 tables; apply → 0 keys,
+  other `diagnostics` keys preserved; no-op re-run (ledger 35 rows, exactly
+  one for `0034`); down → both runs' keys rebuilt value-identically; ledger
+  reset (`created_at` `1789989056234`) + re-apply → key gone; a rolled-back
+  fixture proved the down rebuild field-for-field (13/13). Final state:
+  `0034` applied, key absent, 67 tables.
   **Reviews and reconciliation:** `reviewer-qwen` — **no blocker/major**;
-  **accepted and applied** M2 (add a replay non-duplication assertion) and M3
-  (the runbook cited only `DEC-080` for the producer; now `DEC-080`/`DEC-084`);
-  **declined with reason** M1 (the count fake's `withTransaction` has no
-  rollback, unlike the production fake — a pre-existing fake-fidelity gap, not
-  a regression, no test depends on it, and the Postgres `inRollback`
-  integration tests cover the real transaction; recorded as a new open point,
-  see "Open decisions / inputs"). `reviewer-glm` — **no blocker/major**;
-  **accepted and applied** its single minor (a dead `toDataQualityException`
-  barrel re-export removed; the function is now module-private).
-  **Verification (at the `DEC-084` working tree, exact):** `typecheck`, `lint`,
-  `build`, `format:check` clean; **1373/1373 tests with `DATABASE_URL`** (135
-  files);
-  `npm audit --omit=dev` 0; `db:migrate` through `0033` is a no-op; **67
-  tables**; every read/write
+  **declined with reason** its minors 1/2/4 (the redundant `COALESCE`s and
+  the ms-precision `to_char` are inherited verbatim from the proven `0033`
+  down so the two paths stay identical); **accepted as-is** minor 3 (the
+  substring test guards are light; the rehearsal is the real test); minor 5
+  no action (the script fix is correct). `reviewer-glm` — **no findings**.
+  **Verification (at HEAD `2d4b98b`, exact):** `typecheck`, `lint`,
+  `format:check`, `build` clean; **1375/1375 tests with `DATABASE_URL`** (135
+  files); `npm audit --omit=dev` 0; `db:migrate` through `0034` is a no-op on
+  re-run; **67 tables**; every read/write
   organization-scoped (`DEC-061`).
   **Dev server (session-scoped):** the previous session ran http://localhost:3000
   with `DATABASE_URL=postgres://aquarela:aquarela@localhost:5432/aquarela`,
@@ -295,12 +274,11 @@ import posting-policy enforcement).
   data is seeded including the `zettle-legacy` `import_profile`
   (`profile_version` `i19-v1`, `posting_policy` `allow_partial`); a fresh
   session must restart the server.
-  Remaining roadmap: the previously-planned next task, the **`file_object`**
-  platform table (row-11 import-framework point 6, so
-  `import_run.file_object_id` becomes a real FK), is **gated on `ADR-0006`**
-  (`Proposed` — raised to the owner); the next unblocked TECH item meanwhile
-  is the tracked `DEC-083` **contract step** deleting the frozen
-  `diagnostics.dispositions` keys; then the receipt→ledger wiring
+  Remaining roadmap: the next task, the **`file_object`** platform table
+  (row-11 import-framework point 6, so `import_run.file_object_id` becomes a
+  real FK), is **gated on `ADR-0006`** (`Proposed` — raised to the owner);
+  with the `DEC-083` contract step done, no TECH-owned unblocked task
+  remains; then the receipt→ledger wiring
   if the OPS destination `storage_area_id` policy lands; row 13 is data-gated
   on history/grain quality (I11); row 14 owner-gated on the privacy review /
   access matrix; rows 15–18 blocked (data / `ADR-0009`–`0011`); the
@@ -348,9 +326,9 @@ import posting-policy enforcement).
 - **DEC-049 closed:** drizzle-orm 0.45.2 / drizzle-kit 0.31.10 upgrade (`cc86f13`);
   `npm audit --omit=dev` = 0.
 - **Tests:** without `DATABASE_URL` the integration tests skip; with it
-  **1373/1373 passed** (135 files) — recorded 2026-09-21 at the `DEC-084`
-  slice's tree (HEAD `46d6ad7`; all
-  checks pass; `db:migrate` through `0033` is a
+  **1375/1375 passed** (135 files) — recorded 2026-09-21 at HEAD `2d4b98b`
+  (all
+  checks pass; `db:migrate` through `0034` is a
   no-op). Re-verify
   with `npm run test` and update if they differ.
   Open verification debt: the per-process rate limiter needs a shared
@@ -359,7 +337,7 @@ import posting-policy enforcement).
   await owner sign-off (see "Open decisions / inputs"); the six golden fixtures
   remain unsigned and are the "verified" gate.
 - **Persistence core + deployment foundation (committed):** Drizzle schema,
-  migrations `0000_enable_extensions` → `0033` additive with tested down paths
+  migrations `0000_enable_extensions` → `0034` additive with tested down paths
   (`0011_cost_allocation.sql` adds the four slice-6 tables; `0014_cost_card_pricing`
   adds four deferred `price_scenario` columns + `snapshot_component_kind_check`;
   `0015` adds `calculation_snapshot_cost_card_index`; the hand-written `0016` adds
@@ -436,26 +414,24 @@ import posting-policy enforcement).
 `docs/BUILD_ROADMAP.md` is the ordered execution tracker for these slices (slice 0,
 1a–1e and 2–12 done, incl. row 11 and row 12 and the `DEC-081` import-profile
 slice, the `DEC-082` posting-policy enforcement, the `DEC-083`
-dispositions-table slice and the `DEC-084` variance-producer slice pending in
-the working tree; the `DEC-072`–`DEC-084`
+dispositions-table slice with its `0034` contract step and the `DEC-084`
+variance-producer slice; the `DEC-072`–`DEC-084`
 decisions + low-risk implementations are done,
-committed `aaec400`–`7b86165` plus the pending slice commits; further rows are
+committed `aaec400`–`7b86165` plus the slice commits; further rows are
 gated — row 13 on data (I11),
 row 14 owner-only, rows 15–18 on data/ADRs).
 The list below is the short narrative form.
 
-1. **`ADR-0006` gate / owner decision** — the `file_object` slice (row-11
-   import-framework point 6) is paused on `ADR-0006` (File storage and
-   retention, `Proposed`, names `file_object.retention_policy`); once the
-   owner accepts/amends it, **`file_object`** proceeds as a schema-only
-   slice (additive migration `0034`+ with a rehearsed down path; storage
-   client / signed URLs / retention enforcement deferred). Raised to the
-   owner 2026-09-21.
-2. **`DEC-083` contract step — the next unblocked TECH item:** delete the
-   frozen `diagnostics.dispositions` jsonb keys (a data migration `0034`+
-   with a down that rebuilds them from `import_disposition`); then the
-   receipt→ledger wiring if the OPS destination `storage_area_id` policy
-   lands.
+1. **`ADR-0006` owner decision → `file_object`** — the `file_object` slice
+   (row-11 import-framework point 6) is paused on `ADR-0006` (File storage
+   and retention, `Proposed`, names `file_object.retention_policy`); with
+   the `DEC-083` contract step done, this owner decision is now the **only**
+   remaining blocker. Once the owner accepts/amends it, **`file_object`**
+   proceeds as a schema-only slice (additive migration `0035`+ with a
+   rehearsed down path; storage client / signed URLs / retention enforcement
+   deferred). Raised to the owner 2026-09-21.
+2. **Receipt→ledger wiring** — if the OPS destination `storage_area_id`
+   policy lands.
 3. **Row 13 — close + dashboards + menu engineering** — `ADR-0007` is accepted
    (2026-09-20); **data-gated** on history/grain quality (I11) — synthetic
    fixtures until real data.
@@ -490,6 +466,19 @@ The list below is the short narrative form.
 
 ## Open decisions / inputs (do not block development)
 
+- **Resolved this session (2026-09-21):** the **`DEC-083` contract-step open
+  point** is closed — the data-only migration
+  `0034_import_disposition_contract` (commit `4326dec`) dropped the
+  retained-frozen `import_run.diagnostics.dispositions` jsonb key from every
+  run that still carried it (the other `diagnostics` keys untouched); the
+  unjournalled down rebuilds the key from `import_disposition`; rehearsed
+  locally (see "Work log"). **No new decision** — it executes accepted
+  `DEC-083`; accepted decisions are not rewritten. The other three
+  `DEC-083`-review points remain recorded (see the `DEC-083`-reviews bullet
+  below). Tooling note: the root `db:generate` wrapper swallowed extra args
+  (the runbook's documented `npm run db:generate -- --name=…` never named a
+  migration) — fixed in `66b0d51`. No schema change (migrations through
+  `0034`, still **67 tables**). Next free decision id **`DEC-085`**.
 - **Resolved this session (2026-09-21, `DEC-084`):** the **`PROD-003`
   count-variance/yield-variance exception producers** are delivered
   **provisional** — `approveStockCount` records exactly one `count_variance`
@@ -526,11 +515,15 @@ The list below is the short narrative form.
   jsonb reader removed) (commits `4587564`/`dbb7d97`/`64a7cfc`/`0f8b7b1`).
   **67 tables.** The row-11 import-framework point 7 is closed; point 6
   (`file_object` absent) remains. Next free decision id **`DEC-085`**.
-- **Recorded this session (2026-09-21, from the `DEC-083` reviews; recorded, not
-  decided — do not resolve silently):**
-  (i) the frozen `diagnostics.dispositions` jsonb keys still exist and need a
+- **Recorded this session (2026-09-21, from the `DEC-083` reviews; recorded,
+  not decided — do not resolve silently):**
+  (i) ~~the frozen `diagnostics.dispositions` jsonb keys still exist and need a
   **contract/cleanup step** once nothing depends on them (tracked after
-  `file_object`);
+  `file_object`)~~ **resolved 2026-09-21** — the data-only migration
+  `0034_import_disposition_contract` (commit `4326dec`) dropped the frozen
+  key from every run that still carried it; the down rebuilds the key from
+  `import_disposition`; rehearsed locally (see "Work log"); no new decision —
+  it executes accepted `DEC-083`;
   (ii) the `import_disposition` **immutability/cascade posture** — whether it
   joins the append-only trigger set (`reject_immutable_change` on
   `stock_movement`/`calculation_snapshot`/`audit_event`) and whether the
@@ -543,6 +536,10 @@ The list below is the short narrative form.
   application verifies the run and staging row org-scoped in the same
   transaction; persistence `create*` functions are conventionally not
   org-filtered; a guard would need a new migration).
+  (Tooling note: the root `db:generate` wrapper swallowed extra args, so the
+  runbook's documented `npm run db:generate -- --name=…` never named a
+  migration — fixed in `66b0d51` by forwarding a trailing `--` args to
+  drizzle-kit.)
 - **Resolved this session (2026-09-21, `DEC-082`):** the `postImportRun`
   **posting-policy enforcement** is delivered — the run's recorded
   `diagnostics.posting_policy` snapshot governs (absent/blank →
@@ -672,7 +669,8 @@ The list below is the short narrative form.
   ~~dispositions live in
   `diagnostics.dispositions` jsonb, not a table (TECH)~~ resolved 2026-09-21
   (`DEC-083` — the `import_disposition` table, migration `0033`; the frozen
-  jsonb keys are retained pending the tracked contract step). Also a
+  jsonb keys were removed 2026-09-21 by the data-only contract-step migration
+  `0034`, closing the tracked contract step). Also a
   live-check left one dev `import_run` row in the local database (see "Local
   dev-DB cleanup" below). Record each resolution in `12_OPEN_DECISIONS.md`
   (next free id **`DEC-085`**); do not resolve silently.
@@ -928,7 +926,18 @@ and Spaces credentials via `-backend-config` / `AWS_ACCESS_KEY_ID` +
 
 ## Reversibility
 
-- **2026-09-21 ADR-gate pause (docs-only, this change)** — edits only to
+- **`DEC-083` contract-step slice (committed as four commits since the
+  `3abe72f` baseline; nothing pushed)**: `4326dec` (feat(persistence) —
+  migration `0034_import_disposition_contract` + structural guards),
+  `66b0d51` (fix(tooling) — `db:generate` forwards extra args), `2d4b98b`
+  (docs(runbook) — document `0034`) and this context docs update — each
+  independently revertible with `git revert <sha>`. The `0034` down
+  rebuilds `diagnostics.dispositions` from `import_disposition` (value-identical,
+  drops nothing); if the DB is rolled back past the migration, delete the
+  `0034` ledger row (`created_at` `1789989056234`) and re-migrate. **No
+  schema change** (67 tables, data-only). Nothing pushed; nothing applied to
+  DigitalOcean.
+- **2026-09-21 ADR-gate pause (docs-only, commit `3abe72f`)** — edits only to
   `CONTEXT.md` and `docs/BUILD_ROADMAP.md` (gate list, gated `file_object`
   annotations, pause record, work-log entry); trivially
   `git revert <sha>`-able as a single docs commit. No code, migration, data
@@ -959,8 +968,9 @@ and Spaces credentials via `-backend-config` / `AWS_ACCESS_KEY_ID` +
   `diagnostics.dispositions` from the table (one record per row ordered by
   `source_row_no`, so value-identical but not order-identical to the original
   append order), drops the table and deletes the ledger row; rehearsed via
-  down/re-apply. The jsonb keys are retained **frozen**
-  (expand → migrate → contract; the contract step is tracked). Nothing
+  down/re-apply. The jsonb keys were retained **frozen**
+  (expand → migrate → contract; the contract step was delivered 2026-09-21
+  by migration `0034`). Nothing
   pushed; nothing applied to DigitalOcean.
 - **`DEC-082` posting-policy-enforcement slice (committed as four commits since
   the `ad2cf5c` baseline; nothing pushed)**: `12f0377` (the `DEC-082` decision
@@ -1133,6 +1143,62 @@ CASCADE; CREATE SCHEMA public; npm run db:migrate` (see the runbook). Once data
   (`DEC-015`).
 
 ## Work log (append-only, newest first)
+
+### 2026-09-21 — DEC-083 contract step delivered (data-only migration 0034, the frozen jsonb keys removed); handoff updated
+
+`main` HEAD `2d4b98b` (the parent of this docs commit; the tree was clean at
+`2d4b98b` before this docs-only edit; nothing pushed; nothing applied to
+DigitalOcean); the tree was clean at `3abe72f` (the ADR-0006 gate docs)
+before the slice. **4 commits** this
+slice: `4326dec` feat(persistence) — migration
+`0034_import_disposition_contract` (forward + down + journal + snapshot) +
+structural guards; `66b0d51` fix(tooling) — the root `db:generate` wrapper
+forwards extra args to drizzle-kit; `2d4b98b` docs(runbook) — document
+`0034`; plus this docs(context) update.
+
+- **Delivered (closes the tracked `DEC-083` contract step):** the data-only
+  migration `0034` drops the retained-frozen
+  `import_run.diagnostics.dispositions` jsonb key from every run that still
+  carries it (`UPDATE … SET "diagnostics" = "diagnostics" - 'dispositions'
+WHERE "diagnostics" ? 'dispositions';` — the other `diagnostics` keys are
+  untouched). The unjournalled down rebuilds the key from
+  `import_disposition` (via `import_staging_row`, `jsonb_agg … ORDER BY
+source_row_no`; value-identical but not order-identical; drops nothing).
+  **No new decision** — it executes accepted `DEC-083`; accepted decisions
+  are not rewritten. **No schema change:** migrations through `0034`; still
+  67 tables.
+- **Tooling fix (`66b0d51`):** the root `db:generate` wrapper swallowed extra
+  args, so the runbook's documented `npm run db:generate -- --name=…` never
+  named a migration; a trailing `--` now forwards them.
+- **Rehearsal evidence (local dev DB):** preflight — 2 runs carried the key
+  (both had matching `import_disposition` rows), 67 tables; apply → 0 keys,
+  other `diagnostics` keys preserved; no-op re-run (ledger 35 rows, exactly
+  one for `0034`); down → both runs' keys rebuilt value-identically; ledger
+  reset (`created_at` `1789989056234`) + re-apply → key gone; a rolled-back
+  fixture proved the down rebuild field-for-field (13/13: ordered by
+  `source_row_no`, NULL reason preserved, ISO-ms UTC `at`, per-record match).
+  Final state: `0034` applied, key absent, 67 tables.
+- **Reviews and reconciliation.** `reviewer-qwen` — **no blocker/major**;
+  **declined with reason** its minors 1/2/4 (the redundant `COALESCE`s and
+  the ms-precision `to_char` are inherited verbatim from the proven `0033`
+  down so the two paths stay identical); **accepted as-is** minor 3 (the
+  substring test guards are light; the rehearsal is the real test); minor 5
+  no action (the script fix is correct). `reviewer-glm` — **no findings**.
+- **Verification (at HEAD `2d4b98b`, exact):** `typecheck`, `lint`,
+  `format:check`, `build` clean; **1375/1375 tests with `DATABASE_URL`** (135
+  files); `npm audit --omit=dev` = 0; `db:migrate` through `0034` is a no-op
+  on re-run; 67 tables.
+- **Next step:** with the contract step done, no TECH-owned unblocked task
+  remains — the **owner decision on `ADR-0006`** (then `file_object`) is the
+  only remaining blocker; see "Resume here". Next free decision id
+  **`DEC-085`**.
+
+Rollback: each of the four commits is independently `git revert`-able
+(`4326dec`, `66b0d51`, `2d4b98b` and the context docs update); the `0034`
+down rebuilds `diagnostics.dispositions` from `import_disposition`; if the DB
+is rolled back past the migration, delete the `0034` ledger row
+(`created_at` `1789989056234`) and re-migrate; no schema change (67 tables);
+nothing pushed; nothing applied to DigitalOcean.
 
 ### 2026-09-21 — Post-`DEC-084` recon: `ADR-0006` gate found; `file_object` paused; gate list corrected
 
