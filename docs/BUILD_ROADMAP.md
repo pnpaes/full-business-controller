@@ -13,7 +13,7 @@ This file is **updated at the end of every slice** — statuses and the "current
 line move with the work; `CONTEXT.md` keeps the narrative handoff and the immediate
 `Resume here` section.
 
-**Current position:** HEAD `02f7c33` on `main` (nothing pushed; nothing applied to
+**Current position:** HEAD `172aa9e` on `main` (nothing pushed; nothing applied to
 DigitalOcean). Slice 0, auth slices 1a–1e, slices 2–10, row 11
 (import framework + external mappings — **complete**: the `DEC-085`
 `file_object` platform table was delivered 2026-09-21 with migrations
@@ -25,29 +25,37 @@ cross-organization coherence guards**, the **`DEC-080`
 **`DEC-082` import posting-policy enforcement**, the **`DEC-083`
 first-class `import_disposition` table (migration `0033`, contract step
 `0034`)**, the **`DEC-084` `PROD-003` variance producers**,
-the **`DEC-085` `file_object` table** and the **2026-09-21 small TECH open
+the **`DEC-085` `file_object` table**, the **2026-09-21 small TECH open
 points** (the `numeric(19,6)` digit cap, commit `bda0b6b`; the
 `IMPORT_DISPOSITION` yaml key, commit `8b22468`; the
-`FakeCountStore.withTransaction` rollback fidelity, commit `02f7c33`) are
+`FakeCountStore.withTransaction` rollback fidelity, commit `02f7c33`) and
+the **`DEC-089` HMS monitoring points + readings slice** (programme row 19a;
+migrations `0037`–`0039`) are
 `done` and committed; `ADR-0006` was accepted 2026-09-21 and `ADR-0007` and
 `ADR-0008` accepted 2026-09-20 (owner-delegated, revertible).
 **Programme approved (Phase A, 2026-09-21):** the owner approved an
 HMS & food-safety (IK-mat) module, employee personnel documents (contracts)
 and a staff document library — recorded as `DEC-086`…`DEC-094`, requirement
 ids `WF-007`, `DOC-001…DOC-004`, `HMS-001…HMS-007`, delivery **Phase 6 +
-Epics 20/21** (§4 rows 19/20).
-Verification at `02f7c33`:
-`typecheck`/`lint`/`build`/`format:check` clean; **1398/1398 tests with
+Epics 20/21** (§4 rows 19/20); its first build slice (row 19a) is delivered.
+Verification at `172aa9e`:
+`typecheck`/`lint`/`build`/`format:check` clean; **1459/1459 tests with
 `DATABASE_URL`**
-(137 files); `npm audit --omit=dev` 0; `db:migrate` through `0036` is a no-op
-on re-run; 68 tables (no schema change).
+(143 files); `npm audit --omit=dev` 0; `db:migrate` through `0039` is a no-op
+on re-run; 70 tables.
 Programme
 direction: proceed autonomously, per task — parallel background agents →
 adversarial review + fixes → document status and next steps → commit → next
-task. **Next task — buildable now:** the **HMS monitoring points + readings**
-(`monitoring_point` + `monitoring_reading`, `DEC-089`) — the first build
-step of the IK-mat package; self-contained, no ADR gate; then the programme
-build order (§4 rows 19–20). **Remaining gated roadmap:** the
+task. **Next task — buildable now:** **HMS incidents + corrective actions**
+(`DEC-090`, requirements `HMS-003`/`HMS-004`) — the second build step of the
+IK-mat package; self-contained, no ADR gate; then the programme
+build order (§4 rows 19–20). **New open points from the monitoring-slice
+reviews (recorded, do not resolve silently):** the systemic **location-scope
+gap** (the HMS routes are the first to enforce it; the pre-HMS routes do not
+pass `locationId` to `isAuthorizedFor`); the **audit-write transaction
+binding** (`writeAudit` closes over the parent `db`); the **`notes`-amendment
+audit trail**; duplicate readings at the same instant are **intentional**.
+**Remaining gated roadmap:** the
 `job`/worker/outbox layer stays gated on **`ADR-0004` acceptance** (only
 `task`/`approval` build under `DEC-094`); the **WF-003 self-assignment
 login model** (must a self-assigning employee hold an `app_user` login?)
@@ -164,7 +172,7 @@ sequence). Requirement IDs are from `11_REQUIREMENTS_CATALOG.md`; decision IDs f
 | 16 | Publishing integrations | P3 / epic 17 | `INTG-001`–`003`; `DEC-002`, `DEC-015`, `DEC-041`, `DEC-044`; `ADR-0011` (**Proposed**), `ADR-0008` | 3, 7, 12 | `ADR-0011` acceptance; per-source approval + named credentials owner (I18) | blocked (owner) |
 | 17 | AI-assisted advisory | P4 / epic 18 | `FCST-004`; `DEC-039`; `ADR-0009` (**Proposed**), `ADR-0004` (**Proposed**), `ADR-0007` | 13, 15 | `ADR-0009` acceptance; provider privacy/DPA review (I16) | blocked (owner) |
 | 18 | Automated connectors / optimization | P5 / epic 19 | `COMP-001`–`004`, `PLAN-003`; `DEC-020`; `ADR-0010` (**Proposed**) | 15, 16, 17 | `ADR-0010` acceptance; approved competitor sources (I17); measured history/accuracy | blocked (owner) |
-| 19 | HMS & food safety (IK-mat): monitoring points/readings, incidents + corrective actions, checklists/cleaning, equipment/maintenance, compliance export (the programme's full IK-mat package) | P6 / epics 20 (a/b/c/d/e) | `HMS-001`–`007`; `DEC-086` (programme), `DEC-089`–`DEC-093`; the privacy review (approved 2026-09-21) | 3, 8 (as-of balances isolated) | none for a/b/c/d/e — the named decider's **`ADR-0004` acceptance is required only for the `DEC-094` job/worker/outbox layer**, not for these tables | 19a: **next task** — HMS monitoring points + readings (`DEC-089`; `monitoring_point` + `monitoring_reading`), self-contained, no ADR gate; then 19b incidents + corrective actions (`DEC-090`), 19c checklists/cleaning (`DEC-091`), 19d equipment/maintenance (`DEC-092`; the draft table was renamed asset→equipment, no decision-history rewrite), 19e the compliance export (`DEC-093`) |
+| 19 | HMS & food safety (IK-mat): monitoring points/readings, incidents + corrective actions, checklists/cleaning, equipment/maintenance, compliance export (the programme's full IK-mat package) | P6 / epics 20 (a/b/c/d/e) | `HMS-001`–`007`; `DEC-086` (programme), `DEC-089`–`DEC-093`; the privacy review (approved 2026-09-21) | 3, 8 (as-of balances isolated) | none for a/b/c/d/e — the named decider's **`ADR-0004` acceptance is required only for the `DEC-094` job/worker/outbox layer**, not for these tables | 19a: **done** — HMS monitoring points + readings (`DEC-089`, requirement `HMS-002`) delivered 2026-09-21 (migrations `0037`–`0039`, 70 tables; append-only readings decimal-only `numeric(19,6)` with an UPDATE/DELETE/TRUNCATE guard, only `notes` amendable; cross-org coherence guards; edit/deactivate; `/api/v1/hms/monitoring-points` enforces role + location scope — the first route in the repo to do so; verified 1459/1459 with `DATABASE_URL`); next: 19b incidents + corrective actions (`DEC-090`, requirements `HMS-003`/`HMS-004`), then 19c checklists/cleaning (`DEC-091`), 19d equipment/maintenance (`DEC-092`; the draft table was renamed asset→equipment, no decision-history rewrite), 19e the compliance export (`DEC-093`) |
 | 20 | Task/approval platform + programme candidate gater (contracts, staff document library, personnel documents) | P6 / epics 21 | `WF-007`, `DOC-001`–`004`; `DEC-087`–`DEC-094`; `ADR-0004` (**Proposed** — job/worker/outbox layer only) | 19a; row 14 for `employee` | `task`/`approval` build now (`DEC-094`); the `job`/worker/outbox layer is **gated on `ADR-0004` acceptance** by the named decider | todo — build order: 20a `employee` + personnel documents (`DEC-087`; contracts visible only to owner + general_manager + admin, finance excluded), 20b the staff document library (`DEC-088`; all-staff read published `all_staff` docs, managers publish, versioned, optional acknowledgement, append-only), then the `task`/`approval` platform tables (`DEC-094`) |
 
 Convention: `blocked (owner)` means an owner/tech acceptance or approval named in the gate
@@ -605,14 +613,28 @@ dates assigned):
   self-assignment login model** (must a self-assigning employee hold an
   `app_user` login?); the **privacy-review retention periods per file
   class** (personnel documents, incident register, acknowledgements).
-  **Build order:** row 19a HMS monitoring points + readings (`DEC-089`,
-  the next task) → incidents + corrective actions (`DEC-090`) →
+  **Build order:** ~~row 19a HMS monitoring points + readings (`DEC-089`,
+  the next task)~~ delivered 2026-09-21 (see the bullet below) → incidents +
+  corrective actions (`DEC-090`) →
   `employee` + personnel documents (`DEC-087`) → staff document library
   (`DEC-088`) → checklists/cleaning (`DEC-091`) → equipment/maintenance
   (`DEC-092`) → compliance export (`DEC-093`) → `task`/`approval`
   (`DEC-094`, job layer gated). Reversed next-free-id note: the register's
   historical "next free id `DEC-086`" pointers below predate Phase A and
   were superseded — the live id is **`DEC-095`**.
+- **HMS monitoring-slice open points (2026-09-21, from the `DEC-089` reviews;
+  recorded not decided — do not resolve silently):** the **systemic
+  location-scope gap** — the `/api/v1/hms/monitoring-points` routes are the
+  first in the repo to pass `locationId` to `isAuthorizedFor`; the pre-HMS
+  routes do not (a separate cross-cutting slice). owner/TECH. The
+  **audit-write transaction binding** — the adapters' `writeAudit` closes
+  over the parent `db`, so the audit fact is not strictly inside
+  `withTransaction` (mirrors every existing adapter; a separate
+  cross-cutting slice). owner/TECH. The **`notes`-amendment audit trail** —
+  a `notes`-only update on a `monitoring_reading` succeeds by design but
+  leaves no before/after history. owner/TECH. Duplicate readings at the same
+  instant are **intentional** (documented, no action). The `DEC-089` slice
+  itself is done (row 19a; migrations `0037`–`0039`; 70 tables).
 - **Unit `m` vs the missing `length` dimension** — a dimension-vocabulary mismatch in
   `schemas/domain-enums.yaml` surfaced by slice 3; owner/TECH to resolve (FND-003).
 - **~~`numeric(19,6)` digit cap in `packages/domain/src/decimal.ts`~~ resolved
