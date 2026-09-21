@@ -140,6 +140,56 @@ export const HMS_CHECKLIST_RUN_RECORD_ROLES = [
   "admin",
 ] as const;
 
+/**
+ * Role sets for the equipment register (`HMS-006`, `DEC-092`, `DEC-097`),
+ * implementing `DEC-097` exactly. `analyst` reads the register but never writes
+ * it, and `purchasing`/`finance` get nothing. There is no implicit admin bypass
+ * (`isAuthorizedFor`), so `admin` appears only where `DEC-097` grants it: it may
+ * read and write.
+ */
+export const HMS_EQUIPMENT_READ_ROLES = [
+  "owner",
+  "general_manager",
+  "location_manager",
+  "kitchen",
+  "front_of_house",
+  "admin",
+  "analyst",
+] as const;
+
+/** Registering or amending equipment is a managed write; operators may not. */
+export const HMS_EQUIPMENT_WRITE_ROLES = [
+  "owner",
+  "general_manager",
+  "location_manager",
+  "admin",
+] as const;
+
+/**
+ * Role sets for the equipment maintenance fact log (`HMS-006`, `DEC-092`,
+ * `DEC-097`). Reading mirrors the equipment register (`analyst` included,
+ * `purchasing`/`finance` excluded); recording is operational like a checklist
+ * run — kitchen/front_of_house may record, `analyst` may read but not record.
+ */
+export const HMS_MAINTENANCE_READ_ROLES = [
+  "owner",
+  "general_manager",
+  "location_manager",
+  "kitchen",
+  "front_of_house",
+  "admin",
+  "analyst",
+] as const;
+
+export const HMS_MAINTENANCE_RECORD_ROLES = [
+  "owner",
+  "general_manager",
+  "location_manager",
+  "kitchen",
+  "front_of_house",
+  "admin",
+] as const;
+
 /** Loads the caller's roles and location scope live from server data (ADR-0003). */
 export async function loadHmsAccess(userId: string): Promise<UserAccess> {
   return loadUserAccess(getAuthStore(), userId);
