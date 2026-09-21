@@ -59,7 +59,7 @@ function balanceKey(
   return { organizationId, itemId, locationId, storageAreaId, lotId };
 }
 
-/** A concise, deterministic record of what differed (no exception table exists). */
+/** A concise, deterministic record of what differed (the human discrepancy note). */
 function generatedDiscrepancyNote(
   dispatch: ReadonlyMap<string, { readonly itemId: string; readonly quantity: bigint }>,
   received: ReadonlyMap<string, { readonly itemId: string; readonly quantity: bigint }>,
@@ -85,9 +85,11 @@ function generatedDiscrepancyNote(
  * The transit outbound leg is valued at the locked transit average; the
  * destination inbound leg is given that same average, so the pair nets to zero
  * value. When the received quantity differs from the dispatched quantity (a
- * short or missing line), the header's `discrepancy_note` records it — there is
- * no exception table (recorded open point). The note is supplied or generated;
- * a supplied note is never dropped.
+ * short or missing line), the header's `discrepancy_note` records the human
+ * difference and, per `DEC-080`, a `data_quality_exception` row
+ * (`ruleCode = transfer_discrepancy`, severity `high`, entity
+ * `stock_transfer`) is created in the same transaction. The note is supplied or
+ * generated; a supplied note is never dropped.
  */
 export async function receiveStockTransfer(
   store: TransferStore,
@@ -161,6 +163,24 @@ export async function receiveStockTransfer(
         return expected !== actual;
       },
     );
+
+    // `DEC-080`: a discrepancy is a data-quality exception, created in the same
+    // transaction as the posting so a failure rolls it back with the batch. The
+    // header's `discrepancy_note` stays the human note; the exception is the
+    // structured, queryable record (the first producer of the exception store).
+    const discrepancyException = hasDiscrepancy
+      ? await tx.createDataQualityException({
+          organizationId: input.organizationId,
+          ruleCode: "transfer_discrepancy",
+          severity: "high",
+          entityType: "stock_transfer",
+          entityId: transfer.id,
+          detectedAt: occurredAt,
+          status: "open",
+          resolution: null,
+          createdBy: input.actorId,
+        })
+      : null;
 
     const movements: ReceiptMovement[] = [];
     for (const [key, line] of receivedByLine) {
@@ -250,6 +270,7 @@ export async function receiveStockTransfer(
         lines: receivedByLine.size,
         has_discrepancy: hasDiscrepancy,
         discrepancy_note: discrepancyNote,
+        exception_id: discrepancyException?.id ?? null,
         movement_ids: movementIds,
       },
     });

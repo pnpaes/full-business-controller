@@ -8,7 +8,9 @@ import {
 } from "../inventory/test-support";
 
 import type {
+  DataQualityExceptionRecord,
   ListStockTransfersQuery,
+  NewDataQualityExceptionRecord,
   NewStockTransferRecord,
   StockTransferRecord,
   TransferMovementRecord,
@@ -28,6 +30,8 @@ import type {
  */
 export class FakeTransferStore extends FakeInventoryStore implements TransferStore {
   readonly stockTransfers = new Map<string, StockTransferRecord>();
+  /** `DEC-080` data-quality exceptions, in insertion order. */
+  readonly dataQualityExceptions = new Map<string, DataQualityExceptionRecord>();
 
   override async withTransaction<T>(fn: (store: TransferStore) => Promise<T>): Promise<T> {
     return fn(this);
@@ -116,6 +120,26 @@ export class FakeTransferStore extends FakeInventoryStore implements TransferSto
     };
     this.stockTransfers.set(query.transferId, updated);
     return Promise.resolve(updated);
+  }
+
+  createDataQualityException(
+    input: NewDataQualityExceptionRecord,
+  ): Promise<DataQualityExceptionRecord> {
+    const record: DataQualityExceptionRecord = {
+      id: randomUUID(),
+      organizationId: input.organizationId,
+      ruleCode: input.ruleCode,
+      severity: input.severity,
+      entityType: input.entityType,
+      entityId: input.entityId,
+      detectedAt: input.detectedAt,
+      ownerId: input.ownerId ?? null,
+      dueDate: input.dueDate ?? null,
+      status: input.status,
+      resolution: input.resolution ?? null,
+    };
+    this.dataQualityExceptions.set(record.id, record);
+    return Promise.resolve(record);
   }
 
   listStockMovementsByTransferId(query: {

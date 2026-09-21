@@ -4,6 +4,7 @@ import type { Database, NodeDatabase } from "@aquarela/persistence";
 import { createPostgresInventoryStore } from "../inventory";
 
 import type {
+  DataQualityExceptionRecord,
   NewStockTransferRecord,
   StockTransferRecord,
   TransferMovementRecord,
@@ -58,6 +59,22 @@ function toTransferMovement(row: repo.StockMovement): TransferMovementRecord {
     postedBy: row.postedBy,
     reasonCode: row.reasonCode,
     idempotencyKey: row.idempotencyKey,
+  };
+}
+
+function toDataQualityException(row: repo.DataQualityException): DataQualityExceptionRecord {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    ruleCode: row.ruleCode,
+    severity: row.severity,
+    entityType: row.entityType,
+    entityId: row.entityId,
+    detectedAt: row.detectedAt.toISOString(),
+    ownerId: row.ownerId,
+    dueDate: row.dueDate,
+    status: row.status,
+    resolution: row.resolution,
   };
 }
 
@@ -220,5 +237,21 @@ export function createPostgresTransferStore(db: Database): TransferStore {
           transferId: query.transferId,
         })
       ).map(toTransferMovement),
+    createDataQualityException: async (input) =>
+      toDataQualityException(
+        await repo.createDataQualityException(db, {
+          organizationId: input.organizationId,
+          ruleCode: input.ruleCode,
+          severity: input.severity,
+          entityType: input.entityType,
+          entityId: input.entityId,
+          detectedAt: new Date(input.detectedAt),
+          status: input.status,
+          ...(input.resolution === undefined ? {} : { resolution: input.resolution }),
+          ...(input.ownerId === undefined ? {} : { ownerId: input.ownerId }),
+          ...(input.dueDate === undefined ? {} : { dueDate: input.dueDate }),
+          ...(input.createdBy === undefined ? {} : { createdBy: input.createdBy }),
+        }),
+      ),
   };
 }

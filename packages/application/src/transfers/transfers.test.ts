@@ -210,6 +210,59 @@ describe("transfers command flow", () => {
     });
   });
 
+  it("records exactly one transfer_discrepancy exception on a short receipt (DEC-080)", async () => {
+    const context = await setup();
+    const { store, fixture } = context;
+    const transferId = await request(context);
+    await approve(context, transferId);
+    await dispatch(context, transferId, "10.000000");
+
+    await receiveStockTransfer(store, {
+      organizationId: fixture.organizationId,
+      actorId: "actor",
+      transferId,
+      received: [{ itemId: fixture.itemId, quantity: "8.000000" }],
+      occurredAt: "2026-09-03T08:00:00.000Z",
+    });
+
+    const exceptions = [...store.dataQualityExceptions.values()];
+    expect(exceptions).toHaveLength(1);
+    expect(exceptions[0]).toMatchObject({
+      organizationId: fixture.organizationId,
+      ruleCode: "transfer_discrepancy",
+      severity: "high",
+      entityType: "stock_transfer",
+      entityId: transferId,
+      detectedAt: "2026-09-03T08:00:00.000Z",
+      status: "open",
+      resolution: null,
+    });
+
+    // The audit payload carries the exception id beside the human note.
+    const received = store.audits.find((entry) => entry.action === "inventory.transfer.received");
+    expect(received?.after).toMatchObject({
+      exception_id: exceptions[0]?.id,
+      has_discrepancy: true,
+    });
+  });
+
+  it("records no exception on a clean receipt (DEC-080)", async () => {
+    const context = await setup();
+    const { store, fixture } = context;
+    const transferId = await request(context);
+    await approve(context, transferId);
+    await dispatch(context, transferId, "10.000000");
+
+    await receiveStockTransfer(store, {
+      organizationId: fixture.organizationId,
+      actorId: "actor",
+      transferId,
+      received: [{ itemId: fixture.itemId, quantity: "10.000000" }],
+    });
+
+    expect([...store.dataQualityExceptions.values()]).toHaveLength(0);
+  });
+
   it("keeps a caller-supplied discrepancy note", async () => {
     const context = await setup();
     const { store, fixture } = context;

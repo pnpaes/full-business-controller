@@ -23,9 +23,12 @@ import type { InventoryStore, StockMovementRecord } from "../inventory";
  *  - there is no transfer line table in any authority: the items live in the
  *    paired `stock_movement` rows linked by `transfer_id`, and the per-item
  *    dispatched/received facts are derived from those movements;
- *  - there is no exception table for discrepancies (`DEC-029` says differences
+ *  - ~~there is no exception table for discrepancies (`DEC-029` says differences
  *    become exceptions, but `data_quality_exception` is deferred); the header's
- *    `discrepancy_note` is the only recorded difference today;
+ *    `discrepancy_note` is the only recorded difference today~~ resolved by
+ *    `DEC-080`: `data_quality_exception` exists (migration `0030`) and
+ *    `receiveStockTransfer` records a `transfer_discrepancy` exception
+ *    alongside the human `discrepancy_note`;
  *  - per-source reversal semantics (`DEC-028`) are not implemented in the
  *    inventory `reverseStockMovement`, so a transfer leg cannot yet be reversed
  *    through it — a short receipt simply stays in transit until that lands.
@@ -139,6 +142,44 @@ export interface StockTransferPage {
   readonly hasMore: boolean;
 }
 
+/**
+ * `DEC-080` (`DQ-001`): a `data_quality_exception` row as the transfers store
+ * needs it. The port exposes only the create the receive command performs;
+ * reads/updates live in the persistence repository. `timestamptz` columns are
+ * ISO strings and `due_date` a `yyyy-mm-dd` string.
+ */
+export interface DataQualityExceptionRecord {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly ruleCode: string;
+  readonly severity: string;
+  readonly entityType: string;
+  readonly entityId: string;
+  /** `timestamptz`, ISO. */
+  readonly detectedAt: string;
+  readonly ownerId: string | null;
+  /** `date`, `yyyy-mm-dd`. */
+  readonly dueDate: string | null;
+  readonly status: string;
+  readonly resolution: string | null;
+}
+
+export interface NewDataQualityExceptionRecord {
+  readonly organizationId: string;
+  readonly ruleCode: string;
+  readonly severity: string;
+  readonly entityType: string;
+  readonly entityId: string;
+  /** `timestamptz`, ISO. */
+  readonly detectedAt: string;
+  readonly status: string;
+  readonly resolution?: string | null;
+  readonly ownerId?: string | null;
+  /** `date`, `yyyy-mm-dd`. */
+  readonly dueDate?: string | null;
+  readonly createdBy?: string | null;
+}
+
 export interface TransferStore extends InventoryStore {
   /** Binds `fn` to one transaction so the header update and the ledger post commit together. */
   withTransaction<T>(fn: (store: TransferStore) => Promise<T>): Promise<T>;
@@ -160,6 +201,13 @@ export interface TransferStore extends InventoryStore {
     readonly organizationId: string;
     readonly transferId: string;
   }): Promise<readonly TransferMovementRecord[]>;
+  /**
+   * Records a `DEC-080` data-quality exception inside the caller's transaction,
+   * so a failed command rolls it back with the rest of the batch.
+   */
+  createDataQualityException(
+    input: NewDataQualityExceptionRecord,
+  ): Promise<DataQualityExceptionRecord>;
   /** Append-only audit fact; the caller must not pass secrets (ADR-0003 convention). */
   writeAudit(input: AuditInput): Promise<void>;
 }

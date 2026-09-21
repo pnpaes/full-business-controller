@@ -1,5 +1,6 @@
 import {
   createDb,
+  dataQualityException,
   item,
   location,
   storageArea,
@@ -19,6 +20,7 @@ import { getStockTransfer } from "./reads";
 import { dispatchStockTransfer } from "./dispatch-stock-transfer";
 import { receiveStockTransfer } from "./receive-stock-transfer";
 import { requestStockTransfer } from "./request-stock-transfer";
+import type { NewDataQualityExceptionRecord, TransferStore } from "./types";
 
 const databaseUrl = process.env.DATABASE_URL;
 const suffix = randomUUID().replace(/-/g, "").slice(0, 12);
@@ -223,6 +225,10 @@ describe.skipIf(!databaseUrl)("transfers against PostgreSQL", () => {
       expect(received?.receiptMovementId).not.toBeNull();
       expect(received?.discrepancyNote).toBeNull();
 
+      // A clean receipt records no data-quality exception (DEC-080).
+      const exceptions = await tx.select().from(dataQualityException);
+      expect(exceptions.filter((row) => row.entityId === transferId)).toEqual([]);
+
       const legs = await store.listStockMovementsByTransferId({
         organizationId: orgId,
         transferId,
@@ -298,6 +304,22 @@ describe.skipIf(!databaseUrl)("transfers against PostgreSQL", () => {
       expect(result.hasDiscrepancy).toBe(true);
       expect(result.discrepancyNote).toMatch(/differs from dispatched/);
 
+      // Exactly one transfer_discrepancy exception, in the same transaction as
+      // the header update and the ledger posting (DEC-080).
+      const exceptions = (await tx.select().from(dataQualityException)).filter(
+        (row) => row.entityId === transferId,
+      );
+      expect(exceptions).toHaveLength(1);
+      expect(exceptions[0]).toMatchObject({
+        organizationId: orgId,
+        ruleCode: "transfer_discrepancy",
+        severity: "high",
+        entityType: "stock_transfer",
+        status: "open",
+        resolution: null,
+      });
+      expect(exceptions[0]?.detectedAt).toBeInstanceOf(Date);
+
       const transit = await store.findStockBalance({
         organizationId: orgId,
         itemId: fixture.itemId,
@@ -308,5 +330,78 @@ describe.skipIf(!databaseUrl)("transfers against PostgreSQL", () => {
       expect(transit?.quantityOnHand).toBe("2.000000");
       expect(transit?.valueOnHand).toBe("0.5000");
     });
+  });
+
+  it("rolls the exception back when the receive fails after detection", async () => {
+    // The exception is created as soon as a discrepancy is detected, before the
+    // received-line loop can reject an item that was never dispatched. That
+    // rejection aborts the transaction, so the exception must not survive.
+    let createdId: string | undefined;
+    await expect(
+      client.db.transaction(async (tx) => {
+        const fixture = await seedFixture(tx, orgId);
+        const base = createPostgresTransferStore(tx);
+        const actorId = randomUUID();
+        await seedOpeningStock(base, orgId, fixture, actorId);
+
+        const otherItem = await tx
+          .insert(item)
+          .values({
+            organizationId: orgId,
+            code: `other_${suffix}`,
+            sku: `OTHER_${suffix}`,
+            name: "Sugar",
+            itemType: "ingredient",
+            baseUnitId: fixture.unitId,
+            inventoryPolicy: "stocked",
+          })
+          .returning();
+
+        const store: TransferStore = {
+          ...base,
+          // `withTransaction` normally builds a fresh adapter, so propagate this
+          // wrapper to observe the create the command performs inside it.
+          withTransaction: (fn) => base.withTransaction(() => fn(store)),
+          createDataQualityException: async (input: NewDataQualityExceptionRecord) => {
+            const row = await base.createDataQualityException(input);
+            createdId = row.id;
+            return row;
+          },
+        };
+
+        const { transferId } = await requestStockTransfer(base, {
+          organizationId: orgId,
+          actorId,
+          fromLocationId: fixture.fromLocationId,
+          fromStorageAreaId: fixture.fromStorageAreaId,
+          toLocationId: fixture.toLocationId,
+          toStorageAreaId: fixture.toStorageAreaId,
+        });
+        await approveStockTransfer(base, { organizationId: orgId, actorId, transferId });
+        await dispatchStockTransfer(base, {
+          organizationId: orgId,
+          actorId,
+          transferId,
+          lines: [{ itemId: fixture.itemId, quantity: "10.000000" }],
+        });
+
+        await receiveStockTransfer(store, {
+          organizationId: orgId,
+          actorId,
+          transferId,
+          received: [
+            { itemId: fixture.itemId, quantity: "8.000000" },
+            { itemId: otherItem[0]!.id, quantity: "1.000000" },
+          ],
+        });
+      }),
+    ).rejects.toThrow(/was not dispatched/);
+
+    expect(createdId).toBeDefined();
+    const rows = await client.pool.query<{ id: string }>(
+      "select id from data_quality_exception where id = $1",
+      [createdId!],
+    );
+    expect(rows.rows).toEqual([]);
   });
 });
