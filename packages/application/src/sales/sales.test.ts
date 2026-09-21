@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { DomainError } from "@aquarela/domain";
 
@@ -178,6 +178,210 @@ describe("postImportRun", () => {
     expect(store.salesLines.size).toBe(1);
     expect(stagingRow(store, rowIds[0]!).linkedSalesLineId).not.toBeNull();
     expect(stagingRow(store, rowIds[1]!).linkedSalesLineId).toBeNull();
+  });
+
+  it("posts partially under an explicit allow_partial snapshot, as the default does (DEC-082)", async () => {
+    const store = new FakeSalesStore();
+    const { importRunId, rowIds } = await seedImportRun(
+      store,
+      { organizationId: ORG },
+      {
+        diagnostics: { posting_policy: "allow_partial" },
+        rows: [
+          { sourceRowNo: 1, normalized: normalized() },
+          {
+            sourceRowNo: 2,
+            normalized: normalized({ external_line_id: "line-2" }),
+            mappingState: "conflict",
+            errorCode: "mapping_conflict",
+          },
+        ],
+      },
+    );
+
+    const result = await postImportRun(store, { organizationId: ORG, actorId: ACTOR, importRunId });
+
+    expect(result).toMatchObject({
+      status: "partially_posted",
+      postedCount: 1,
+      notPostedCount: 1,
+    });
+    expect(store.salesLines.size).toBe(1);
+    expect(stagingRow(store, rowIds[0]!).linkedSalesLineId).not.toBeNull();
+    expect(stagingRow(store, rowIds[1]!).linkedSalesLineId).toBeNull();
+  });
+
+  it("posts partially under a whitespace-only policy snapshot, as the default does (DEC-082)", async () => {
+    const store = new FakeSalesStore();
+    const { importRunId, rowIds } = await seedImportRun(
+      store,
+      { organizationId: ORG },
+      {
+        diagnostics: { posting_policy: "   " },
+        rows: [
+          { sourceRowNo: 1, normalized: normalized() },
+          {
+            sourceRowNo: 2,
+            normalized: normalized({ external_line_id: "line-2" }),
+            mappingState: "unmapped",
+          },
+        ],
+      },
+    );
+
+    const result = await postImportRun(store, { organizationId: ORG, actorId: ACTOR, importRunId });
+
+    expect(result).toMatchObject({
+      status: "partially_posted",
+      postedCount: 1,
+      notPostedCount: 1,
+    });
+    expect(store.salesLines.size).toBe(1);
+    expect(stagingRow(store, rowIds[0]!).linkedSalesLineId).not.toBeNull();
+    expect(stagingRow(store, rowIds[1]!).linkedSalesLineId).toBeNull();
+  });
+
+  it("all_or_nothing refuses to post when a row is unresolved, writing nothing (DEC-082)", async () => {
+    const store = new FakeSalesStore();
+    const { importRunId } = await seedImportRun(
+      store,
+      { organizationId: ORG },
+      {
+        diagnostics: { posting_policy: "all_or_nothing" },
+        rows: [
+          { sourceRowNo: 1, normalized: normalized() },
+          {
+            sourceRowNo: 2,
+            normalized: normalized({ external_line_id: "line-2" }),
+            mappingState: "conflict",
+            errorCode: "mapping_conflict",
+          },
+        ],
+      },
+    );
+    const updateSpy = vi.spyOn(store, "updateImportRun");
+
+    await expect(
+      postImportRun(store, { organizationId: ORG, actorId: ACTOR, importRunId }),
+    ).rejects.toThrow(/all_or_nothing posting refused.*source rows 2/);
+
+    expect(store.salesTransactions.size).toBe(0);
+    expect(store.salesLines.size).toBe(0);
+    expect(store.importRuns.get(importRunId)!.status).toBe("validated");
+    expect(updateSpy).not.toHaveBeenCalled();
+  });
+
+  it("all_or_nothing posts when the only unresolved row has an approved disposition (DEC-082)", async () => {
+    const store = new FakeSalesStore();
+    const { importRunId, rowIds } = await seedImportRun(
+      store,
+      { organizationId: ORG },
+      {
+        diagnostics: { posting_policy: "all_or_nothing" },
+        rows: [
+          { sourceRowNo: 1, normalized: normalized() },
+          {
+            sourceRowNo: 2,
+            normalized: normalized({ external_line_id: "line-2" }),
+            mappingState: "unmapped",
+          },
+        ],
+      },
+    );
+    await store.updateImportRun(importRunId, {
+      diagnostics: {
+        posting_policy: "all_or_nothing",
+        dispositions: [
+          {
+            stagingRowId: rowIds[1]!,
+            sourceRowNo: 2,
+            disposition: "unmapped",
+            reason: null,
+            actorId: ACTOR,
+            at: OCCURRED_AT,
+          },
+        ],
+      },
+    });
+
+    const result = await postImportRun(store, { organizationId: ORG, actorId: ACTOR, importRunId });
+
+    expect(result).toMatchObject({
+      status: "partially_posted",
+      postedCount: 1,
+      notPostedCount: 1,
+      transactionCount: 1,
+    });
+    expect(store.salesLines.size).toBe(1);
+    expect(stagingRow(store, rowIds[0]!).linkedSalesLineId).not.toBeNull();
+    expect(stagingRow(store, rowIds[1]!).linkedSalesLineId).toBeNull();
+  });
+
+  it("all_or_nothing posts normally when every row is postable (DEC-082)", async () => {
+    const store = new FakeSalesStore();
+    const { importRunId, rowIds } = await seedImportRun(
+      store,
+      { organizationId: ORG },
+      {
+        diagnostics: { posting_policy: "all_or_nothing" },
+        rows: [
+          { sourceRowNo: 1, normalized: normalized() },
+          {
+            sourceRowNo: 2,
+            normalized: normalized({ external_line_id: "line-2", quantity: "2.000000" }),
+          },
+        ],
+      },
+    );
+
+    const result = await postImportRun(store, { organizationId: ORG, actorId: ACTOR, importRunId });
+
+    expect(result).toMatchObject({ status: "posted", postedCount: 2, notPostedCount: 0 });
+    for (const rowId of rowIds) {
+      expect(stagingRow(store, rowId).linkedSalesLineId).not.toBeNull();
+    }
+  });
+
+  it("all_or_nothing treats already-linked rows as resolved on replay (DEC-082)", async () => {
+    const store = new FakeSalesStore();
+    const { importRunId, rowIds } = await seedImportRun(
+      store,
+      { organizationId: ORG },
+      {
+        diagnostics: { posting_policy: "all_or_nothing" },
+        rows: [{ sourceRowNo: 1, normalized: normalized() }],
+      },
+    );
+    const existingTransaction = await store.createSalesTransaction(
+      transactionInput("txn-1", OCCURRED_AT),
+    );
+    const existingLine = await store.createSalesLine(lineInput(existingTransaction.id, "line-1"));
+    await store.updateImportStagingRow(rowIds[0]!, { linkedSalesLineId: existingLine.id });
+
+    const result = await postImportRun(store, { organizationId: ORG, actorId: ACTOR, importRunId });
+
+    expect(result).toMatchObject({ status: "posted", postedCount: 1, notPostedCount: 0 });
+    // Nothing new was written: the already-linked rows are resolved.
+    expect(store.salesTransactions.size).toBe(1);
+    expect(store.salesLines.size).toBe(1);
+  });
+
+  it("rejects a corrupt posting-policy snapshot instead of defaulting (DEC-082)", async () => {
+    const store = new FakeSalesStore();
+    const { importRunId } = await seedImportRun(
+      store,
+      { organizationId: ORG },
+      {
+        diagnostics: { posting_policy: "best_effort" },
+        rows: [{ sourceRowNo: 1, normalized: normalized() }],
+      },
+    );
+
+    await expect(
+      postImportRun(store, { organizationId: ORG, actorId: ACTOR, importRunId }),
+    ).rejects.toThrow(/best_effort/);
+    expect(store.salesTransactions.size).toBe(0);
+    expect(store.salesLines.size).toBe(0);
   });
 
   it("refuses a run that is not validated and writes nothing (DEC-025)", async () => {

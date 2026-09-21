@@ -7,6 +7,12 @@ import {
   parseDecimal,
 } from "@aquarela/domain";
 
+import {
+  DEFAULT_IMPORT_POSTING_POLICY,
+  IMPORT_DIAGNOSTIC_KEYS,
+  IMPORT_POSTING_POLICY,
+  readDispositions,
+} from "../imports";
 import type { ImportStagingRowRecord } from "../imports";
 import { isBlank, isPlainObject } from "../imports/validation";
 import { assertIsoInstant } from "../inventory/validation";
@@ -115,6 +121,30 @@ function toPostableRow(row: ImportStagingRowRecord): PostableRow | null {
 }
 
 /**
+ * The posting policy the run was created under, read from its recorded
+ * `diagnostics.posting_policy` snapshot (`DEC-081`/`DEC-082`). Absent or blank
+ * falls back to `DEC-025`'s `allow_partial`; a present value outside
+ * `import_posting_policy` means the run's diagnostics are corrupt, so it is
+ * rejected rather than silently defaulted. The run's own snapshot governs, not
+ * the profile's current value, so editing a profile cannot change an existing
+ * run's posting behaviour.
+ */
+function resolvePostingPolicy(diagnostics: Readonly<Record<string, unknown>>): string {
+  const raw = diagnostics[IMPORT_DIAGNOSTIC_KEYS.postingPolicy];
+  if (raw === undefined || raw === null) {
+    return DEFAULT_IMPORT_POSTING_POLICY;
+  }
+  const value = typeof raw === "string" ? raw.trim() : String(raw);
+  if (value === "") {
+    return DEFAULT_IMPORT_POSTING_POLICY;
+  }
+  if (!IMPORT_POSTING_POLICY.includes(value)) {
+    throw new DomainError(`import run records an unknown posting policy: ${value}`);
+  }
+  return value;
+}
+
+/**
  * Posts the staged rows of a **validated** import run into `sales_transaction` /
  * `sales_line` (`SALE-003`/`SALE-005`; `DEC-025`, `DEC-035`, `DEC-042`,
  * `DEC-043`, `DEC-045`).
@@ -132,6 +162,13 @@ function toPostableRow(row: ImportStagingRowRecord): PostableRow | null {
  *   `partially_posted`; a run whose every staged row posts is `posted`. The
  *   non-posted rows keep their review-queue state and are the ones
  *   `reconcileImportRun` requires a disposition for (`DEC-035`).
+ * - **All-or-nothing posting** (`DEC-025`/`DEC-082`): when the run's recorded
+ *   policy is `all_or_nothing`, a pre-write check refuses the whole attempt with
+ *   a `DomainError` unless every staging row is postable now, already linked to
+ *   a sales line, or covered by an approved disposition (`DEC-035`) — so no row
+ *   is written and the run keeps its current status. Refusal is not file
+ *   rejection; `DEC-025`'s "rejected outright" stays reserved for
+ *   identity/period/currency/location validation failure.
  * - **Options/add-ons** (`DEC-043`): `option_kind` is normalized onto the line;
  *   an `attached`/`included` line must resolve its `parent_external_line_id`
  *   within the same transaction. `included` (zero-price) lines are retained for
@@ -161,6 +198,8 @@ export async function postImportRun(
       );
     }
 
+    const postingPolicy = resolvePostingPolicy(run.diagnostics);
+
     const rows = await tx.listImportStagingRows({
       organizationId: input.organizationId,
       importRunId: run.id,
@@ -175,6 +214,35 @@ export async function postImportRun(
       const candidate = toPostableRow(row);
       if (candidate !== null) {
         postable.push(candidate);
+      }
+    }
+
+    // `DEC-082`: under `all_or_nothing` the attempt is refused before any write
+    // unless every staging row is resolved. A row is resolved when it is
+    // postable in this attempt, already linked to a posted line, or covered by
+    // an approved disposition (`DEC-035`).
+    if (postingPolicy === "all_or_nothing") {
+      const resolvedRowIds = new Set<string>();
+      for (const item of postable) {
+        resolvedRowIds.add(item.row.id);
+      }
+      for (const row of rows) {
+        if (row.linkedSalesLineId !== null) {
+          resolvedRowIds.add(row.id);
+        }
+      }
+      for (const disposition of readDispositions(run.diagnostics)) {
+        resolvedRowIds.add(disposition.stagingRowId);
+      }
+      const blockers = rows.filter((row) => !resolvedRowIds.has(row.id));
+      if (blockers.length > 0) {
+        const blockingRows = blockers.slice(0, 10).map((row) => row.sourceRowNo);
+        const suffix = blockers.length > blockingRows.length ? ", …" : "";
+        throw new DomainError(
+          `all_or_nothing posting refused: ${blockers.length} staging row(s) are not postable, ` +
+            `already linked or covered by an approved disposition (source rows ` +
+            `${blockingRows.join(", ")}${suffix})`,
+        );
       }
     }
 

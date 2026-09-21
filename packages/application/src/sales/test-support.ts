@@ -21,8 +21,10 @@ function variantKey(organizationId: string, productVariantId: string, locationId
 
 /**
  * In-memory `SalesStore` for the unit suite: it extends `FakeImportStore` so
- * `postImportRun` runs against the real staging shape. `sales.postgres.test.ts`
- * covers the real adapter under `DATABASE_URL`.
+ * `postImportRun` runs against the real staging shape. There is no
+ * application-level Postgres sales test; the repository adapter is covered by
+ * the `packages/persistence` suite, so the unit suite exercises the commands
+ * against this fake store.
  */
 export class FakeSalesStore extends FakeImportStore implements SalesStore {
   readonly salesTransactions = new Map<string, SalesTransactionRecord>();
@@ -297,6 +299,8 @@ export interface SeedStagingRow {
 export interface SeedImportRunOptions {
   readonly status?: string;
   readonly source?: string;
+  /** Seed diagnostics verbatim (e.g. `{ posting_policy: "all_or_nothing" }`). */
+  readonly diagnostics?: Readonly<Record<string, unknown>>;
   readonly rows: readonly SeedStagingRow[];
 }
 
@@ -321,7 +325,7 @@ export async function seedImportRun(
     periodEnd: "2026-01-31",
     status: options.status ?? "validated",
     rowCounts: {},
-    diagnostics: {},
+    diagnostics: options.diagnostics ?? {},
     createdBy: "actor",
   });
   const rowIds: string[] = [];
