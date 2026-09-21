@@ -32,8 +32,10 @@ import {
   IMPORT_STATUS,
   MAPPING_STATE,
   OPTION_KIND,
+  RECONCILIATION_SCOPE_TYPE,
   RECONCILIATION_STATUS,
   RECONCILIATION_TOLERANCE_KIND,
+  SETTLEMENT_STATUS,
 } from "./vocabularies";
 
 /*
@@ -55,9 +57,12 @@ import {
  * row-12 tables are authored below, and `0023` extends the
  * `stock_movement_source_guard` trigger with the `sales_line` branch.
  *
- * ponytail: recorded open points — deliberately NOT resolved. The same list is
- * in `docs/runbooks/persistence-migrations.md` ("Known follow-up obligations").
- * Do not invent a resolution for any of these.
+ * ponytail: recorded open points — deliberately NOT resolved (the two that
+ * `DEC-078` closed, (i)/(j), are struck through below and kept for traceability
+ * rather than renumbered, so existing `open point (i)`/`(j)` references stay
+ * meaningful). The same list is in
+ * `docs/runbooks/persistence-migrations.md` ("Known follow-up obligations").
+ * Do not invent a resolution for any of the still-open points.
  *
  * Slice-11:
  * (a) There is **no import/mapping profile table**. `import_run.source` and
@@ -94,14 +99,22 @@ import {
  *     `tax_rule_id`. `tax_rule_id` is used here (matching
  *     `channel_fee_rule.tax_rule_id`), and the naming/authority question is
  *     **left open**, not resolved.
- * (i) **No `settlement_status` vocabulary** exists in
- *     `schemas/domain-enums.yaml`, so `settlement.status` is unconstrained text.
- * (j) **`reconciliation.scope_type` values are unresolved.** The shared
+ * ~~(i) **No `settlement_status` vocabulary** exists in
+ *     `schemas/domain-enums.yaml`, so `settlement.status` is unconstrained
+ *     text.~~ **Closed by `DEC-078` (a)** (migration `0028`):
+ *     `schemas/domain-enums.yaml` now defines `settlement_status`, and
+ *     `settlement.status` defaults to `received` and is checked against
+ *     `SETTLEMENT_STATUS` (`settlement_status_check`).
+ * ~~(j) **`reconciliation.scope_type` values are unresolved.** The shared
  *     `scope_type` vocabulary (`organization`/`location`/`storage`/`channel`/
  *     `company_wide`) describes cost/ownership scopes, while `REC-001`/`005`
  *     reconcile **source-vs-posted totals** (sales source / settlement /
  *     supplier invoice per `DEC-026`); no authority pins which applies, so the
- *     column is unconstrained text rather than an invented check.
+ *     column is unconstrained text rather than an invented check.~~ **Closed by
+ *     `DEC-078` (b)** (migration `0028`): `reconciliation.scope_type` is checked
+ *     against the distinct `RECONCILIATION_SCOPE_TYPE` vocabulary
+ *     (`reconciliation_scope_type_check`), leaving the cost/ownership
+ *     `scope_type` untouched.
  */
 
 export const importRun = pgTable(
@@ -307,9 +320,8 @@ export const salesLine = pgTable(
  * `settlement` (`DATA_DICTIONARY.md:728`, `REC-001`/`002`; `DEC-026`,
  * `DEC-040`). A payment/channel payout report line: what the provider paid,
  * charged in fees and refunded over a period. `source_file_id` is a plain uuid
- * (`file_object` absent — open point (e)); `status` is unconstrained text
- * because `schemas/domain-enums.yaml` has no `settlement_status` key (open
- * point (i)).
+ * (`file_object` absent — open point (e)); `status` defaults to `received` and
+ * is checked against `SETTLEMENT_STATUS` (`DEC-078` (a), migration `0028`).
  */
 export const settlement = pgTable(
   "settlement",
@@ -325,10 +337,11 @@ export const settlement = pgTable(
     refundAmount: money("refund_amount"),
     currency: currency().notNull(),
     sourceFileId: uuid("source_file_id"),
-    status: text("status").notNull(),
+    status: text("status").notNull().default("received"),
     ...auditColumns(),
   },
   (t) => [
+    check("settlement_status_check", enumCheck(t.status, SETTLEMENT_STATUS)),
     check("settlement_period_check", sql`${t.periodEnd} >= ${t.periodStart}`),
     index("settlement_org_provider_period_idx").on(t.organizationId, t.provider, t.periodStart),
   ],
@@ -338,8 +351,9 @@ export const settlement = pgTable(
  * `reconciliation` (`DATA_DICTIONARY.md:729`, `REC-001`/`005`; `DEC-026`,
  * `DEC-035`). One reconciliation of an expected amount against an actual one
  * over a period, with the tolerance snapshot and the resolution trail.
- * `scope_id` is a plain uuid (polymorphic target); `scope_type` is
- * unconstrained text (open point (j)); `owner_id` is a plain uuid (no authority
+ * `scope_id` is a plain uuid (polymorphic target); `scope_type` is checked
+ * against `RECONCILIATION_SCOPE_TYPE` (`DEC-078` (b), migration `0028`);
+ * `owner_id` is a plain uuid (no authority
  * requires the `app_user` FK — deferred-FK convention). `tolerance` is a
  * per-row snapshot of what was applied; the effective-dated config lives in
  * `reconciliation_tolerance` (`DEC-072`).
@@ -364,6 +378,7 @@ export const reconciliation = pgTable(
     ...auditColumns(),
   },
   (t) => [
+    check("reconciliation_scope_type_check", enumCheck(t.scopeType, RECONCILIATION_SCOPE_TYPE)),
     check("reconciliation_status_check", enumCheck(t.status, RECONCILIATION_STATUS)),
     check("reconciliation_period_check", sql`${t.periodEnd} >= ${t.periodStart}`),
     index("reconciliation_org_status_idx").on(t.organizationId, t.status),

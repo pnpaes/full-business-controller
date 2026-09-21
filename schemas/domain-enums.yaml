@@ -64,6 +64,8 @@ unit_dimension: [mass, volume, count, time, package]
 mapping_state: [unmapped, mapped, ignored, error, conflict]
 option_kind: [standalone, attached, included]
 reconciliation_tolerance_kind: [sales_settlement, supplier_invoice]
+settlement_status: [received, paid, void]
+reconciliation_scope_type: [import_run, sales_source, settlement, supplier_invoice]
 import_posting_policy: [all_or_nothing, allow_partial]
 allocation_driver:
   - direct_location_assignment

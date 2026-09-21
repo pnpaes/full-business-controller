@@ -123,6 +123,24 @@ describe.skipIf(!databaseUrl)("reconciliation repository", () => {
     });
   });
 
+  it("rejects a scope_type outside the vocabulary (DEC-078)", async () => {
+    await inRollback(client.db, async (tx) => {
+      const cause = await rejectionCause(
+        createTestReconciliation(tx, orgId, { scopeType: "bogus" }),
+      );
+      expect(cause.message).toMatch(/reconciliation_scope_type_check/);
+    });
+  });
+
+  it("accepts the four reconciliation_scope_type values (DEC-078)", async () => {
+    await inRollback(client.db, async (tx) => {
+      for (const scopeType of ["import_run", "sales_source", "settlement", "supplier_invoice"]) {
+        const created = await createTestReconciliation(tx, orgId, { scopeType });
+        expect(created.scopeType).toBe(scopeType);
+      }
+    });
+  });
+
   it("rejects a period that ends before it starts", async () => {
     await inRollback(client.db, async (tx) => {
       const cause = await rejectionCause(

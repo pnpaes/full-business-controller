@@ -18,8 +18,9 @@ export type NewReconciliationTolerance = typeof reconciliationTolerance.$inferIn
  * `reconciliation_tolerance` (`DEC-072`, migration `0024`), read here by
  * `findReconciliationTolerance`. Resolving the effective config and blocking
  * close on a missing tolerance are application concerns, not enforced in this
- * module. `scope_type` is unconstrained text (open point (j)) and `scope_id` is
- * a polymorphic plain uuid. Only the status/resolution trail is mutable; the
+ * module. `scope_type` is checked against `RECONCILIATION_SCOPE_TYPE`
+ * (`DEC-078` (b), migration `0028`) and `scope_id` is a polymorphic plain uuid.
+ * Only the status/resolution trail is mutable; the
  * amounts and period are creation-time facts.
  */
 

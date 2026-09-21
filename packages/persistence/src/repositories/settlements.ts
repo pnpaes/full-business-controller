@@ -11,9 +11,9 @@ export type NewSettlement = typeof settlement.$inferInsert;
  *
  * `settlement` carries `organization_id` directly, so every read is
  * organization-scoped (`DEC-061`). `source_file_id` is a plain uuid
- * (`file_object` absent — open point (e)); `status` is unconstrained text
- * because no `settlement_status` vocabulary exists (open point (i)). This module
- * stores payout-report facts only; it does not reconcile or post.
+ * (`file_object` absent — open point (e)); `status` defaults to `received` and
+ * is checked against `SETTLEMENT_STATUS` (`DEC-078` (a), migration `0028`). This
+ * module stores payout-report facts only; it does not reconcile or post.
  */
 
 export async function createSettlement(db: Database, input: NewSettlement): Promise<Settlement> {

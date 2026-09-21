@@ -197,6 +197,13 @@
       "when": 1789949551665,
       "tag": "0027_price_version",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1789951616253,
+      "tag": "0028_settlement_reconciliation_vocabularies",
+      "breakpoints": true
     }
   ]
 }

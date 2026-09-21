@@ -294,6 +294,25 @@ export const OPTION_KIND = ["standalone", "attached", "included"] as const;
 // `schemas/domain-enums.yaml` (`reconciliation_tolerance_kind`).
 export const RECONCILIATION_TOLERANCE_KIND = ["sales_settlement", "supplier_invoice"] as const;
 
+// `DEC-078` (a): the `settlement.status` state of a payout-report fact
+// (`received` → `paid`, with `void` for a superseded/erroneous payout because
+// financial facts are append-only — reversals, not deletes). From
+// `schemas/domain-enums.yaml` (`settlement_status`); the column defaults to
+// `received`.
+export const SETTLEMENT_STATUS = ["received", "paid", "void"] as const;
+
+// `DEC-078` (b): the `reconciliation.scope_type` — what a reconciliation
+// compares source-vs-posted totals for (`REC-001`/`005`). Deliberately distinct
+// from the cost/ownership `SCOPE_TYPE`, so an unknown scope is rejected rather
+// than accepted as free text. From `schemas/domain-enums.yaml`
+// (`reconciliation_scope_type`).
+export const RECONCILIATION_SCOPE_TYPE = [
+  "import_run",
+  "sales_source",
+  "settlement",
+  "supplier_invoice",
+] as const;
+
 // `stock_movement.reason_code` for count/adjustment postings (`adjustment_reason`
 // in `schemas/domain-enums.yaml`). Exported here because the count-adjustment
 // and waste slices need a closed vocabulary for the reason code.

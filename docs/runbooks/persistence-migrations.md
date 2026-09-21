@@ -168,11 +168,32 @@ because its target table varies by `source_type`.
 ## Pre-apply preflight for validating constraints and indexes
 
 Migrations 0014, 0016, 0017, 0018, 0019, 0020, 0021, 0022, 0023, 0024, 0025,
-0026 and 0027 add objects that validate or build, so a failure aborts the whole
-transactional migration (drizzle-kit runs each file in one transaction). Run the
-matching preflight against the target database **before** applying and
+0026, 0027 and 0028 add objects that validate or build, so a failure aborts the
+whole transactional migration (drizzle-kit runs each file in one transaction).
+Run the matching preflight against the target database **before** applying and
 reconcile any hits; drizzle-kit cannot detect them because these files diff
 against existing data.
+
+- **`0028_settlement_reconciliation_vocabularies.sql`** — the two `ALTER TABLE …
+  ADD CONSTRAINT CHECK` statements tighten `settlement.status` and
+  `reconciliation.scope_type` to the `DEC-078` vocabularies, so (like `0025`)
+  they take an **`AccessExclusiveLock`** on the two tables and scan every row to
+  validate it, failing if any existing row is out of vocabulary. At first apply
+  both tables are empty or in-vocabulary, so it is cheap; on a populated table,
+  preflight before applying and reconcile every hit:
+
+  ```sql
+  SELECT DISTINCT status FROM settlement
+  WHERE status NOT IN ('received', 'paid', 'void');
+  SELECT DISTINCT scope_type FROM reconciliation
+  WHERE scope_type NOT IN ('import_run', 'sales_source', 'settlement', 'supplier_invoice');
+  ```
+
+  Any hit must be repaired (map the value into the vocabulary, or apply the
+  checks `NOT VALID` and `VALIDATE` later) before the first apply, because a
+  validating `ADD CONSTRAINT` inside the transactional migration aborts the whole
+  file. The `ALTER TABLE "settlement" ALTER COLUMN "status" SET DEFAULT
+  'received'` is metadata-only and scans nothing.
 
 - **`0027_price_version.sql`** — one new, empty table (`price_version`) with its
   checks, FKs and `price_version_scope_idx` (cheap at first apply: the table is
@@ -740,6 +761,21 @@ only, so the down file is an explicit operator action, not an automatic one.
   only while that price history need not be preserved (AGENTS.md Rule 2). Apply
   it manually with
   `psql "$DATABASE_URL" -f packages/persistence/drizzle/0027_price_version_down.sql`.
+- **0028 adds the settlement/reconciliation vocabularies and follows the down
+  convention:** `0028_settlement_reconciliation_vocabularies.sql` is generated
+  DDL that sets the `settlement.status` default to `received`, adds
+  `settlement_status_check` (`DEC-078` (a), `SETTLEMENT_STATUS`) and adds
+  `reconciliation_scope_type_check` on `reconciliation.scope_type` (`DEC-078`
+  (b), `RECONCILIATION_SCOPE_TYPE`, deliberately distinct from the
+  cost/ownership `scope_type`). No table, no row and no hand-written statement;
+  both checks **validate existing rows** at apply (see the preflight above).
+  `0028_settlement_reconciliation_vocabularies_down.sql` drops the two checks and
+  the `settlement.status` default inside one `BEGIN;`/`COMMIT;` (with
+  `DROP ... IF EXISTS` so a half-applied manual run cannot wedge). Dropping a
+  check never validates rows, so the down cannot fail on data; while dropped,
+  `settlement.status` and `reconciliation.scope_type` are validated only by the
+  application. Apply it manually with
+  `psql "$DATABASE_URL" -f packages/persistence/drizzle/0028_settlement_reconciliation_vocabularies_down.sql`.
 
 **Re-applying after a manual down:** drizzle-kit tracks applied migrations in
 `drizzle.__drizzle_migrations`, not by comparing the schema, so a plain
@@ -758,8 +794,9 @@ for 0003, `… = 1789850858806` for 0004, `… = 1789851925634` for 0005,
 `… = 1789911710033` for 0020, `… = 1789913486015` for 0021,
 `… = 1789915583040` for 0022, `… = 1789917983755` for 0023,
 `… = 1789938630318` for 0024, `… = 1789938645539` for 0025,
-`… = 1789940067864` for 0026 and
-`… = 1789949551665` for 0027, then
+`… = 1789940067864` for 0026,
+`… = 1789949551665` for 0027 and
+`… = 1789951616253` for 0028, then
 `npm run db:migrate` (0003 verified 2026-09-19; 0005 rehearsed in the slice-3
 review follow-up; 0006 rehearsed with the slice-4 receiving work; 0007 and
 0008 rehearsed with the slice-4 review follow-up; 0009 rehearsed with the
@@ -783,7 +820,10 @@ re-applying restored the five-value ones, 0026's down dropped the
 deleting its ledger row and re-applying restored it, and 0027's down dropped the
 `price_version_no_overlap` constraint and the `price_version` table, then
 deleting its ledger row and re-applying restored the table, its index and the
-EXCLUDE constraint — 64 tables).
+EXCLUDE constraint — 64 tables; 0028's down dropped `settlement_status_check`,
+`reconciliation_scope_type_check` and the `settlement.status` default with no
+row changes, then deleting its ledger row and re-applying restored the default
+and both checks).
 A **full 0011 down** drops the tables the three 0012 constraints live on, so its
 replay must clear **both** ledger rows, not just 0011's:
 `DELETE FROM drizzle.__drizzle_migrations WHERE created_at IN (1789862475550, 1789862630158);`
@@ -938,12 +978,21 @@ implements it:
     `DATA_DICTIONARY.md:709` and the row-12 work say `tax_rule_id`. The column is
     `tax_rule_id` here (matching `channel_fee_rule.tax_rule_id`); the naming and
     authority question is left open.
-  - **(i)** No **`settlement_status` vocabulary** exists in
-    `schemas/domain-enums.yaml`, so `settlement.status` is unconstrained text.
-  - **(j)** **`reconciliation.scope_type` values are unresolved** — the shared
+  - **(i)** ~~No **`settlement_status` vocabulary** exists in
+    `schemas/domain-enums.yaml`, so `settlement.status` is unconstrained
+    text.~~ **Closed by `DEC-078` (a) (2026-09-20, migration `0028`):**
+    `schemas/domain-enums.yaml` (`settlement_status`) and `vocabularies.ts`
+    (`SETTLEMENT_STATUS`) now define `{received, paid, void}`; `settlement.status`
+    defaults to `received` and is enforced by `settlement_status_check`.
+  - **(j)** ~~**`reconciliation.scope_type` values are unresolved** — the shared
     `scope_type` vocabulary describes cost/ownership scopes, while
     `REC-001`/`005` reconcile source-vs-posted totals by source kind
-    (`DEC-026`); the column is unconstrained text rather than an invented check.
+    (`DEC-026`); the column is unconstrained text rather than an invented
+    check.~~ **Closed by `DEC-078` (b) (2026-09-20, migration `0028`):**
+    `reconciliation.scope_type` is enforced by `reconciliation_scope_type_check`
+    against the distinct `reconciliation_scope_type` vocabulary
+    (`import_run`/`sales_source`/`settlement`/`supplier_invoice`), leaving the
+    cost/ownership `scope_type` untouched.
   - **(k)** `RECONCILIATION_STATUS` (`pending`/`within_tolerance`/`exception`/
     `resolved`/`approved`) and `OPTION_KIND` (`standalone`/`attached`/
     `included`) are now exported from `vocabularies.ts` and enforced by
@@ -1036,6 +1085,7 @@ session will not serialise against each other.
 | 0025 | `0025_mapping_state_conflict.sql` | Generated: drops and recreates `import_staging_row_mapping_state_check` and `sales_line_mapping_state_check` with the five-value `MAPPING_STATE` including `conflict` (`DEC-074`). No table. Down companion: `0025_mapping_state_conflict_down.sql` (restores the four-value checks; re-add validates existing rows) |
 | 0026 | `0026_sales_line_reversal_unique.sql` | Generated: adds `sales_line_reversal_of_id_key`, a partial unique index on `sales_line.reversal_of_id` `WHERE "reversal_of_id" is not null`, so at most one line reverses a given line (`DEC-073`) — the race-safe database backstop for `reverseSalesLine`'s application pre-check. No table. Down companion: `0026_sales_line_reversal_unique_down.sql` (drops the index) |
 | 0027 | `0027_price_version.sql` | Generated + hand-written: the `DEC-064`/`DEC-077` `price_version` table (`organization_id`, `product_variant_id`, nullable `location_id`/`channel_id`, `gross_price`/`net_price` numeric(19,4), the `effective_from`/`effective_to` window, `approved_by`/`approved_at`, the required `source_scenario_id` FK, `created_at`, the `price_version_price_check` / `price_version_effective_range_check` constraints, the five FKs and `price_version_scope_idx`). Hand-written: the `price_version_no_overlap` EXCLUDE constraint on the scope columns and `tstzrange(effective_from, effective_to, '[)')`, normalizing a null `location_id`/`channel_id` to a single "any" scope with a COALESCE sentinel. Down companion: `0027_price_version_down.sql` (drops the constraint then the table — destructive) |
+| 0028 | `0028_settlement_reconciliation_vocabularies.sql` | Generated: adds the `settlement.status` default `received` and `settlement_status_check` (`DEC-078` (a)) plus `reconciliation_scope_type_check` on `reconciliation.scope_type` (`DEC-078` (b), the distinct `RECONCILIATION_SCOPE_TYPE` vocabulary). No table and no hand-written statement. Down companion: `0028_settlement_reconciliation_vocabularies_down.sql` (drops both checks and the `settlement.status` default — no row is touched) |
 
 Order matters: extensions before DDL that calls `gen_random_uuid()`, and before
 the exclusion constraints. Verify with:
@@ -1065,7 +1115,7 @@ DATABASE_URL=postgres://aquarela:aquarela@localhost:5432/aquarela npm run db:mig
 `public` alone leaves the ledger intact, so `db:migrate` reports success while
 restoring nothing. `DROP SCHEMA drizzle CASCADE` clears the ledger so all
 migrations replay from 0000. Verified: after this sequence `db:migrate`
-re-applies 0000–0027 and the database has all 64 tables plus both extensions
+re-applies 0000–0028 and the database has all 64 tables plus both extensions
 (0004 adds the four slice-3 master-data tables; 0006 adds the two slice-4
 receiving tables; 0007 adds the `goods_receipt_line` guard trigger — no table;
 0008 relaxes the `supplier_price` range check — no table; 0009 adds the two
@@ -1093,13 +1143,14 @@ tables; 0024 adds the `DEC-072` `reconciliation_tolerance` table and its
 recreates the two five-value mapping-state checks — no table; 0026 adds the
 `sales_line_reversal_of_id_key` partial unique index — no table; 0027 adds the
 `DEC-064`/`DEC-077` `price_version` table and its `price_version_no_overlap`
-EXCLUDE constraint — one table).
+EXCLUDE constraint — one table; 0028 adds the `settlement.status` default and
+check and the `reconciliation.scope_type` check — no table).
 0013–0019 were added after this replay was verified; all are additive and
 table-count-neutral. `0020`, `0021`, `0022`, `0023`, `0024` and `0027` are the
 only migrations after the replay was written to add tables (four, four, three,
 four, one and one respectively), so the 64-table figure above is the expected
-post-`0027` count (51 after `0020`, 55 after `0021`, 58 after `0022`, 62 after
-`0023`, 63 after `0024`); `0025` and `0026` are table-neutral. `0014`–`0027`'s
+post-`0028` count (51 after `0020`, 55 after `0021`, 58 after `0022`, 62 after
+`0023`, 63 after `0024`); `0025`, `0026` and `0028` are table-neutral. `0014`–`0028`'s
 apply/re-run/down/re-apply was rehearsed on the local dev database 2026-09-20.
 
 Once real data exists, this path is no longer acceptable: use small atomic
@@ -1276,6 +1327,11 @@ After applying to an empty database the following were verified with `psql`:
   `findEffectivePriceVersion` resolves the half-open `[effective_from,
   effective_to)` version effective at an as-of instant (`effective_to` is
   exclusive).
+- `settlement` / `reconciliation` (0028, `DEC-078`): a `settlement.status`
+  outside `{received, paid, void}` is rejected by `settlement_status_check`, and
+  omitting `status` stores the default `received`; a `reconciliation.scope_type`
+  outside `{import_run, sales_source, settlement, supplier_invoice}` is rejected
+  by `reconciliation_scope_type_check`.
 - Deferrable FKs: a `calculation_snapshot` and its `cost_card` can be inserted
   in the same transaction in either order and commit together.
 - `calculation_snapshot`: a plain `TRUNCATE` is blocked first by the FK from

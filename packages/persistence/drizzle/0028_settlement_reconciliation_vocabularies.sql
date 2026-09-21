@@ -1,0 +1,3 @@
+ALTER TABLE "settlement" ALTER COLUMN "status" SET DEFAULT 'received';--> statement-breakpoint
+ALTER TABLE "reconciliation" ADD CONSTRAINT "reconciliation_scope_type_check" CHECK ("reconciliation"."scope_type" in ('import_run', 'sales_source', 'settlement', 'supplier_invoice'));--> statement-breakpoint
+ALTER TABLE "settlement" ADD CONSTRAINT "settlement_status_check" CHECK ("settlement"."status" in ('received', 'paid', 'void'));

@@ -87,6 +87,25 @@ describe.skipIf(!databaseUrl)("settlements repository", () => {
     });
   });
 
+  it("defaults status to received when it is omitted (DEC-078)", async () => {
+    await inRollback(client.db, async (tx) => {
+      const created = await createSettlement(tx, {
+        organizationId: orgId,
+        provider: "wolt",
+        periodStart: "2026-03-01",
+        periodEnd: "2026-03-31",
+      });
+      expect(created.status).toBe("received");
+    });
+  });
+
+  it("rejects a status outside the vocabulary (DEC-078)", async () => {
+    await inRollback(client.db, async (tx) => {
+      const cause = await rejectionCause(createTestSettlement(tx, orgId, { status: "bogus" }));
+      expect(cause.message).toMatch(/settlement_status_check/);
+    });
+  });
+
   it("rejects a period that ends before it starts", async () => {
     await inRollback(client.db, async (tx) => {
       const cause = await rejectionCause(
