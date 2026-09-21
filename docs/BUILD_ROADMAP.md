@@ -13,7 +13,7 @@ This file is **updated at the end of every slice** — statuses and the "current
 line move with the work; `CONTEXT.md` keeps the narrative handoff and the immediate
 `Resume here` section.
 
-**Current position:** HEAD `22b67c1` on `main` (nothing pushed; the working tree
+**Current position:** HEAD `36f3c30` on `main` (nothing pushed; the working tree
 holds only the next docs commit). Slice 0, auth slices 1a–1e, slices 2–10, row 11
 (import framework + external mappings), row 12 (sales + settlements +
 reconciliation), the **price-version slice (`DEC-064`, PRICE-002/003)**, the
@@ -23,15 +23,18 @@ cross-organization coherence guards**, the **`DEC-080`
 **`DEC-082` import posting-policy enforcement**
 are `done` and committed;
 `ADR-0007` and `ADR-0008` accepted 2026-09-20 (owner-delegated, revertible).
-The `DEC-082` slice delivered (commits `12f0377`, `22b67c1`): `postImportRun`
+The `DEC-082` slice delivered (commits `12f0377`, `22b67c1`, `36094c6`,
+`36f3c30` — the last being the `/review unpushed` follow-up fix rejecting a
+corrupt non-string policy snapshot): `postImportRun`
 resolves the run's recorded `diagnostics.posting_policy` snapshot
 (absent/blank → `allow_partial`; a present out-of-vocabulary value →
 `DomainError` as corrupt); under `all_or_nothing` a pre-write check refuses
 the whole attempt with a `DomainError` naming the blocking `sourceRowNo`s
 unless every staging row is postable, already linked to a sales line, or
 covered by an approved disposition (`DEC-035`), writing nothing and leaving the
-run's status unchanged. Verification at `22b67c1`: `typecheck`, `lint`,
-`format:check`, `build` clean; **1360/1360 tests with `DATABASE_URL`**
+run's status unchanged. Verification at `36f3c30`: `typecheck`, `lint`,
+`format:check` clean (`build` previously clean); **1362/1362 tests with
+`DATABASE_URL`**
 (135 files); `npm audit --omit=dev` 0; `db:migrate` through `0032` is a no-op;
 66 tables (no schema change).
 Programme
