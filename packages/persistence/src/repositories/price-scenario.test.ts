@@ -3,7 +3,12 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createDb, type DbClient } from "../client";
 import { organization, product, productVariant } from "../schema";
-import { createPriceScenario, findPriceScenario, updatePriceScenario } from "./price-scenario";
+import {
+  approvePriceScenarioIfApprovable,
+  createPriceScenario,
+  findPriceScenario,
+  updatePriceScenario,
+} from "./price-scenario";
 import {
   createTestOrganization,
   createTestProduct,
@@ -96,6 +101,74 @@ describe.skipIf(!databaseUrl)("price-scenario repository", () => {
       expect(updated.outcome).toEqual({ breakEven: "8.10" });
       expect(updated.grossPrice).toBe("13.5000");
       expect(updated.netPrice).toBe("11.4750");
+    });
+  });
+
+  it("compare-and-swaps draft/submitted to approved only once", async () => {
+    await inRollback(client.db, async (tx) => {
+      const created = await createPriceScenario(tx, {
+        organizationId: orgId,
+        productVariantId: variantId,
+        grossPrice: "10",
+        netPrice: "8",
+      });
+
+      const approved = await approvePriceScenarioIfApprovable(tx, {
+        organizationId: orgId,
+        priceScenarioId: created.id,
+      });
+      expect(approved?.id).toBe(created.id);
+      expect(approved?.state).toBe("approved");
+
+      // The row no longer matches `state IN ('draft','submitted')`.
+      expect(
+        await approvePriceScenarioIfApprovable(tx, {
+          organizationId: orgId,
+          priceScenarioId: created.id,
+        }),
+      ).toBeUndefined();
+    });
+  });
+
+  it("approves a submitted scenario but not a foreign org or a rejected one", async () => {
+    await inRollback(client.db, async (tx) => {
+      const submitted = await createPriceScenario(tx, {
+        organizationId: orgId,
+        productVariantId: variantId,
+        grossPrice: "10",
+        netPrice: "8",
+      });
+      await updatePriceScenario(tx, submitted.id, { state: "submitted" });
+      expect(
+        (
+          await approvePriceScenarioIfApprovable(tx, {
+            organizationId: orgId,
+            priceScenarioId: submitted.id,
+          })
+        )?.state,
+      ).toBe("approved");
+
+      const draft = await createPriceScenario(tx, {
+        organizationId: orgId,
+        productVariantId: variantId,
+        grossPrice: "10",
+        netPrice: "8",
+      });
+      const otherOrgId = await createTestOrganization(tx, uniqueSuffix());
+      expect(
+        await approvePriceScenarioIfApprovable(tx, {
+          organizationId: otherOrgId,
+          priceScenarioId: draft.id,
+        }),
+      ).toBeUndefined();
+
+      await updatePriceScenario(tx, draft.id, { state: "rejected" });
+      expect(
+        await approvePriceScenarioIfApprovable(tx, {
+          organizationId: orgId,
+          priceScenarioId: draft.id,
+        }),
+      ).toBeUndefined();
     });
   });
 });

@@ -14,7 +14,7 @@ import * as schema from "./index";
 
 const tables = Object.values(schema).filter((value) => is(value, PgTable));
 
-/** The 62 in-scope Phase 1-2 tables: the 35 core tables, the slice-3
+/** The 64 in-scope Phase 1-2 tables: the 35 core tables, the slice-3
  * master-data additions (`unit_conversion`, `supplier`, `supplier_item`,
  * `cost_center`), the slice-4 receiving additions (`goods_receipt`,
  * `goods_receipt_line`), the slice-5 allergen additions (`allergen`,
@@ -26,8 +26,9 @@ const tables = Object.values(schema).filter((value) => is(value, PgTable));
  * `production_batch_output`), the slice-11 import-framework additions
  * (`import_run`, `import_staging_row`, `external_mapping`), the slice-12
  * sales/settlement/reconciliation additions (`sales_transaction`, `sales_line`,
- * `settlement`, `reconciliation`) and the `DEC-072` `reconciliation_tolerance`
- * config table, from `schemas/phase1_2_draft.sql` / `DATA_DICTIONARY`. */
+ * `settlement`, `reconciliation`), the `DEC-072` `reconciliation_tolerance`
+ * config table and the `DEC-064`/`DEC-077` `price_version` table, from
+ * `schemas/phase1_2_draft.sql` / `DATA_DICTIONARY`. */
 const EXPECTED_TABLES = [
   "addon_applicability",
   "allergen",
@@ -57,6 +58,7 @@ const EXPECTED_TABLES = [
   "outbox_event",
   "password_reset_token",
   "price_scenario",
+  "price_version",
   "production_batch",
   "production_batch_input",
   "production_batch_output",

@@ -15,6 +15,7 @@ import {
   productionBatch,
   productionBatchInput,
   productionBatchOutput,
+  priceVersion,
   productionPlan,
   reconciliation,
   reconciliationTolerance,
@@ -619,6 +620,29 @@ export async function createTestSettlement(
       periodStart: "2026-03-01",
       periodEnd: "2026-03-31",
       status: "received",
+      ...overrides,
+    })
+    .returning();
+  return rows[0]!;
+}
+
+export async function createTestPriceVersion(
+  db: Database,
+  organizationId: string,
+  refs: { readonly productVariantId: string; readonly sourceScenarioId: string },
+  overrides: Partial<typeof priceVersion.$inferInsert> = {},
+): Promise<typeof priceVersion.$inferSelect> {
+  const rows = await db
+    .insert(priceVersion)
+    .values({
+      organizationId,
+      productVariantId: refs.productVariantId,
+      sourceScenarioId: refs.sourceScenarioId,
+      grossPrice: "10.0000",
+      netPrice: "9.0000",
+      effectiveFrom: new Date("2026-01-01T00:00:00.000Z"),
+      approvedBy: randomUUID(),
+      approvedAt: new Date("2026-01-01T00:00:00.000Z"),
       ...overrides,
     })
     .returning();

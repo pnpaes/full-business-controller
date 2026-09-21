@@ -68,7 +68,10 @@ exclusion constraints (`cost_pool_no_overlap`, `labor_rate_no_overlap`,
 `allocation_rule_no_overlap`) live only in
 `0012_cost_allocation_invariants.sql`; the `DEC-072` tolerance exclusion
 (`reconciliation_tolerance_no_overlap`) lives only in
-`0024_reconciliation_tolerance.sql`; the slice-7
+`0024_reconciliation_tolerance.sql`; the `DEC-077` price-version exclusion
+(`price_version_no_overlap`, whose null-scope sentinel normalizes a null
+`location_id`/`channel_id` to a single "any" scope) lives only in
+`0027_price_version.sql`; the slice-7
 `cost_card_approved_scope_key` partial unique index (`NULLS NOT DISTINCT` on
 `(organization_id, product_variant_id, location_id, channel_id)` `WHERE state =
 'approved'`) lives only in `0016_cost_card_approved_scope.sql`; the slice-8
@@ -105,6 +108,7 @@ them manually is invisible to the tool.
 > constraints, the state-gated `recipe_version_no_overlap`, the
 > `goods_receipt_line` guard, the three cost-allocation exclusion
 > constraints, the `reconciliation_tolerance_no_overlap` exclusion, the
+> `price_version_no_overlap` exclusion, the
 > `cost_card_approved_scope_key` approval index and the
 > `stock_movement_source_guard` validation trigger (extended in `0020`, `0021`
 > and `0023`). Those
@@ -117,8 +121,9 @@ them manually is invisible to the tool.
 > `0017_stock_ledger_invariants.sql`,
 > `0020_slice9_counts_transfers_waste.sql`,
 > `0021_slice10_production.sql`,
-> `0023_row12_sales_settlements_reconciliation.sql` and
-> `0024_reconciliation_tolerance.sql`; use `generate` + `migrate`
+> `0023_row12_sales_settlements_reconciliation.sql`,
+> `0024_reconciliation_tolerance.sql` and
+> `0027_price_version.sql`; use `generate` + `migrate`
 > and the guard below.
 
 **Guard:** before committing any future generated migration, diff the database
@@ -146,7 +151,8 @@ This applies to: `supplier_price.supplier_item_id`, `supplier_price.source_recei
 `cost_observation.receipt_file_id`, `stock_lot.source_movement_id`,
 `stock_movement.source_id`, `stock_movement.posted_by`, `recipe_version.approved_by`,
 `recipe_allergen.verified_by`,
-`cost_card.approved_by`, `audit_event.actor_id`, `goods_receipt.purchase_order_id`,
+`cost_card.approved_by`, `price_version.approved_by`, `audit_event.actor_id`,
+`goods_receipt.purchase_order_id`,
 `goods_receipt.accepted_by`, `goods_receipt.evidence_file_id`,
 `goods_receipt_line.supplier_item_id`, `operating_cost.evidence_file_id`,
 `waste_event.production_batch_id`.
@@ -161,12 +167,39 @@ because its target table varies by `source_type`.
 
 ## Pre-apply preflight for validating constraints and indexes
 
-Migrations 0014, 0016, 0017, 0018, 0019, 0020, 0021, 0022, 0023, 0024, 0025 and
-0026 add objects that validate or build, so a failure aborts the whole
+Migrations 0014, 0016, 0017, 0018, 0019, 0020, 0021, 0022, 0023, 0024, 0025,
+0026 and 0027 add objects that validate or build, so a failure aborts the whole
 transactional migration (drizzle-kit runs each file in one transaction). Run the
 matching preflight against the target database **before** applying and
 reconcile any hits; drizzle-kit cannot detect them because these files diff
 against existing data.
+
+- **`0027_price_version.sql`** — one new, empty table (`price_version`) with its
+  checks, FKs and `price_version_scope_idx` (cheap at first apply: the table is
+  empty), plus the hand-written `price_version_no_overlap` EXCLUDE constraint
+  (also cheap on an empty table). Because the exclusion key is the whole
+  `(organization_id, product_variant_id, location_id-or-sentinel,
+  channel_id-or-sentinel)` scope over a `tstzrange(effective_from,
+  effective_to, '[)')` window, the table must be empty or overlap-free at
+  apply; at first apply it is empty. No separate preflight query is needed. On a
+  later populated table the constraint build takes a write lock and fails if two
+  versions in one scope already overlap, so preflight before applying:
+
+  ```sql
+  SELECT organization_id, product_variant_id,
+         COALESCE(location_id, '00000000-0000-0000-0000-000000000000'::uuid) AS location_key,
+         COALESCE(channel_id,  '00000000-0000-0000-0000-000000000000'::uuid) AS channel_key,
+         tstzrange(effective_from, effective_to, '[)') AS window
+  FROM price_version
+  WHERE effective_from IS NOT NULL
+  ORDER BY organization_id, product_variant_id, location_key, channel_key, effective_from;
+  ```
+
+  Any pair of adjacent rows for one scope whose windows overlap
+  (`&&`) must be reconciled first (close the older window, or change its
+  `effective_to`), because an overlapping approval is rejected, never silently
+  superseded (`DEC-077`). The sentinel in the query mirrors the constraint, so a
+  null `location_id`/`channel_id` is compared as the single "any" scope.
 
 - **`0026_sales_line_reversal_unique.sql`** — the non-concurrent
   `CREATE UNIQUE INDEX sales_line_reversal_of_id_key ON sales_line
@@ -683,6 +716,30 @@ only, so the down file is an explicit operator action, not an automatic one.
   before a data repair); while dropped, only the application pre-check prevents a
   double reversal. Apply it manually with
   `psql "$DATABASE_URL" -f packages/persistence/drizzle/0026_sales_line_reversal_unique_down.sql`.
+- **0027 adds the price-version table and follows the down convention:**
+  `0027_price_version.sql` is generated DDL for `price_version`
+  (`organization_id`, `product_variant_id`, the nullable `location_id`/
+  `channel_id` scope columns, `gross_price`/`net_price` numeric(19,4), the
+  `effective_from`/`effective_to` window, `approved_by`/`approved_at`, the
+  required `source_scenario_id` FK and `created_at`, with the
+  `price_version_price_check` / `price_version_effective_range_check`
+  constraints, the org/variant/location/channel/scenario FKs and the
+  `price_version_scope_idx` index) plus one hand-written statement: the
+  `price_version_no_overlap` EXCLUDE constraint (`DEC-077`) that makes an
+  approved price effective for exactly one
+  `(organization_id, product_variant_id, location_id, channel_id)` scope over a
+  half-open `tstzrange(effective_from, effective_to, '[)')` window, with
+  `COALESCE(<col>, '00000000-0000-0000-0000-000000000000'::uuid)` normalizing a
+  null `location_id`/`channel_id` so every null means ONE "any location"/"any
+  channel" scope instead of an unlimited number of them. It adds one table.
+  `0027_price_version_down.sql` first drops the hand-written
+  `price_version_no_overlap` constraint and then the `price_version` table inside
+  one `BEGIN;`/`COMMIT;` (with `DROP ... IF EXISTS`/`DROP TABLE IF EXISTS` so a
+  half-applied manual run cannot wedge); the index and the FKs/checks drop with
+  the table. It is **destructive** — approved price history is lost — so run it
+  only while that price history need not be preserved (AGENTS.md Rule 2). Apply
+  it manually with
+  `psql "$DATABASE_URL" -f packages/persistence/drizzle/0027_price_version_down.sql`.
 
 **Re-applying after a manual down:** drizzle-kit tracks applied migrations in
 `drizzle.__drizzle_migrations`, not by comparing the schema, so a plain
@@ -700,8 +757,9 @@ for 0003, `… = 1789850858806` for 0004, `… = 1789851925634` for 0005,
 `… = 1789902579323` for 0018, `… = 1789904976754` for 0019,
 `… = 1789911710033` for 0020, `… = 1789913486015` for 0021,
 `… = 1789915583040` for 0022, `… = 1789917983755` for 0023,
-`… = 1789938630318` for 0024, `… = 1789938645539` for 0025 and
-`… = 1789940067864` for 0026, then
+`… = 1789938630318` for 0024, `… = 1789938645539` for 0025,
+`… = 1789940067864` for 0026 and
+`… = 1789949551665` for 0027, then
 `npm run db:migrate` (0003 verified 2026-09-19; 0005 rehearsed in the slice-3
 review follow-up; 0006 rehearsed with the slice-4 receiving work; 0007 and
 0008 rehearsed with the slice-4 review follow-up; 0009 rehearsed with the
@@ -720,9 +778,12 @@ the down restored the `0021` guard, the ledger row was deleted and
 persistence work — 0024's down dropped the tolerance table and deleting its
 ledger row then re-applying restored it (63 tables), 0025's down restored the
 four-value checks with no row changes, then deleting its ledger row and
-re-applying restored the five-value ones, and 0026's down dropped the
+re-applying restored the five-value ones, 0026's down dropped the
 `sales_line_reversal_of_id_key` partial unique index with no row changes, then
-deleting its ledger row and re-applying restored it).
+deleting its ledger row and re-applying restored it, and 0027's down dropped the
+`price_version_no_overlap` constraint and the `price_version` table, then
+deleting its ledger row and re-applying restored the table, its index and the
+EXCLUDE constraint — 64 tables).
 A **full 0011 down** drops the tables the three 0012 constraints live on, so its
 replay must clear **both** ledger rows, not just 0011's:
 `DELETE FROM drizzle.__drizzle_migrations WHERE created_at IN (1789862475550, 1789862630158);`
@@ -974,6 +1035,7 @@ session will not serialise against each other.
 | 0024 | `0024_reconciliation_tolerance.sql` | Generated + hand-written: the `DEC-072` `reconciliation_tolerance` table (`organization_id`, `kind`, `rate numeric(9,6)`, `floor_amount numeric(19,4)`, `effective_from`/`effective_to` `date`, audit columns, the `reconciliation_tolerance_kind_check` / `_rate_check` / `_floor_check` / `_effective_range_check` constraints, the org FK and `reconciliation_tolerance_org_kind_idx`). Hand-written: the `reconciliation_tolerance_no_overlap` EXCLUDE constraint (`(organization_id, kind)`, `daterange(effective_from, effective_to, '[)')` `WITH &&`). Down companion: `0024_reconciliation_tolerance_down.sql` (drops the constraint then the table — destructive) |
 | 0025 | `0025_mapping_state_conflict.sql` | Generated: drops and recreates `import_staging_row_mapping_state_check` and `sales_line_mapping_state_check` with the five-value `MAPPING_STATE` including `conflict` (`DEC-074`). No table. Down companion: `0025_mapping_state_conflict_down.sql` (restores the four-value checks; re-add validates existing rows) |
 | 0026 | `0026_sales_line_reversal_unique.sql` | Generated: adds `sales_line_reversal_of_id_key`, a partial unique index on `sales_line.reversal_of_id` `WHERE "reversal_of_id" is not null`, so at most one line reverses a given line (`DEC-073`) — the race-safe database backstop for `reverseSalesLine`'s application pre-check. No table. Down companion: `0026_sales_line_reversal_unique_down.sql` (drops the index) |
+| 0027 | `0027_price_version.sql` | Generated + hand-written: the `DEC-064`/`DEC-077` `price_version` table (`organization_id`, `product_variant_id`, nullable `location_id`/`channel_id`, `gross_price`/`net_price` numeric(19,4), the `effective_from`/`effective_to` window, `approved_by`/`approved_at`, the required `source_scenario_id` FK, `created_at`, the `price_version_price_check` / `price_version_effective_range_check` constraints, the five FKs and `price_version_scope_idx`). Hand-written: the `price_version_no_overlap` EXCLUDE constraint on the scope columns and `tstzrange(effective_from, effective_to, '[)')`, normalizing a null `location_id`/`channel_id` to a single "any" scope with a COALESCE sentinel. Down companion: `0027_price_version_down.sql` (drops the constraint then the table — destructive) |
 
 Order matters: extensions before DDL that calls `gen_random_uuid()`, and before
 the exclusion constraints. Verify with:
@@ -1003,7 +1065,7 @@ DATABASE_URL=postgres://aquarela:aquarela@localhost:5432/aquarela npm run db:mig
 `public` alone leaves the ledger intact, so `db:migrate` reports success while
 restoring nothing. `DROP SCHEMA drizzle CASCADE` clears the ledger so all
 migrations replay from 0000. Verified: after this sequence `db:migrate`
-re-applies 0000–0026 and the database has all 63 tables plus both extensions
+re-applies 0000–0027 and the database has all 64 tables plus both extensions
 (0004 adds the four slice-3 master-data tables; 0006 adds the two slice-4
 receiving tables; 0007 adds the `goods_receipt_line` guard trigger — no table;
 0008 relaxes the `supplier_price` range check — no table; 0009 adds the two
@@ -1029,13 +1091,15 @@ the `stock_movement_source_guard` body to add the `sales_line` branch — four
 tables; 0024 adds the `DEC-072` `reconciliation_tolerance` table and its
 `reconciliation_tolerance_no_overlap` EXCLUDE constraint — one table; 0025
 recreates the two five-value mapping-state checks — no table; 0026 adds the
-`sales_line_reversal_of_id_key` partial unique index — no table).
+`sales_line_reversal_of_id_key` partial unique index — no table; 0027 adds the
+`DEC-064`/`DEC-077` `price_version` table and its `price_version_no_overlap`
+EXCLUDE constraint — one table).
 0013–0019 were added after this replay was verified; all are additive and
-table-count-neutral. `0020`, `0021`, `0022`, `0023` and `0024` are the only
-migrations after the replay was written to add tables (four, four, three, four
-and one respectively), so the 63-table figure above is the expected
-post-`0024` count (51 after `0020`, 55 after `0021`, 58 after `0022`, 62 after
-`0023`); `0025` and `0026` are table-neutral. `0014`–`0026`'s
+table-count-neutral. `0020`, `0021`, `0022`, `0023`, `0024` and `0027` are the
+only migrations after the replay was written to add tables (four, four, three,
+four, one and one respectively), so the 64-table figure above is the expected
+post-`0027` count (51 after `0020`, 55 after `0021`, 58 after `0022`, 62 after
+`0023`, 63 after `0024`); `0025` and `0026` are table-neutral. `0014`–`0027`'s
 apply/re-run/down/re-apply was rehearsed on the local dev database 2026-09-20.
 
 Once real data exists, this path is no longer acceptable: use small atomic
@@ -1197,6 +1261,21 @@ After applying to an empty database the following were verified with `psql`:
 - `sales_line` (0026, `DEC-073`): a second line with the same non-null
   `reversal_of_id` is rejected by `sales_line_reversal_of_id_key`; many lines with
   `reversal_of_id IS NULL` are accepted (the partial index ignores them).
+- `price_version` (0027, `DEC-077`): an overlapping
+  `tstzrange(effective_from, effective_to, '[)')` window for the same
+  `(organization_id, product_variant_id, location_id, channel_id)` scope is
+  rejected by `price_version_no_overlap` (a version closing at `2026-07-01` and
+  one opening the same day is not an overlap); the **sentinel** makes a null
+  `location_id`/`channel_id` one "any" scope, so two overlapping rows that both
+  leave the channel (or location) null are also rejected, while a null-channel
+  row does not collide with a channel-specific one; a negative `gross_price` or
+  `net_price` is rejected by `price_version_price_check`, a backwards/empty
+  window by `price_version_effective_range_check`, and a `source_scenario_id`
+  that does not name a `price_scenario` by
+  `price_version_source_scenario_id_price_scenario_id_fk`.
+  `findEffectivePriceVersion` resolves the half-open `[effective_from,
+  effective_to)` version effective at an as-of instant (`effective_to` is
+  exclusive).
 - Deferrable FKs: a `calculation_snapshot` and its `cost_card` can be inserted
   in the same transaction in either order and commit together.
 - `calculation_snapshot`: a plain `TRUNCATE` is blocked first by the FK from

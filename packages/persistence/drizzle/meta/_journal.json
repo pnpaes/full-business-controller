@@ -190,6 +190,13 @@
       "when": 1789940067864,
       "tag": "0026_sales_line_reversal_unique",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1789949551665,
+      "tag": "0027_price_version",
+      "breakpoints": true
     }
   ]
 }

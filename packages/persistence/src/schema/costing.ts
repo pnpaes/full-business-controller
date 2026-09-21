@@ -6,6 +6,7 @@ import {
   approvalCheck,
   currency,
   dateRange,
+  effectiveRange,
   enumCheck,
   jsonObject,
   money,
@@ -59,6 +60,55 @@ export const priceScenario = pgTable(
   (t) => [
     check("price_scenario_state_check", enumCheck(t.state, PRICE_SCENARIO_STATE)),
     index("price_scenario_variant_idx").on(t.organizationId, t.productVariantId),
+  ],
+);
+
+/**
+ * `price_version` (`DATA_DICTIONARY` §price_scenario/price_version,
+ * PRICE-002/003; `DEC-064`, `DEC-077`): the effective, approved price for one
+ * exact `(organization, product variant, location, channel)` scope, created
+ * from an approved `price_scenario` (`source_scenario_id`). A null
+ * `location_id`/`channel_id` is a single "any location"/"any channel" scope, not
+ * an open filter, and the non-overlapping half-open
+ * `[effective_from, effective_to)` window per scope is enforced by the
+ * hand-written `price_version_no_overlap` EXCLUDE constraint in
+ * `0027_price_version.sql` (drizzle-kit cannot express it; the columns stay
+ * plain `uuid` here so `generate` never fights it). `approved_by` is a plain
+ * uuid with no FK, mirroring `cost_card.approved_by` (the `app_user` FK is
+ * deferred, see the runbook's deferred-FK list).
+ */
+export const priceVersion = pgTable(
+  "price_version",
+  {
+    id: uuidPk(),
+    organizationId: orgId().references(() => organization.id),
+    productVariantId: uuid("product_variant_id")
+      .notNull()
+      .references(() => productVariant.id),
+    locationId: uuid("location_id").references(() => location.id),
+    channelId: uuid("channel_id").references(() => channel.id),
+    grossPrice: money("gross_price").notNull(),
+    netPrice: money("net_price").notNull(),
+    ...effectiveRange(),
+    approvedBy: uuid("approved_by").notNull(),
+    approvedAt: tstz("approved_at").notNull(),
+    sourceScenarioId: uuid("source_scenario_id")
+      .notNull()
+      .references(() => priceScenario.id),
+    createdAt: tstz("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    check("price_version_price_check", sql`${t.grossPrice} >= 0 and ${t.netPrice} >= 0`),
+    check("price_version_effective_range_check", rangeCheck(t.effectiveFrom, t.effectiveTo)),
+    index("price_version_scope_idx").on(
+      t.organizationId,
+      t.productVariantId,
+      t.locationId,
+      t.channelId,
+      t.effectiveFrom,
+    ),
+    // price_version_no_overlap (exclusion constraint) is emitted in the raw
+    // 0027_price_version migration, as in tax.ts / 0012 / 0024.
   ],
 );
 
