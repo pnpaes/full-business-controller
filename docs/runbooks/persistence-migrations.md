@@ -169,8 +169,8 @@ because its target table varies by `source_type`.
 
 ## Pre-apply preflight for validating constraints and indexes
 Migrations 0014, 0016, 0017, 0018, 0019, 0020, 0021, 0022, 0023, 0024, 0025,
-0026, 0027, 0028, 0029, 0030, 0031, 0032, 0033, 0035, 0037, 0040, 0041, 0042 and
-0043 add objects that validate or build, so a failure
+0026, 0027, 0028, 0029, 0030, 0031, 0032, 0033, 0035, 0037, 0040, 0041, 0042,
+0043, 0044 and 0045 add objects that validate or build, so a failure
 aborts the whole transactional migration (drizzle-kit runs each file in one
 transaction). Run the matching preflight against the target database **before**
 applying and reconcile any hits; drizzle-kit cannot detect them because these
@@ -1281,6 +1281,48 @@ only, so the down file is an explicit operator action, not an automatic one.
   down cannot fail on data; while dropped, the references' organization
   coherence is validated only by the application. Apply it manually with
   `psql "$DATABASE_URL" -f packages/persistence/drizzle/0043_checklists_org_guard_down.sql`.
+- **0044 adds the equipment and maintenance-log tables and follows the down
+  convention:** `0044_equipment.sql` is generated DDL for the two tables, additive
+  like `0037`/`0040`/`0042`: `equipment` (the FKs to `organization` and
+  `location`, the `equipment_organization_id_code_key` unique on
+  `(organization_id, code)`, the `equipment_code_nonempty_check` /
+  `equipment_name_nonempty_check` non-empty checks and the
+  `equipment_org_location_idx` / `equipment_org_active_idx` org-first indexes) and
+  `maintenance_log` (the FKs to `organization`, `equipment` and the nullable
+  `file_object`, the `maintenance_log_kind_check` vocabulary check and the
+  `maintenance_log_org_equipment_performed_idx` / `maintenance_log_org_kind_idx`
+  org-first indexes), all cheap at first apply because both tables start empty. It
+  adds two tables and no hand-written statement.
+  `0044_equipment_down.sql` drops the two tables (FK-safe order:
+  `maintenance_log` first — it FKs `equipment` — then `equipment`), inside one
+  `BEGIN;`/`COMMIT;` and with `DROP TABLE IF EXISTS` so a half-applied manual run
+  cannot wedge. It is **destructive** — every equipment register row and
+  maintenance log row is lost — so run it only while those rows need not be
+  preserved (AGENTS.md Rule 2). Apply it manually with
+  `psql "$DATABASE_URL" -f packages/persistence/drizzle/0044_equipment_down.sql`.
+  Apply `0045`'s down **before** `0044`'s down: its guard triggers live on
+  `equipment`/`maintenance_log`, which `0044`'s down drops.
+- **0045 adds the equipment cross-organization coherence guards and follows the
+  down convention:** `0045_equipment_org_guard.sql` is hand-written
+  (`DEC-079`'s `BEFORE INSERT OR UPDATE` guard shape, mirroring `0043`). Three
+  functions and three triggers: `equipment_location_org_guard` on `equipment`
+  rejects a `location_id` whose `location` belongs to another organization than
+  the equipment, `maintenance_log_equipment_org_guard` on `maintenance_log`
+  rejects an `equipment_id` whose `equipment` belongs to another organization than
+  the log, and `maintenance_log_file_object_org_guard` on `maintenance_log`
+  rejects a non-null `file_object_id` whose `file_object` belongs to another
+  organization than the log. Each resolves the referenced row's organization
+  through the existing FK path (a null `file_object_id` returns untouched; a
+  missing row falls through to the FK error) and raises `ERRCODE = '23514'`,
+  naming the offending column. It is **trigger-only and table-neutral**: it adds
+  no table and no constraint that validates an existing row, so it scans no row
+  and needs no preflight query.
+  `0045_equipment_org_guard_down.sql` drops the three triggers and their
+  functions inside one `BEGIN;`/`COMMIT;` (with `DROP ... IF EXISTS` so a
+  half-applied manual run cannot wedge). No table and no row is touched, so the
+  down cannot fail on data; while dropped, the references' organization
+  coherence is validated only by the application. Apply it manually with
+  `psql "$DATABASE_URL" -f packages/persistence/drizzle/0045_equipment_org_guard_down.sql`.
 
 **Re-applying after a manual down:** drizzle-kit tracks applied migrations in
 `drizzle.__drizzle_migrations`, not by comparing the schema, so a plain
@@ -1316,7 +1358,9 @@ for 0003, `… = 1789850858806` for 0004, `… = 1789851925634` for 0005,
 `… = 1790024758839` for 0040 and
 `… = 1790024895228` for 0041,
 `… = 1790027667971` for 0042 and
-`… = 1790027669000` for 0043, then
+`… = 1790027669000` for 0043,
+`… = 1790030048087` for 0044 and
+`… = 1790030073708` for 0045, then
 `npm run db:migrate` (0003 verified 2026-09-19; 0005 rehearsed in the slice-3
 review follow-up; 0006 rehearsed with the slice-4 receiving work; 0007 and
 0008 rehearsed with the slice-4 review follow-up; 0009 rehearsed with the
@@ -1394,7 +1438,19 @@ CHECK violations (`checklist_template_category_check`,
 `checklist_template_frequency_check`, `checklist_template_items_array_check`,
 `checklist_template_supersedes_self_check`, `checklist_run_status_check`,
 `checklist_run_results_array_check`) all raise `23514`, and a second revision
-superseding the first through the nullable `supersedes_id` was accepted).
+superseding the first through the nullable `supersedes_id` was accepted). 0044 on
+2026-09-21 added the two equipment tables and 0045 the three guards, then 0045's
+down dropped the three guard triggers and their functions with no table change
+(76 → 76 tables) and 0044's down dropped `maintenance_log` then `equipment`
+(76 → 74 tables), and deleting their ledger rows and re-applying restored the
+tables, their checks, uniques, FKs and indexes and the three guards — 76 tables,
+with a further `db:migrate` run a no-op (the ledger holds 46 rows); the rehearsal
+also observed duplicate `(organization_id, code)` raising `23505` on
+`equipment_organization_id_code_key`, the `maintenance_log_kind_check` and the
+non-empty `equipment_code_nonempty_check` / `equipment_name_nonempty_check` all
+raising `23514`, the three guard messages (`equipment.location_id …`,
+`maintenance_log.equipment_id …`, `maintenance_log.file_object_id …`) raising
+`23514`, and a NULL `file_object_id` accepted (the guard skips it).
 A **full 0011 down** drops the tables the three 0012 constraints live on, so its
 replay must clear **both** ledger rows, not just 0011's:
 `DELETE FROM drizzle.__drizzle_migrations WHERE created_at IN (1789862475550, 1789862630158);`
@@ -1685,6 +1741,8 @@ session will not serialise against each other.
 | 0041 | `0041_hms_incidents_org_guard.sql` | Hand-written (`DEC-079`'s guard shape applied to the HMS incidents FKs, mirroring `0039`): two functions and two `BEFORE INSERT OR UPDATE FOR EACH ROW` triggers — `hms_incident_org_guard` on `hms_incident` (rejects a `location_id` whose `location` belongs to another organization) and `corrective_action_org_guard` on `corrective_action` (rejects an `incident_id` or a `monitoring_reading_id` whose `hms_incident`/`monitoring_reading` belongs to another organization). No table and no TypeScript schema change. Down companion: `0041_hms_incidents_org_guard_down.sql` (drops the two triggers and their functions — no row is touched) |
 | 0042 | `0042_checklists.sql` | Generated: the two checklist tables, additive like `0037`/`0040` — `checklist_template` (the nullable `supersedes_id` self-FK, the `checklist_template_category_check` / `checklist_template_frequency_check` vocabulary checks, the `checklist_template_items_array_check` jsonb-array check and the `checklist_template_supersedes_self_check` no-self-supersede check) and `checklist_run` (the FKs to `checklist_template` and `location`, the `checklist_run_status_check` vocabulary and `checklist_run_results_array_check` jsonb-array checks, and org-first indexes). No hand-written statement. Down companion: `0042_checklists_down.sql` (drops the two tables, FK-safe order: `checklist_run` then `checklist_template` — destructive) |
 | 0043 | `0043_checklists_org_guard.sql` | Hand-written (`DEC-079`'s guard shape applied to the checklist FKs, mirroring `0041`): two functions and two `BEFORE INSERT OR UPDATE FOR EACH ROW` triggers — `checklist_template_org_guard` on `checklist_template` (rejects a `supersedes_id` whose template belongs to another organization) and `checklist_run_org_guard` on `checklist_run` (rejects a `template_id` or `location_id` whose `checklist_template`/`location` belongs to another organization). No table and no TypeScript schema change. Down companion: `0043_checklists_org_guard_down.sql` (drops the two triggers and their functions — no row is touched) |
+| 0044 | `0044_equipment.sql` | Generated: the two equipment tables, additive like `0037`/`0040`/`0042` — `equipment` (the FKs to `organization` and `location`, the `equipment_organization_id_code_key` unique on `(organization_id, code)`, the `equipment_code_nonempty_check` / `equipment_name_nonempty_check` non-empty checks and the `equipment_org_location_idx` / `equipment_org_active_idx` org-first indexes) and `maintenance_log` (the FKs to `organization`, `equipment` and the nullable `file_object`, the `maintenance_log_kind_check` vocabulary check and the `maintenance_log_org_equipment_performed_idx` / `maintenance_log_org_kind_idx` org-first indexes). No hand-written statement. Down companion: `0044_equipment_down.sql` (drops the two tables, FK-safe order: `maintenance_log` then `equipment` — destructive) |
+| 0045 | `0045_equipment_org_guard.sql` | Hand-written (`DEC-079`'s guard shape applied to the equipment/maintenance FKs, mirroring `0043`): three functions and three `BEFORE INSERT OR UPDATE FOR EACH ROW` triggers — `equipment_location_org_guard` on `equipment` (rejects a `location_id` whose `location` belongs to another organization), `maintenance_log_equipment_org_guard` on `maintenance_log` (rejects an `equipment_id` whose `equipment` belongs to another organization) and `maintenance_log_file_object_org_guard` on `maintenance_log` (rejects a non-null `file_object_id` whose `file_object` belongs to another organization). No table and no TypeScript schema change. Down companion: `0045_equipment_org_guard_down.sql` (drops the three triggers and their functions — no row is touched) |
 
 Order matters: extensions before DDL that calls `gen_random_uuid()`, and before
 the exclusion constraints. Verify with:
@@ -1714,7 +1772,7 @@ DATABASE_URL=postgres://aquarela:aquarela@localhost:5432/aquarela npm run db:mig
 `public` alone leaves the ledger intact, so `db:migrate` reports success while
 restoring nothing. `DROP SCHEMA drizzle CASCADE` clears the ledger so all
 migrations replay from 0000. Verified: after this sequence `db:migrate`
-  re-applies 0000–0043 and the database has all 74 tables plus both extensions
+  re-applies 0000–0045 and the database has all 76 tables plus both extensions
 (0004 adds the four slice-3 master-data tables; 0006 adds the two slice-4
 receiving tables; 0007 adds the `goods_receipt_line` guard trigger — no table;
 0008 relaxes the `supplier_price` range check — no table; 0009 adds the two
@@ -1769,20 +1827,25 @@ cross-organization coherence guards on `hms_incident` and `corrective_action`
 jsonb-array checks, the `supersedes_id` self-FK, the run FKs to
 `checklist_template` and `location` and org-first indexes — two tables; 0043
 adds the two checklist cross-organization coherence guards on
-`checklist_template` and `checklist_run` — no table, table-neutral).
+`checklist_template` and `checklist_run` — no table, table-neutral; 0044 adds the
+two equipment tables (`equipment` and `maintenance_log`) with their checks,
+uniques, FKs and org-first indexes — two tables; 0045 adds the three equipment
+cross-organization coherence guards on `equipment` and `maintenance_log` — no
+table, table-neutral).
 0013–0019 were added after this replay was verified; all are additive and
 table-count-neutral. `0020`, `0021`, `0022`, `0023`, `0024`, `0027`, `0030`,
-`0031`, `0033`, `0035`, `0037`, `0040` and `0042`
+`0031`, `0033`, `0035`, `0037`, `0040`, `0042` and `0044`
 are the only migrations after the replay was written to add tables (four, four,
-three, four, one, one, one, one, one, one, two, two and two respectively), so the
-74-table figure above is the
-expected post-`0043` count (51 after `0020`, 55 after `0021`, 58 after `0022`,
+three, four, one, one, one, one, one, one, two, two, two and two respectively), so
+the 76-table figure above is the
+expected post-`0045` count (51 after `0020`, 55 after `0021`, 58 after `0022`,
 62 after `0023`, 63 after `0024`, 64 after `0029`, 65 after `0030`, 66 after
 `0031` and `0032`, 67 after `0033`, still 67 after `0034`, 68 after `0035`,
 still 68 after `0036`, 70 after `0037`, still 70 after `0038`, still 70 after
-`0039`, 72 after `0040`, still 72 after `0041` and 74 after `0042`);
+`0039`, 72 after `0040`, still 72 after `0041`, 74 after `0042` and 76 after
+`0044`);
 `0025`, `0026`,
-`0028`, `0032`, `0034`, `0036`, `0038`, `0039`, `0041` and `0043`
+`0028`, `0032`, `0034`, `0036`, `0038`, `0039`, `0041`, `0043` and `0045`
 are table-neutral.
 `0014`–`0038`'s
 apply/re-run/down/re-apply was rehearsed on the local dev database 2026-09-20
@@ -1810,7 +1873,12 @@ down dropped the two checklist tables, `checklist_run` then
 checks, FKs and indexes and both `0043` guards — 74 tables, with a further
 `db:migrate` run a no-op; 0043 on 2026-09-21 — its down dropped the two guard
 triggers and their functions with no table change and the re-apply restored
-both guards — still 74 tables).
+both guards — still 74 tables; 0044 on 2026-09-21 — its down dropped
+`maintenance_log` then `equipment` (76 → 74 tables) and the re-apply restored
+the tables, their checks, uniques, FKs and indexes — 76 tables, with a further
+`db:migrate` run a no-op; 0045 on 2026-09-21 — its down dropped the three guard
+triggers and their functions with no table change and the re-apply restored all
+three guards — still 76 tables).
 
 Once real data exists, this path is no longer acceptable: use small atomic
 commits, expand → migrate → contract for schema changes, and a tested
