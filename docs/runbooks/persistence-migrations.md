@@ -170,11 +170,35 @@ because its target table varies by `source_type`.
 ## Pre-apply preflight for validating constraints and indexes
 
 Migrations 0014, 0016, 0017, 0018, 0019, 0020, 0021, 0022, 0023, 0024, 0025,
-0026, 0027, 0028, 0029, 0030, 0031, 0032 and 0033 add objects that validate or build, so a failure
+0026, 0027, 0028, 0029, 0030, 0031, 0032, 0033 and 0035 add objects that validate or build, so a failure
 aborts the whole transactional migration (drizzle-kit runs each file in one
 transaction). Run the matching preflight against the target database **before**
 applying and reconcile any hits; drizzle-kit cannot detect them because these
   files diff against existing data.
+
+- **`0035_file_object.sql`** — one new, empty table (`file_object`) with its
+  `file_object_size_bytes_check` check, the `file_object_org_storage_key_key`
+  unique on `(organization_id, storage_key)` and the organization FK (all cheap
+  at first apply: the table is empty), plus the hand-edited deferred
+  `import_run.file_object_id` FK (`import_run_file_object_id_file_object_id_fk`):
+  `ADD CONSTRAINT … NOT VALID` (metadata-only, still enforced for new writes)
+  followed by `VALIDATE CONSTRAINT` in the same transactional file — the
+  `0029`/`0031` pattern — because `import_run.file_object_id` may already hold
+  values while `file_object` starts empty. The `VALIDATE` scans `import_run`, so
+  preflight for non-null `file_object_id` values with no matching `file_object`
+  row before applying and reconcile every hit (repair the value, or leave the FK
+  added `NOT VALID`, per the pattern above):
+
+  ```sql
+  SELECT id, file_object_id
+  FROM import_run
+  WHERE file_object_id IS NOT NULL
+    AND file_object_id NOT IN (SELECT id FROM file_object);
+  ```
+
+  `file_object` is new and empty at apply, so any non-null link is an orphan
+  until its file row is inserted, and the table's own checks, unique and FK
+  cannot fail on existing rows.
 
 - **`0034_import_disposition_contract.sql`** — the `DEC-083` contract step is
   **data-only** and hand-written: it adds no table, index or validating
@@ -1055,6 +1079,49 @@ only, so the down file is an explicit operator action, not an automatic one.
   `meta/_journal.json` (like every `*_down.sql`), so it is applied manually with
   `psql "$DATABASE_URL" -f packages/persistence/drizzle/0034_import_disposition_contract_down.sql`;
   re-applying `0034` (after deleting its ledger row, below) drops the key again.
+- **0035 adds the `ADR-0006`/`DEC-085` file-object table and follows the down
+  convention:** `0035_file_object.sql` is generated DDL plus one hand-edited
+  statement. The generated part creates `file_object` (`organization_id`,
+  `storage_key`, `filename`, `mime`, `size_bytes bigint` with the
+  `file_object_size_bytes_check` check (`>= 0`), `checksum_sha256`, the
+  provisional free-text `retention_policy`, the nullable `uploaded_by`, the
+  `uploaded_at` default `now()`, the polymorphic `linked_entity_type`/
+  `linked_entity_id` (a plain uuid, no FK) and the audit columns, with the
+  `file_object_org_storage_key_key` unique on `(organization_id, storage_key)`
+  and the organization FK) and adds the `import_run.file_object_id` FK. The
+  hand-edited part defers that FK — `ADD CONSTRAINT
+  "import_run_file_object_id_file_object_id_fk" … NOT VALID` followed by
+  `ALTER TABLE "import_run" VALIDATE CONSTRAINT …` in the same transactional file
+  — because `import_run.file_object_id` may already hold values while
+  `file_object` starts empty (the `0029`/`0031` pattern). It adds one table.
+  `0035_file_object_down.sql` drops the `import_run.file_object_id` FK **first**
+  — it references the table — and then the `file_object` table inside one
+  `BEGIN;`/`COMMIT;` (with `DROP ... IF EXISTS`/`DROP TABLE IF EXISTS` so a
+  half-applied manual run cannot wedge); the table's checks, unique, FK and
+  indexes drop with it, and the `import_run.file_object_id` column itself stays a
+  plain uuid, as it was before `0035`. It is **destructive** — every stored
+  file's metadata (storage key, checksum, links) is lost and existing runs lose
+  their file link — so run it only while those files need not be preserved
+  (AGENTS.md Rule 2). Apply it manually with
+  `psql "$DATABASE_URL" -f packages/persistence/drizzle/0035_file_object_down.sql`.
+  Apply `0036`'s down **before** `0035`'s down: its guard trigger lives on
+  `import_run` and reads `file_object`, which `0035`'s down drops.
+- **0036 adds the `DEC-085` file-object organization guard and follows the down
+  convention:** `0036_file_object_org_guard.sql` is hand-written (`DEC-079`'s
+  `BEFORE INSERT OR UPDATE` guard shape applied to the `DEC-085`
+  `import_run.file_object_id` FK, mirroring `0032`). One function
+  (`file_object_org_guard()`) and one trigger (`file_object_org_guard` on
+  `import_run`) reject a non-null `import_run.file_object_id` whose
+  `file_object` belongs to another organization than the run. It resolves the
+  file organization through the existing FK path (a null `file_object_id`
+  returns immediately; a missing file falls through to the FK error) and raises
+  `ERRCODE = '23514'`. It adds no table.
+  `0036_file_object_org_guard_down.sql` drops the trigger and its function inside
+  one `BEGIN;`/`COMMIT;` (with `DROP ... IF EXISTS` so a half-applied manual run
+  cannot wedge). No table and no row is touched, so the down cannot fail on data;
+  while dropped, the reference's organization coherence is validated only by the
+  application. Apply it manually with
+  `psql "$DATABASE_URL" -f packages/persistence/drizzle/0036_file_object_org_guard_down.sql`.
 
 **Re-applying after a manual down:** drizzle-kit tracks applied migrations in
 `drizzle.__drizzle_migrations`, not by comparing the schema, so a plain
@@ -1081,7 +1148,9 @@ for 0003, `… = 1789850858806` for 0004, `… = 1789851925634` for 0005,
 `… = 1789972623859` for 0031 and
 `… = 1789973761461` for 0032 and
 `… = 1789977792561` for 0033 and
-`… = 1789989056234` for 0034, then
+`… = 1789989056234` for 0034 and
+`… = 1789990745770` for 0035 and
+`… = 1789990766802` for 0036, then
 `npm run db:migrate` (0003 verified 2026-09-19; 0005 rehearsed in the slice-3
 review follow-up; 0006 rehearsed with the slice-4 receiving work; 0007 and
 0008 rehearsed with the slice-4 review follow-up; 0009 rehearsed with the
@@ -1124,7 +1193,14 @@ re-applying restored the guard and rejected that insert again — 66 tables;
 0034 on 2026-09-21 dropped the retained `diagnostics.dispositions` key from the
 dev runs and its down rebuilt it from `import_disposition` value-identically
 (not order-identically), then deleting its ledger row and re-applying dropped it
-again — still 67 tables).
+again — still 67 tables; 0035 on 2026-09-21 dropped the
+`import_run.file_object_id` FK and the `file_object` table (67 tables), then
+deleting its ledger row and re-applying restored the table, its
+`file_object_org_storage_key_key` unique, its `size_bytes` check, its
+organization FK and the deferred `import_run.file_object_id` FK — 68 tables;
+0036's down dropped the `file_object_org_guard` trigger and its function with no
+row changes, then deleting its ledger row and re-applying restored the guard —
+still 68 tables).
 A **full 0011 down** drops the tables the three 0012 constraints live on, so its
 replay must clear **both** ledger rows, not just 0011's:
 `DELETE FROM drizzle.__drizzle_migrations WHERE created_at IN (1789862475550, 1789862630158);`
@@ -1406,6 +1482,8 @@ session will not serialise against each other.
 | 0032 | `0032_import_run_profile_org_guard.sql` | Hand-written (`DEC-079`'s guard shape applied to `DEC-081`'s `import_run.import_profile_id` FK): the `import_run_profile_org_guard` `BEFORE INSERT OR UPDATE FOR EACH ROW` trigger on `import_run` (one function) that rejects a non-null `import_profile_id` whose `import_profile` belongs to another organization than the run. No table and no TypeScript schema change. Down companion: `0032_import_run_profile_org_guard_down.sql` (drops the trigger and its function — no row is touched) |
 | 0033 | `0033_import_disposition.sql` | Generated + hand-appended (`DEC-083`): the `import_disposition` table — `import_staging_row_id` (FK → `import_staging_row(id)` `ON DELETE cascade`, required), `disposition` (`import_disposition_disposition_check`, in `unmapped`/`rejected`/`ignored`), the nullable `reason`, the required `actor_id` (a plain uuid; the `app_user` FK is deferred), `created_at` (the approval instant) and the `created_by`/`updated_at`/`updated_by`/`version` audit columns — with the `import_disposition_staging_row_key` unique on `(import_staging_row_id)` and **no `organization_id`** (scoped through `import_staging_row` → `import_run`, the `import_staging_row` precedent). Hand-appended: the backfill `INSERT … SELECT` from `import_run.diagnostics.dispositions` keeping the latest record per staging row (`DISTINCT ON (stagingRowId) … ORDER BY at DESC NULLS LAST`) and skipping malformed/out-of-vocabulary/orphaned records; the jsonb keys are retained frozen. Down companion: `0033_import_disposition_down.sql` (rebuilds each run's `diagnostics.dispositions` from the table, then drops it — lossless) |
 | 0034 | `0034_import_disposition_contract.sql` | Hand-written, **data-only** (`DEC-083` contract step): one `UPDATE "import_run" SET "diagnostics" = "diagnostics" - 'dispositions' WHERE "diagnostics" ? 'dispositions'` drops the retained-frozen jsonb key from every run that still carries it, leaving the other `diagnostics` keys (`posting_policy`/`issues`/`conflicts`/`totals`) untouched. No table, index, constraint or TypeScript schema change. Down companion: `0034_import_disposition_contract_down.sql` (rebuilds each run's `diagnostics.dispositions` from `import_disposition` ordered by `import_staging_row.source_row_no` — value-identical but not order-identical, restores nothing for a run with no table dispositions and drops nothing; **not journalled**, applied manually) |
+| 0035 | `0035_file_object.sql` | Generated + hand-edited (`ADR-0006`/`DEC-085`): the `file_object` platform table — `organization_id`, `storage_key`, `filename`, `mime`, `size_bytes` bigint (`file_object_size_bytes_check`, `>= 0`), `checksum_sha256`, the provisional free-text `retention_policy`, the nullable `uploaded_by` and the `uploaded_at` default `now()`, the polymorphic `linked_entity_type`/`linked_entity_id` (a plain uuid, no FK) and the audit columns — with the `file_object_org_storage_key_key` unique on `(organization_id, storage_key)` and the organization FK. Hand-edited: the nullable `import_run.file_object_id` FK in the deferred form (`ADD CONSTRAINT "import_run_file_object_id_file_object_id_fk" … NOT VALID` then `VALIDATE CONSTRAINT`) because `import_run` may already hold links while `file_object` starts empty (the `0029`/`0031` pattern). Down companion: `0035_file_object_down.sql` (drops the `import_run.file_object_id` FK first, then the table — destructive) |
+| 0036 | `0036_file_object_org_guard.sql` | Hand-written (`DEC-079`'s guard shape applied to `DEC-085`'s `import_run.file_object_id` FK, mirroring `0032`): the `file_object_org_guard` `BEFORE INSERT OR UPDATE FOR EACH ROW` trigger on `import_run` (one function) that rejects a non-null `file_object_id` whose `file_object` belongs to another organization than the run. No table and no TypeScript schema change. Down companion: `0036_file_object_org_guard_down.sql` (drops the trigger and its function — no row is touched) |
 
 Order matters: extensions before DDL that calls `gen_random_uuid()`, and before
 the exclusion constraints. Verify with:
@@ -1435,7 +1513,7 @@ DATABASE_URL=postgres://aquarela:aquarela@localhost:5432/aquarela npm run db:mig
 `public` alone leaves the ledger intact, so `db:migrate` reports success while
 restoring nothing. `DROP SCHEMA drizzle CASCADE` clears the ledger so all
 migrations replay from 0000. Verified: after this sequence `db:migrate`
-  re-applies 0000–0034 and the database has all 67 tables plus both extensions
+  re-applies 0000–0036 and the database has all 68 tables plus both extensions
 (0004 adds the four slice-3 master-data tables; 0006 adds the two slice-4
 receiving tables; 0007 adds the `goods_receipt_line` guard trigger — no table;
 0008 relaxes the `supplier_price` range check — no table; 0009 adds the two
@@ -1474,25 +1552,33 @@ FK — one table; 0032 adds the `DEC-081` import-run profile org-coherence guard
 trigger on `import_run` — no table; 0033 adds the `DEC-083`
 `import_disposition` table and backfills it from the run
 `diagnostics.dispositions` jsonb — one table; 0034 removes that retained jsonb
-key — no table, table-neutral).
+key — no table; 0035 adds the `ADR-0006`/`DEC-085` `file_object` table and the
+deferred `import_run.file_object_id` FK — one table; 0036 adds the `DEC-085`
+file-object org-coherence guard trigger on `import_run` — no table,
+table-neutral).
 0013–0019 were added after this replay was verified; all are additive and
 table-count-neutral. `0020`, `0021`, `0022`, `0023`, `0024`, `0027`, `0030`,
-`0031` and `0033`
+`0031`, `0033` and `0035`
 are the only migrations after the replay was written to add tables (four, four,
-three, four, one, one, one, one and one respectively), so the 67-table figure above is the
-expected post-`0034` count (51 after `0020`, 55 after `0021`, 58 after `0022`,
+three, four, one, one, one, one, one and one respectively), so the 68-table figure above is the
+expected post-`0036` count (51 after `0020`, 55 after `0021`, 58 after `0022`,
 62 after `0023`, 63 after `0024`, 64 after `0029`, 65 after `0030`, 66 after
-`0031` and `0032`, 67 after `0033`, still 67 after `0034`); `0025`, `0026`,
-`0028`, `0032` and `0034`
+`0031` and `0032`, 67 after `0033`, still 67 after `0034`, 68 after `0035`,
+still 68 after `0036`); `0025`, `0026`,
+`0028`, `0032`, `0034` and `0036`
 are table-neutral.
-`0014`–`0034`'s
+`0014`–`0036`'s
 apply/re-run/down/re-apply was rehearsed on the local dev database 2026-09-20
 (0030 and 0031 on 2026-09-21; 0032 on 2026-09-21; 0033 on 2026-09-21 — its
 down restored the two dev dispositions byte-identically and the re-apply
 rebuilt the table; 0034 on 2026-09-21 — its forward dropped the retained
 `diagnostics.dispositions` key and its down rebuilt it from `import_disposition`
 value-identically (not order-identically), with no table change; the re-run was
-a no-op).
+a no-op; 0035 on 2026-09-21 — its down dropped the `import_run.file_object_id`
+FK and the `file_object` table and the re-apply restored both — 68 tables; 0036
+on 2026-09-21 — its down dropped the `file_object_org_guard` trigger and its
+function with no table change and the re-apply restored the guard — still 68
+tables).
 
 Once real data exists, this path is no longer acceptable: use small atomic
 commits, expand → migrate → contract for schema changes, and a tested
@@ -1725,6 +1811,21 @@ After applying to an empty database the following were verified with `psql`:
   `totals`) are unchanged. The down path rebuilds `diagnostics.dispositions` from
   `import_disposition` ordered by `source_row_no`, so it is value-identical but
   not order-identical.
+- `import_run` / `file_object` (0035, `ADR-0006`/`DEC-085`): after applying, the
+  deferred `import_run_file_object_id_file_object_id_fk` is validated, so a
+  non-null `import_run.file_object_id` that names no `file_object` is rejected
+  (SQLSTATE `23503`); the preflight orphan query returns 0 rows once its hits are
+  reconciled.
+- `file_object` (0035): a duplicate `(organization_id, storage_key)` is rejected
+  by `file_object_org_storage_key_key`, and a negative `size_bytes` by
+  `file_object_size_bytes_check`.
+- `import_run` / `file_object` (0036, `DEC-079`/`DEC-085`): an `import_run`
+  linked to a `file_object` in another organization is rejected by
+  `file_object_org_guard` (SQLSTATE `23514`), on both INSERT and UPDATE, while a
+  same-organization file is accepted and a null `file_object_id` is untouched; a
+  file id that names no `file_object` is rejected by
+  `import_run_file_object_id_file_object_id_fk`. The guard is forward-only (it
+  does not re-validate rows written before the migration).
 - Deferrable FKs: a `calculation_snapshot` and its `cost_card` can be inserted
   in the same transaction in either order and commit together.
 - `calculation_snapshot`: a plain `TRUNCATE` is blocked first by the FK from
