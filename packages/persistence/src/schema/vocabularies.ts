@@ -383,3 +383,24 @@ export const INCIDENT_SEVERITY = ["low", "medium", "high", "critical"] as const;
 export const INCIDENT_STATUS = ["open", "investigating", "resolved", "closed"] as const;
 
 export const CORRECTIVE_ACTION_STATUS = ["open", "in_progress", "done", "verified"] as const;
+
+// `DEC-091` (`HMS-005`): the IK-mat checklist slice. `category` backs
+// `checklist_template_category_check`, `status` backs
+// `checklist_run_status_check` and `checklist_item_outcome` is the per-item
+// result vocabulary carried inside `checklist_run.results` (no column, so no
+// CHECK backs it). A checklist's `frequency` deliberately reuses the existing
+// `CHECK_FREQUENCY` above rather than adding a second cadence vocabulary. From
+// `schemas/domain-enums.yaml` (`checklist_category`, `checklist_run_status`,
+// `checklist_item_outcome`).
+export const CHECKLIST_CATEGORY = [
+  "opening",
+  "closing",
+  "cleaning",
+  "hygiene",
+  "food_safety",
+  "other",
+] as const;
+
+export const CHECKLIST_RUN_STATUS = ["in_progress", "completed"] as const;
+
+export const CHECKLIST_ITEM_OUTCOME = ["pass", "fail", "not_applicable"] as const;

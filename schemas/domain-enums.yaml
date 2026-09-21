@@ -129,3 +129,11 @@ incident_category: [work_accident, electrical, equipment, fire, near_miss, other
 incident_severity: [low, medium, high, critical]
 incident_status: [open, investigating, resolved, closed]
 corrective_action_status: [open, in_progress, done, verified]
+
+# DEC-091 (HMS-005): the IK-mat checklist template and its runs. Cleaning and
+# hygiene are checklist categories, not separate tables. A checklist's cadence
+# reuses `check_frequency` above; `checklist_item_outcome` is the per-item
+# result vocabulary inside `checklist_run.results` (no column of its own).
+checklist_category: [opening, closing, cleaning, hygiene, food_safety, other]
+checklist_run_status: [in_progress, completed]
+checklist_item_outcome: [pass, fail, not_applicable]

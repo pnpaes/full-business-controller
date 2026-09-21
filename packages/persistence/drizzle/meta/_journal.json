@@ -295,6 +295,20 @@
       "when": 1790024895228,
       "tag": "0041_hms_incidents_org_guard",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1790027667971,
+      "tag": "0042_checklists",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1790027669000,
+      "tag": "0043_checklists_org_guard",
+      "breakpoints": true
     }
   ]
 }

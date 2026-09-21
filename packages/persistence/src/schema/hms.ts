@@ -1,10 +1,23 @@
 import { sql } from "drizzle-orm";
-import { boolean, check, date, index, pgTable, text, unique, uuid } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  check,
+  date,
+  index,
+  jsonb,
+  pgTable,
+  text,
+  unique,
+  uuid,
+  type AnyPgColumn,
+} from "drizzle-orm/pg-core";
 
 import { auditColumns, enumCheck, orgId, quantity, tstz, uuidPk } from "./columns";
 import { location, organization, storageArea } from "./organization";
 import {
   CHECK_FREQUENCY,
+  CHECKLIST_CATEGORY,
+  CHECKLIST_RUN_STATUS,
   CORRECTIVE_ACTION_STATUS,
   INCIDENT_CATEGORY,
   INCIDENT_SEVERITY,
@@ -176,5 +189,85 @@ export const correctiveAction = pgTable(
     check("corrective_action_status_check", enumCheck(t.status, CORRECTIVE_ACTION_STATUS)),
     index("corrective_action_org_incident_idx").on(t.organizationId, t.incidentId),
     index("corrective_action_org_status_due_idx").on(t.organizationId, t.status, t.dueDate),
+  ],
+);
+
+/*
+ * `DEC-091` (`HMS-005`): the IK-mat checklist slice. One `checklist_template`
+ * row is one reusable checklist — its name, what kind of routine it covers
+ * (`category`, where cleaning and hygiene are categories rather than separate
+ * tables, the `period_close.checklist` precedent), how often it is due
+ * (`frequency`, the shared `CHECK_FREQUENCY` vocabulary) and its ordered items
+ * (`items` jsonb, an array). `active` retires a template without deleting it.
+ *
+ * `supersedes_id` satisfies `HMS-005`'s "version checklist templates": a new
+ * revision is a new row that supersedes the previous one (`nullable` self-FK),
+ * so every run stays pinned to the exact template row it used and a historical
+ * run never silently changes meaning. A row may not supersede itself
+ * (`checklist_template_supersedes_self_check`). The name is deliberately **not**
+ * unique per organization — a revision legitimately reuses its predecessor's
+ * name. `items` is checked to be a jsonb array; neither this table nor
+ * `checklist_run` is append-only (both carry `auditColumns()`, no trigger).
+ */
+export const checklistTemplate = pgTable(
+  "checklist_template",
+  {
+    id: uuidPk(),
+    organizationId: orgId().references(() => organization.id),
+    name: text("name").notNull(),
+    category: text("category").notNull(),
+    frequency: text("frequency").notNull(),
+    items: jsonb("items")
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    active: boolean("active").notNull().default(true),
+    supersedesId: uuid("supersedes_id").references((): AnyPgColumn => checklistTemplate.id),
+    ...auditColumns(),
+  },
+  (t) => [
+    check("checklist_template_category_check", enumCheck(t.category, CHECKLIST_CATEGORY)),
+    check("checklist_template_frequency_check", enumCheck(t.frequency, CHECK_FREQUENCY)),
+    check("checklist_template_items_array_check", sql`jsonb_typeof(${t.items}) = 'array'`),
+    check("checklist_template_supersedes_self_check", sql`${t.supersedesId} <> ${t.id}`),
+    index("checklist_template_org_category_idx").on(t.organizationId, t.category),
+  ],
+);
+
+/*
+ * `DEC-091` (`HMS-005`): one completed (or in-progress) checklist run — the
+ * fact that a template was walked at a location at an instant, by whom, with
+ * the per-item outcomes (`results` jsonb, an array of
+ * `CHECKLIST_ITEM_OUTCOME`-valued entries) and optional `notes`. `status`
+ * defaults `in_progress` and moves to `completed`; `performed_by` is a plain
+ * uuid (the `app_user` FK is deferred repo-wide, the
+ * `monitoring_reading.recorded_by` precedent). There is deliberately no
+ * evidence/`file_object` column (`DEC-091` does not name one).
+ */
+export const checklistRun = pgTable(
+  "checklist_run",
+  {
+    id: uuidPk(),
+    organizationId: orgId().references(() => organization.id),
+    templateId: uuid("template_id")
+      .notNull()
+      .references(() => checklistTemplate.id),
+    locationId: uuid("location_id")
+      .notNull()
+      .references(() => location.id),
+    runAt: tstz("run_at").notNull(),
+    performedBy: uuid("performed_by").notNull(),
+    status: text("status").notNull().default("in_progress"),
+    results: jsonb("results")
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    notes: text("notes"),
+    ...auditColumns(),
+  },
+  (t) => [
+    check("checklist_run_status_check", enumCheck(t.status, CHECKLIST_RUN_STATUS)),
+    check("checklist_run_results_array_check", sql`jsonb_typeof(${t.results}) = 'array'`),
+    index("checklist_run_org_location_run_idx").on(t.organizationId, t.locationId, t.runAt),
+    index("checklist_run_org_template_idx").on(t.organizationId, t.templateId),
+    index("checklist_run_org_status_idx").on(t.organizationId, t.status),
   ],
 );

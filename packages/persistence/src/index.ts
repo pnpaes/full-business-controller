@@ -6,6 +6,7 @@ export type { Database, DatabaseTransaction, DbClient, NodeDatabase } from "./cl
 export * from "./repositories/access";
 export * from "./repositories/audit";
 export * from "./repositories/bootstrap";
+export * from "./repositories/checklists";
 export * from "./repositories/cost-card";
 export * from "./repositories/costing";
 export * from "./repositories/counts";

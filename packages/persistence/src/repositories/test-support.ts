@@ -3,6 +3,8 @@ import { randomUUID } from "node:crypto";
 import type { Database, DatabaseTransaction, NodeDatabase } from "../client";
 import {
   channel,
+  checklistRun,
+  checklistTemplate,
   costCenter,
   correctiveAction,
   dataQualityException,
@@ -867,6 +869,55 @@ export async function createTestCorrectiveAction(
       organizationId,
       description: "Test corrective action",
       status: "open",
+      ...overrides,
+    })
+    .returning();
+  return rows[0]!;
+}
+
+/**
+ * A `DEC-091`/`HMS-005` checklist template. The vocabulary columns and the
+ * jsonb-array `items` get valid defaults, so a test need only override the field
+ * under test; `supersedes_id` stays null unless a test sets it.
+ */
+export async function createTestChecklistTemplate(
+  db: Database,
+  organizationId: string,
+  overrides: Partial<typeof checklistTemplate.$inferInsert> = {},
+): Promise<typeof checklistTemplate.$inferSelect> {
+  const rows = await db
+    .insert(checklistTemplate)
+    .values({
+      organizationId,
+      name: uniqueName("checklist"),
+      category: "cleaning",
+      frequency: "daily",
+      items: [],
+      ...overrides,
+    })
+    .returning();
+  return rows[0]!;
+}
+
+/**
+ * A `DEC-091`/`HMS-005` checklist run. `performed_by` gets a random uuid (the
+ * `app_user` FK is deferred) and the schema defaults take `status`/`results`, so
+ * a test need only override the field under test.
+ */
+export async function createTestChecklistRun(
+  db: Database,
+  organizationId: string,
+  refs: { readonly templateId: string; readonly locationId: string },
+  overrides: Partial<typeof checklistRun.$inferInsert> = {},
+): Promise<typeof checklistRun.$inferSelect> {
+  const rows = await db
+    .insert(checklistRun)
+    .values({
+      organizationId,
+      templateId: refs.templateId,
+      locationId: refs.locationId,
+      runAt: new Date("2026-01-01T08:00:00.000Z"),
+      performedBy: randomUUID(),
       ...overrides,
     })
     .returning();
