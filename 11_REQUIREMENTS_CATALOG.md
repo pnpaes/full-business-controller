@@ -148,6 +148,28 @@ Priority: **Must** = required for first operational MVP; **Should** = valuable i
 | WF-004 | Must | Derive worked hours from registered shifts with manager manual correction; no clock-in required in the MVP. |
 | WF-005 | Must | Produce a reproducible monthly payroll-input report for the accountant (employee, hours, hourly rate, expected pay, period) around 3 days before month-end, using registered shifts plus an assumption for remaining planned shifts. |
 | WF-006 | Must | Enforce access control, audit and retention for employee personal data. |
+| WF-007 | Must | Maintain employee personnel documents (contracts, certificates) as `file_object`-backed attachments on the employee record, visible only to owner, general_manager and admin, with audited upload/replace and retention (DEC-087). |
+
+## HMS and food safety
+
+| ID | Priority | Requirement |
+| --- | --- | --- |
+| HMS-001 | Must | Maintain a per-location HMS and food-safety (IK-mat) programme covering monitoring points/readings, incidents, corrective actions, checklists, equipment/maintenance and a compliance evidence export, built on the spec'd `task`/`approval` workflow platform tables (built now as the workflow host, no ADR dependency), with the `job`/worker/outbox async layer gated on `ADR-0004` acceptance (DEC-094). |
+| HMS-002 | Must | Define monitoring points (fridge, freezer and similar) with target range and reading frequency, and record readings with timestamp, value, operator and automatic in/out-of-range status. |
+| HMS-003 | Must | Record HMS incidents with owner, severity, due date, closure state and evidence via private file attachments. |
+| HMS-004 | Must | Record corrective actions linked to incidents with owner, due date, completion and audited closure. |
+| HMS-005 | Must | Version checklist templates (IK-mat self-checks, with cleaning/hygiene as a category) and record checklist runs with answers, non-conformities, actor and time. |
+| HMS-006 | Must | Maintain equipment with maintenance logs (date, type, performed by, notes and evidence). |
+| HMS-007 | Must | Produce a compliance/evidence export for regulators (Mattilsynet/IK-mat, Arbeidstilsynet) within authorized scope, covering readings, incidents, corrective actions, checklist runs and maintenance. |
+
+## Staff document library
+
+| ID | Priority | Requirement |
+| --- | --- | --- |
+| DOC-001 | Must | Maintain a staff document library of published documents with an all-staff audience, readable by all active staff at authorized locations. |
+| DOC-002 | Must | Let managers publish and version documents; only the currently published version is visible to staff, and superseded versions remain retrievable to managers. |
+| DOC-003 | Must | Support optional per-employee/version acknowledgement recording who acknowledged and when. |
+| DOC-004 | Must | Enforce read access to published documents for all staff and publish/version rights for managers, with audit of publish and acknowledgement actions. |
 
 ## Operations, reliability and governance
 
@@ -189,8 +211,13 @@ This map makes the release gate in `09_TESTING_AND_ACCEPTANCE.md:75` ("all Must 
 | Phase 2 | INV-001…INV-009, PROD-001…PROD-005, WASTE-001…WASTE-002, PLAN-001 | PLAN-001 requires DEC-019 (service levels and safety stock). |
 | Phase 3 | SALE-001…SALE-011, PRICE-006, REC-001…REC-006, RPT-001…RPT-005, WF-001…WF-006, OPS-001…OPS-003, OPS-005, DQ-001, INTG-001…INTG-003 | DEC-037 expanded the MVP to add workforce scheduling and the payroll-input report. INTG-001…INTG-003 are governed by DEC-015 and ADR-0011 (external publishing). SALE-009 (channel/applied tax per line) and SALE-010 (option/add-on normalization) are required by DEC-042/DEC-043. SALE-011 (zero-price included option lines retained for consumption but excluded from revenue/margin) is required by DEC-043. PRICE-006 (per-line effective tax resolution — fixed item rate or channel-overridden default) is required by DEC-045 and complements SALE-009. |
 | Phase 4 | FCST-001…FCST-004, COMP-001…COMP-004, PLAN-002, PLAN-003 | FCST-004 (scheduled AI-assisted advisories) is governed by DEC-039 and ADR-0009; PLAN-003 (advisory reorder suggestions) requires DEC-019; its history capture begins in Phase 2 but the suggestion layer arrives here. Competitor intelligence (COMP-001…COMP-004) is required by DEC-020 and feeds the AI-assisted analysis (DEC-039). |
-| Phase 5 | — | No remaining requirements; DEC-020 promoted competitor automation (COMP-003/COMP-004) into Phase 4. |
+| Phase 5 | — | No remaining requirements; DEC-020 promoted competitor automation (COMP-003/COMP-004) into Phase 4. Reserved; Phase 6 (HMS/workforce documents, below) was added by owner approval on 2026-09-21. |
 | Cross-cutting (all phases) | OPS-004, NFR-001, NFR-002, SEC-001…SEC-003, UX-001…UX-003, FND-006 | UX-003 arose from DEC-007 (users need help configuring pools/drivers and interpreting figures). |
+| Phase 6 | WF-007, DOC-001…DOC-004, HMS-001…HMS-007 | Owner-approved HMS & food-safety (IK-mat) + workforce-documents programme (2026-09-21, DEC-086). WF-007 (employee personnel documents with owner/GM/admin-only visibility) is required by DEC-087. DOC-001…DOC-004 (staff document library) are required by DEC-088. HMS-002…HMS-006 are required by DEC-089…DEC-092, HMS-007 by DEC-093, and HMS-001 requires the spec'd `task`/`approval` workflow platform tables (built now as the workflow host), with the `job`/worker/outbox async layer gated on `ADR-0004` acceptance as a prerequisite (DEC-094). |
 
 Every Must requirement is assigned to exactly one phase (or cross-cutting), and any new requirement ID must be added to this map when created (`00_README.md:61`).
+
+**Phase map note.** The new Phase 6 corresponds to **Epics 20–21** in `10_DELIVERY_PLAN.md`: Epic 20 is the workflow-platform prerequisite (the `task`/`approval` tables built now, with `job`/worker/outbox gated on `ADR-0004`, DEC-094), sequenced immediately before the Phase 6 programme in Epic 21.
+
+**Open point (WF-003).** Whether an employee who self-assigns a shift must hold an `app_user` login is **unresolved** — the spec allows an employee to exist without a login (`03_DOMAIN_MODEL.md:186`). Recorded as an owner input.
 

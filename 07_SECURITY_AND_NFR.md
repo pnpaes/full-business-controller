@@ -4,7 +4,7 @@
 
 Authorization combines role, organization, permitted locations and sensitive-module grants. Enforcement occurs in application services and queries, not only UI navigation.
 
-| Capability | Owner/GM | Location Manager | Kitchen | FOH | Purchasing | Finance | Admin | Analyst |
+| Capability | Owner / General Manager | Location Manager | Kitchen | FOH | Purchasing | Finance | Admin | Analyst |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | Company financial view | Full | Limited | None | None | Limited | Full | As required | Read |
 | Location operations | Full | Assigned | Assigned | Assigned | Read | Read | As required | Read |
@@ -17,9 +17,18 @@ Authorization combines role, organization, permitted locations and sensitive-mod
 | Employee records (name, role, rate, dates) | Full | Edit (location) | None | None | None | Full | As required | None |
 | Shift planning and rota | Full | Edit (assigned) | View own | View own | None | Read | As required | None |
 | Payroll-input reports | Full | None | None | None | None | Full | As required | Aggregate |
+| Employee personnel documents (contracts) | Full | None | None | None | None | None | Full | None |
+| Staff document library (published) | Publish/Read | Publish/Read | Read | Read | Read | Read | As required | Read |
+| HMS incidents/corrective actions | Full | Edit (location) | Record | Record | None | None | As required | None |
+| HMS monitoring logs | Read | Read | Record | Record | None | None | As required | Read |
 | Users/configuration | Owner grants | None | None | None | None | None | Technical | None |
 
 The final matrix is configurable and approved in Phase 0. Deny by default. Sensitive exports require the same scope as on-screen access.
+
+`admin` is a role code that must be explicitly granted per row: there is no implicit admin bypass
+(`packages/application/src/auth/access.ts:36` — `admin` grants nothing unless it is explicitly in
+`access.roles`). For employee personnel documents the granted roles are owner, general_manager and
+admin (finance excluded).
 
 Ownership and data-area accountability (product owner, technical owner, operational-data owner and the
 per-data-area business owners) are modelled as **assignable grants** rather than fixed fields: they carry
@@ -32,6 +41,25 @@ managers see employees and shifts at their assigned location; hourly rates and p
 restricted to owner/finance (and the accountant's scope). Access follows role plus location scope enforced
 server-side in services and queries, never by hiding UI. Sensitive employee and payroll-input exports
 require the same scope as on-screen access.
+
+Employee **personnel documents** (contracts, certificates; DEC-087) are highly sensitive personal data:
+they are visible only to owner, general_manager and admin — never to location managers, kitchen, FOH,
+purchasing, finance or analysts. Upload/replace is restricted to the same roles, is audited (actor, time,
+entity version, reason) and files are stored as private `file_object` attachments with signed downloads
+only within scope (`07.5`).
+
+The **staff document library** (DEC-088) is two-sided: all active staff may read published `all_staff`
+documents at their location scope; only managers publish and version documents. Superseded versions stay
+retrievable to managers only. Acknowledgements record who acknowledged which version and when, and are
+audited; acknowledgement records are personal data and follow the same minimization and access rules.
+
+**HMS incidents, corrective actions and monitoring logs** (DEC-089…DEC-093): incident and corrective-action
+registers are restricted to managers and the named HMS owner; operators (kitchen/FOH) record monitoring
+readings and checklist runs but cannot edit incidents. Evidence attachments are private `file_object`s.
+The compliance/evidence export to regulators (Mattilsynet/IK-mat, Arbeidstilsynet) requires the same
+scope as on-screen access and is audited like any sensitive export (`07.3`). The incident register
+follows SEC-003 (minimize, restrict sensitive exports/logs) and DEC-012, and its personal-data aspects
+are covered by the privacy review (`07.4`).
 
 ## 7.2 Authentication and sessions
 
@@ -58,6 +86,14 @@ Audit every login/security change and every create/update/retire/post/approve/re
 - Minimize employee data: role/cost-center loaded rates are the default.
 - Employee records, shifts, assignments, adjustments and payroll-input reports are personal data; apply
   purpose limitation (scheduling, worked-hours capture and payroll input only) and data minimization.
+- Personnel documents (contracts, certificates; WF-007/DEC-087) are personal data with purpose
+  limitation (employment administration and statutory documentation only); retain for the employment
+  duration plus the statutory period confirmed by the accountant, then delete or anonymize without
+  corrupting financial/audit obligations. Access is owner/GM/admin only (see §7.1).
+- HMS incidents, corrective actions and monitoring readings may contain operator identity and are
+  retained per food-safety and working-environment requirements (Mattilsynet/IK-mat, Arbeidstilsynet)
+  with the exact periods confirmed with the accountant; staff document acknowledgements are personal
+  data and follow the same minimization and deletion rules.
 - Retention and deletion follow Personopplysningsloven/GDPR. Working-time records must be retained per
   Norwegian working-environment requirements, with the exact periods confirmed by the accountant; delete
   personal data when no longer required without corrupting financial/audit obligations.

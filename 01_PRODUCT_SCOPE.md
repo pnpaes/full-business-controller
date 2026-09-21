@@ -46,7 +46,14 @@ Create one trusted internal system that makes the economics and physical operati
 12. **Insights:** dashboards, trends, variance, menu engineering, forecast (starting at daily location/category grain and automatically promoting to product-level grain once a clean-history threshold is met, always showing the active grain), budget and scenario comparison, and AI-assisted advisory analysis and suggestions.
 13. **Commercial planning:** seasonal calendar, competitor observations, experiments, recommendation workflow and AI-assisted advisory suggestions.
 14. **Tasks and alerts:** actionable exceptions, ownership, due dates, comments and resolution evidence.
-15. **Administration:** audit, data quality, imports, integrations, period locks, exports and retention.
+15. **HMS & food-safety (IK-mat):** temperature monitoring points and readings, IK-mat/HACCP checklists and routines (including cleaning/hygiene), incidents and corrective actions, the equipment register and maintenance log, and an inspection-ready evidence export for Mattilsynet / IK-mat and Arbeidstilsynet.
+16. **Documents:** employee personnel documents (contracts, certificates, ID documents) with restricted visibility on the employee profile, and a staff document library (versioned, published with optional acknowledgement tracking).
+17. **Administration:** audit, data quality, imports, integrations, period locks, exports and retention.
+
+> Scope note (DEC-086, owner approval 2026-09-21): the HMS & food-safety (IK-mat) module and the
+> personnel/staff-document capability were deliberately added to the product scope, overturning the
+> former food-safety non-goal in §1.7. The system holds and proves inspection evidence; it is not a
+> certifier or accreditation body.
 
 ## 1.5 In scope for first operational MVP
 
@@ -92,7 +99,7 @@ Create one trusted internal system that makes the economics and physical operati
 
 ## 1.7 Non-goals
 
-The platform is not a POS, webshop, accounting system, payroll engine or food-safety certification system. It is not a payroll processor: it does not run statutory payroll or produce payslips, but it does hold the minimum operational employee and shift information required for control and it does produce a payroll-input report for the accountant. It may integrate with those systems.
+The platform is not a POS, webshop, accounting system, payroll engine or food-safety certifier. It is not a payroll processor: it does not run statutory payroll or produce payslips, but it does hold the minimum operational employee and shift information required for control and it does produce a payroll-input report for the accountant. It may integrate with those systems. The former "not a food-safety certification system" non-goal was overturned and qualified by owner decision (DEC-086, 2026-09-21): the system **is** the IK-mat/HACCP inspection-evidence system (monitoring, checklists, incidents, records for Mattilsynet / IK-mat and Arbeidstilsynet), but it remains **not** a certifier or accreditation body — it does not award or issue food-safety certifications.
 
 ## 1.8 Operating principles
 

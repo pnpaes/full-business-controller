@@ -13,7 +13,7 @@ This file is **updated at the end of every slice** — statuses and the "current
 line move with the work; `CONTEXT.md` keeps the narrative handoff and the immediate
 `Resume here` section.
 
-**Current position:** HEAD `387fd89` on `main` (nothing pushed; nothing applied to
+**Current position:** HEAD `02f7c33` on `main` (nothing pushed; nothing applied to
 DigitalOcean). Slice 0, auth slices 1a–1e, slices 2–10, row 11
 (import framework + external mappings — **complete**: the `DEC-085`
 `file_object` platform table was delivered 2026-09-21 with migrations
@@ -24,30 +24,40 @@ cross-organization coherence guards**, the **`DEC-080`
 `data_quality_exception` table**, the **`DEC-081` import-profile table**, the
 **`DEC-082` import posting-policy enforcement**, the **`DEC-083`
 first-class `import_disposition` table (migration `0033`, contract step
-`0034`)**, the **`DEC-084` `PROD-003` variance producers** and the
-**`DEC-085` `file_object` table** are `done` and committed;
-`ADR-0006` was accepted 2026-09-21 and `ADR-0007` and `ADR-0008` accepted
-2026-09-20 (owner-delegated, revertible).
-Verification at `387fd89`:
-`typecheck`/`lint`/`build`/`format:check` clean; **1383/1383 tests with
+`0034`)**, the **`DEC-084` `PROD-003` variance producers**,
+the **`DEC-085` `file_object` table** and the **2026-09-21 small TECH open
+points** (the `numeric(19,6)` digit cap, commit `bda0b6b`; the
+`IMPORT_DISPOSITION` yaml key, commit `8b22468`; the
+`FakeCountStore.withTransaction` rollback fidelity, commit `02f7c33`) are
+`done` and committed; `ADR-0006` was accepted 2026-09-21 and `ADR-0007` and
+`ADR-0008` accepted 2026-09-20 (owner-delegated, revertible).
+**Programme approved (Phase A, 2026-09-21):** the owner approved an
+HMS & food-safety (IK-mat) module, employee personnel documents (contracts)
+and a staff document library — recorded as `DEC-086`…`DEC-094`, requirement
+ids `WF-007`, `DOC-001…DOC-004`, `HMS-001…HMS-007`, delivery **Phase 6 +
+Epics 20/21** (§4 rows 19/20).
+Verification at `02f7c33`:
+`typecheck`/`lint`/`build`/`format:check` clean; **1398/1398 tests with
 `DATABASE_URL`**
-(136 files); `npm audit --omit=dev` 0; `db:migrate` through `0036` is a no-op
-on re-run; 68 tables; the `0035`/`0036` down/re-apply rehearsed locally.
+(137 files); `npm audit --omit=dev` 0; `db:migrate` through `0036` is a no-op
+on re-run; 68 tables (no schema change).
 Programme
 direction: proceed autonomously, per task — parallel background agents →
 adversarial review + fixes → document status and next steps → commit → next
-task. **Remaining roadmap — all gated:** the receipt→ledger wiring needs the
-OPS destination `storage_area_id` policy; row 13 is **data-gated** on
-history/grain
-quality (I11); row 14 is **owner-gated** on a privacy review / access
-matrix; rows 15–18 remain blocked (data / `ADR-0009`–`0011`); the
-deployment rehearsal is parked on the owner inputs; the golden fixtures are
-unsigned. Candidate small unblocked TECH open points are recorded and
-unscheduled (the `numeric(19,6)` digit cap; the missing
-`schemas/domain-enums.yaml` `IMPORT_DISPOSITION` key; the
-`FakeCountStore.withTransaction` rollback-fidelity gap; the per-IP
-rate-limiter shared store).
-Next free decision id `DEC-086`.
+task. **Next task — buildable now:** the **HMS monitoring points + readings**
+(`monitoring_point` + `monitoring_reading`, `DEC-089`) — the first build
+step of the IK-mat package; self-contained, no ADR gate; then the programme
+build order (§4 rows 19–20). **Remaining gated roadmap:** the
+`job`/worker/outbox layer stays gated on **`ADR-0004` acceptance** (only
+`task`/`approval` build under `DEC-094`); the **WF-003 self-assignment
+login model** (must a self-assigning employee hold an `app_user` login?)
+and the **privacy-review retention periods per file class** remain open
+inputs; the receipt→ledger wiring needs the OPS destination
+`storage_area_id` policy; row 13 is **data-gated** on
+history/grain quality (I11); rows 15–18 remain blocked (data /
+`ADR-0009`–`0011`); the deployment rehearsal is parked on the owner inputs;
+the golden fixtures are unsigned.
+Next free decision id `DEC-095`.
 
 ## 2. The execution loop (per slice)
 
@@ -89,10 +99,19 @@ Pause the loop and raise to the owner, recording it in `CONTEXT.md`, when any of
   (As of 2026-09-21 the `Proposed` ADRs are `ADR-0004`, `ADR-0009`,
   `ADR-0010` and `ADR-0011`; `ADR-0006` is **accepted** 2026-09-21;
   `ADR-0005`, `ADR-0007` and `ADR-0008` are **accepted** 2026-09-20.)
+  **Programme note (2026-09-21):** under `DEC-094` the `task`/`approval`
+  platform tables build now without the gate; the `job`/worker/outbox layer
+  (Phase 6 / Epics 20–21) requires the named decider to accept `ADR-0004`
+  before that layer is built.
   *Needed from owner:* the named decider
   accepts or amends it in `docs/adr/` (`Accepted` with date) before the slice is treated as
   settled. Slice 1 is the owner-directed exception: proceed and accept `ADR-0003` in
   parallel, without treating it as settled (`CONTEXT.md`).
+- **WF-003 self-assignment login model (open owner input, 2026-09-21).** The
+  programme allows self-assigning employees (`WF-007`/`WF-003`); whether a
+  self-assigning employee must hold an `app_user` login is unresolved. This
+  gates the secure-parts access model for the staff document library
+  (`DEC-088`) and scheduling/shifts (row 14), not the HMS slices.
 - **Golden fixtures needed before a calculation is "verified".** *Needed from owner:*
   finance + product owner sign the six fixtures in `docs/phase0/GOLDEN_FIXTURES.md`
   (real supplier/recipe/labour data; I4/I5/I8 and the I9 accountant ruling). Until then the
@@ -107,7 +126,7 @@ Pause the loop and raise to the owner, recording it in `CONTEXT.md`, when any of
   approval in `DEC-015`, a named credentials owner, and a documented, tested rollback
   (`AGENTS.md` Rule 2). Never perform it without both.
 - **A decision would have to be invented.** *Needed from owner:* append the decision to
-  `12_OPEN_DECISIONS.md` (next id `DEC-066`) — never resolve accounting, tax, valuation,
+  `12_OPEN_DECISIONS.md` (next id `DEC-095`) — never resolve accounting, tax, valuation,
   privacy or system-of-record ambiguity in code (`13_AGENT_BUILD_BRIEF.md`).
 - **Slice budget reached.** The session has completed its agreed slice budget. *Needed from
   owner:* confirm the next slice (or that work pauses); hand off via `CONTEXT.md`.
@@ -140,11 +159,13 @@ sequence). Requirement IDs are from `11_REQUIREMENTS_CATALOG.md`; decision IDs f
 | 11 | Import framework + external mappings | P3 / epic 10 | `SALE-002`, `SALE-004`, `SALE-007`, `SALE-008`; `DEC-025`, `DEC-033`, `DEC-035`, `DEC-041`, `DEC-085`; `ADR-0008` (accepted 2026-09-20) | 3 | none — legacy I19 as reference; I1/I15 Frontline shapes gate real profiles | done (committed — migration `0022` (`import_run`/`import_staging_row`/`external_mapping`), vocabularies `IMPORT_STATUS`/`MAPPING_STATE`/`IMPORT_POSTING_POLICY`, domain `sales-mapping.ts` (`resolveExternalEntity`, SKU-first then external id, both `DEC-033` conflict directions), application `imports/**` (create/stage/validate/map/dispose/preview + list/get), web `/api/v1/imports/**` + `(app)/sales/**` + `seed-imports.ts`; row 11 **complete** 2026-09-21 — the `DEC-085` `file_object` table (migrations `0035`/`0036`) closed the last open point; verified 1383/1383 with `DATABASE_URL`) |
 | 12 | Sales + settlements + reconciliation | P3 / epic 11 | `SALE-001`–`011`, `PRICE-006`, `REC-001`–`006`; `DEC-026`, `DEC-035`, `DEC-040`, `DEC-042`, `DEC-043`, `DEC-045`; `ADR-0008` (**Accepted** 2026-09-20) | 8, 11 | none — `ADR-0008` accepted 2026-09-20 (inputs: I1 channel/SKU) | done (committed — migration `0023` (`sales_transaction`/`sales_line`/`settlement`/`reconciliation` + the `sales_line` branch in `stock_movement_source_guard`), vocabularies `RECONCILIATION_STATUS`/`OPTION_KIND`, domain `sales-consumption.ts` (recipe explosion + the `DEC-026` tolerance evaluator), application `sales/**` (`postImportRun`, `postTheoreticalConsumption`, list/get) + `reconciliation/**` (`reconcileImportRun`, `reconcileSettlement`, `resolveReconciliation`, list, `resolveTolerance`), web `/api/v1/sales/**` + `/api/v1/reconciliations/**` + `(app)/sales/**` screens (landing, transactions list/detail, reconciliation with resolve) + `seed-sales.ts`; verified 1186/1186 with `DATABASE_URL`) |
 | 13 | Close + dashboards + menu engineering | P3 / epic 12 | `REC-003`, `REC-006`, `RPT-001`–`005`; `DEC-027`, `DEC-032`; `ADR-0007` (**Accepted** 2026-09-20) | 12 | data — history/grain quality (I11) | todo (data-gated — synthetic fixtures until real history) |
-| 14 | Workforce: employees, shifts, worked hours, payroll-input report | P3 / epics 13–15 | `WF-001`–`006`; `DEC-012`, `DEC-037`, `DEC-038` | 1 | privacy review / access matrix approved (`SEC-003`) | blocked (owner) — note: owner-gated on the privacy review / access matrix |
+| 14 | Workforce: employees, shifts, worked hours, payroll-input report | P3 / epics 13–15 | `WF-001`–`007`; `DEC-012`, `DEC-037`, `DEC-038`, `DEC-087`; `SEC-003` | 1, row 20a (the `employee` entity, `DEC-087`) | none — the privacy review / access matrix was approved 2026-09-21 (Phase A); the **WF-003 self-assignment login model** (must a self-assigning employee hold an `app_user` login?) and the retention periods per file class remain open inputs | blocked (owner) — buildable once the `employee` entity lands; the WF-003 login model shapes scheduling/shifts |
 | 15 | Forecasts / budgets / planning | P4 / epic 16 | `FCST-001`–`003`, `PLAN-001`–`003`; `DEC-011`, `DEC-019` | 12, 13 | clean history / grain measured (I11, `DEC-011`) | blocked (data) |
 | 16 | Publishing integrations | P3 / epic 17 | `INTG-001`–`003`; `DEC-002`, `DEC-015`, `DEC-041`, `DEC-044`; `ADR-0011` (**Proposed**), `ADR-0008` | 3, 7, 12 | `ADR-0011` acceptance; per-source approval + named credentials owner (I18) | blocked (owner) |
 | 17 | AI-assisted advisory | P4 / epic 18 | `FCST-004`; `DEC-039`; `ADR-0009` (**Proposed**), `ADR-0004` (**Proposed**), `ADR-0007` | 13, 15 | `ADR-0009` acceptance; provider privacy/DPA review (I16) | blocked (owner) |
 | 18 | Automated connectors / optimization | P5 / epic 19 | `COMP-001`–`004`, `PLAN-003`; `DEC-020`; `ADR-0010` (**Proposed**) | 15, 16, 17 | `ADR-0010` acceptance; approved competitor sources (I17); measured history/accuracy | blocked (owner) |
+| 19 | HMS & food safety (IK-mat): monitoring points/readings, incidents + corrective actions, checklists/cleaning, equipment/maintenance, compliance export (the programme's full IK-mat package) | P6 / epics 20 (a/b/c/d/e) | `HMS-001`–`007`; `DEC-086` (programme), `DEC-089`–`DEC-093`; the privacy review (approved 2026-09-21) | 3, 8 (as-of balances isolated) | none for a/b/c/d/e — the named decider's **`ADR-0004` acceptance is required only for the `DEC-094` job/worker/outbox layer**, not for these tables | 19a: **next task** — HMS monitoring points + readings (`DEC-089`; `monitoring_point` + `monitoring_reading`), self-contained, no ADR gate; then 19b incidents + corrective actions (`DEC-090`), 19c checklists/cleaning (`DEC-091`), 19d equipment/maintenance (`DEC-092`; the draft table was renamed asset→equipment, no decision-history rewrite), 19e the compliance export (`DEC-093`) |
+| 20 | Task/approval platform + programme candidate gater (contracts, staff document library, personnel documents) | P6 / epics 21 | `WF-007`, `DOC-001`–`004`; `DEC-087`–`DEC-094`; `ADR-0004` (**Proposed** — job/worker/outbox layer only) | 19a; row 14 for `employee` | `task`/`approval` build now (`DEC-094`); the `job`/worker/outbox layer is **gated on `ADR-0004` acceptance** by the named decider | todo — build order: 20a `employee` + personnel documents (`DEC-087`; contracts visible only to owner + general_manager + admin, finance excluded), 20b the staff document library (`DEC-088`; all-staff read published `all_staff` docs, managers publish, versioned, optional acknowledgement, append-only), then the `task`/`approval` platform tables (`DEC-094`) |
 
 Convention: `blocked (owner)` means an owner/tech acceptance or approval named in the gate
 is required before the slice can be implemented or relied on; `blocked (data)` means a
@@ -290,9 +311,10 @@ dates assigned):
       and how "verified" is represented in code are unpinned. The gate stands:
       no cost is "verified" before owner sign-off. owner/FIN.
   16. (Standing, from earlier slices) the unit `m` vs missing `length` dimension,
-      and the missing `numeric(19,6)` digit cap in
-      `packages/domain/src/decimal.ts` — tracked in the standing bullets
-      below. owner/TECH.
+      and ~~the missing `numeric(19,6)` digit cap in
+      `packages/domain/src/decimal.ts`~~ resolved 2026-09-21 (commit
+      `bda0b6b`; see the standing bullet below) — tracked in the standing
+      bullets below. owner/TECH.
 - **Price-version scope-resolution fallback (surfaced 2026-09-21, from the
   price-version slice; recorded not decided)** — `findEffectivePriceVersion`
   resolves exact scope only: there is no company-wide (`null` location/channel)
@@ -558,16 +580,48 @@ dates assigned):
   (`DEC-084`) and the `file_object` platform table (migrations `0035`/`0036`)
   `DEC-085`).
   Candidate small unblocked TECH open points (recorded, unscheduled — take
-  one only if asked): the `numeric(19,6)` digit cap in
-  `packages/domain/src/decimal.ts`; the missing `schemas/domain-enums.yaml`
-  key for `IMPORT_DISPOSITION`; the `FakeCountStore.withTransaction`
-  no-rollback fake-fidelity gap; the per-IP rate-limiter shared store (needs
-  a migration). The remaining recorded open points above stay open. Next free
-  decision id **`DEC-086`**.
+  one only if asked): the per-IP rate-limiter shared store (needs
+  a migration and a store choice); the reset-token delivery stub (until the
+  email slice). ~~the `numeric(19,6)` digit cap in
+  `packages/domain/src/decimal.ts`~~ resolved 2026-09-21 (commit `bda0b6b`);
+  ~~the missing `schemas/domain-enums.yaml` key for `IMPORT_DISPOSITION`~~
+  resolved 2026-09-21 (commit `8b22468`); ~~the `FakeCountStore`
+  no-rollback fake-fidelity gap~~ resolved 2026-09-21 (commit `02f7c33` —
+  `withTransaction` now snapshots/restores). **The programme (Phase A,
+  `DEC-086`…`DEC-094`) supersedes the "no unblocked task remains" state —
+  see the programme bullet below.** The remaining recorded open points
+  above stay open. Next free
+  decision id **`DEC-095`**.
+- **Phase A approved (2026-09-21; the new programme — `DEC-086`…`DEC-094`):**
+  HMS & food-safety (IK-mat) module, employee personnel documents (contracts)
+  and a staff document library; scope amended in `01_PRODUCT_SCOPE.md`
+  (the food-safety non-goal overturned); requirement ids `WF-007`,
+  `DOC-001…DOC-004`, `HMS-001…HMS-007` + phase map; delivery Phase 6 +
+  Epics 20/21 (§4 rows 19/20); access-matrix rows + retention notes in
+  `07_SECURITY_AND_NFR.md`; screens in `08_UI_UX.md`.
+  **Open inputs (recorded, do not decide):** the **`ADR-0004` gate** — the
+  named decider's acceptance is required before the `DEC-094`
+  `job`/worker/outbox layer (`task`/`approval` build now); the **WF-003
+  self-assignment login model** (must a self-assigning employee hold an
+  `app_user` login?); the **privacy-review retention periods per file
+  class** (personnel documents, incident register, acknowledgements).
+  **Build order:** row 19a HMS monitoring points + readings (`DEC-089`,
+  the next task) → incidents + corrective actions (`DEC-090`) →
+  `employee` + personnel documents (`DEC-087`) → staff document library
+  (`DEC-088`) → checklists/cleaning (`DEC-091`) → equipment/maintenance
+  (`DEC-092`) → compliance export (`DEC-093`) → `task`/`approval`
+  (`DEC-094`, job layer gated). Reversed next-free-id note: the register's
+  historical "next free id `DEC-086`" pointers below predate Phase A and
+  were superseded — the live id is **`DEC-095`**.
 - **Unit `m` vs the missing `length` dimension** — a dimension-vocabulary mismatch in
   `schemas/domain-enums.yaml` surfaced by slice 3; owner/TECH to resolve (FND-003).
-- **`numeric(19,6)` digit cap in `packages/domain/src/decimal.ts`** — the domain decimal
-  type lacks the cap; TECH, before a slice relies on it.
+- **~~`numeric(19,6)` digit cap in `packages/domain/src/decimal.ts`~~ resolved
+  2026-09-21 (commit `bda0b6b`)** — `parseDecimal` now rejects a value beyond
+  the `numeric(19, scale)` storage precision (money `numeric(19,4)`,
+  quantities `numeric(19,6)`, leading zeros excluded from the count) with the
+  new `packages/domain/src/decimal.test.ts`; `reviewer-glm` — no
+  blocker/major, its boundary-test minor applied, the looser-than-`numeric(9,6)`
+  rate/`numeric(19,10)` tax columns note recorded in the `ponytail:` note.
 - **UI palette hex values + data-viz palette semantics** — owner (BUS) sign-off of the
   design-token palette; the data-viz palette semantics are undefined.
 - **Shared rate-limit store** — the auth per-IP limiter is per-process; a shared store

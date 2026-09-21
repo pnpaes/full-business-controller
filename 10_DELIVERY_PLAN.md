@@ -14,12 +14,13 @@ Indicative durations assume a small focused team with product/operations availab
 | 3 Sales, reporting & workforce | 4–6 weeks | imports, mappings, fees, reconciliation, dashboards, menu engineering, close, workforce scheduling, worked hours, monthly payroll-input report, per-source approved publishing (write connectors) | end-to-end purchase-to-sale view with planned/captured staff hours, a monthly payroll-input report and approved per-source publishing |
 | 4 Planning & intelligence | 3–5 weeks | forecasts, budgets, production suggestions, seasonal/competitor workflow, experiments, AI-assisted advisory analysis and suggestions | planning decision support with advisory AI analysis (human-approved) |
 | 5 Optimization & integrations | Continuous | APIs, extraction, scanning, automation, performance, advanced forecasts | reduced manual work and measured accuracy |
+| 6 HMS, food safety & workforce documents | 4–6 weeks | employee personnel documents (contracts, owner/GM/admin only), staff document library (publish/version/acknowledge), HMS monitoring points/readings, incidents, corrective actions, checklists (IK-mat self-checks, cleaning/hygiene), equipment/maintenance, compliance evidence export (Mattilsynet/IK-mat, Arbeidstilsynet) — prerequisite: task/approval/job workflow platform (ADR-0004) | compliant food-safety/personnel documentation with evidence trail for regulators |
 
 > Note: Phase 0 is dependency-driven, not calendar-driven. Its duration is revised to an indicative
 > **4–6 weeks** per `docs/phase0/PHASE0_CLOSEOUT_PLAN.md`, because it is gated on external inputs
 > (sample files and accountant rulings), not engineering capacity.
 
-Phases 0–3 are the recommended first operational MVP. A Phase 1 release may be used internally for approved costing while later phases continue.
+Phases 0–3 are the recommended first operational MVP. A Phase 1 release may be used internally for approved costing while later phases continue. Phase 6 (HMS, food safety and workforce documents) is approved but follows the MVP; its workflow-platform prerequisite (Epic 20) is sequenced immediately before it.
 
 > Note: the Phase 3 estimate must be revisited because the MVP scope grew by owner decision (DEC-037)
 > to include workforce scheduling, worked hours and the monthly payroll-input report. This affects
@@ -33,6 +34,11 @@ Phases 0–3 are the recommended first operational MVP. A Phase 1 release may be
 > publishing (write connectors) to the Phase 3 scope. Publishing is gated per source on API
 > availability, terms and a named credentials owner, and each connector (publish jobs, confirmation
 > read-back, rollback, audit) is separately estimated. This affects P0-008 (the Phase 1–3 estimate).
+
+> Note: the owner approved (2026-09-21, DEC-086…DEC-094) a programme adding an HMS & food-safety
+> (IK-mat) module, employee personnel documents and a staff document library as a new Phase 6 /
+> Epic 21, gated on the task/approval/job workflow platform (ADR-0004, DEC-094). Its estimate is
+> indicative and not yet profiled against sources.
 
 ## 10.3 Phase 0 deliverables
 
@@ -67,6 +73,8 @@ Phases 0–3 are the recommended first operational MVP. A Phase 1 release may be
 17. Publishing integrations (allowed-operations registry and credentials owners, publish jobs from approved internal changes, confirmation read-back, rollback and failure alerts, audit).
 18. AI-assisted advisory analysis (scheduled analysis jobs, provider abstraction, human review queue, run provenance and cost records).
 19. Automated connectors and optimization.
+20. Workflow platform prerequisite: task/approval/job platform tables with ADR-0004 acceptance (DEC-094).
+21. HMS & food-safety (IK-mat) + workforce documents: monitoring points/readings, incidents, corrective actions, checklists (IK-mat self-checks, cleaning/hygiene), equipment/maintenance, compliance evidence export (Mattilsynet/IK-mat, Arbeidstilsynet), employee personnel documents (owner/GM/admin only) and the staff document library (publish/version/acknowledge) — approved 2026-09-21 (DEC-086…DEC-094).
 
 Do not implement dashboards before canonical posting/reconciliation behavior exists. Do not implement advanced forecasts before history, grain and quality are measured. Do not implement AI-assisted analysis before the provider privacy/DPA review is complete and history/grain quality is measured.
 

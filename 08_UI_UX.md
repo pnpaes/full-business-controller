@@ -13,7 +13,9 @@ Primary areas:
 7. Costs
 8. Insights
 9. Tasks
-10. Administration
+10. Documents (staff document library; visible to all staff)
+11. HMS (monitoring, incidents, checklists, equipment; visible to operators and managers)
+12. Administration
 
 Navigation is role-aware, but authorization never depends on hidden links. A persistent scope control shows company/location and date context.
 
@@ -25,6 +27,7 @@ Navigation is role-aware, but authorization never depends on hidden links. A per
 - **FOH:** availability, low stock, incoming/outgoing transfers, quick waste and close tasks.
 - **Purchasing:** reorder suggestions, low/expiring stock, supplier price changes, open orders and receipts.
 - **Finance:** missing costs, sales/settlement reconciliation, allocations, period status and exports.
+- **Kitchen/FOH (HMS):** today's monitoring readings due, checklist runs assigned, open incident tasks.
 
 ## 8.3 Required MVP screens
 
@@ -49,6 +52,14 @@ Navigation is role-aware, but authorization never depends on hidden links. A per
 | Planning | forecast/actual, production/reorder suggestions, overrides and accuracy |
 | Competitors | dated observations, sources, price/offer history and seasonal comparison |
 | Administration | users/scopes, tax/rules, units, imports, integrations, audit and data quality |
+| Employee detail | profile, shifts/hours (role-aware) and personnel documents (contracts/certificates; visible only to owner/GM/admin, audited upload/replace) |
+| Document library | published all-staff documents by category, current version, publish/version actions for managers, read history and optional acknowledgement |
+| HMS monitoring log | monitoring points with target ranges, fast reading entry, in/out-of-range status, reading history and overdue alerts |
+| HMS incidents | incident list by status/location, owner, due date, severity and linked evidence |
+| Corrective actions | actions by incident/owner/due date, completion and audited closure |
+| HMS checklist run | template selection (IK-mat self-check, cleaning/hygiene category), question flow, non-conformities and run history |
+| Equipment | equipment list, maintenance log history and log entry with evidence |
+| HMS compliance export | scope/period selection, evidence bundle (readings, incidents, corrective actions, checklist runs, maintenance) for Mattilsynet/IK-mat and Arbeidstilsynet |
 
 ## 8.4 Dashboard rules
 
