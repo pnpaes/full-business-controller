@@ -26,6 +26,79 @@ export const HMS_READ_ROLES = [
 /** Operational roles (location_manager / kitchen / front_of_house) that may record. */
 export const HMS_RECORD_ROLES = ["location_manager", "kitchen", "front_of_house"] as const;
 
+/**
+ * Role sets for the HMS incident register (`HMS-003`, `DEC-090`), per the
+ * `DEC-095` clarification of the `07_SECURITY_AND_NFR.md` access matrix. Unlike
+ * the monitoring-log row there is no `analyst` read: `analyst`, `finance` and
+ * `purchasing` have no access to incidents or corrective actions at all. `admin`
+ * is granted explicitly per row (no implicit admin bypass): it may read and
+ * close/reopen (`EDIT`) but not create.
+ */
+export const HMS_INCIDENT_READ_ROLES = [
+  "owner",
+  "general_manager",
+  "location_manager",
+  "kitchen",
+  "front_of_house",
+  "admin",
+] as const;
+
+/** kitchen / front_of_house may raise an incident but cannot edit or close it. */
+export const HMS_INCIDENT_CREATE_ROLES = [
+  "owner",
+  "general_manager",
+  "location_manager",
+  "kitchen",
+  "front_of_house",
+] as const;
+
+/** Closing/reopening an incident is an edit; operators may not. */
+export const HMS_INCIDENT_EDIT_ROLES = [
+  "owner",
+  "general_manager",
+  "location_manager",
+  "admin",
+] as const;
+
+/** Role sets for corrective actions (`HMS-004`, `DEC-090`, `DEC-095`). */
+export const HMS_CORRECTIVE_ACTION_READ_ROLES = [
+  "owner",
+  "general_manager",
+  "location_manager",
+  "kitchen",
+  "front_of_house",
+  "admin",
+] as const;
+
+export const HMS_CORRECTIVE_ACTION_CREATE_ROLES = [
+  "owner",
+  "general_manager",
+  "location_manager",
+  "admin",
+] as const;
+
+/**
+ * An operator (kitchen / front_of_house) may progress an action to
+ * `in_progress`/`done` but never `verified` — that transition additionally
+ * requires one of `HMS_CORRECTIVE_ACTION_VERIFY_ROLES`.
+ */
+export const HMS_CORRECTIVE_ACTION_EDIT_ROLES = [
+  "owner",
+  "general_manager",
+  "location_manager",
+  "admin",
+  "kitchen",
+  "front_of_house",
+] as const;
+
+/** A verifier is a manager-level role; operators can never verify an action. */
+export const HMS_CORRECTIVE_ACTION_VERIFY_ROLES = [
+  "owner",
+  "general_manager",
+  "location_manager",
+  "admin",
+] as const;
+
 /** Loads the caller's roles and location scope live from server data (ADR-0003). */
 export async function loadHmsAccess(userId: string): Promise<UserAccess> {
   return loadUserAccess(getAuthStore(), userId);
