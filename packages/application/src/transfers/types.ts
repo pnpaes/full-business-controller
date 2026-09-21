@@ -1,5 +1,8 @@
 import type { AuditInput } from "../auth";
+import type { DataQualityExceptionStore } from "../data-quality";
 import type { InventoryStore, StockMovementRecord } from "../inventory";
+
+export type { DataQualityExceptionRecord, NewDataQualityExceptionRecord } from "../data-quality";
 
 /**
  * Application-level ports and DTOs for the slice-9 **transfers** vertical
@@ -142,45 +145,7 @@ export interface StockTransferPage {
   readonly hasMore: boolean;
 }
 
-/**
- * `DEC-080` (`DQ-001`): a `data_quality_exception` row as the transfers store
- * needs it. The port exposes only the create the receive command performs;
- * reads/updates live in the persistence repository. `timestamptz` columns are
- * ISO strings and `due_date` a `yyyy-mm-dd` string.
- */
-export interface DataQualityExceptionRecord {
-  readonly id: string;
-  readonly organizationId: string;
-  readonly ruleCode: string;
-  readonly severity: string;
-  readonly entityType: string;
-  readonly entityId: string;
-  /** `timestamptz`, ISO. */
-  readonly detectedAt: string;
-  readonly ownerId: string | null;
-  /** `date`, `yyyy-mm-dd`. */
-  readonly dueDate: string | null;
-  readonly status: string;
-  readonly resolution: string | null;
-}
-
-export interface NewDataQualityExceptionRecord {
-  readonly organizationId: string;
-  readonly ruleCode: string;
-  readonly severity: string;
-  readonly entityType: string;
-  readonly entityId: string;
-  /** `timestamptz`, ISO. */
-  readonly detectedAt: string;
-  readonly status: string;
-  readonly resolution?: string | null;
-  readonly ownerId?: string | null;
-  /** `date`, `yyyy-mm-dd`. */
-  readonly dueDate?: string | null;
-  readonly createdBy?: string | null;
-}
-
-export interface TransferStore extends InventoryStore {
+export interface TransferStore extends InventoryStore, DataQualityExceptionStore {
   /** Binds `fn` to one transaction so the header update and the ledger post commit together. */
   withTransaction<T>(fn: (store: TransferStore) => Promise<T>): Promise<T>;
   /** One transfer by id, organization-scoped (`DEC-061`), or `undefined`. */
@@ -201,13 +166,6 @@ export interface TransferStore extends InventoryStore {
     readonly organizationId: string;
     readonly transferId: string;
   }): Promise<readonly TransferMovementRecord[]>;
-  /**
-   * Records a `DEC-080` data-quality exception inside the caller's transaction,
-   * so a failed command rolls it back with the rest of the batch.
-   */
-  createDataQualityException(
-    input: NewDataQualityExceptionRecord,
-  ): Promise<DataQualityExceptionRecord>;
   /** Append-only audit fact; the caller must not pass secrets (ADR-0003 convention). */
   writeAudit(input: AuditInput): Promise<void>;
 }

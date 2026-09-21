@@ -1,5 +1,10 @@
 import { randomUUID } from "node:crypto";
 
+import {
+  createFakeDataQualityException,
+  type DataQualityExceptionRecord,
+  type NewDataQualityExceptionRecord,
+} from "../data-quality";
 import type { NewStockMovementRecord } from "../inventory";
 import {
   FakeInventoryStore,
@@ -8,9 +13,7 @@ import {
 } from "../inventory/test-support";
 
 import type {
-  DataQualityExceptionRecord,
   ListStockTransfersQuery,
-  NewDataQualityExceptionRecord,
   NewStockTransferRecord,
   StockTransferRecord,
   TransferMovementRecord,
@@ -125,21 +128,7 @@ export class FakeTransferStore extends FakeInventoryStore implements TransferSto
   createDataQualityException(
     input: NewDataQualityExceptionRecord,
   ): Promise<DataQualityExceptionRecord> {
-    const record: DataQualityExceptionRecord = {
-      id: randomUUID(),
-      organizationId: input.organizationId,
-      ruleCode: input.ruleCode,
-      severity: input.severity,
-      entityType: input.entityType,
-      entityId: input.entityId,
-      detectedAt: input.detectedAt,
-      ownerId: input.ownerId ?? null,
-      dueDate: input.dueDate ?? null,
-      status: input.status,
-      resolution: input.resolution ?? null,
-    };
-    this.dataQualityExceptions.set(record.id, record);
-    return Promise.resolve(record);
+    return createFakeDataQualityException(this.dataQualityExceptions, input);
   }
 
   listStockMovementsByTransferId(query: {
