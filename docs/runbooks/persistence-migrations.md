@@ -170,11 +170,28 @@ because its target table varies by `source_type`.
 ## Pre-apply preflight for validating constraints and indexes
 
 Migrations 0014, 0016, 0017, 0018, 0019, 0020, 0021, 0022, 0023, 0024, 0025,
-0026, 0027, 0028, 0029 and 0030 add objects that validate or build, so a failure
+0026, 0027, 0028, 0029, 0030, 0031 and 0032 add objects that validate or build, so a failure
 aborts the whole transactional migration (drizzle-kit runs each file in one
 transaction). Run the matching preflight against the target database **before**
 applying and reconcile any hits; drizzle-kit cannot detect them because these
 files diff against existing data.
+
+- **`0032_import_run_profile_org_guard.sql`** — one `BEFORE INSERT OR UPDATE FOR
+  EACH ROW` guard trigger plus its function (`import_run_profile_org_guard` on
+  `import_run`). Both create immediately and never scan an existing row (the
+  guard is **forward-only** and does not re-validate pre-existing rows), and the
+  migration adds no table, index or validating constraint. Nothing is validated
+  at apply time, so no separate preflight query is needed.
+
+- **`0031_import_profile.sql`** — one new, empty table (`import_profile`) with
+  its two checks (`import_profile_posting_policy_check`,
+  `import_profile_validation_rules_check`), the `import_profile_org_source_key`
+  unique, the organization FK and the nullable `import_run.import_profile_id`
+  FK, whose validation scans the empty `import_run` table. All are cheap at
+  first apply because both tables are empty or the new column is null on every
+  row; the checks validate nothing existing and the unique builds an empty
+  table. It adds no hand-written statement and no backfill is needed. No
+  separate preflight query is needed.
 
 - **`0030_data_quality_exception.sql`** — one new, empty table
   (`data_quality_exception`) with its two checks
@@ -855,6 +872,40 @@ only, so the down file is an explicit operator action, not an automatic one.
   discrepancies) is lost — so run it only while those exceptions need not be
   preserved (AGENTS.md Rule 2). Apply it manually with
   `psql "$DATABASE_URL" -f packages/persistence/drizzle/0030_data_quality_exception_down.sql`.
+- **0031 adds the `DEC-081` import-profile table and follows the down
+  convention:** `0031_import_profile.sql` is generated DDL for `import_profile`
+  (`organization_id`, `source`, `profile_version`, `posting_policy` with the
+  `import_profile_posting_policy_check` check and default `allow_partial`,
+  `validation_rules` jsonb with the `import_profile_validation_rules_check`
+  check (a jsonb object) and default `'{}'`, and the audit columns, with the
+  `import_profile_org_source_key` unique on `(organization_id, source)` and the
+  organization FK) plus the nullable `import_run.import_profile_id` column and
+  its `import_run_import_profile_id_import_profile_id_fk` FK →
+  `import_profile(id)`. It adds one table and no hand-written statement.
+  `0031_import_profile_down.sql` drops the `import_run.import_profile_id`
+  column (with its FK) **first** — it references the table — and then the
+  `import_profile` table inside one `BEGIN;`/`COMMIT;` (with `DROP ... IF
+  EXISTS` so a half-applied manual run cannot wedge). It is **destructive** —
+  the stored profiles (and each run's profile link) are lost — so run it only
+  while that configuration need not be preserved (AGENTS.md Rule 2). Apply it
+  manually with
+  `psql "$DATABASE_URL" -f packages/persistence/drizzle/0031_import_profile_down.sql`.
+- **0032 adds the `DEC-081` import-run profile coherence guard and follows the
+  down convention:** `0032_import_run_profile_org_guard.sql` is hand-written
+  (`DEC-079`'s `BEFORE INSERT OR UPDATE` guard shape applied to `DEC-081`'s
+  profile FK). One function (`import_run_profile_org_guard()`) and one trigger
+  (`import_run_profile_org_guard` on `import_run`) reject a non-null
+  `import_run.import_profile_id` whose `import_profile` belongs to another
+  organization than the run. It resolves the profile organization through the
+  existing FK path (a null `import_profile_id` returns immediately; a missing
+  profile falls through to the FK error) and raises `ERRCODE = '23514'`. It adds
+  no table.
+  `0032_import_run_profile_org_guard_down.sql` drops the trigger and its function
+  inside one `BEGIN;`/`COMMIT;` (with `DROP ... IF EXISTS` so a half-applied
+  manual run cannot wedge). No table and no row is touched, so the down cannot
+  fail on data; while dropped, the reference's organization coherence is
+  validated only by the application. Apply it manually with
+  `psql "$DATABASE_URL" -f packages/persistence/drizzle/0032_import_run_profile_org_guard_down.sql`.
 
 **Re-applying after a manual down:** drizzle-kit tracks applied migrations in
 `drizzle.__drizzle_migrations`, not by comparing the schema, so a plain
@@ -877,7 +928,9 @@ for 0003, `… = 1789850858806` for 0004, `… = 1789851925634` for 0005,
 `… = 1789949551665` for 0027,
 `… = 1789951616253` for 0028,
 `… = 1789952943481` for 0029 and
-`… = 1789954073839` for 0030, then
+`… = 1789954073839` for 0030,
+`… = 1789972623859` for 0031 and
+`… = 1789973761461` for 0032, then
 `npm run db:migrate` (0003 verified 2026-09-19; 0005 rehearsed in the slice-3
 review follow-up; 0006 rehearsed with the slice-4 receiving work; 0007 and
 0008 rehearsed with the slice-4 review follow-up; 0009 rehearsed with the
@@ -910,7 +963,13 @@ no row changes, then deleting its ledger row and re-applying restored the three
 guards and the FK; 0030's down dropped the `data_quality_exception` table (which
 held no rows in the local dev database), then deleting its ledger row and
 re-applying restored the table, its two checks, its organization FK and its two
-indexes — 65 tables).
+indexes — 65 tables; 0031's down dropped the `import_run.import_profile_id`
+column and the `import_profile` table, then deleting its ledger row and
+re-applying restored the column, its FK and the table with its unique and both
+checks — 66 tables; 0032's down dropped the `import_run_profile_org_guard`
+trigger and its function with no row changes (a cross-organization `import_run`
+insert succeeded while the guard was absent), then deleting its ledger row and
+re-applying restored the guard and rejected that insert again — 66 tables).
 A **full 0011 down** drops the tables the three 0012 constraints live on, so its
 replay must clear **both** ledger rows, not just 0011's:
 `DELETE FROM drizzle.__drizzle_migrations WHERE created_at IN (1789862475550, 1789862630158);`
@@ -1013,9 +1072,13 @@ implements it:
 - **Slice-11 import-framework open (owner/TECH) points — recorded, do not
   resolve silently** (also in the `packages/persistence/src/schema/sales.ts`
   comment block; append each resolution to `12_OPEN_DECISIONS.md`):
-  - **(a)** There is **no import/mapping profile table**. `import_run.source`
+  - **(a)** ~~There is **no import/mapping profile table**. `import_run.source`
     and `import_run.profile_version` are opaque text labels; the profiles are
-    static configuration in this slice, not rows. No profile DDL is authored.
+    static configuration in this slice, not rows. No profile DDL is authored.~~
+    **Closed by `DEC-081` (2026-09-21, migration `0031`):** the
+    `import_profile` table now exists, keyed `(organization_id, source)`
+    (`import_profile_org_source_key`), and the nullable
+    `import_run.import_profile_id` FK links a run to the profile it used.
   - **(b)** **`file_object` does not exist yet**, so `import_run.file_object_id`
     is a plain `uuid` with no FK. The platform slice that models `file_object`
     closes it later.
@@ -1178,6 +1241,8 @@ session will not serialise against each other.
 | 0028 | `0028_settlement_reconciliation_vocabularies.sql` | Generated: adds the `settlement.status` default `received` and `settlement_status_check` (`DEC-078` (a)) plus `reconciliation_scope_type_check` on `reconciliation.scope_type` (`DEC-078` (b), the distinct `RECONCILIATION_SCOPE_TYPE` vocabulary). No table and no hand-written statement. Down companion: `0028_settlement_reconciliation_vocabularies_down.sql` (drops both checks and the `settlement.status` default — no row is touched) |
 | 0029 | `0029_org_coherence_guards.sql` | Hand-written (`DEC-079`, closing `DEC-054`'s open point): the `goods_receipt_line.supplier_item_id` existence FK (`NOT VALID` → `VALIDATE CONSTRAINT`) and three `BEFORE INSERT OR UPDATE FOR EACH ROW` guard triggers — `recipe_allergen_org_guard`, `recipe_line_org_guard` and `goods_receipt_line_org_guard` — that reject a reference whose parent resolves to another organization (and, for a receipt line, a supplier item from another supplier or for a different item). No table and no TypeScript schema change. Down companion: `0029_org_coherence_guards_down.sql` (drops the three triggers, their functions and the FK — no row is touched) |
 | 0030 | `0030_data_quality_exception.sql` | Generated (`DEC-080`, `DQ-001`): the `data_quality_exception` table — `organization_id`, the provisional-text `rule_code`, `severity` (`data_quality_exception_severity_check`, default `medium`), the polymorphic `entity_type`/`entity_id`, `detected_at` (default `now()`), the nullable `owner_id`/`due_date`, `status` (`data_quality_exception_status_check`, default `open`), `resolution` and the audit columns, with the organization FK and the `data_quality_exception_org_status_idx` / `data_quality_exception_org_entity_idx` indexes. No hand-written statement. Down companion: `0030_data_quality_exception_down.sql` (drops the table — destructive) |
+| 0031 | `0031_import_profile.sql` | Generated (`DEC-081`): the `import_profile` table — `organization_id`, `source`, `profile_version`, `posting_policy` (`import_profile_posting_policy_check`, default `allow_partial`), `validation_rules` jsonb (`import_profile_validation_rules_check` requiring a jsonb object, default `'{}'`) and the audit columns, with the `import_profile_org_source_key` unique on `(organization_id, source)` and the organization FK — plus the nullable `import_run.import_profile_id` column with its `import_run_import_profile_id_import_profile_id_fk` FK → `import_profile(id)`. No hand-written statement. Down companion: `0031_import_profile_down.sql` (drops `import_run.import_profile_id` first, then the table — destructive) |
+| 0032 | `0032_import_run_profile_org_guard.sql` | Hand-written (`DEC-079`'s guard shape applied to `DEC-081`'s `import_run.import_profile_id` FK): the `import_run_profile_org_guard` `BEFORE INSERT OR UPDATE FOR EACH ROW` trigger on `import_run` (one function) that rejects a non-null `import_profile_id` whose `import_profile` belongs to another organization than the run. No table and no TypeScript schema change. Down companion: `0032_import_run_profile_org_guard_down.sql` (drops the trigger and its function — no row is touched) |
 
 Order matters: extensions before DDL that calls `gen_random_uuid()`, and before
 the exclusion constraints. Verify with:
@@ -1207,7 +1272,7 @@ DATABASE_URL=postgres://aquarela:aquarela@localhost:5432/aquarela npm run db:mig
 `public` alone leaves the ledger intact, so `db:migrate` reports success while
 restoring nothing. `DROP SCHEMA drizzle CASCADE` clears the ledger so all
 migrations replay from 0000. Verified: after this sequence `db:migrate`
-re-applies 0000–0030 and the database has all 65 tables plus both extensions
+re-applies 0000–0032 and the database has all 66 tables plus both extensions
 (0004 adds the four slice-3 master-data tables; 0006 adds the two slice-4
 receiving tables; 0007 adds the `goods_receipt_line` guard trigger — no table;
 0008 relaxes the `supplier_price` range check — no table; 0009 adds the two
@@ -1240,17 +1305,22 @@ check and the `reconciliation.scope_type` check — no table; 0029 adds the
 `goods_receipt_line.supplier_item_id` existence FK and the three `DEC-079`
 org-coherence guard triggers (`recipe_allergen_org_guard`,
 `recipe_line_org_guard`, `goods_receipt_line_org_guard`) — no table; 0030 adds
-the `DEC-080` `data_quality_exception` table — one table).
+the `DEC-080` `data_quality_exception` table — one table; 0031 adds the
+`DEC-081` `import_profile` table and the nullable `import_run.import_profile_id`
+FK — one table; 0032 adds the `DEC-081` import-run profile org-coherence guard
+trigger on `import_run` — no table).
 0013–0019 were added after this replay was verified; all are additive and
-table-count-neutral. `0020`, `0021`, `0022`, `0023`, `0024`, `0027` and `0030`
+table-count-neutral. `0020`, `0021`, `0022`, `0023`, `0024`, `0027`, `0030` and
+`0031`
 are the only migrations after the replay was written to add tables (four, four,
-three, four, one, one and one respectively), so the 65-table figure above is the
-expected post-`0030` count (51 after `0020`, 55 after `0021`, 58 after `0022`,
-62 after `0023`, 63 after `0024`, 64 after `0029`); `0025`, `0026` and `0028`
+three, four, one, one, one and one respectively), so the 66-table figure above is the
+expected post-`0032` count (51 after `0020`, 55 after `0021`, 58 after `0022`,
+62 after `0023`, 63 after `0024`, 64 after `0029`, 65 after `0030`, 66 after
+`0031` and `0032`); `0025`, `0026`, `0028` and `0032`
 are table-neutral.
-`0014`–`0030`'s
+`0014`–`0032`'s
 apply/re-run/down/re-apply was rehearsed on the local dev database 2026-09-20
-(0030 on 2026-09-21).
+(0030 and 0031 on 2026-09-21; 0032 on 2026-09-21).
 
 Once real data exists, this path is no longer acceptable: use small atomic
 commits, expand → migrate → contract for schema changes, and a tested
@@ -1451,6 +1521,20 @@ After applying to an empty database the following were verified with `psql`:
   `medium`/`open` and `detected_at` defaults to `now()`. A create with the other
   organization's `organization_id` is invisible to the org-scoped `find`/`list`
   (`DEC-061`).
+- `import_profile` (0031, `DEC-081`): a duplicate `(organization_id, source)` is
+  rejected by `import_profile_org_source_key`; a `posting_policy` outside
+  `{all_or_nothing, allow_partial}` is rejected by
+  `import_profile_posting_policy_check` (omitting it stores the default
+  `allow_partial`), and a `validation_rules` value that is not a jsonb object is
+  rejected by `import_profile_validation_rules_check` (omitting it stores
+  `'{}'`).
+- `import_run` / `import_profile` (0032, `DEC-079`/`DEC-081`): an `import_run`
+  linked to an `import_profile` in another organization is rejected by
+  `import_run_profile_org_guard`, on both INSERT and UPDATE, while a
+  same-organization profile is accepted and a null `import_profile_id` is
+  untouched; a profile id that names no `import_profile` is rejected by
+  `import_run_import_profile_id_import_profile_id_fk`. The guard is forward-only
+  (it does not re-validate rows written before the migration).
 - Deferrable FKs: a `calculation_snapshot` and its `cost_card` can be inserted
   in the same transaction in either order and commit together.
 - `calculation_snapshot`: a plain `TRUNCATE` is blocked first by the FK from
