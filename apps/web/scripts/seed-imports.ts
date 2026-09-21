@@ -22,21 +22,24 @@ import { LEGACY_I19_DEMO_TEXT, parseLegacyI19Rows } from "../app/(app)/sales/leg
  *
  * Run with `npx tsx apps/web/scripts/seed-imports.ts`. It never creates an
  * organization, user or item: run `npm run bootstrap` and `npm run seed:demo`
- * first. The only rows it creates are the two demo `external_mapping`s that link
- * the legacy product names to the demo items (idempotent by their natural key).
+ * first. The only rows it creates are the demo `import_profile` for the source
+ * (`DEC-081`, the source of the run's version, policy and validation rules) and
+ * the two demo `external_mapping`s that link the legacy product names to the
+ * demo items (both idempotent by their natural keys).
  *
  * **Reference-only data.** The I19 export is explicitly **not authoritative**
  * (`docs/phase0/SAMPLE_ANALYSIS.md` §9) and the rows are obviously demo.
  *
- * **Idempotency.** The run's `file_hash` is deterministic
+ * **Idempotency.** The profile is looked up by `(organization_id, source)` and
+ * created only when absent, so it is ensured on both the fresh path and a replay
+ * without violating the unique key. The run's `file_hash` is deterministic
  * (`seed-imports-i19:<organizationId>`), and the seed only advances a run through
  * the statuses it has not reached yet: a second run finds the run by hash, makes
  * no command call and therefore creates no duplicate run or staging rows.
  *
  * Recorded, not resolved: the run stops at `needs_review`/`validated` — posting
- * is row 12 and owner-gated on `ADR-0008`; there is no import-profile table (the
- * validation rules are passed here); `file_object_id` is a plain uuid; and no
- * tolerance table exists, so the residual is reported for visibility only.
+ * is row 12 and owner-gated on `ADR-0008`; `file_object_id` is a plain uuid; and
+ * no tolerance table exists, so the residual is reported for visibility only.
  * No secret is read, printed or stored.
  */
 
@@ -177,9 +180,40 @@ async function seed(client: DbClient, organizationId: string): Promise<SeedSumma
   const store = createPostgresImportStore(client.db);
   const fileHash = `seed-imports-i19:${organizationId}`;
 
+  let mutated = false;
+
+  // The import profile is the run's source of truth for the version, posting
+  // policy and validation rules (`DEC-081`). It is ensured *before* the run
+  // lookup so a replay that finds the run still repairs a missing profile, and
+  // created only when absent so the `(organization_id, source)` unique key is
+  // never violated.
+  let profile = await store.findImportProfile({ organizationId, source: SOURCE });
+  if (profile === undefined) {
+    profile = await store.createImportProfile({
+      organizationId,
+      source: SOURCE,
+      profileVersion: PROFILE_VERSION,
+      postingPolicy: "allow_partial",
+      validationRules: {
+        requiredNormalizedFields: [
+          "occurred_at",
+          "currency",
+          "gross_amount",
+          "location_external_id",
+        ],
+        expectedCurrency: "NOK",
+        requireCurrency: true,
+        allowedLocationExternalIds: [...ALLOWED_LOCATIONS],
+        requireOccurredAt: true,
+        requireAmounts: true,
+      },
+      createdBy: actorId,
+    });
+    mutated = true;
+  }
+
   let run = await store.findImportRun({ organizationId, fileHash });
   const runExisted = run !== undefined;
-  let mutated = false;
 
   if (run === undefined) {
     // Resolve the demo items and link the legacy product names to them, only on
@@ -241,19 +275,6 @@ async function seed(client: DbClient, organizationId: string): Promise<SeedSumma
       organizationId,
       actorId,
       importRunId: runId,
-      rules: {
-        requiredNormalizedFields: [
-          "occurred_at",
-          "currency",
-          "gross_amount",
-          "location_external_id",
-        ],
-        expectedCurrency: "NOK",
-        requireCurrency: true,
-        allowedLocationExternalIds: [...ALLOWED_LOCATIONS],
-        requireOccurredAt: true,
-        requireAmounts: true,
-      },
     });
     mutated = true;
     await refresh();

@@ -24,11 +24,14 @@ const OTHER = "00000000-0000-4000-8000-000000000002";
 const RUN = "11111111-1111-4111-8111-111111111111";
 const ROW = "22222222-2222-4222-8222-222222222222";
 
-function runRecord(overrides: Partial<ImportRunRecord> = {}): ImportRunRecord {
+function runRecord(
+  overrides: Partial<Omit<ImportRunRecord, "importProfileId">> = {},
+): ImportRunRecord {
   return {
     id: RUN,
     organizationId: ORG,
     source: "zettle-legacy",
+    importProfileId: null,
     profileVersion: "i19-v1",
     fileObjectId: null,
     fileHash: "hash-1",
@@ -112,6 +115,44 @@ describe("parseCreateImportRunBody", () => {
         postingPolicy: null,
       },
     });
+  });
+
+  it("keeps a caller profile version but defaults an absent or blank one to null", () => {
+    const present = parseCreateImportRunBody(valid);
+    expect(present.ok).toBe(true);
+    if (present.ok) {
+      expect(present.input.profileVersion).toBe("i19-v1");
+    }
+
+    expect(
+      parseCreateImportRunBody({
+        source: "zettle-legacy",
+        fileHash: "hash-1",
+        periodStart: "2026-08-01",
+        periodEnd: "2026-08-31",
+      }),
+    ).toEqual({
+      ok: true,
+      input: {
+        source: "zettle-legacy",
+        profileVersion: null,
+        fileHash: "hash-1",
+        periodStart: "2026-08-01",
+        periodEnd: "2026-08-31",
+        fileObjectId: null,
+        postingPolicy: null,
+      },
+    });
+    const blank = parseCreateImportRunBody({ ...valid, profileVersion: "   " });
+    expect(blank.ok).toBe(true);
+    if (blank.ok) {
+      expect(blank.input.profileVersion).toBeNull();
+    }
+  });
+
+  it("rejects a non-string or over-long profile version", () => {
+    expect(parseCreateImportRunBody({ ...valid, profileVersion: 4 }).ok).toBe(false);
+    expect(parseCreateImportRunBody({ ...valid, profileVersion: "v".repeat(201) }).ok).toBe(false);
   });
 
   it("accepts a uuid file id and a known posting policy", () => {

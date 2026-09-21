@@ -23,10 +23,15 @@ import {
  * owner-gated on `ADR-0008`):
  * - `fileObjectId` is a **plain uuid** — the platform `file` table does not
  *   exist yet, so it is never dereferenced;
- * - `profileVersion` is an **opaque caller string** — there is no import-profile
- *   table, so the validation rules are caller-supplied, not looked up;
- * - the posting policy has **no table either**; it is recorded in the run's
- *   `diagnostics` at create time (`DEC-025` default `allow_partial`);
+ * - `profileVersion` is **optional** (`DEC-081`): the run resolves its
+ *   `import_profile` by source and takes the profile's version, so a caller
+ *   value must match it (or be omitted); a source with no profile still needs
+ *   one, and the run's profile — not the caller — supplies the base validation
+ *   rules there;
+ * - the posting policy is carried by the run's `import_profile` (`DEC-081`,
+ *   falling back to the `DEC-025` default `allow_partial` when the source has
+ *   no profile); it is still recorded in the run's `diagnostics` at create
+ *   time;
  * - there is no tolerance configuration table, so no amount tolerance is applied
  *   or invented here (`DEC-026`/`DEC-035`); the preview residual is reported for
  *   visibility only.
@@ -210,7 +215,12 @@ export function parseImportRunListQuery(searchParams: URLSearchParams): ParsedIm
 
 export interface CreateImportRunBody {
   readonly source: string;
-  readonly profileVersion: string;
+  /**
+   * Optional (`DEC-081`): when the source has an `import_profile` the run takes
+   * the profile's version, so a caller value must match it or be omitted; with
+   * no profile the command requires one (`null` here is then a 400).
+   */
+  readonly profileVersion: string | null;
   readonly fileHash: string;
   readonly periodStart: string;
   readonly periodEnd: string;
@@ -230,9 +240,13 @@ export function parseCreateImportRunBody(
     return { ok: false };
   }
   const source = readText(body, "source");
-  const profileVersion = readText(body, "profileVersion");
   const fileHash = readText(body, "fileHash");
-  if (source === null || profileVersion === null || fileHash === null) {
+  if (source === null || fileHash === null) {
+    return { ok: false };
+  }
+
+  const profileVersion = readOptionalBodyText(body, "profileVersion");
+  if (!profileVersion.ok) {
     return { ok: false };
   }
 
@@ -265,7 +279,7 @@ export function parseCreateImportRunBody(
     ok: true,
     input: {
       source,
-      profileVersion,
+      profileVersion: profileVersion.value,
       fileHash,
       periodStart,
       periodEnd,
@@ -311,9 +325,10 @@ export type ParsedValidateImportRun =
   { readonly ok: true; readonly rules: ImportValidationRules } | { readonly ok: false };
 
 /**
- * `POST /runs/[id]/validate` body: the caller-supplied validation rules. There
- * is no import-profile table, so the profile's rules travel with the request
- * rather than being looked up. An absent/empty body means "no extra rules".
+ * `POST /runs/[id]/validate` body: caller-supplied validation rules that
+ * override the run's own (`DEC-081`). The run's resolved `import_profile`
+ * supplies the base rules and the request's rules override them field by field,
+ * so an absent/empty body means "profile rules only".
  */
 export function parseValidateImportRunBody(
   body: Record<string, unknown> | undefined,

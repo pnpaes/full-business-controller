@@ -202,13 +202,19 @@ export default async function ImportRunDetailPage({
             { term: "Source", description: run.source },
             {
               term: "Profile version",
-              description: `${run.profileVersion} — opaque; no import-profile table exists`,
+              description: `${run.profileVersion} · ${
+                run.importProfileId === null
+                  ? "no import profile linked"
+                  : "linked to an import profile"
+              }`,
             },
             { term: "Period", description: formatPeriod(run.periodStart, run.periodEnd) },
             {
               term: "Posting policy",
               description:
-                postingPolicy === null ? "—" : `${postingPolicy} (DEC-025; no policy table)`,
+                postingPolicy === null
+                  ? "—"
+                  : `${postingPolicy} (from the run's import profile, DEC-081; DEC-025 allow_partial default when no profile)`,
             },
             { term: "File hash", description: run.fileHash },
             {

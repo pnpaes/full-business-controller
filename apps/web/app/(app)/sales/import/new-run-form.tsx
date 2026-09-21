@@ -145,10 +145,9 @@ export function NewRunForm() {
           <TextField
             name="profileVersion"
             label="Profile version"
-            required
             value={profileVersion}
             onChange={(event) => setProfileVersion(event.target.value)}
-            help="Opaque label — there is no import-profile table, so the caller names the profile."
+            help="Taken from the source's import profile when one exists — leave it blank then. Required only when no profile exists for the source."
           />
           <TextField
             name="periodStart"

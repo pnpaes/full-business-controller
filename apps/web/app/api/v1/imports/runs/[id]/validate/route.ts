@@ -19,9 +19,10 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /**
  * Validates every staged row and moves the run to `validated` or `needs_review`
  * (`SALE-004`, step 4). Invalid rows are kept and marked; per-currency
- * `gross_amount` totals are recorded for the preview. The validation rules are
- * caller-supplied — there is no import-profile table to look them up in — and no
- * amount tolerance is applied (no tolerance table; `DEC-026`/`DEC-035`).
+ * `gross_amount` totals are recorded for the preview. The run's resolved
+ * `import_profile` supplies the base validation rules and the request's rules
+ * override them field by field (`DEC-081`); no amount tolerance is applied (no
+ * tolerance table; `DEC-026`/`DEC-035`).
  *
  * Only a `parsed` run can be validated; anything else is a 400. Signed out → 401.
  */

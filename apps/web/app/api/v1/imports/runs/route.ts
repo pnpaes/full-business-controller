@@ -52,8 +52,10 @@ export async function GET(request: Request): Promise<Response> {
  *
  * A duplicate `fileHash` within the organization is a replay of an existing file
  * (`05_WORKFLOWS.md` step 8), so the command rejects it and the route returns
- * 400. `fileObjectId` is a plain uuid — no `file` table exists yet — and
- * `profileVersion` is an opaque caller string: there is no profile table.
+ * 400. `fileObjectId` is a plain uuid — no `file` table exists yet.
+ * `profileVersion` is optional: the run resolves its `import_profile` by source
+ * and takes the profile's version, so a caller value must match it or be omitted;
+ * a source with no profile still requires one (`DEC-081`).
  */
 export async function POST(request: Request): Promise<Response> {
   return withMutationGuards(request, importLimiters.createRun, async () => {
@@ -72,11 +74,13 @@ export async function POST(request: Request): Promise<Response> {
         organizationId,
         actorId: session.userId,
         source: parsed.input.source,
-        profileVersion: parsed.input.profileVersion,
         fileHash: parsed.input.fileHash,
         periodStart: parsed.input.periodStart,
         periodEnd: parsed.input.periodEnd,
         fileObjectId: parsed.input.fileObjectId,
+        ...(parsed.input.profileVersion === null
+          ? {}
+          : { profileVersion: parsed.input.profileVersion }),
         ...(parsed.input.postingPolicy === null
           ? {}
           : { postingPolicy: parsed.input.postingPolicy }),
