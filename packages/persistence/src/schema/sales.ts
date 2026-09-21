@@ -29,6 +29,7 @@ import { channel, location, organization } from "./organization";
 import { productVariant } from "./products";
 import { taxRule } from "./tax";
 import {
+  IMPORT_DISPOSITION,
   IMPORT_POSTING_POLICY,
   IMPORT_STATUS,
   MAPPING_STATE,
@@ -224,6 +225,37 @@ export const importStagingRow = pgTable(
     // `(import_run_id, source_row_no)` is both the required read path and the
     // idempotency key: replaying a parse cannot duplicate a source row.
     unique("import_staging_row_run_row_no_key").on(t.importRunId, t.sourceRowNo),
+  ],
+);
+
+// `DEC-083`: one approved disposition per non-posted staging row (`DEC-035`).
+// A disposition is an immutable approval fact: there is no update path, so this
+// carries no `updated_at`/`version` semantics of its own (auditColumns() is kept
+// for consistency and `created_at` is the approval instant).
+// ponytail: the unique key is the one-disposition-per-row guard; a repeat insert
+// is rejected rather than appended (the old jsonb array could accumulate
+// duplicates). Upgrade path if a supersede workflow is ever wanted: allow a
+// replacement in the same transaction instead of refusing.
+export const importDisposition = pgTable(
+  "import_disposition",
+  {
+    id: uuidPk(),
+    // FK to the staging row; the run cascade reaches it through the staging row.
+    // No `organization_id`: scoped through `import_staging_row` → `import_run`
+    // (the `import_staging_row` precedent, `DEC-061` via the join), so there is
+    // no denormalized org to keep coherent (no `DEC-079`-style guard needed).
+    importStagingRowId: uuid("import_staging_row_id")
+      .notNull()
+      .references(() => importStagingRow.id, { onDelete: "cascade" }),
+    disposition: text("disposition").notNull(),
+    reason: text("reason"),
+    // FK app_user(id) is deferred like audit_event.actor_id (deferred-FK convention).
+    actorId: uuid("actor_id").notNull(),
+    ...auditColumns(),
+  },
+  (t) => [
+    check("import_disposition_disposition_check", enumCheck(t.disposition, IMPORT_DISPOSITION)),
+    unique("import_disposition_staging_row_key").on(t.importStagingRowId),
   ],
 );
 

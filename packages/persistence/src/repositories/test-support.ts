@@ -6,6 +6,7 @@ import {
   costCenter,
   dataQualityException,
   externalMapping,
+  importDisposition,
   importProfile,
   importRun,
   importStagingRow,
@@ -568,6 +569,28 @@ export async function createTestImportStagingRow(
       importRunId,
       sourceRowNo: 1,
       raw: { row: 1 },
+      ...overrides,
+    })
+    .returning();
+  return rows[0]!;
+}
+
+/**
+ * A `DEC-083` import disposition. `disposition` defaults to `unmapped` and
+ * `actor_id` to a random uuid (the FK to `app_user` is deferred, so no user row
+ * is needed); `sourceRowNo` only exists on the joined read.
+ */
+export async function createTestImportDisposition(
+  db: Database,
+  importStagingRowId: string,
+  overrides: Partial<typeof importDisposition.$inferInsert> = {},
+): Promise<typeof importDisposition.$inferSelect> {
+  const rows = await db
+    .insert(importDisposition)
+    .values({
+      importStagingRowId,
+      disposition: "unmapped",
+      actorId: randomUUID(),
       ...overrides,
     })
     .returning();

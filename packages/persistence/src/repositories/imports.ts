@@ -1,7 +1,13 @@
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 
 import type { Database } from "../client";
-import { externalMapping, importProfile, importRun, importStagingRow } from "../schema";
+import {
+  externalMapping,
+  importDisposition,
+  importProfile,
+  importRun,
+  importStagingRow,
+} from "../schema";
 
 export type ImportRun = typeof importRun.$inferSelect;
 export type NewImportRun = typeof importRun.$inferInsert;
@@ -9,6 +15,8 @@ export type ImportProfile = typeof importProfile.$inferSelect;
 export type NewImportProfile = typeof importProfile.$inferInsert;
 export type ImportStagingRow = typeof importStagingRow.$inferSelect;
 export type NewImportStagingRow = typeof importStagingRow.$inferInsert;
+export type ImportDisposition = typeof importDisposition.$inferSelect;
+export type NewImportDisposition = typeof importDisposition.$inferInsert;
 export type ExternalMapping = typeof externalMapping.$inferSelect;
 export type NewExternalMapping = typeof externalMapping.$inferInsert;
 
@@ -19,7 +27,9 @@ export type NewExternalMapping = typeof externalMapping.$inferInsert;
  * `import_run` carries `organization_id` directly, so its reads are
  * organization-scoped (`DEC-061`). `import_staging_row` has no organization
  * column of its own, so its reads are scoped through the parent `import_run`
- * join (mirrors `listStockCountLines`). `external_mapping` carries
+ * join (mirrors `listStockCountLines`). The `DEC-083` `import_disposition`
+ * likewise carries no organization column, so its reads are scoped through the
+ * `import_staging_row` → `import_run` join. `external_mapping` carries
  * `organization_id` directly; its natural key
  * `(source_system, entity_type, external_id, effective_from)` is the
  * `findOrCreate` idempotency path. `import_profile` (`DEC-081`, migration
@@ -225,6 +235,94 @@ export async function updateImportStagingRow(
     .where(eq(importStagingRow.id, id))
     .returning();
   return rows[0];
+}
+
+/** A disposition joined to its staging row (for `sourceRowNo`/`importRunId`). */
+export interface ImportDispositionListItem extends ImportDisposition {
+  readonly importRunId: string;
+  readonly sourceRowNo: number;
+}
+
+export interface ImportDispositionCount {
+  readonly importRunId: string;
+  readonly count: number;
+}
+
+/**
+ * Creates the one disposition for a staging row. `undefined` when that row
+ * already has one: `ON CONFLICT DO NOTHING` on `import_disposition_staging_row_key`
+ * makes the unique key the guard, safe against concurrent double-disposition.
+ */
+export async function createImportDisposition(
+  db: Database,
+  input: NewImportDisposition,
+): Promise<ImportDisposition | undefined> {
+  const rows = await db.insert(importDisposition).values(input).onConflictDoNothing().returning();
+  return rows[0];
+}
+
+export interface ListImportDispositionsQuery {
+  readonly organizationId: string;
+  readonly importRunId: string;
+}
+
+/** One run's dispositions in source order, organization-scoped through the run join. */
+export async function listImportDispositions(
+  db: Database,
+  query: ListImportDispositionsQuery,
+): Promise<ImportDispositionListItem[]> {
+  const rows = await db
+    .select({
+      disposition: importDisposition,
+      importRunId: importStagingRow.importRunId,
+      sourceRowNo: importStagingRow.sourceRowNo,
+    })
+    .from(importDisposition)
+    .innerJoin(importStagingRow, eq(importStagingRow.id, importDisposition.importStagingRowId))
+    .innerJoin(importRun, eq(importRun.id, importStagingRow.importRunId))
+    .where(
+      and(
+        eq(importStagingRow.importRunId, query.importRunId),
+        eq(importRun.organizationId, query.organizationId),
+      ),
+    )
+    .orderBy(asc(importStagingRow.sourceRowNo));
+  return rows.map((row) => ({
+    ...row.disposition,
+    importRunId: row.importRunId,
+    sourceRowNo: row.sourceRowNo,
+  }));
+}
+
+export interface CountImportDispositionsByRunQuery {
+  readonly organizationId: string;
+  readonly importRunIds: readonly string[];
+}
+
+/** Disposition counts for a set of runs (one grouped query, organization-scoped). */
+export async function countImportDispositionsByRun(
+  db: Database,
+  query: CountImportDispositionsByRunQuery,
+): Promise<ImportDispositionCount[]> {
+  if (query.importRunIds.length === 0) {
+    return [];
+  }
+  const rows = await db
+    .select({
+      importRunId: importStagingRow.importRunId,
+      count: sql<number>`count(${importDisposition.id})::int`,
+    })
+    .from(importDisposition)
+    .innerJoin(importStagingRow, eq(importStagingRow.id, importDisposition.importStagingRowId))
+    .innerJoin(importRun, eq(importRun.id, importStagingRow.importRunId))
+    .where(
+      and(
+        inArray(importStagingRow.importRunId, [...query.importRunIds]),
+        eq(importRun.organizationId, query.organizationId),
+      ),
+    )
+    .groupBy(importStagingRow.importRunId);
+  return rows.map((row) => ({ importRunId: row.importRunId, count: row.count }));
 }
 
 /** The natural key of an external mapping. */

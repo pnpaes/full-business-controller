@@ -4,12 +4,15 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDb, type DbClient } from "../client";
 import {
   externalMapping,
+  importDisposition,
   importProfile,
   importRun,
   importStagingRow,
   organization,
 } from "../schema";
 import {
+  countImportDispositionsByRun,
+  createImportDisposition,
   createImportProfile,
   createImportRun,
   createImportStagingRow,
@@ -18,6 +21,7 @@ import {
   findImportRun,
   findOrCreateExternalMapping,
   listExternalMappings,
+  listImportDispositions,
   listImportRuns,
   listImportStagingRows,
   updateImportRun,
@@ -25,6 +29,7 @@ import {
 } from "./imports";
 import {
   createTestExternalMapping,
+  createTestImportDisposition,
   createTestImportProfile,
   createTestImportRun,
   createTestImportStagingRow,
@@ -496,6 +501,101 @@ describe.skipIf(!databaseUrl)("imports repository", () => {
         })(),
       );
       expect(cause.message).toContain("import_run.import_profile_id");
+    });
+  });
+
+  it("creates, lists and counts dispositions organization-scoped (DEC-083)", async () => {
+    await inRollback(client.db, async (tx) => {
+      const run = await createTestImportRun(tx, orgId);
+      const first = await createTestImportStagingRow(tx, run.id, { sourceRowNo: 1 });
+      const second = await createTestImportStagingRow(tx, run.id, { sourceRowNo: 2 });
+
+      const actorId = "dcc122ed-7852-4357-8b10-30c53b891f46";
+      const created = await createImportDisposition(tx, {
+        importStagingRowId: second.id,
+        disposition: "rejected",
+        reason: "unknown sku",
+        actorId,
+      });
+      expect(created?.disposition).toBe("rejected");
+      expect(created?.reason).toBe("unknown sku");
+      expect(created?.actorId).toBe(actorId);
+      expect(created?.createdAt).toBeInstanceOf(Date);
+
+      await createTestImportDisposition(tx, first.id, { disposition: "ignored" });
+
+      const listed = await listImportDispositions(tx, {
+        organizationId: orgId,
+        importRunId: run.id,
+      });
+      expect(listed.map((row) => row.sourceRowNo)).toEqual([1, 2]);
+      expect(listed.map((row) => row.disposition)).toEqual(["ignored", "rejected"]);
+      expect(listed.map((row) => row.importRunId)).toEqual([run.id, run.id]);
+      expect(listed[1]?.reason).toBe("unknown sku");
+
+      // The unique key is the guard: a second disposition for the same staging
+      // row is a no-op, not an appended duplicate.
+      const repeat = await createImportDisposition(tx, {
+        importStagingRowId: second.id,
+        disposition: "unmapped",
+        actorId,
+      });
+      expect(repeat).toBeUndefined();
+      expect(
+        await listImportDispositions(tx, { organizationId: orgId, importRunId: run.id }),
+      ).toHaveLength(2);
+
+      // Counts are grouped per run and empty for an empty id list.
+      const counts = await countImportDispositionsByRun(tx, {
+        organizationId: orgId,
+        importRunIds: [run.id],
+      });
+      expect(counts).toEqual([{ importRunId: run.id, count: 2 }]);
+      expect(
+        await countImportDispositionsByRun(tx, { organizationId: orgId, importRunIds: [] }),
+      ).toEqual([]);
+
+      // Another organization's dispositions are invisible at this scope.
+      const otherOrgId = await createTestOrganization(tx, uniqueSuffix());
+      const otherRun = await createTestImportRun(tx, otherOrgId);
+      const otherRow = await createTestImportStagingRow(tx, otherRun.id, { sourceRowNo: 1 });
+      await createTestImportDisposition(tx, otherRow.id);
+      expect(
+        await listImportDispositions(tx, { organizationId: orgId, importRunId: otherRun.id }),
+      ).toHaveLength(0);
+      expect(
+        await countImportDispositionsByRun(tx, {
+          organizationId: orgId,
+          importRunIds: [otherRun.id],
+        }),
+      ).toEqual([]);
+    });
+  });
+
+  it("rejects an out-of-vocabulary disposition", async () => {
+    await inRollback(client.db, async (tx) => {
+      const run = await createTestImportRun(tx, orgId);
+      const row = await createTestImportStagingRow(tx, run.id, { sourceRowNo: 1 });
+      const cause = await rejectionCause(
+        createTestImportDisposition(tx, row.id, { disposition: "approved" }),
+      );
+      expect(cause.message).toMatch(/import_disposition_disposition_check/);
+    });
+  });
+
+  it("cascades disposition deletes from the staging row", async () => {
+    await inRollback(client.db, async (tx) => {
+      const run = await createTestImportRun(tx, orgId);
+      const row = await createTestImportStagingRow(tx, run.id, { sourceRowNo: 1 });
+      await createTestImportDisposition(tx, row.id);
+
+      await tx.delete(importStagingRow).where(eq(importStagingRow.id, row.id));
+
+      const remaining = await tx
+        .select()
+        .from(importDisposition)
+        .where(eq(importDisposition.importStagingRowId, row.id));
+      expect(remaining).toHaveLength(0);
     });
   });
 
