@@ -237,3 +237,62 @@ export function breakEvenUnits(fixedCost: string, contributionPerUnit: string): 
   }
   return formatDecimal(divideRoundHalfUp(fixed * ONE, contribution), QUANTITY_SCALE);
 }
+
+/**
+ * Effective-window helpers for price versions (`DEC-077`). Windows are
+ * half-open `[effectiveFrom, effectiveTo)` over ISO-8601 instant strings, the
+ * representation used elsewhere in the domain. Instants are compared by parsed
+ * time rather than raw string so an offset or differing precision cannot break
+ * ordering; an unparseable instant is rejected.
+ */
+export interface PriceVersionWindow {
+  /** ISO instant, inclusive. */
+  readonly effectiveFrom: string;
+  /** ISO instant, exclusive; null = open-ended. */
+  readonly effectiveTo: string | null;
+}
+
+/** Parses an ISO-8601 instant to epoch millis, rejecting an invalid value. */
+function parseInstant(value: string, field: string): number {
+  const time = new Date(value).getTime();
+  if (Number.isNaN(time)) {
+    throw new DomainError(`${field} must be a valid ISO-8601 instant, got "${value}"`);
+  }
+  return time;
+}
+
+/** Half-open `[effectiveFrom, effectiveTo)`: `asOf >= from && (to === null || asOf < to)`. */
+export function isEffectiveAt(window: PriceVersionWindow, asOf: string): boolean {
+  const at = parseInstant(asOf, "asOf");
+  const from = parseInstant(window.effectiveFrom, "effectiveFrom");
+  const to = window.effectiveTo === null ? null : parseInstant(window.effectiveTo, "effectiveTo");
+  return from <= at && (to === null || at < to);
+}
+
+/** Half-open overlap of two windows: `a.from < b.to && b.from < a.to` (null = open end). */
+export function priceVersionWindowsOverlap(a: PriceVersionWindow, b: PriceVersionWindow): boolean {
+  const aFrom = parseInstant(a.effectiveFrom, "effectiveFrom");
+  const bFrom = parseInstant(b.effectiveFrom, "effectiveFrom");
+  const aTo = a.effectiveTo === null ? null : parseInstant(a.effectiveTo, "effectiveTo");
+  const bTo = b.effectiveTo === null ? null : parseInstant(b.effectiveTo, "effectiveTo");
+  const aStartsBeforeBEnds = bTo === null || aFrom < bTo;
+  const bStartsBeforeAEnds = aTo === null || bFrom < aTo;
+  return aStartsBeforeBEnds && bStartsBeforeAEnds;
+}
+
+/**
+ * The single version effective at `asOf`, or undefined. Throws `DomainError`
+ * when more than one is effective — an ambiguous set the DB exclusion
+ * constraint forbids, so it is a data-integrity failure, not a case to resolve
+ * by guessing (mirrors `selectEffectiveRecipeVersion`).
+ */
+export function selectEffectivePriceVersion<T extends PriceVersionWindow>(
+  versions: readonly T[],
+  asOf: string,
+): T | undefined {
+  const effective = versions.filter((version) => isEffectiveAt(version, asOf));
+  if (effective.length > 1) {
+    throw new DomainError("more than one price version is effective at the requested instant");
+  }
+  return effective[0];
+}

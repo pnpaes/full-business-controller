@@ -7,9 +7,12 @@ import {
   contributionMarginPct,
   grossFromNet,
   includedTax,
+  isEffectiveAt,
   netFromGross,
   presentedMoney,
+  priceVersionWindowsOverlap,
   requiredNetPrice,
+  selectEffectivePriceVersion,
   unitContribution,
   unitNetSales,
   unitVariableCost,
@@ -252,5 +255,115 @@ describe("breakEvenUnits", () => {
   it("rejects a zero or negative contribution per unit", () => {
     expect(() => breakEvenUnits("1000.0000", "0")).toThrow(/contributionPerUnit must be positive/);
     expect(() => breakEvenUnits("1000.0000", "-1.0000")).toThrow(DomainError);
+  });
+});
+
+describe("isEffectiveAt", () => {
+  const window = {
+    effectiveFrom: "2026-01-01T00:00:00Z",
+    effectiveTo: "2026-02-01T00:00:00Z",
+  };
+
+  it("is effective exactly at effectiveFrom (inclusive)", () => {
+    expect(isEffectiveAt(window, "2026-01-01T00:00:00Z")).toBe(true);
+  });
+
+  it("is not effective exactly at effectiveTo (exclusive)", () => {
+    expect(isEffectiveAt(window, "2026-02-01T00:00:00Z")).toBe(false);
+  });
+
+  it("is effective between the bounds and not before/after", () => {
+    expect(isEffectiveAt(window, "2026-01-15T12:00:00Z")).toBe(true);
+    expect(isEffectiveAt(window, "2025-12-31T23:59:59Z")).toBe(false);
+    expect(isEffectiveAt(window, "2026-02-01T00:00:01Z")).toBe(false);
+  });
+
+  it("treats a null effectiveTo as open-ended", () => {
+    const open = { effectiveFrom: "2026-01-01T00:00:00Z", effectiveTo: null };
+    expect(isEffectiveAt(open, "2030-06-01T00:00:00Z")).toBe(true);
+    expect(isEffectiveAt(open, "2025-12-31T23:59:59Z")).toBe(false);
+  });
+
+  it("compares by parsed time, so an offset does not break ordering", () => {
+    // 2026-01-01T00:00:00+01:00 is 2025-12-31T23:00:00Z.
+    expect(isEffectiveAt(window, "2025-12-31T23:00:00Z")).toBe(false);
+    expect(isEffectiveAt(window, "2026-01-01T01:00:00+01:00")).toBe(true);
+    expect(isEffectiveAt(window, "2026-01-31T23:59:59-02:00")).toBe(false);
+  });
+
+  it("rejects an invalid instant", () => {
+    expect(() => isEffectiveAt(window, "not-a-date")).toThrow(DomainError);
+    expect(() =>
+      isEffectiveAt({ effectiveFrom: "nope", effectiveTo: null }, "2026-01-01T00:00:00Z"),
+    ).toThrow(/effectiveFrom must be a valid ISO-8601 instant/);
+  });
+});
+
+describe("priceVersionWindowsOverlap", () => {
+  const january = { effectiveFrom: "2026-01-01T00:00:00Z", effectiveTo: "2026-02-01T00:00:00Z" };
+
+  it("detects an overlap when the ranges intersect", () => {
+    const overlap = { effectiveFrom: "2026-01-15T00:00:00Z", effectiveTo: "2026-03-01T00:00:00Z" };
+    expect(priceVersionWindowsOverlap(january, overlap)).toBe(true);
+    expect(priceVersionWindowsOverlap(overlap, january)).toBe(true);
+  });
+
+  it("does not treat touching windows as overlapping", () => {
+    const february = { effectiveFrom: "2026-02-01T00:00:00Z", effectiveTo: "2026-03-01T00:00:00Z" };
+    expect(priceVersionWindowsOverlap(january, february)).toBe(false);
+    expect(priceVersionWindowsOverlap(february, january)).toBe(false);
+  });
+
+  it("does not treat disjoint windows as overlapping", () => {
+    const later = { effectiveFrom: "2026-04-01T00:00:00Z", effectiveTo: null };
+    expect(priceVersionWindowsOverlap(january, later)).toBe(false);
+  });
+
+  it("overlaps an open-ended window that starts inside the range", () => {
+    const open = { effectiveFrom: "2026-01-15T00:00:00Z", effectiveTo: null };
+    expect(priceVersionWindowsOverlap(january, open)).toBe(true);
+  });
+
+  it("overlaps when both windows are open-ended", () => {
+    const a = { effectiveFrom: "2026-01-01T00:00:00Z", effectiveTo: null };
+    const b = { effectiveFrom: "2026-06-01T00:00:00Z", effectiveTo: null };
+    expect(priceVersionWindowsOverlap(a, b)).toBe(true);
+  });
+
+  it("rejects an invalid instant", () => {
+    expect(() =>
+      priceVersionWindowsOverlap(january, { effectiveFrom: "x", effectiveTo: null }),
+    ).toThrow(DomainError);
+  });
+});
+
+describe("selectEffectivePriceVersion", () => {
+  const versions = [
+    { id: "v1", effectiveFrom: "2026-01-01T00:00:00Z", effectiveTo: "2026-02-01T00:00:00Z" },
+    { id: "v2", effectiveFrom: "2026-02-01T00:00:00Z", effectiveTo: null },
+  ];
+
+  it("returns the version effective at the instant", () => {
+    expect(selectEffectivePriceVersion(versions, "2026-01-15T00:00:00Z")?.id).toBe("v1");
+    expect(selectEffectivePriceVersion(versions, "2026-02-01T00:00:00Z")?.id).toBe("v2");
+    expect(selectEffectivePriceVersion(versions, "2030-01-01T00:00:00Z")?.id).toBe("v2");
+  });
+
+  it("returns undefined when no version is effective", () => {
+    expect(selectEffectivePriceVersion(versions, "2025-12-31T00:00:00Z")).toBeUndefined();
+  });
+
+  it("throws when two versions are effective at once", () => {
+    const ambiguous = [
+      { id: "a", effectiveFrom: "2026-01-01T00:00:00Z", effectiveTo: null },
+      { id: "b", effectiveFrom: "2026-01-01T00:00:00Z", effectiveTo: null },
+    ];
+    expect(() => selectEffectivePriceVersion(ambiguous, "2026-06-01T00:00:00Z")).toThrow(
+      DomainError,
+    );
+  });
+
+  it("rejects an invalid instant", () => {
+    expect(() => selectEffectivePriceVersion(versions, "not-a-date")).toThrow(DomainError);
   });
 });
