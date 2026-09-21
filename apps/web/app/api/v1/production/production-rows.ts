@@ -30,8 +30,9 @@ import { PRODUCTION_STATUS } from "@aquarela/persistence";
  * (f) `production_plan` has no status vocabulary authority (the
  *     `production_status` enum governs the batch), so plan `status` is accepted
  *     as free text and only batch status is checked against the vocabulary;
- * (g) no yield tolerance or exception store, so `yieldVariancePct` is returned
- *     as a fact and no threshold is applied;
+ * (g) no yield tolerance threshold, so `yieldVariancePct` is returned as a fact
+ *     and no threshold is applied; a non-zero variance is recorded as a
+ *     `yield_variance` `data_quality_exception` unconditionally (provisional);
  * (i) the planned input/output **lines** are only persisted at completion, so
  *     the batch-detail payload carries the header plus whatever lines exist and
  *     the screen resolves the planned snapshot from the recipe version.

@@ -1,5 +1,6 @@
 import type { AuditInput } from "../auth";
 import type { ConversionEdge, MasterUnit } from "../catalog";
+import type { DataQualityExceptionStore } from "../data-quality";
 import type { InventoryStore } from "../inventory";
 
 /**
@@ -40,8 +41,10 @@ import type { InventoryStore } from "../inventory";
  *     `destination_storage_area_id`, consumption uses a caller-supplied area,
  *     and an absent area fails clearly;
  * (f) `production_plan` has no line/quantity table, so a plan is a dated header;
- * (g) no yield-variance tolerance or exception store (`PROD-003`), so
- *     `yield_variance_pct` is stored as a fact with no threshold check;
+ * (g) no yield-variance tolerance threshold (`PROD-003`): the `DEC-080`
+ *     exception store now exists and a `yield_variance` exception is recorded
+ *     unconditionally on a non-zero yield variance (provisional, no threshold
+ *     applied yet — the FIN tolerance thresholds remain open);
  * (i) the line-write timing forced by the persistence surface (above).
  */
 
@@ -243,7 +246,7 @@ export interface ListProductionBatchesQuery {
   readonly offset?: number;
 }
 
-export interface ProductionStore extends InventoryStore {
+export interface ProductionStore extends InventoryStore, DataQualityExceptionStore {
   /**
    * Binds `fn` to one transaction and hands it a full `ProductionStore`, so the
    * batch header/lines, the ledger postings and the audit fact commit or roll

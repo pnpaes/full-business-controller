@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import {
   createDb,
   item,
+  listDataQualityExceptions,
   location,
   recipe,
   recipeLine,
@@ -306,6 +307,74 @@ describe.skipIf(!databaseUrl)("production vertical against PostgreSQL", () => {
       });
       expect(replay.replayed).toBe(true);
       expect(replay.movementIds).toEqual(completed.movementIds);
+
+      // The exact completion has zero yield variance, so no DEC-080 exception.
+      const exceptionRows = (
+        await listDataQualityExceptions(tx, {
+          organizationId: orgId,
+          entityType: "production_batch",
+        })
+      ).filter((row) => row.entityId === created.productionBatchId);
+      expect(exceptionRows).toHaveLength(0);
+    });
+  });
+
+  it("records one yield_variance exception on a non-zero completion variance", async () => {
+    await inRollback(client.db, async (tx) => {
+      const fixture = await seedFixture(tx, orgId);
+      const store = createPostgresProductionStore(tx);
+      const actorId = randomUUID();
+      await seedStock(store, orgId, fixture, actorId);
+
+      const created = await createProductionBatch(store, {
+        organizationId: orgId,
+        actorId,
+        locationId: fixture.locationId,
+        recipeVersionId: fixture.recipeVersionId,
+        destinationStorageAreaId: fixture.storageAreaId,
+      });
+      await releaseProductionBatch(store, {
+        organizationId: orgId,
+        actorId,
+        productionBatchId: created.productionBatchId,
+      });
+      await startProductionBatch(store, {
+        organizationId: orgId,
+        actorId,
+        productionBatchId: created.productionBatchId,
+        actualStart: "2026-02-01T08:30:00.000Z",
+      });
+
+      const completed = await completeProductionBatch(store, {
+        organizationId: orgId,
+        actorId,
+        productionBatchId: created.productionBatchId,
+        actualFinish: "2026-02-01T10:00:00.000Z",
+        inputStorageAreaId: fixture.storageAreaId,
+        inputs: [{ itemId: fixture.inputItemId, actualQty: "0.600000", reasonCode: "trim loss" }],
+        output: { itemId: fixture.outputItemId, actualQty: "0.800000" },
+      });
+      expect(completed.yieldVariancePct).toBe("-0.200000");
+
+      // Exactly one yield_variance exception, read back through the persistence
+      // repository, written in the same transaction as the completion (DEC-080).
+      const exceptions = (
+        await listDataQualityExceptions(tx, {
+          organizationId: orgId,
+          entityType: "production_batch",
+        })
+      ).filter((row) => row.entityId === created.productionBatchId);
+      expect(exceptions).toHaveLength(1);
+      expect(exceptions[0]).toMatchObject({
+        organizationId: orgId,
+        ruleCode: "yield_variance",
+        severity: "medium",
+        entityType: "production_batch",
+        entityId: created.productionBatchId,
+        status: "open",
+        resolution: null,
+      });
+      expect(exceptions[0]?.detectedAt).toBeInstanceOf(Date);
     });
   });
 });

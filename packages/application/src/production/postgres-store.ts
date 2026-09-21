@@ -3,6 +3,7 @@ import * as repo from "@aquarela/persistence";
 import type { Database, NodeDatabase } from "@aquarela/persistence";
 
 import type { ConversionEdge, MasterUnit } from "../catalog";
+import { createPostgresDataQualityException } from "../data-quality";
 import { createPostgresInventoryStore } from "../inventory";
 
 import type {
@@ -335,6 +336,7 @@ export function createPostgresProductionStore(db: Database): ProductionStore {
       ).map(toBatchOutput),
     createProductionBatchOutput: async (input) =>
       toBatchOutput(await repo.createProductionBatchOutput(db, toNewBatchOutput(input))),
+    createDataQualityException: (input) => createPostgresDataQualityException(db, input),
     writeAudit: async (input) => {
       await repo.writeAuditEvent(db, input);
     },

@@ -30,8 +30,9 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
  * Recorded, not resolved: the body carries one output only (multi-output cost
  * allocation is undefined, open point (c)); quantities are base-unit decimals
  * with no portion field (`DEC-036` partial portions have no column); and
- * `yieldVariancePct` is returned as a stored fact because `PROD-003` has no
- * tolerance/exception store.
+ * `yieldVariancePct` is returned as a stored fact with no threshold applied
+ * (`PROD-003` tolerance remains open) — a non-zero yield variance is recorded
+ * as a `yield_variance` `data_quality_exception` unconditionally (provisional).
  */
 export async function POST(
   request: Request,

@@ -1,5 +1,10 @@
 import type { AuditInput } from "../auth";
 import type { ConversionEdge, MasterUnit } from "../catalog";
+import {
+  createFakeDataQualityException,
+  type DataQualityExceptionRecord,
+  type NewDataQualityExceptionRecord,
+} from "../data-quality";
 import type { StockBalanceRecord, StockLotRecord, StockMovementRecord } from "../inventory";
 import { FakeInventoryStore, seedInventoryFixture } from "../inventory/test-support";
 import type { InventoryFixture } from "../inventory/test-support";
@@ -55,6 +60,7 @@ interface ProductionSnapshot {
   readonly productionBatches: Map<string, ProductionBatchRecord>;
   readonly productionBatchInputs: ProductionBatchInputRecord[];
   readonly productionBatchOutputs: ProductionBatchOutputRecord[];
+  readonly dataQualityExceptions: Map<string, DataQualityExceptionRecord>;
 }
 
 /**
@@ -74,6 +80,7 @@ export class FakeProductionStore extends FakeInventoryStore implements Productio
   readonly recipeLines = new Map<string, ProductionRecipeLineRecord>();
   readonly masterUnits = new Map<string, MasterUnit>();
   readonly conversions: ConversionEdge[] = [];
+  readonly dataQualityExceptions = new Map<string, DataQualityExceptionRecord>();
 
   private productionSequence = 0;
 
@@ -104,6 +111,7 @@ export class FakeProductionStore extends FakeInventoryStore implements Productio
       productionBatches: new Map(this.productionBatches),
       productionBatchInputs: [...this.productionBatchInputs],
       productionBatchOutputs: [...this.productionBatchOutputs],
+      dataQualityExceptions: new Map(this.dataQualityExceptions),
     };
   }
 
@@ -122,6 +130,10 @@ export class FakeProductionStore extends FakeInventoryStore implements Productio
     this.productionBatchInputs.push(...snapshot.productionBatchInputs);
     this.productionBatchOutputs.length = 0;
     this.productionBatchOutputs.push(...snapshot.productionBatchOutputs);
+    this.dataQualityExceptions.clear();
+    for (const [key, value] of snapshot.dataQualityExceptions) {
+      this.dataQualityExceptions.set(key, value);
+    }
   }
 
   findMasterUnit(unitId: string): Promise<MasterUnit | undefined> {
@@ -322,6 +334,12 @@ export class FakeProductionStore extends FakeInventoryStore implements Productio
     };
     this.productionBatchOutputs.push(record);
     return Promise.resolve(record);
+  }
+
+  createDataQualityException(
+    input: NewDataQualityExceptionRecord,
+  ): Promise<DataQualityExceptionRecord> {
+    return createFakeDataQualityException(this.dataQualityExceptions, input);
   }
 }
 

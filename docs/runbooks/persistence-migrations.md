@@ -1126,9 +1126,15 @@ implements it:
   - **(f)** `production_plan` has no line/quantity table and **no status
     vocabulary authority** (`production_status` describes the batch workflow),
     so `production_plan.status` is unconstrained.
-  - **(g)** No **yield-variance tolerance or exception store**
+  - **(g)** ~~No **yield-variance tolerance or exception store**
     (`PROD-003`); `yield_variance_pct` is stored as a fact with no check and no
-    exception rows.
+    exception rows.~~ **Closed by `DEC-080` (migration `0030`) for the table and
+    `DEC-084` for the producer:** the `data_quality_exception` store now exists
+    (see its entry below) and `completeProductionBatch` records a
+    `yield_variance` exception **unconditionally** whenever the yield variance is
+    non-zero. The variance is still stored as a fact; the FIN **tolerance
+    threshold** remains an open point (the unconditional recording is
+    provisional pending those thresholds).
   - **(h)** The **output-kind vocabulary has no Phase-0 yaml key**; the
     provisional local constant `PRODUCTION_OUTPUT_KIND` backs
     `production_batch_output_kind_check` until the yaml key is added.

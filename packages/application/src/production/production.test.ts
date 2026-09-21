@@ -395,6 +395,58 @@ describe("completeProductionBatch", () => {
     expect(result.yieldVariancePct).toBe("-0.200000");
   });
 
+  it("records one yield_variance exception on a non-zero yield variance", async () => {
+    const context = await setup();
+    const batchId = await runningBatch(context);
+    const result = await completeProductionBatch(context.store, {
+      ...completeInput(context, batchId),
+      output: { itemId: context.fixture.outputItemId, actualQty: "0.800000" },
+    });
+    expect(result.yieldVariancePct).toBe("-0.200000");
+
+    // The input variance (0.6 vs planned 0.5) is stored on the line but does
+    // not itself produce an exception (PROD-004); only the output yield does.
+    const exceptions = [...context.store.dataQualityExceptions.values()];
+    expect(exceptions).toHaveLength(1);
+    expect(exceptions[0]).toMatchObject({
+      organizationId: context.fixture.organizationId,
+      ruleCode: "yield_variance",
+      severity: "medium",
+      entityType: "production_batch",
+      entityId: batchId,
+      detectedAt: AT,
+      status: "open",
+      resolution: null,
+    });
+  });
+
+  it("replays a non-zero yield variance without a second exception", async () => {
+    const context = await setup();
+    const batchId = await runningBatch(context);
+    const input = {
+      ...completeInput(context, batchId),
+      output: { itemId: context.fixture.outputItemId, actualQty: "0.800000" },
+      idempotencyKey: "complete-yield-replay",
+    };
+    const first = await completeProductionBatch(context.store, input);
+    expect(first.replayed).toBe(false);
+    expect(first.yieldVariancePct).toBe("-0.200000");
+    expect(context.store.dataQualityExceptions.size).toBe(1);
+
+    const replay = await completeProductionBatch(context.store, input);
+    expect(replay.replayed).toBe(true);
+    expect(replay.movementIds).toEqual(first.movementIds);
+    expect(context.store.dataQualityExceptions.size).toBe(1);
+  });
+
+  it("records no exception when the actual output exactly matches the plan", async () => {
+    const context = await setup();
+    const batchId = await runningBatch(context);
+    const result = await completeProductionBatch(context.store, completeInput(context, batchId));
+    expect(result.yieldVariancePct).toBe("0.000000");
+    expect(context.store.dataQualityExceptions.size).toBe(0);
+  });
+
   it("skips the ledger movement for a zero actual while still recording the line", async () => {
     const context = await setup();
     const batchId = await runningBatch(context);

@@ -119,12 +119,13 @@ interface ResolvedInput {
  * `movementType: "waste"`. Only an explicitly recorded abnormal loss becomes a
  * `waste_event` (the waste slice, linked by `waste_event.production_batch_id`).
  *
- * Recorded open points, not resolved: `PROD-003` has **no tolerance or
- * exception store**, so `yield_variance_pct` is written as a bare fact with no
- * threshold check; `DEC-036` partial-portion handling **has no column**, so
- * output lines carry base-unit quantities only; and the batch is **single
- * output** because cost allocation across multiple outputs is undefined
- * (open point (c)).
+ * Recorded open points, not resolved: `PROD-003` has **no tolerance threshold**
+ * yet, so a non-zero yield variance is recorded **unconditionally** as a
+ * `yield_variance` `data_quality_exception` (provisional, pending the FIN
+ * tolerance thresholds) rather than being checked against one; `DEC-036`
+ * partial-portion handling **has no column**, so output lines carry base-unit
+ * quantities only; and the batch is **single output** because cost allocation
+ * across multiple outputs is undefined (open point (c)).
  *
  * The whole completion runs in one transaction, so the postings, the line rows,
  * the header and the audit fact commit or roll back together. The batch header
@@ -398,6 +399,25 @@ export async function completeProductionBatch(
     });
 
     const variancePct = yieldVariancePct(snapshot.plannedOutputQty, input.output.actualQty);
+    // `DEC-080`: a yield variance is a data-quality exception, created in the
+    // same transaction as the fact so a failure rolls it back with the
+    // completion. The FIN tolerance thresholds are still open, so every
+    // non-zero variance is recorded unconditionally (provisional, `DEC-055`
+    // precedent); a zero variance records none.
+    const varianceException =
+      parseDecimal(variancePct, STOCK_QUANTITY_SCALE) !== 0n
+        ? await tx.createDataQualityException({
+            organizationId: input.organizationId,
+            ruleCode: "yield_variance",
+            severity: "medium",
+            entityType: "production_batch",
+            entityId: batch.id,
+            detectedAt: input.actualFinish,
+            status: "open",
+            resolution: null,
+            createdBy: input.actorId,
+          })
+        : null;
     const updated = await tx.updateProductionBatch(batch.id, {
       status: "completed",
       actualFinish: input.actualFinish,
@@ -423,6 +443,7 @@ export async function completeProductionBatch(
         input_count: resolvedInputs.length,
         output_count: 1,
         movement_count: results.length,
+        exception_id: varianceException?.id ?? null,
       },
     });
 
