@@ -32,8 +32,8 @@ export interface ImportRunRecord {
    */
   readonly profileVersion: string;
   /**
-   * Plain uuid (recorded open point): the platform `file` table does not exist
-   * yet, so `file_object_id` is not a foreign key and this slice never reads it.
+   * The run's `file_object` id, or `null`. A real FK since migration `0035`
+   * (`ADR-0006`/`DEC-085`); this slice carries it but never dereferences it.
    */
   readonly fileObjectId: string | null;
   readonly fileHash: string;

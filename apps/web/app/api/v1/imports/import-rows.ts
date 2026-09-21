@@ -21,8 +21,8 @@ import {
  *
  * Recorded, not resolved (no posting action is exposed here — posting is row 12,
  * owner-gated on `ADR-0008`):
- * - `fileObjectId` is a **plain uuid** — the platform `file` table does not
- *   exist yet, so it is never dereferenced;
+ * - `fileObjectId` is a real FK to `file_object` (`DEC-085`, migration `0035`)
+ *   but is never dereferenced here;
  * - `profileVersion` is **optional** (`DEC-081`): the run resolves its
  *   `import_profile` by source and takes the profile's version, so a caller
  *   value must match it (or be omitted); a source with no profile still needs

@@ -22,7 +22,8 @@ import type { ImportStore } from "../imports";
  *
  * Recorded open points — deliberately **not** resolved (see
  * `packages/persistence/src/schema/sales.ts`):
- * (e) `settlement.source_file_id` is a plain uuid (`file_object` absent).
+ * (e) `settlement.source_file_id` is a plain uuid: `file_object` now exists
+ *     (`DEC-085`), but the `settlement` → `file_object` FK stays deferred.
  *
  * Closed by `DEC-078` (migration `0028`), constrained at the persistence layer:
  * (i) `settlement.status` is checked against `SETTLEMENT_STATUS`

@@ -52,7 +52,8 @@ export async function GET(request: Request): Promise<Response> {
  *
  * A duplicate `fileHash` within the organization is a replay of an existing file
  * (`05_WORKFLOWS.md` step 8), so the command rejects it and the route returns
- * 400. `fileObjectId` is a plain uuid — no `file` table exists yet.
+ * 400. `fileObjectId` is a real FK to `file_object` since migration `0035`
+ * (`DEC-085`).
  * `profileVersion` is optional: the run resolves its `import_profile` by source
  * and takes the profile's version, so a caller value must match it or be omitted;
  * a source with no profile still requires one (`DEC-081`).

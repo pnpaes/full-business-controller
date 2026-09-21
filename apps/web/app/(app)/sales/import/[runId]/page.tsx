@@ -220,9 +220,7 @@ export default async function ImportRunDetailPage({
             {
               term: "File object id",
               description:
-                run.fileObjectId === null
-                  ? "— (plain uuid; no file table exists yet)"
-                  : run.fileObjectId,
+                run.fileObjectId === null ? "— (no file object linked)" : run.fileObjectId,
             },
             { term: "Created", description: formatInstant(run.createdAt) },
             { term: "Created by", description: orDash(run.createdBy) },

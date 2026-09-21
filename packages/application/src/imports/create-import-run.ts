@@ -23,8 +23,8 @@ export interface CreateImportRunInput {
   /** `date` (`yyyy-mm-dd`). */
   readonly periodEnd: string;
   /**
-   * Plain uuid (recorded open point: no `file` table exists yet). Stored
-   * verbatim and never dereferenced.
+   * The uploaded file's `file_object` id, or `null`. A real FK since migration
+   * `0035` (`DEC-085`); stored verbatim and never dereferenced here.
    */
   readonly fileObjectId?: string | null;
   /**

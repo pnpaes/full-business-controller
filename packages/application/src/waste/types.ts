@@ -50,7 +50,7 @@ export interface WasteEventRecord {
   /** ISO timestamp. */
   readonly occurredAt: string;
   readonly actorId: string;
-  /** Deferred plain uuid: no file-object table yet (open point (c)). */
+  /** Deferred plain uuid: `file_object` now exists (`DEC-085`); this FK stays open. */
   readonly photoFileId: string | null;
   readonly correctiveAction: string | null;
   /** Deferred plain uuid: snapshot semantics undecided (open point (c)). */

@@ -38,8 +38,9 @@ import { LEGACY_I19_DEMO_TEXT, parseLegacyI19Rows } from "../app/(app)/sales/leg
  * no command call and therefore creates no duplicate run or staging rows.
  *
  * Recorded, not resolved: the run stops at `needs_review`/`validated` — posting
- * is row 12 and owner-gated on `ADR-0008`; `file_object_id` is a plain uuid; and
- * no tolerance table exists, so the residual is reported for visibility only.
+ * is row 12 and owner-gated on `ADR-0008`; `file_object_id` is a real FK
+ * (`DEC-085`) but is left null; and no tolerance table exists, so the residual
+ * is reported for visibility only.
  * No secret is read, printed or stored.
  */
 
