@@ -13,7 +13,7 @@ import { readMoneyOrNull } from "../sales/validation";
 
 import { RECONCILIATION_AUDIT_ACTIONS } from "./actions";
 import type { ReconciliationStore } from "./types";
-import { resolveEffectiveTolerance } from "./validation";
+import { assertReconciliationScopeType, resolveEffectiveTolerance } from "./validation";
 
 export interface ReconcileImportRunInput {
   readonly organizationId: string;
@@ -80,6 +80,7 @@ export async function reconcileImportRun(
   input: ReconcileImportRunInput,
 ): Promise<ReconcileImportRunResult> {
   return store.withTransaction(async (tx) => {
+    assertReconciliationScopeType(input.scopeType);
     const run = await tx.findImportRun({
       organizationId: input.organizationId,
       importRunId: input.importRunId,

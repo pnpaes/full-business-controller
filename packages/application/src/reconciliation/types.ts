@@ -22,11 +22,16 @@ import type { ImportStore } from "../imports";
  *
  * Recorded open points — deliberately **not** resolved (see
  * `packages/persistence/src/schema/sales.ts`):
- * (e) `settlement.source_file_id` is a plain uuid (`file_object` absent);
- * (i) there is no `settlement_status` vocabulary, so `settlement.status` is
- *     unconstrained text;
- * (j) `reconciliation.scope_type` values are unresolved; this slice writes the
- *     labels it owns (`import_run`, `settlement`).
+ * (e) `settlement.source_file_id` is a plain uuid (`file_object` absent).
+ *
+ * Closed by `DEC-078` (migration `0028`), constrained at the persistence layer:
+ * (i) `settlement.status` is checked against `SETTLEMENT_STATUS`
+ *     (`settlement_status_check`, `{received, paid, void}`; default `received`);
+ * (j) `reconciliation.scope_type` is checked against the distinct
+ *     `RECONCILIATION_SCOPE_TYPE` (`reconciliation_scope_type_check`,
+ *     `{import_run, sales_source, settlement, supplier_invoice}`), and the
+ *     reconcile commands reject an unknown scope via
+ *     `assertReconciliationScopeType` (`DEC-078` (b)).
  */
 
 export interface SettlementRecord {

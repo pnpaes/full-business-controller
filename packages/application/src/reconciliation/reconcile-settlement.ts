@@ -8,7 +8,7 @@ import {
 
 import { RECONCILIATION_AUDIT_ACTIONS } from "./actions";
 import type { ReconciliationStore } from "./types";
-import { resolveEffectiveTolerance } from "./validation";
+import { assertReconciliationScopeType, resolveEffectiveTolerance } from "./validation";
 
 export interface ReconcileSettlementInput {
   readonly organizationId: string;
@@ -56,15 +56,17 @@ export interface ReconcileSettlementResult {
  * at the settlement's period end (`settlement.periodEnd`) is applied as
  * `max(rate × |expected|, floorAmount)`, else an explicit opt-in to the
  * published `DEC-026` default; a missing tolerance blocks close and is never
- * defaulted silently. `settlement.status` has no
- * vocabulary (open point (i)), so it is stored facts only and the reconciliation
- * is the judgement.
+ * defaulted silently. `settlement.status` is the stored payout-report fact,
+ * constrained to the `SETTLEMENT_STATUS` vocabulary (`DEC-078` (a),
+ * `settlement_status_check`, migration `0028`); the reconciliation remains the
+ * judgement. An unknown `scopeType` is rejected (`DEC-078` (b)).
  */
 export async function reconcileSettlement(
   store: ReconciliationStore,
   input: ReconcileSettlementInput,
 ): Promise<ReconcileSettlementResult> {
   return store.withTransaction(async (tx) => {
+    assertReconciliationScopeType(input.scopeType);
     const settlement = await tx.findSettlement({
       organizationId: input.organizationId,
       settlementId: input.settlementId,

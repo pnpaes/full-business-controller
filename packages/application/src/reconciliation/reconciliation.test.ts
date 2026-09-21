@@ -305,6 +305,48 @@ describe("reconcileImportRun", () => {
       }),
     ).rejects.toThrow(/import run not found/);
   });
+
+  it("accepts a valid explicit scopeType and rejects an unknown one (DEC-078)", async () => {
+    const store = new FakeReconciliationStore();
+    const { importRunId } = await seedRun(store, {
+      totals: { NOK: "100.0000" },
+      rows: [{ grossAmount: "100.0000", linkedSalesLineId: "sales-line-1" }],
+    });
+
+    const result = await reconcileImportRun(store, {
+      organizationId: ORG,
+      actorId: ACTOR,
+      importRunId,
+      scopeType: "sales_source",
+      useDecisionDefaultTolerance: true,
+    });
+    expect(store.reconciliations.get(result.reconciliationId)?.scopeType).toBe("sales_source");
+
+    const rejected = new FakeReconciliationStore();
+    const run = await seedRun(rejected, {
+      totals: { NOK: "100.0000" },
+      rows: [{ grossAmount: "100.0000", linkedSalesLineId: "sales-line-1" }],
+    });
+    await expect(
+      reconcileImportRun(rejected, {
+        organizationId: ORG,
+        actorId: ACTOR,
+        importRunId: run.importRunId,
+        scopeType: "not_a_scope",
+        useDecisionDefaultTolerance: true,
+      }),
+    ).rejects.toBeInstanceOf(DomainError);
+    await expect(
+      reconcileImportRun(rejected, {
+        organizationId: ORG,
+        actorId: ACTOR,
+        importRunId: run.importRunId,
+        scopeType: "not_a_scope",
+        useDecisionDefaultTolerance: true,
+      }),
+    ).rejects.toThrow(/unknown reconciliation scope_type/);
+    expect(rejected.reconciliations.size).toBe(0);
+  });
 });
 
 describe("reconcileSettlement", () => {
@@ -434,6 +476,40 @@ describe("reconcileSettlement", () => {
     expect(second.created).toBe(false);
     expect(second.reconciliationId).toBe(first.reconciliationId);
     expect(store.reconciliations.size).toBe(1);
+  });
+
+  it("accepts a valid explicit scopeType and rejects an unknown one (DEC-078)", async () => {
+    const { store, settlementId } = storeWithSalesTotal("10000.0000");
+
+    const result = await reconcileSettlement(store, {
+      organizationId: ORG,
+      actorId: ACTOR,
+      settlementId,
+      scopeType: "sales_source",
+      useDecisionDefaultTolerance: true,
+    });
+    expect(store.reconciliations.get(result.reconciliationId)?.scopeType).toBe("sales_source");
+
+    const rejected = storeWithSalesTotal("10000.0000");
+    await expect(
+      reconcileSettlement(rejected.store, {
+        organizationId: ORG,
+        actorId: ACTOR,
+        settlementId: rejected.settlementId,
+        scopeType: "not_a_scope",
+        useDecisionDefaultTolerance: true,
+      }),
+    ).rejects.toBeInstanceOf(DomainError);
+    await expect(
+      reconcileSettlement(rejected.store, {
+        organizationId: ORG,
+        actorId: ACTOR,
+        settlementId: rejected.settlementId,
+        scopeType: "not_a_scope",
+        useDecisionDefaultTolerance: true,
+      }),
+    ).rejects.toThrow(/unknown reconciliation scope_type/);
+    expect(rejected.store.reconciliations.size).toBe(0);
   });
 });
 
