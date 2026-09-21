@@ -29,6 +29,7 @@ import { channel, location, organization } from "./organization";
 import { productVariant } from "./products";
 import { taxRule } from "./tax";
 import {
+  IMPORT_POSTING_POLICY,
   IMPORT_STATUS,
   MAPPING_STATE,
   OPTION_KIND,
@@ -65,14 +66,19 @@ import {
  * Do not invent a resolution for any of the still-open points.
  *
  * Slice-11:
- * (a) There is **no import/mapping profile table**. `import_run.source` and
+ * ~~(a) There is **no import/mapping profile table**. `import_run.source` and
  *     `import_run.profile_version` are opaque text labels: the profiles are
- *     static configuration in this slice, not rows. No profile DDL is authored.
+ *     static configuration in this slice, not rows. No profile DDL is
+ *     authored.~~ **Closed by `DEC-081`** (migration `0031`): the
+ *     `import_profile` table is keyed `(organization_id, source)` and carries
+ *     the per-source `posting_policy`/`validation_rules`; `import_run` gains a
+ *     nullable `import_profile_id` FK (legacy runs keep null).
  * (b) **`file_object` does not exist yet**, so `import_run.file_object_id` is a
  *     plain `uuid` with **no FK** (deferred-FK convention, like
  *     `goods_receipt.evidence_file_id`). The platform slice that models
  *     `file_object` closes it later.
- * (c) `IMPORT_POSTING_POLICY` is exported but backs no check;
+ * (c) `IMPORT_POSTING_POLICY` now backs `import_profile_posting_policy_check`
+ *     (`DEC-081`); it still does not constrain `import_run` itself.
  *     `import_staging_row.linked_sales_line_id` stays a plain `uuid` with no FK
  *     even though `sales_line` now exists — closing that deferred FK belongs to
  *     the posting slice that writes it, not to this schema-only row.
@@ -117,15 +123,62 @@ import {
  *     `scope_type` untouched.
  */
 
+/**
+ * `import_profile` (`DEC-081`, migration `0031`; `SALE-004`/`SALE-007`). The
+ * per-source import configuration that used to be caller-supplied static config
+ * (open point (a)): keyed `(organization_id, source)`, it records the profile's
+ * `profile_version` label, its `posting_policy` (`import_posting_policy`,
+ * default `allow_partial` per `DEC-025`) and the `validation_rules` object (the
+ * `ImportValidationRules` shape). `validation_rules` is jsonb but constrained to
+ * an object, since jsonb can otherwise hold an array or scalar.
+ *
+ * Cross-organization coherence between an `import_run.organization_id` and the
+ * profile it links is enforced by the hand-written `import_run_profile_org_guard`
+ * trigger (`DEC-079`/`DEC-081`, migration `0032`): a single-column FK on
+ * `import_profile_id` cannot express it, since `import_profile` carries its own
+ * `organization_id`.
+ */
+export const importProfile = pgTable(
+  "import_profile",
+  {
+    id: uuidPk(),
+    organizationId: orgId().references(() => organization.id),
+    source: text("source").notNull(),
+    profileVersion: text("profile_version").notNull(),
+    postingPolicy: text("posting_policy").notNull().default("allow_partial"),
+    validationRules: jsonObject("validation_rules"),
+    ...auditColumns(),
+  },
+  (t) => [
+    check("import_profile_posting_policy_check", enumCheck(t.postingPolicy, IMPORT_POSTING_POLICY)),
+    check(
+      "import_profile_validation_rules_check",
+      sql`jsonb_typeof(${t.validationRules}) = 'object'`,
+    ),
+    unique("import_profile_org_source_key").on(t.organizationId, t.source),
+  ],
+);
+
 export const importRun = pgTable(
   "import_run",
   {
     id: uuidPk(),
     organizationId: orgId().references(() => organization.id),
-    // Open point (a): profiles are static config, so `source`/`profile_version`
-    // are opaque labels (no profile table exists).
+    // `source`/`profile_version` stay as opaque labels (kept additively); the
+    // resolved profile is the nullable FK below.
     source: text("source").notNull(),
     profileVersion: text("profile_version").notNull(),
+    // `DEC-081`: the run's per-source profile. Nullable and additive, so legacy
+    // runs (and sources with no profile) stay null. No `onDelete`, so a profiled
+    // run keeps its reference: deleting a profile is restricted while a run
+    // points at it.
+    // `DEC-079`/`DEC-081` (migration `0032`): the `import_run_profile_org_guard`
+    // trigger rejects a profile belonging to another organization than the run.
+    //
+    // ponytail: deliberately no reverse index on `import_profile_id` until a
+    // "runs using profile X" read path exists; add one then (the
+    // `data_quality_exception_org_entity_idx` precedent).
+    importProfileId: uuid("import_profile_id").references(() => importProfile.id),
     // Open point (b): `file_object` is not modelled yet, so this is a plain uuid.
     fileObjectId: uuid("file_object_id"),
     // `file_hash` is unique: 05_WORKFLOWS §5.9 step 2 rejects/recognises a

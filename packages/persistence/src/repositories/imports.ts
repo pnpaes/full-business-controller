@@ -1,10 +1,12 @@
 import { and, asc, desc, eq } from "drizzle-orm";
 
 import type { Database } from "../client";
-import { externalMapping, importRun, importStagingRow } from "../schema";
+import { externalMapping, importProfile, importRun, importStagingRow } from "../schema";
 
 export type ImportRun = typeof importRun.$inferSelect;
 export type NewImportRun = typeof importRun.$inferInsert;
+export type ImportProfile = typeof importProfile.$inferSelect;
+export type NewImportProfile = typeof importProfile.$inferInsert;
 export type ImportStagingRow = typeof importStagingRow.$inferSelect;
 export type NewImportStagingRow = typeof importStagingRow.$inferInsert;
 export type ExternalMapping = typeof externalMapping.$inferSelect;
@@ -20,8 +22,11 @@ export type NewExternalMapping = typeof externalMapping.$inferInsert;
  * join (mirrors `listStockCountLines`). `external_mapping` carries
  * `organization_id` directly; its natural key
  * `(source_system, entity_type, external_id, effective_from)` is the
- * `findOrCreate` idempotency path (open point (a) in `schema/sales.ts`: there is
- * no import-profile table, so nothing here resolves a profile).
+ * `findOrCreate` idempotency path. `import_profile` (`DEC-081`, migration
+ * `0031`) also carries `organization_id` directly and is read by
+ * `(organization_id, id)` or `(organization_id, source)`; resolving a profile
+ * onto a run is the application's job, so this file only creates and reads
+ * profiles.
  *
  * This slice posts nothing: `createImportRun`/`updateImportRun` never write a
  * `stock_movement` or a sales fact. The posting step is row 12 and owner-gated
@@ -112,6 +117,57 @@ export async function updateImportRun(
   patch: ImportRunPatch,
 ): Promise<ImportRun | undefined> {
   const rows = await db.update(importRun).set(patch).where(eq(importRun.id, id)).returning();
+  return rows[0];
+}
+
+/**
+ * Creates the per-source `import_profile` (`DEC-081`). `posting_policy` defaults
+ * to `allow_partial` and `validation_rules` to `{}` at the schema level; the
+ * `(organization_id, source)` unique key makes a second profile for the same
+ * source fail rather than silently shadow the first.
+ */
+export async function createImportProfile(
+  db: Database,
+  input: NewImportProfile,
+): Promise<ImportProfile> {
+  const rows = await db.insert(importProfile).values(input).returning();
+  return rows[0]!;
+}
+
+/**
+ * Exactly one of `importProfileId`/`source` identifies the profile, so supplying
+ * both (or neither) is a compile error.
+ */
+export type FindImportProfileQuery =
+  | {
+      readonly organizationId: string;
+      readonly importProfileId: string;
+      readonly source?: undefined;
+    }
+  | {
+      readonly organizationId: string;
+      readonly source: string;
+      readonly importProfileId?: undefined;
+    };
+
+/**
+ * One profile by id or by `source`, always organization-scoped (`DEC-061`), or
+ * `undefined`. The `(organization_id, source)` unique key keeps the source
+ * lookup unambiguous.
+ */
+export async function findImportProfile(
+  db: Database,
+  query: FindImportProfileQuery,
+): Promise<ImportProfile | undefined> {
+  const predicate =
+    query.importProfileId !== undefined
+      ? eq(importProfile.id, query.importProfileId)
+      : eq(importProfile.source, query.source);
+  const rows = await db
+    .select()
+    .from(importProfile)
+    .where(and(eq(importProfile.organizationId, query.organizationId), predicate))
+    .limit(1);
   return rows[0];
 }
 

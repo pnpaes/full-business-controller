@@ -255,8 +255,8 @@ export const PRODUCTION_STATUS = [
 // `schemas/domain-enums.yaml`: the `import_run` workflow state
 // (`uploaded` → `superseded`, `05_WORKFLOWS.md` §5.9) and the
 // `import_staging_row` mapping state. `IMPORT_POSTING_POLICY` is the posting
-// policy (`DEC-035`); it is exported here but backs no `check` in this slice —
-// the posting step is row 12 and owner-gated on `ADR-0008`.
+// policy (`DEC-035`); it now backs `import_profile_posting_policy_check` on
+// `import_profile.posting_policy` (`DEC-081`, migration `0031`).
 export const IMPORT_STATUS = [
   "uploaded",
   "parsed",

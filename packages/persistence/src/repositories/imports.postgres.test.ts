@@ -2,11 +2,19 @@ import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createDb, type DbClient } from "../client";
-import { externalMapping, importRun, importStagingRow, organization } from "../schema";
 import {
+  externalMapping,
+  importProfile,
+  importRun,
+  importStagingRow,
+  organization,
+} from "../schema";
+import {
+  createImportProfile,
   createImportRun,
   createImportStagingRow,
   findExternalMapping,
+  findImportProfile,
   findImportRun,
   findOrCreateExternalMapping,
   listExternalMappings,
@@ -17,6 +25,7 @@ import {
 } from "./imports";
 import {
   createTestExternalMapping,
+  createTestImportProfile,
   createTestImportRun,
   createTestImportStagingRow,
   createTestOrganization,
@@ -357,9 +366,143 @@ describe.skipIf(!databaseUrl)("imports repository", () => {
     });
   });
 
+  it("creates a profile and finds it by source or id, organization-scoped", async () => {
+    await inRollback(client.db, async (tx) => {
+      const source = uniqueName("source");
+      const created = await createImportProfile(tx, {
+        organizationId: orgId,
+        source,
+        profileVersion: "2026-03",
+        validationRules: { requiredNormalizedFields: ["occurred_at"] },
+      });
+      expect(created.postingPolicy).toBe("allow_partial");
+      expect(created.profileVersion).toBe("2026-03");
+      expect(created.validationRules).toEqual({ requiredNormalizedFields: ["occurred_at"] });
+
+      expect((await findImportProfile(tx, { organizationId: orgId, source }))?.id).toBe(created.id);
+      expect(
+        (await findImportProfile(tx, { organizationId: orgId, importProfileId: created.id }))?.id,
+      ).toBe(created.id);
+
+      // A source that was never profiled resolves to undefined.
+      expect(
+        await findImportProfile(tx, { organizationId: orgId, source: uniqueName("source") }),
+      ).toBeUndefined();
+    });
+  });
+
+  it("defaults a profile's posting policy and validation rules", async () => {
+    await inRollback(client.db, async (tx) => {
+      const created = await createTestImportProfile(tx, orgId);
+      expect(created.postingPolicy).toBe("allow_partial");
+      expect(created.validationRules).toEqual({});
+      // A run created without a profile is a legacy run: the link stays null.
+      expect((await createTestImportRun(tx, orgId)).importProfileId).toBeNull();
+    });
+  });
+
+  it("keeps another organization's profile invisible by source and by id", async () => {
+    await inRollback(client.db, async (tx) => {
+      const source = uniqueName("source");
+      const otherOrgId = await createTestOrganization(tx, uniqueSuffix());
+      const other = await createTestImportProfile(tx, otherOrgId, { source });
+
+      expect(await findImportProfile(tx, { organizationId: orgId, source })).toBeUndefined();
+      expect(
+        await findImportProfile(tx, { organizationId: orgId, importProfileId: other.id }),
+      ).toBeUndefined();
+
+      // The same source in a second organization is a distinct profile.
+      const mine = await createTestImportProfile(tx, orgId, { source });
+      expect(mine.id).not.toBe(other.id);
+    });
+  });
+
+  it("rejects a duplicate (organization_id, source) profile", async () => {
+    await inRollback(client.db, async (tx) => {
+      const source = uniqueName("source");
+      await createTestImportProfile(tx, orgId, { source });
+      const cause = await rejectionCause(createTestImportProfile(tx, orgId, { source }));
+      expect(cause.message).toMatch(/import_profile_org_source_key/);
+    });
+  });
+
+  it("rejects an out-of-vocabulary profile posting policy", async () => {
+    await inRollback(client.db, async (tx) => {
+      const cause = await rejectionCause(
+        createTestImportProfile(tx, orgId, { postingPolicy: "best_effort" }),
+      );
+      expect(cause.message).toMatch(/import_profile_posting_policy_check/);
+    });
+  });
+
+  it("rejects non-object validation rules", async () => {
+    await inRollback(client.db, async (tx) => {
+      const cause = await rejectionCause(
+        createTestImportProfile(tx, orgId, { validationRules: [] }),
+      );
+      expect(cause.message).toMatch(/import_profile_validation_rules_check/);
+    });
+  });
+
+  it("links a run to a profile and rejects an unknown profile id", async () => {
+    await inRollback(client.db, async (tx) => {
+      const profile = await createTestImportProfile(tx, orgId);
+      const run = await createTestImportRun(tx, orgId, { importProfileId: profile.id });
+      expect(run.importProfileId).toBe(profile.id);
+
+      const cause = await rejectionCause(
+        createTestImportRun(tx, orgId, {
+          importProfileId: "00000000-0000-0000-0000-000000000000",
+        }),
+      );
+      expect(cause.message).toMatch(/import_run_import_profile_id_import_profile_id_fk/);
+    });
+  });
+
+  it("rejects a run linked to another organization's profile (DEC-079/0032)", async () => {
+    await inRollback(client.db, async (tx) => {
+      // A same-organization profile link is accepted by the guard.
+      const mine = await createTestImportProfile(tx, orgId);
+      const run = await createTestImportRun(tx, orgId, { importProfileId: mine.id });
+      expect(run.importProfileId).toBe(mine.id);
+
+      // A profile from another organization is rejected even though its id is a
+      // valid `import_profile` row (the single-column FK alone cannot see the
+      // organization mismatch).
+      const otherOrgId = await createTestOrganization(tx, uniqueSuffix());
+      const other = await createTestImportProfile(tx, otherOrgId);
+      const cause = await rejectionCause(
+        createTestImportRun(tx, orgId, { importProfileId: other.id }),
+      );
+      expect(cause.message).toContain("import_run.import_profile_id");
+    });
+  });
+
+  it("rejects repointing a run to another organization's profile (DEC-079/0032)", async () => {
+    await inRollback(client.db, async (tx) => {
+      const mine = await createTestImportProfile(tx, orgId);
+      const run = await createTestImportRun(tx, orgId, { importProfileId: mine.id });
+
+      const otherOrgId = await createTestOrganization(tx, uniqueSuffix());
+      const other = await createTestImportProfile(tx, otherOrgId);
+
+      const cause = await rejectionCause(
+        (async () => {
+          await tx
+            .update(importRun)
+            .set({ importProfileId: other.id })
+            .where(eq(importRun.id, run.id));
+        })(),
+      );
+      expect(cause.message).toContain("import_run.import_profile_id");
+    });
+  });
+
   it("exposes the import-framework tables", () => {
     expect(importRun).toBeDefined();
     expect(importStagingRow).toBeDefined();
     expect(externalMapping).toBeDefined();
+    expect(importProfile).toBeDefined();
   });
 });

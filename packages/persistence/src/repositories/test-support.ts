@@ -6,6 +6,7 @@ import {
   costCenter,
   dataQualityException,
   externalMapping,
+  importProfile,
   importRun,
   importStagingRow,
   item,
@@ -528,6 +529,28 @@ export async function createTestImportRun(
       fileHash: uniqueName("hash"),
       periodStart: "2026-03-01",
       periodEnd: "2026-03-31",
+      ...overrides,
+    })
+    .returning();
+  return rows[0]!;
+}
+
+/**
+ * A `DEC-081` import profile. `posting_policy` defaults to `allow_partial` and
+ * `validation_rules` to `{}` (the schema defaults); `source` gets a unique test
+ * value because `(organization_id, source)` is unique.
+ */
+export async function createTestImportProfile(
+  db: Database,
+  organizationId: string,
+  overrides: Partial<typeof importProfile.$inferInsert> = {},
+): Promise<typeof importProfile.$inferSelect> {
+  const rows = await db
+    .insert(importProfile)
+    .values({
+      organizationId,
+      source: uniqueName("source"),
+      profileVersion: "v1",
       ...overrides,
     })
     .returning();
