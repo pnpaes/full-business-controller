@@ -13,49 +13,49 @@ This file is **updated at the end of every slice** — statuses and the "current
 line move with the work; `CONTEXT.md` keeps the narrative handoff and the immediate
 `Resume here` section.
 
-**Current position:** HEAD `36f3c30` on `main` (nothing pushed; the working tree
-holds only the next docs commit). Slice 0, auth slices 1a–1e, slices 2–10, row 11
+**Current position:** HEAD `0f8b7b1` on `main` (nothing pushed; nothing applied to
+DigitalOcean). Slice 0, auth slices 1a–1e, slices 2–10, row 11
 (import framework + external mappings), row 12 (sales + settlements +
 reconciliation), the **price-version slice (`DEC-064`, PRICE-002/003)**, the
 **`DEC-078` low-risk vocabulary/integrity open points**, the **`DEC-079`
 cross-organization coherence guards**, the **`DEC-080`
-`data_quality_exception` table**, the **`DEC-081` import-profile table** and the
-**`DEC-082` import posting-policy enforcement**
+`data_quality_exception` table**, the **`DEC-081` import-profile table**, the
+**`DEC-082` import posting-policy enforcement** and the **`DEC-083`
+first-class `import_disposition` table (migration `0033`)**
 are `done` and committed;
 `ADR-0007` and `ADR-0008` accepted 2026-09-20 (owner-delegated, revertible).
-The `DEC-082` slice delivered (commits `12f0377`, `22b67c1`, `36094c6`,
-`36f3c30` — the last being the `/review unpushed` follow-up fix rejecting a
-corrupt non-string policy snapshot): `postImportRun`
-resolves the run's recorded `diagnostics.posting_policy` snapshot
-(absent/blank → `allow_partial`; a present out-of-vocabulary value →
-`DomainError` as corrupt); under `all_or_nothing` a pre-write check refuses
-the whole attempt with a `DomainError` naming the blocking `sourceRowNo`s
-unless every staging row is postable, already linked to a sales line, or
-covered by an approved disposition (`DEC-035`), writing nothing and leaving the
-run's status unchanged. Verification at `36f3c30`: `typecheck`, `lint`,
-`format:check` clean (`build` previously clean); **1362/1362 tests with
+The `DEC-083` slice delivered (commits `4587564`, `dbb7d97`, `64a7cfc`,
+`0f8b7b1`, plus the runbook/context docs commits): import dispositions moved
+from `import_run.diagnostics.dispositions` jsonb into a first-class
+**`import_disposition`** table — one disposition per staging row, FK cascade
+to `import_staging_row` + `UNIQUE(import_staging_row_id)`, `disposition`
+checked `{unmapped,rejected,ignored}`, `reason`, required `actor_id`,
+`created_at` = the approval instant, no `organization_id` (scoped via
+`import_staging_row` →
+`import_run`); migration `0033` is additive and backfills the existing jsonb
+(latest record per row; malformed/orphan records skipped, a malformed `at`
+aborts — the runbook preflight flags both), jsonb keys retained frozen
+(expand → migrate → contract), and the unjournaled down companion rebuilds
+`diagnostics.dispositions` from the table before dropping it (lossless
+rollback). `disposeStagingRow` inserts the one disposition (the unique key
+refuses a repeat with a `DomainError` and rolls back), and
+`getImportRun`/`previewImportRun`/`listImportRuns`/`postImportRun`/`reconcileImportRun`
+read the table; the dead jsonb reader is removed. Verification at `0f8b7b1`:
+`typecheck`/`lint`/`build`/`format:check` clean; **1366/1366 tests with
 `DATABASE_URL`**
-(135 files); `npm audit --omit=dev` 0; `db:migrate` through `0032` is a no-op;
-66 tables (no schema change).
+(135 files); `npm audit --omit=dev` 0; `db:migrate` through `0033` is a no-op
+on re-run; 67 tables (was 66); the `0033` down/re-apply rehearsed (lossless).
 Programme
 direction: proceed autonomously, per task — parallel background agents →
 adversarial review + fixes → document status and next steps → commit → next
 task. **Remaining roadmap:** row 13 is **data-gated** on history/grain
 quality (I11); row 14 is **owner-gated** on a privacy review / access
 matrix; rows 15–18 remain blocked (data / `ADR-0009`–`0011`). **Next
-unblocked task:** move import dispositions from
-`import_run.diagnostics.dispositions` jsonb into a first-class **dispositions
-table** (row-11 import-framework point 7) — now load-bearing because
-`DEC-082`'s `all_or_nothing` refusal and `reconcileImportRun`/`DEC-035` key off
-the same jsonb records; additive migration `0033`+ with a rehearsed down path,
-wiring `disposeStagingRow` and the disposition readers (documenting the
-expand → migrate → contract order if the jsonb read path must stay for a
-backfill) — TECH-owned and buildable without owner input; after it, the
-remaining buildable technical items are smaller (the `PROD-003` exception
-producers, `file_object`). Still owner/data-gated: the
-receipts→ledger wiring, row 13, row 14, rows 15–18, the price-version
-scope-resolution fallback and consumption grain A1. Next free decision id
-`DEC-083`.
+unblocked task:** the **`PROD-003` count-variance/yield-variance exception
+producers** using the `DEC-080` `data_quality_exception` table (the variance
+tolerance thresholds stay a recorded FIN open point); after it, `file_object`
+(row-11 import-framework point 6). Most other rows remain owner/data-gated.
+Next free decision id `DEC-084`.
 
 ## 2. The execution loop (per slice)
 
@@ -456,16 +456,17 @@ dates assigned):
       `createImportRun`/`validateImportRun`); ~~the profile's posting policy is
       still **not enforced** by `postImportRun`~~ resolved 2026-09-21
       (`DEC-082` — `postImportRun` enforces the run's recorded
-      `diagnostics.posting_policy`, commits `12f0377`/`22b67c1`; the
-      dispositions table — point 7 — is the next unblocked task).
+      `diagnostics.posting_policy`, commits `12f0377`/`22b67c1`).
    5. ~~No tolerance-configuration table exists~~ resolved 2026-09-20 (`DEC-072`):
       an effective-dated `reconciliation_tolerance` table (migration `0024`);
       missing config blocks close.
    6. `file_object` is absent from the schema, so `import_run.file_object_id` is a
       plain uuid with no FK target. owner/TECH.
-   7. Dispositions live in `import_run.diagnostics.dispositions` (jsonb), not a
-      table. owner/TECH — **the next unblocked TECH task** (see §5 "Next
-      unblocked task" and `CONTEXT.md` "Resume here").
+   7. ~~Dispositions live in `import_run.diagnostics.dispositions` (jsonb), not a
+       table.~~ resolved 2026-09-21 (`DEC-083` — the first-class
+       `import_disposition` table, migration `0033`, one disposition per
+       staging row; commits `dbb7d97`/`64a7cfc`). The remaining row-11 point
+       is `file_object` absent (point 6).
   8. ~~Two routes return 404 by matching the text `/not found/i` on the
       `DomainError` message~~ resolved 2026-09-20 (`DEC-076`): a typed
       `NotFoundError` maps to 404 by `instanceof`.
@@ -504,37 +505,29 @@ dates assigned):
   8. A local dev-DB side effect: the demo import run left a
      `partially_posted` import run and a reconciliation reopened to `pending`
      in the local database. Local dev-data artefact, no repository impact.
-- **Next unblocked task (2026-09-21, after `DEC-082`):** with rows 13–18 gated
+- **Next unblocked task (2026-09-21, after `DEC-083`):** with rows 13–18 gated
   (row 13 data-gated on history/grain quality I11; row 14 owner-gated on the
   privacy review / access matrix; rows 15–18 blocked on data /
   `ADR-0009`–`0011`), no roadmap slice is buildable purely from code without
   owner inputs or real history. The recorded low-risk open points resolved so
-  far are decisions `DEC-072`–`DEC-082` (2026-09-20/21; tolerance table
+  far are decisions `DEC-072`–`DEC-083` (2026-09-20/21; tolerance table
   `DEC-072`, sales-line reversal `DEC-073`, `MAPPING_STATE` `conflict`
   `DEC-074`, `tax_rule_id`/`applied_tax_rate` `DEC-075`, typed not-found error
   `DEC-076`, the price-version slice `DEC-077`, the `settlement.status`/
   `reconciliation.scope_type` vocabularies + `lotTracked` enforcement
   `DEC-078`, the cross-organization coherence guards `DEC-079`, the
   `data_quality_exception` table + transfer-discrepancy producer `DEC-080`,
-  the `import_profile` table + run→profile org-coherence guard `DEC-081`, and
-  the `postImportRun` posting-policy enforcement `DEC-082` — committed
-  `12f0377`/`22b67c1`).
-  The next buildable TECH-owned task is the **dispositions table** (row-11
-  import-framework point 7): move the disposition facts out of
-  `import_run.diagnostics.dispositions` jsonb into a first-class table (FK to
-  the staging row, timestamps, actor, one disposition per row). It is now
-  load-bearing: `DEC-082`'s `all_or_nothing` refusal treats an approved
-  disposition as resolving a staging row, and `reconcileImportRun`/`DEC-035`
-  already key off the same jsonb records. Additive via `npm run db:generate`
-  (migration `0033`+, never editing `0000–0032`) with a rehearsed down path;
-  wire `disposeStagingRow` and the disposition readers; keep the existing
-  `diagnostics.dispositions` read path only if a backfill needs it (document
-  the expand → migrate → contract order). After it,
-  the remaining buildable technical items are smaller (the `PROD-003`
-  exception producers, `file_object`); most other work is
-  owner/data-gated.
+  the `import_profile` table + run→profile org-coherence guard `DEC-081`, the
+  `postImportRun` posting-policy enforcement `DEC-082`, and the first-class
+  `import_disposition` table (migration `0033`) `DEC-083` — committed
+  `dbb7d97`/`64a7cfc`).
+  The next buildable TECH-owned task is the **`PROD-003`
+  count-variance/yield-variance exception producers** using the `DEC-080`
+  `data_quality_exception` table (the variance tolerance thresholds stay a
+  recorded FIN open point); after it, `file_object` (row-11 import-framework
+  point 6). Most other rows remain owner/data-gated.
   The remaining recorded open points above stay open. Next free decision id
-  **`DEC-083`**.
+  **`DEC-084`**.
 - **Unit `m` vs the missing `length` dimension** — a dimension-vocabulary mismatch in
   `schemas/domain-enums.yaml` surfaced by slice 3; owner/TECH to resolve (FND-003).
 - **`numeric(19,6)` digit cap in `packages/domain/src/decimal.ts`** — the domain decimal
