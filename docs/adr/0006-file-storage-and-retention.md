@@ -1,7 +1,10 @@
 # ADR-0006 — File storage and retention
 
-- **Status:** Proposed (needs owner acceptance)
-- This ADR is a proposal; implementation must not rely on it until status is `Accepted`.
+- **Status:** Accepted (2026-09-21)
+- Accepted by the owner in-session 2026-09-21 (revertible); implementation may now rely on
+  it. The provider/region were already decided by `DEC-014` (DigitalOcean Spaces,
+  Amsterdam AMS3); the **retention periods per file class** remain an open item for the
+  privacy review (see Open items).
 - **Date:** 2026-09-13
 - **Deciders:** TECH, BUS
 - **Related:** `02:12`, `06:77`, `07:47-51`; SEC-002, OPS-003, DEC-014
