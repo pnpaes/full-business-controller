@@ -160,4 +160,79 @@ describe.skipIf(!databaseUrl)("imports against PostgreSQL", () => {
       expect(preview.residualTotals).toEqual({ NOK: "10.0000" });
     });
   });
+
+  it("resolves a run from the source's import_profile and applies its rules", async () => {
+    await inRollback(client.db, async (tx) => {
+      const source = `profiled-${suffix}`;
+      const store = createPostgresImportStore(tx);
+      const actorId = randomUUID();
+      const profile = await store.createImportProfile({
+        organizationId: orgId,
+        source,
+        profileVersion: "v7",
+        postingPolicy: "all_or_nothing",
+        validationRules: { expectedCurrency: "NOK", requireCurrency: true },
+        createdBy: actorId,
+      });
+
+      const run = await createImportRun(store, {
+        organizationId: orgId,
+        actorId,
+        source,
+        fileHash: `hash-profiled-${suffix}`,
+        periodStart: PERIOD_START,
+        periodEnd: PERIOD_END,
+      });
+
+      const detail = await getImportRun(store, {
+        organizationId: orgId,
+        importRunId: run.importRunId,
+      });
+      expect(detail?.run.importProfileId).toBe(profile.id);
+      expect(detail?.run.profileVersion).toBe("v7");
+      expect(detail?.run.diagnostics).toMatchObject({ posting_policy: "all_or_nothing" });
+
+      await stageImportRows(store, {
+        organizationId: orgId,
+        actorId,
+        importRunId: run.importRunId,
+        rows: [
+          {
+            sourceRowNo: 1,
+            raw: {},
+            normalized: { sku: `IMP_PROFILED_SKU_${suffix}` },
+          },
+        ],
+      });
+
+      const validated = await validateImportRun(store, {
+        organizationId: orgId,
+        actorId,
+        importRunId: run.importRunId,
+      });
+      expect(validated.status).toBe("needs_review");
+      expect(validated.issues.map((issue) => issue.code)).toContain("missing_currency");
+    });
+  });
+
+  it("stores a padded-source profile trimmed and finds it by the trimmed source", async () => {
+    await inRollback(client.db, async (tx) => {
+      const source = `padded-${suffix}`;
+      const store = createPostgresImportStore(tx);
+
+      const profile = await store.createImportProfile({
+        organizationId: orgId,
+        source: `  ${source}  `,
+        profileVersion: "  v3  ",
+        postingPolicy: "allow_partial",
+        validationRules: {},
+        createdBy: randomUUID(),
+      });
+      expect(profile.source).toBe(source);
+      expect(profile.profileVersion).toBe("v3");
+
+      const found = await store.findImportProfile({ organizationId: orgId, source });
+      expect(found?.id).toBe(profile.id);
+    });
+  });
 });

@@ -2,12 +2,15 @@ import type { AuditInput } from "../auth";
 
 import type {
   ExternalMappingRecord,
+  FindImportProfileQuery,
   FindImportRunQuery,
+  ImportProfileRecord,
   ImportRunRecord,
   ImportStagingRowRecord,
   ImportStore,
   ListExternalMappingsQuery,
   ListImportRunsQuery,
+  NewImportProfileRecord,
   NewImportRunRecord,
   NewImportStagingRowRecord,
   UpdateImportRunValues,
@@ -26,6 +29,7 @@ function skuKey(organizationId: string, entityType: string, sku: string): string
  */
 export class FakeImportStore implements ImportStore {
   readonly importRuns = new Map<string, ImportRunRecord>();
+  readonly importProfiles = new Map<string, ImportProfileRecord>();
   readonly stagingRows = new Map<string, ImportStagingRowRecord>();
   readonly externalMappings = new Map<string, ExternalMappingRecord>();
   readonly internalEntitiesBySku = new Map<string, { readonly internalEntityId: string }>();
@@ -74,6 +78,7 @@ export class FakeImportStore implements ImportStore {
       id: this.nextId("import-run"),
       organizationId: input.organizationId,
       source: input.source,
+      importProfileId: input.importProfileId,
       profileVersion: input.profileVersion,
       fileObjectId: input.fileObjectId,
       fileHash: input.fileHash,
@@ -86,6 +91,43 @@ export class FakeImportStore implements ImportStore {
       createdBy: input.createdBy,
     };
     this.importRuns.set(record.id, record);
+    return record;
+  }
+
+  async findImportProfile(query: FindImportProfileQuery): Promise<ImportProfileRecord | undefined> {
+    const profile =
+      query.importProfileId !== undefined
+        ? this.importProfiles.get(query.importProfileId)
+        : [...this.importProfiles.values()].find((candidate) => candidate.source === query.source);
+    if (profile === undefined || profile.organizationId !== query.organizationId) {
+      return undefined;
+    }
+    return profile;
+  }
+
+  async createImportProfile(input: NewImportProfileRecord): Promise<ImportProfileRecord> {
+    const source = input.source.trim();
+    const profileVersion = input.profileVersion.trim();
+    const duplicate = [...this.importProfiles.values()].find(
+      (candidate) =>
+        candidate.organizationId === input.organizationId && candidate.source === source,
+    );
+    if (duplicate !== undefined) {
+      throw new Error(
+        `import_profile already exists for source ${source} in organization ${input.organizationId}`,
+      );
+    }
+    const record: ImportProfileRecord = {
+      id: this.nextId("import-profile"),
+      organizationId: input.organizationId,
+      source,
+      profileVersion,
+      postingPolicy: input.postingPolicy,
+      validationRules: input.validationRules,
+      createdAt: new Date().toISOString(),
+      createdBy: input.createdBy,
+    };
+    this.importProfiles.set(record.id, record);
     return record;
   }
 

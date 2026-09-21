@@ -21,9 +21,14 @@ export interface ImportRunRecord {
   readonly organizationId: string;
   readonly source: string;
   /**
-   * The caller's import-profile identifier. **There is no profile table**
-   * (recorded open point): the string is opaque to this slice and the
-   * validation rules are caller-supplied, not looked up.
+   * The run's resolved import-profile id (`DEC-081`), or `null` for a legacy run
+   * or a source with no profile. Resolved from the run's source when it is
+   * created; the run's policy/version come from whatever that profile is.
+   */
+  readonly importProfileId: string | null;
+  /**
+   * The import profile's version label (`DEC-081`). Normally the version of the
+   * resolved profile; for a run with no profile it is the caller-supplied label.
    */
   readonly profileVersion: string;
   /**
@@ -49,6 +54,8 @@ export interface ImportRunRecord {
 export interface NewImportRunRecord {
   readonly organizationId: string;
   readonly source: string;
+  /** The resolved profile id (`DEC-081`), or `null` when the source has none. */
+  readonly importProfileId: string | null;
   readonly profileVersion: string;
   readonly fileObjectId: string | null;
   readonly fileHash: string;
@@ -61,6 +68,48 @@ export interface NewImportRunRecord {
   readonly diagnostics: Readonly<Record<string, unknown>>;
   readonly createdBy: string | null;
 }
+
+/**
+ * An `import_profile` row (`DEC-081`): the per-source posting policy and
+ * validation config, keyed `(organization_id, source)`. `validationRules` is
+ * jsonb narrowed to an object; parse it with `parseImportValidationRules`.
+ */
+export interface ImportProfileRecord {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly source: string;
+  readonly profileVersion: string;
+  readonly postingPolicy: string;
+  readonly validationRules: Readonly<Record<string, unknown>>;
+  /** `timestamptz`, ISO. */
+  readonly createdAt: string;
+  readonly createdBy: string | null;
+}
+
+export interface NewImportProfileRecord {
+  readonly organizationId: string;
+  readonly source: string;
+  readonly profileVersion: string;
+  readonly postingPolicy: string;
+  readonly validationRules: Readonly<Record<string, unknown>>;
+  readonly createdBy: string | null;
+}
+
+/**
+ * Exactly one of `importProfileId`/`source` identifies the profile, so supplying
+ * both (or neither) is a compile error (mirrors the repository).
+ */
+export type FindImportProfileQuery =
+  | {
+      readonly organizationId: string;
+      readonly importProfileId: string;
+      readonly source?: undefined;
+    }
+  | {
+      readonly organizationId: string;
+      readonly source: string;
+      readonly importProfileId?: undefined;
+    };
 
 export interface UpdateImportRunValues {
   readonly status?: string;
@@ -153,6 +202,10 @@ export interface ImportStore {
   listImportRuns(query: ListImportRunsQuery): Promise<readonly ImportRunRecord[]>;
   createImportRun(input: NewImportRunRecord): Promise<ImportRunRecord>;
   updateImportRun(id: string, values: UpdateImportRunValues): Promise<ImportRunRecord>;
+  /** One profile by id or source, organization-scoped (`DEC-061`), or `undefined`. */
+  findImportProfile(query: FindImportProfileQuery): Promise<ImportProfileRecord | undefined>;
+  /** Creates the per-source profile (`DEC-081`); `(organization_id, source)` is unique. */
+  createImportProfile(input: NewImportProfileRecord): Promise<ImportProfileRecord>;
   /** One staging row by id, organization-scoped through its parent run. */
   findImportStagingRow(query: {
     readonly organizationId: string;

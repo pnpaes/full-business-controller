@@ -669,3 +669,281 @@ describe("reads", () => {
     ).toBeUndefined();
   });
 });
+
+describe("import profile resolution (DEC-081)", () => {
+  async function seedProfile(
+    store: FakeImportStore,
+    fixture: ImportFixture,
+    overrides: {
+      readonly source?: string;
+      readonly profileVersion?: string;
+      readonly postingPolicy?: string;
+      readonly validationRules?: Readonly<Record<string, unknown>>;
+    } = {},
+  ) {
+    return store.createImportProfile({
+      organizationId: fixture.organizationId,
+      source: overrides.source ?? fixture.source,
+      profileVersion: overrides.profileVersion ?? "v2",
+      postingPolicy: overrides.postingPolicy ?? "allow_partial",
+      validationRules: overrides.validationRules ?? {},
+      createdBy: fixture.actorId,
+    });
+  }
+
+  it("resolves the profile's id, version and posting policy when the caller omits them", async () => {
+    const store = new FakeImportStore();
+    const fixture = seedImportFixture(store);
+    const profile = await seedProfile(store, fixture, {
+      profileVersion: "v2",
+      postingPolicy: "all_or_nothing",
+    });
+
+    const result = await createImportRun(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      source: fixture.source,
+      fileHash: "hash-profile-1",
+      periodStart: PERIOD_START,
+      periodEnd: PERIOD_END,
+    });
+
+    const detail = await getImportRun(store, {
+      organizationId: fixture.organizationId,
+      importRunId: result.importRunId,
+    });
+    expect(detail?.run).toMatchObject({ profileVersion: "v2", importProfileId: profile.id });
+    expect(detail?.run.diagnostics).toMatchObject({ posting_policy: "all_or_nothing" });
+  });
+
+  it("stores a padded source and profileVersion trimmed", async () => {
+    const store = new FakeImportStore();
+    const fixture = seedImportFixture(store);
+    const profile = await seedProfile(store, fixture, {
+      source: `  ${fixture.source}  `,
+      profileVersion: "  v9  ",
+    });
+
+    expect(profile.source).toBe(fixture.source);
+    expect(profile.profileVersion).toBe("v9");
+  });
+
+  it("resolves a profile stored with a padded source and tolerates a padded caller version", async () => {
+    const store = new FakeImportStore();
+    const fixture = seedImportFixture(store);
+    const profile = await seedProfile(store, fixture, {
+      source: ` zettle `,
+      profileVersion: "  v2  ",
+      postingPolicy: "all_or_nothing",
+    });
+
+    const result = await createImportRun(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      source: "zettle",
+      fileHash: "hash-padded-source",
+      periodStart: PERIOD_START,
+      periodEnd: PERIOD_END,
+      profileVersion: "  v2  ",
+    });
+
+    const detail = await getImportRun(store, {
+      organizationId: fixture.organizationId,
+      importRunId: result.importRunId,
+    });
+    expect(detail?.run).toMatchObject({ importProfileId: profile.id, profileVersion: "v2" });
+    expect(detail?.run.diagnostics).toMatchObject({ posting_policy: "all_or_nothing" });
+  });
+
+  it("does not raise when a padded caller posting policy matches the profile's", async () => {
+    const store = new FakeImportStore();
+    const fixture = seedImportFixture(store);
+    await seedProfile(store, fixture, { profileVersion: "v2", postingPolicy: "all_or_nothing" });
+
+    const result = await createImportRun(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      source: fixture.source,
+      fileHash: "hash-padded-policy",
+      periodStart: PERIOD_START,
+      periodEnd: PERIOD_END,
+      postingPolicy: "  all_or_nothing  ",
+    });
+
+    const detail = await getImportRun(store, {
+      organizationId: fixture.organizationId,
+      importRunId: result.importRunId,
+    });
+    expect(detail?.run.diagnostics).toMatchObject({ posting_policy: "all_or_nothing" });
+  });
+
+  it("stores a padded posting policy trimmed when the source has no profile", async () => {
+    const store = new FakeImportStore();
+    const fixture = seedImportFixture(store);
+
+    const result = await createImportRun(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      source: fixture.source,
+      profileVersion: "profile-v1",
+      fileHash: "hash-padded-policy-no-profile",
+      periodStart: PERIOD_START,
+      periodEnd: PERIOD_END,
+      postingPolicy: "  all_or_nothing  ",
+    });
+
+    const detail = await getImportRun(store, {
+      organizationId: fixture.organizationId,
+      importRunId: result.importRunId,
+    });
+    expect(detail?.run.diagnostics).toMatchObject({ posting_policy: "all_or_nothing" });
+  });
+
+  it("rejects a caller posting policy or profile version that conflicts with the profile", async () => {
+    const store = new FakeImportStore();
+    const fixture = seedImportFixture(store);
+    await seedProfile(store, fixture, { profileVersion: "v2", postingPolicy: "all_or_nothing" });
+
+    await expect(
+      createImportRun(store, {
+        organizationId: fixture.organizationId,
+        actorId: fixture.actorId,
+        source: fixture.source,
+        fileHash: "hash-conflict-policy",
+        periodStart: PERIOD_START,
+        periodEnd: PERIOD_END,
+        postingPolicy: "allow_partial",
+      }),
+    ).rejects.toThrow(/postingPolicy .* conflicts/i);
+
+    await expect(
+      createImportRun(store, {
+        organizationId: fixture.organizationId,
+        actorId: fixture.actorId,
+        source: fixture.source,
+        fileHash: "hash-conflict-version",
+        periodStart: PERIOD_START,
+        periodEnd: PERIOD_END,
+        profileVersion: "v1",
+      }),
+    ).rejects.toThrow(/profileVersion .* conflicts/i);
+    expect(store.importRuns.size).toBe(0);
+  });
+
+  it("requires a non-blank profileVersion when the source has no profile", async () => {
+    const store = new FakeImportStore();
+    const fixture = seedImportFixture(store);
+
+    await expect(
+      createImportRun(store, {
+        organizationId: fixture.organizationId,
+        actorId: fixture.actorId,
+        source: fixture.source,
+        fileHash: "hash-no-profile-1",
+        periodStart: PERIOD_START,
+        periodEnd: PERIOD_END,
+      }),
+    ).rejects.toThrow(DomainError);
+    await expect(
+      createImportRun(store, {
+        organizationId: fixture.organizationId,
+        actorId: fixture.actorId,
+        source: fixture.source,
+        profileVersion: "   ",
+        fileHash: "hash-no-profile-2",
+        periodStart: PERIOD_START,
+        periodEnd: PERIOD_END,
+      }),
+    ).rejects.toThrow(DomainError);
+    expect(store.importRuns.size).toBe(0);
+  });
+
+  it("applies the profile's rules to a run the caller validates with no rules", async () => {
+    const store = new FakeImportStore();
+    const fixture = seedImportFixture(store);
+    await seedProfile(store, fixture, {
+      validationRules: { expectedCurrency: "NOK", requireCurrency: true },
+    });
+    const result = await createImportRun(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      source: fixture.source,
+      fileHash: "hash-profile-rules",
+      periodStart: PERIOD_START,
+      periodEnd: PERIOD_END,
+    });
+    await stageImportRows(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      importRunId: result.importRunId,
+      rows: [row(1, { sku: fixture.itemSku })],
+    });
+
+    const validated = await validateImportRun(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      importRunId: result.importRunId,
+    });
+    expect(validated.status).toBe("needs_review");
+    expect(validated.issues.map((issue) => issue.code)).toContain("missing_currency");
+  });
+
+  it("lets an explicit caller rule override the profile field-by-field", async () => {
+    const store = new FakeImportStore();
+    const fixture = seedImportFixture(store);
+    await seedProfile(store, fixture, {
+      validationRules: { expectedCurrency: "NOK", requireCurrency: true },
+    });
+    const result = await createImportRun(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      source: fixture.source,
+      fileHash: "hash-profile-override",
+      periodStart: PERIOD_START,
+      periodEnd: PERIOD_END,
+    });
+    await stageImportRows(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      importRunId: result.importRunId,
+      rows: [row(1, { sku: fixture.itemSku })],
+    });
+
+    const validated = await validateImportRun(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      importRunId: result.importRunId,
+      rules: { requireCurrency: false },
+    });
+    expect(validated.issues.map((issue) => issue.code)).not.toContain("missing_currency");
+    expect(validated.status).toBe("validated");
+  });
+
+  it("fails closed on a malformed stored validation_rules", async () => {
+    const store = new FakeImportStore();
+    const fixture = seedImportFixture(store);
+    await seedProfile(store, fixture, { validationRules: { requireAmounts: "yes" } });
+    const result = await createImportRun(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      source: fixture.source,
+      fileHash: "hash-profile-malformed",
+      periodStart: PERIOD_START,
+      periodEnd: PERIOD_END,
+    });
+    await stageImportRows(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      importRunId: result.importRunId,
+      rows: [row(1, { sku: fixture.itemSku })],
+    });
+
+    await expect(
+      validateImportRun(store, {
+        organizationId: fixture.organizationId,
+        actorId: fixture.actorId,
+        importRunId: result.importRunId,
+      }),
+    ).rejects.toThrow(DomainError);
+  });
+});

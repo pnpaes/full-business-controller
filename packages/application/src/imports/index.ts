@@ -28,12 +28,15 @@ export type {
 } from "./stage-import-rows";
 export type {
   ExternalMappingRecord,
+  FindImportProfileQuery,
   FindImportRunQuery,
+  ImportProfileRecord,
   ImportRunRecord,
   ImportStagingRowRecord,
   ImportStore,
   ListExternalMappingsQuery,
   ListImportRunsQuery,
+  NewImportProfileRecord,
   NewImportRunRecord,
   NewImportStagingRowRecord,
   UpdateImportRunValues,
@@ -53,4 +56,5 @@ export {
   MAPPING_STATE,
 } from "./vocabularies";
 export type { ImportDispositionKind } from "./vocabularies";
+export { parseImportValidationRules } from "./validation";
 export type { MoneyTotals } from "./validation";

@@ -10,8 +10,12 @@ export interface CreateImportRunInput {
   readonly actorId: string;
   /** The source system the file came from (e.g. the POS export name). */
   readonly source: string;
-  /** Opaque caller string: there is no import-profile table (recorded open point). */
-  readonly profileVersion: string;
+  /**
+   * The import profile's version label. Optional when the source has a profile
+   * (`DEC-081`): the run then takes the profile's version, and a value that
+   * differs from it is rejected. Required when no profile exists (`DEC-025`).
+   */
+  readonly profileVersion?: string;
   /** Content hash of the uploaded file; the replay guard (`05_WORKFLOWS.md` step 2). */
   readonly fileHash: string;
   /** `date` (`yyyy-mm-dd`): the business period the file covers. */
@@ -23,7 +27,10 @@ export interface CreateImportRunInput {
    * verbatim and never dereferenced.
    */
   readonly fileObjectId?: string | null;
-  /** `IMPORT_POSTING_POLICY`; defaults to `allow_partial` (`DEC-025`). */
+  /**
+   * `IMPORT_POSTING_POLICY`; defaults to `allow_partial` (`DEC-025`) when the
+   * source has no profile, otherwise must match the profile's policy.
+   */
   readonly postingPolicy?: string;
 }
 
@@ -40,10 +47,12 @@ export interface CreateImportRunResult {
  * rejected with a `DomainError` naming the existing run rather than opening a
  * second run. The caller can then resume the existing run.
  *
- * There is no import-profile table, so `profileVersion` is an opaque string and
- * the posting policy is recorded in `diagnostics` (recorded open point,
- * `DEC-025` default `allow_partial`). No posting happens here or anywhere in
- * this slice.
+ * `DEC-081`: when the source has an `import_profile`, the run records its id and
+ * takes the profile's posting policy and version; a caller-supplied policy or
+ * version that conflicts with the profile is rejected rather than silently
+ * ignored. With no profile the previous behaviour stands (`DEC-025`):
+ * `profileVersion` is required and `postingPolicy` defaults to `allow_partial`.
+ * No posting happens here or anywhere in this slice.
  */
 export async function createImportRun(
   store: ImportStore,
@@ -52,9 +61,6 @@ export async function createImportRun(
   if (isBlank(input.source)) {
     throw new DomainError("source is required");
   }
-  if (isBlank(input.profileVersion)) {
-    throw new DomainError("profileVersion is required");
-  }
   if (isBlank(input.fileHash)) {
     throw new DomainError("fileHash is required");
   }
@@ -62,10 +68,6 @@ export async function createImportRun(
   assertIsoDate(input.periodEnd, "periodEnd");
   if (input.periodStart > input.periodEnd) {
     throw new DomainError("periodStart must not be after periodEnd");
-  }
-  const postingPolicy = input.postingPolicy ?? DEFAULT_IMPORT_POSTING_POLICY;
-  if (!IMPORT_POSTING_POLICY.includes(postingPolicy)) {
-    throw new DomainError(`unknown import posting policy: ${postingPolicy}`);
   }
 
   return store.withTransaction(async (tx) => {
@@ -79,10 +81,56 @@ export async function createImportRun(
       );
     }
 
+    const source = input.source.trim();
+    const requestedPostingPolicy = input.postingPolicy?.trim();
+    // The profile depends on the source, so it is resolved inside the
+    // transaction alongside the policy/version checks.
+    const profile = await tx.findImportProfile({ organizationId: input.organizationId, source });
+
+    let postingPolicy: string;
+    let profileVersion: string;
+    let importProfileId: string | null;
+    if (profile !== undefined) {
+      if (
+        requestedPostingPolicy !== undefined &&
+        requestedPostingPolicy !== profile.postingPolicy
+      ) {
+        throw new DomainError(
+          `postingPolicy ${requestedPostingPolicy} conflicts with import_profile ${profile.id} ` +
+            `posting policy ${profile.postingPolicy}`,
+        );
+      }
+      if (
+        input.profileVersion !== undefined &&
+        input.profileVersion.trim() !== profile.profileVersion
+      ) {
+        throw new DomainError(
+          `profileVersion ${input.profileVersion} conflicts with import_profile ${profile.id} ` +
+            `profile version ${profile.profileVersion}`,
+        );
+      }
+      postingPolicy = profile.postingPolicy;
+      profileVersion = profile.profileVersion;
+      importProfileId = profile.id;
+    } else {
+      if (input.profileVersion === undefined || isBlank(input.profileVersion)) {
+        throw new DomainError(
+          `profileVersion is required when no import profile exists for source ${source}`,
+        );
+      }
+      postingPolicy = requestedPostingPolicy ?? DEFAULT_IMPORT_POSTING_POLICY;
+      if (!IMPORT_POSTING_POLICY.includes(postingPolicy)) {
+        throw new DomainError(`unknown import posting policy: ${postingPolicy}`);
+      }
+      profileVersion = input.profileVersion.trim();
+      importProfileId = null;
+    }
+
     const run = await tx.createImportRun({
       organizationId: input.organizationId,
-      source: input.source.trim(),
-      profileVersion: input.profileVersion.trim(),
+      source,
+      importProfileId,
+      profileVersion,
       fileObjectId: input.fileObjectId ?? null,
       fileHash: input.fileHash.trim(),
       periodStart: input.periodStart,

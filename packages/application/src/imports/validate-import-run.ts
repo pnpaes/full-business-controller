@@ -9,30 +9,13 @@ import {
   isDecimalString,
   isIsoInstant,
   isPlainObject,
+  parseImportValidationRules,
   readText,
   sumMoney,
+  type ImportValidationRules,
 } from "./validation";
 
-/**
- * Caller-supplied validation rules. There is **no import-profile table**
- * (recorded open point), so `profileVersion` cannot be looked up to rules; the
- * caller passes them in, which is also what makes the command testable without
- * a profile registry.
- */
-export interface ImportValidationRules {
-  /** Normalized keys that must be present and non-blank. */
-  readonly requiredNormalizedFields?: readonly string[];
-  /** The currency every row must carry (`ISO 4217`). */
-  readonly expectedCurrency?: string;
-  /** Fail rows with no `currency` when `expectedCurrency` is set. */
-  readonly requireCurrency?: boolean;
-  /** External location ids the run accepts; anything else is `unknown_location`. */
-  readonly allowedLocationExternalIds?: readonly string[];
-  /** Fail rows with no `occurred_at` (period validation is otherwise skipped). */
-  readonly requireOccurredAt?: boolean;
-  /** Fail rows with no `gross_amount`; `net_amount`/`tax_amount` are validated when present. */
-  readonly requireAmounts?: boolean;
-}
+export type { ImportValidationRules } from "./validation";
 
 export interface ValidateImportRunInput {
   readonly organizationId: string;
@@ -51,6 +34,25 @@ export interface ValidateImportRunResult {
 }
 
 const AMOUNT_FIELDS = ["gross_amount", "net_amount", "tax_amount"] as const;
+
+/**
+ * The validation rules of a run's resolved `import_profile` (`DEC-081`),
+ * parsed fail-closed. A run whose `importProfileId` points at a missing row is
+ * a `DomainError`: the FK should make that impossible.
+ */
+async function resolveProfileRules(
+  store: ImportStore,
+  organizationId: string,
+  importProfileId: string,
+): Promise<ImportValidationRules> {
+  const profile = await store.findImportProfile({ organizationId, importProfileId });
+  if (profile === undefined) {
+    throw new DomainError(
+      `import profile ${importProfileId} not found for import run in organization ${organizationId}`,
+    );
+  }
+  return parseImportValidationRules(profile.validationRules);
+}
 
 /** Row-level validation; returns every issue so diagnostics keep the detail. */
 function validateRow(
@@ -140,13 +142,15 @@ function validateRow(
  * tolerance is slice 12 (`DEC-026`/`DEC-035`) and since `DEC-072` resolves from
  * the effective-dated `reconciliation_tolerance` config in the reconcile
  * commands, not here.
+ *
+ * The effective rules are the run's profile rules (`DEC-081`) with the caller's
+ * explicit `rules` merged over them field-by-field, so a caller rule always
+ * wins for the field it sets.
  */
 export async function validateImportRun(
   store: ImportStore,
   input: ValidateImportRunInput,
 ): Promise<ValidateImportRunResult> {
-  const rules = input.rules ?? {};
-
   return store.withTransaction(async (tx) => {
     const run = await tx.findImportRun({
       organizationId: input.organizationId,
@@ -158,6 +162,12 @@ export async function validateImportRun(
     if (run.status !== "parsed") {
       throw new DomainError(`import run is not awaiting validation (status ${run.status})`);
     }
+
+    const profileRules =
+      run.importProfileId === null
+        ? {}
+        : await resolveProfileRules(tx, input.organizationId, run.importProfileId);
+    const rules: ImportValidationRules = { ...profileRules, ...(input.rules ?? {}) };
 
     const rows = await tx.listImportStagingRows({
       organizationId: input.organizationId,

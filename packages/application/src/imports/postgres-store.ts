@@ -4,11 +4,13 @@ import type { Database, NodeDatabase } from "@aquarela/persistence";
 import type {
   ExternalMappingRecord,
   FindImportRunQuery,
+  ImportProfileRecord,
   ImportRunRecord,
   ImportStagingRowRecord,
   ImportStore,
   ListExternalMappingsQuery,
   ListImportRunsQuery,
+  NewImportProfileRecord,
   NewImportRunRecord,
   NewImportStagingRowRecord,
   UpdateImportRunValues,
@@ -32,6 +34,9 @@ import type {
  * - there is no lookup by `file_hash`, so the replay guard matches the hash
  *   over the organization's runs; the `import_run_file_hash_key` unique index
  *   remains the real guard.
+ *
+ * `import_profile` (`DEC-081`) has real create/find repository functions, so
+ * those are delegated directly and only mapped to the port's DTOs here.
  */
 
 function isNodeDatabase(db: Database): db is NodeDatabase {
@@ -59,6 +64,7 @@ function toImportRun(row: repo.ImportRun): ImportRunRecord {
     id: row.id,
     organizationId: row.organizationId,
     source: row.source,
+    importProfileId: row.importProfileId,
     profileVersion: row.profileVersion,
     fileObjectId: row.fileObjectId,
     fileHash: row.fileHash,
@@ -67,6 +73,19 @@ function toImportRun(row: repo.ImportRun): ImportRunRecord {
     status: row.status,
     rowCounts: toNumberRecord(row.rowCounts),
     diagnostics: toRecord(row.diagnostics),
+    createdAt: row.createdAt.toISOString(),
+    createdBy: row.createdBy,
+  };
+}
+
+function toImportProfile(row: repo.ImportProfile): ImportProfileRecord {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    source: row.source,
+    profileVersion: row.profileVersion,
+    postingPolicy: row.postingPolicy,
+    validationRules: toRecord(row.validationRules),
     createdAt: row.createdAt.toISOString(),
     createdBy: row.createdBy,
   };
@@ -104,6 +123,7 @@ function newRunValues(input: NewImportRunRecord): repo.NewImportRun {
   return {
     organizationId: input.organizationId,
     source: input.source,
+    importProfileId: input.importProfileId,
     profileVersion: input.profileVersion,
     fileObjectId: input.fileObjectId,
     fileHash: input.fileHash,
@@ -112,6 +132,17 @@ function newRunValues(input: NewImportRunRecord): repo.NewImportRun {
     status: input.status,
     rowCounts: input.rowCounts,
     diagnostics: input.diagnostics,
+    createdBy: input.createdBy,
+  };
+}
+
+function newImportProfileValues(input: NewImportProfileRecord): repo.NewImportProfile {
+  return {
+    organizationId: input.organizationId,
+    source: input.source.trim(),
+    profileVersion: input.profileVersion.trim(),
+    postingPolicy: input.postingPolicy,
+    validationRules: input.validationRules,
     createdBy: input.createdBy,
   };
 }
@@ -165,6 +196,17 @@ export function createPostgresImportStore(db: Database): ImportStore {
     },
     createImportRun: async (input) =>
       toImportRun(await repo.createImportRun(db, newRunValues(input))),
+    findImportProfile: async (query) => {
+      const row = await repo.findImportProfile(
+        db,
+        query.importProfileId !== undefined
+          ? { organizationId: query.organizationId, importProfileId: query.importProfileId }
+          : { organizationId: query.organizationId, source: query.source },
+      );
+      return row === undefined ? undefined : toImportProfile(row);
+    },
+    createImportProfile: async (input) =>
+      toImportProfile(await repo.createImportProfile(db, newImportProfileValues(input))),
     updateImportRun: async (id, values: UpdateImportRunValues) => {
       const patch: repo.ImportRunPatch = {};
       if (values.status !== undefined) {

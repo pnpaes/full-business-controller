@@ -15,7 +15,7 @@ export const IMPORT_STATUS: readonly string[] = CANONICAL_IMPORT_STATUS;
 export const MAPPING_STATE: readonly string[] = CANONICAL_MAPPING_STATE;
 export const IMPORT_POSTING_POLICY: readonly string[] = CANONICAL_IMPORT_POSTING_POLICY;
 
-/** Default partial-posting policy per `DEC-025` (no profile table exists to hold it). */
+/** Default partial-posting policy per `DEC-025` (the fallback when a source has no `import_profile`). */
 export const DEFAULT_IMPORT_POSTING_POLICY = "allow_partial";
 
 /**

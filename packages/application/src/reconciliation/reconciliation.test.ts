@@ -40,6 +40,7 @@ async function seedRun(
     organizationId: options.organizationId ?? ORG,
     source: "frontline",
     profileVersion: "v1",
+    importProfileId: null,
     fileObjectId: null,
     fileHash: `hash-${store.imports.importRuns.size + 1}`,
     periodStart: "2026-01-01",

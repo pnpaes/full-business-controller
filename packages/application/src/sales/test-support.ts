@@ -314,6 +314,7 @@ export async function seedImportRun(
     organizationId: input.organizationId,
     source: input.source ?? "frontline",
     profileVersion: "v1",
+    importProfileId: null,
     fileObjectId: null,
     fileHash: `hash-${store.importRuns.size + 1}`,
     periodStart: "2026-01-01",

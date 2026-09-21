@@ -107,6 +107,14 @@ export class FakeReconciliationStore implements ReconciliationStore {
     return this.imports.updateImportRun(id, values);
   }
 
+  findImportProfile(query: Parameters<FakeImportStore["findImportProfile"]>[0]) {
+    return this.imports.findImportProfile(query);
+  }
+
+  createImportProfile(input: Parameters<FakeImportStore["createImportProfile"]>[0]) {
+    return this.imports.createImportProfile(input);
+  }
+
   findImportStagingRow(query: Parameters<FakeImportStore["findImportStagingRow"]>[0]) {
     return this.imports.findImportStagingRow(query);
   }
