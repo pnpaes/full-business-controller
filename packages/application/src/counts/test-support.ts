@@ -1,8 +1,10 @@
+import type { AuditInput } from "../auth";
 import {
   createFakeDataQualityException,
   type DataQualityExceptionRecord,
   type NewDataQualityExceptionRecord,
 } from "../data-quality";
+import type { StockBalanceRecord, StockLotRecord, StockMovementRecord } from "../inventory";
 import {
   FakeInventoryStore,
   seedInventoryFixture,
@@ -27,6 +29,21 @@ function lineKeyOf(key: StockCountLineKey): string {
 }
 
 /**
+ * A shallow copy of every mutable map/array a count transaction can touch, used
+ * to roll back a failed `withTransaction` (the base fake runs inline).
+ */
+interface CountSnapshot {
+  readonly stockBalances: Map<string, StockBalanceRecord>;
+  readonly stockMovements: Map<string, StockMovementRecord>;
+  readonly stockLots: Map<string, StockLotRecord>;
+  readonly audits: AuditInput[];
+  readonly stockCounts: Map<string, StockCountRecord>;
+  readonly stockCountLines: Map<string, StockCountLineRecord>;
+  readonly itemCosts: Map<string, string>;
+  readonly dataQualityExceptions: Map<string, DataQualityExceptionRecord>;
+}
+
+/**
  * In-memory `CountStore` for the unit suite. It composes `FakeInventoryStore`,
  * so the approval command runs the real `postStockMovements` path against the
  * same fake ledger; `counts.postgres.test.ts` covers the real adapter.
@@ -47,7 +64,50 @@ export class FakeCountStore extends FakeInventoryStore implements CountStore {
   }
 
   override async withTransaction<T>(fn: (store: CountStore) => Promise<T>): Promise<T> {
-    return fn(this);
+    // The base fake runs inline; this override adds rollback so the atomic
+    // approval path can be tested (a failure mid-approval leaves no partial
+    // postings, line variances, header change or exception behind).
+    const snapshot = this.snapshot();
+    try {
+      return await fn(this);
+    } catch (error) {
+      this.restore(snapshot);
+      throw error;
+    }
+  }
+
+  private snapshot(): CountSnapshot {
+    return {
+      stockBalances: new Map(this.stockBalances),
+      stockMovements: new Map(this.stockMovements),
+      stockLots: new Map(this.stockLots),
+      audits: [...this.audits],
+      stockCounts: new Map(this.stockCounts),
+      stockCountLines: new Map(this.stockCountLines),
+      itemCosts: new Map(this.itemCosts),
+      dataQualityExceptions: new Map(this.dataQualityExceptions),
+    };
+  }
+
+  private restore(snapshot: CountSnapshot): void {
+    this.stockBalances.clear();
+    for (const [key, value] of snapshot.stockBalances) this.stockBalances.set(key, value);
+    this.stockMovements.clear();
+    for (const [key, value] of snapshot.stockMovements) this.stockMovements.set(key, value);
+    this.stockLots.clear();
+    for (const [key, value] of snapshot.stockLots) this.stockLots.set(key, value);
+    this.audits.length = 0;
+    this.audits.push(...snapshot.audits);
+    this.stockCounts.clear();
+    for (const [key, value] of snapshot.stockCounts) this.stockCounts.set(key, value);
+    this.stockCountLines.clear();
+    for (const [key, value] of snapshot.stockCountLines) this.stockCountLines.set(key, value);
+    this.itemCosts.clear();
+    for (const [key, value] of snapshot.itemCosts) this.itemCosts.set(key, value);
+    this.dataQualityExceptions.clear();
+    for (const [key, value] of snapshot.dataQualityExceptions) {
+      this.dataQualityExceptions.set(key, value);
+    }
   }
 
   findStockCount(query: {

@@ -599,3 +599,98 @@ describe("listStockCounts", () => {
     expect(summaries).toHaveLength(0);
   });
 });
+
+describe("FakeCountStore.withTransaction", () => {
+  it("rolls back count, ledger and exception writes when the callback throws", async () => {
+    const store = new FakeCountStore();
+    const fixture = seedCountFixture(store);
+    await postOpeningReceipt(store, fixture);
+
+    const baseline = {
+      stockCounts: store.stockCounts.size,
+      stockCountLines: store.stockCountLines.size,
+      itemCosts: store.itemCosts.size,
+      dataQualityExceptions: store.dataQualityExceptions.size,
+      stockMovements: store.stockMovements.size,
+      stockBalances: store.stockBalances.size,
+      stockLots: store.stockLots.size,
+      audits: store.audits.length,
+    };
+
+    await expect(
+      store.withTransaction(async (tx) => {
+        const count = await tx.createStockCount({
+          organizationId: fixture.organizationId,
+          locationId: fixture.locationId,
+          scope: {},
+          blind: false,
+          cutoff: CUTOFF,
+          status: "counting",
+          createdBy: "actor",
+        });
+        await tx.createStockCountLine({
+          stockCountId: count.id,
+          itemId: fixture.itemId,
+          storageAreaId: fixture.storageAreaId,
+          lotId: null,
+          expectedQty: "0.000000",
+          countedQty: "1.000000",
+          varianceQty: null,
+          reasonCode: null,
+          recount: false,
+        });
+        await tx.findOrCreateStockLot({
+          organizationId: fixture.organizationId,
+          itemId: fixture.itemId,
+          locationId: fixture.locationId,
+          lotNumber: "LOT-1",
+          expiryDate: null,
+          openedDate: null,
+          receivedAt: null,
+          sourceMovementId: null,
+        });
+        await tx.createDataQualityException({
+          organizationId: fixture.organizationId,
+          ruleCode: "count_variance",
+          severity: "medium",
+          entityType: "stock_count",
+          entityId: count.id,
+          detectedAt: CUTOFF,
+          status: "open",
+        });
+        await postStockMovement(tx, {
+          organizationId: fixture.organizationId,
+          actorId: "actor",
+          locationId: fixture.locationId,
+          storageAreaId: fixture.storageAreaId,
+          itemId: fixture.itemId,
+          movementType: "receipt",
+          sourceType: "goods_receipt",
+          sourceId: "receipt-2",
+          quantityDelta: "5.000000",
+          unitCost: "5.0000",
+          occurredAt: "2026-01-02T10:00:00.000Z",
+        });
+        await tx.writeAudit({
+          organizationId: fixture.organizationId,
+          actorId: "actor",
+          action: "inventory.stock_count.approved",
+          entityType: "stock_count",
+          entityId: count.id,
+          after: { rolled_back: false },
+        });
+        store.itemCosts.set(fixture.secondItemId, "1.0000");
+        throw new Error("boom");
+      }),
+    ).rejects.toThrow("boom");
+
+    expect(store.stockCounts.size).toBe(baseline.stockCounts);
+    expect(store.stockCountLines.size).toBe(baseline.stockCountLines);
+    expect(store.itemCosts.size).toBe(baseline.itemCosts);
+    expect(store.dataQualityExceptions.size).toBe(baseline.dataQualityExceptions);
+    expect(store.stockMovements.size).toBe(baseline.stockMovements);
+    expect(store.stockBalances.size).toBe(baseline.stockBalances);
+    expect(store.stockLots.size).toBe(baseline.stockLots);
+    expect(store.audits).toHaveLength(baseline.audits);
+  });
+});
