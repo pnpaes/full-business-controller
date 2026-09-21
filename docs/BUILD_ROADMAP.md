@@ -13,10 +13,11 @@ This file is **updated at the end of every slice** — statuses and the "current
 line move with the work; `CONTEXT.md` keeps the narrative handoff and the immediate
 `Resume here` section.
 
-**Current position:** HEAD on `main` = `4f917ee` + **the HMS incidents +
-corrective-actions slice, up to 6 commits** (the orchestrator commits them as
-the slice closes; if `git log --oneline` shows their hashes, use the real
-ones; nothing pushed; nothing applied to DigitalOcean). Slice 0, auth
+**Current position:** HEAD on `main` = `5c0a838` + **the HMS checklists
+slice, 5 commits** (`bd27b18` `docs(decisions)` `DEC-096`, `60a4c51`
+`feat(persistence)`, `d5994fd` `feat(application)`, `ff6c8d0` `feat(web)`,
+`c66ad68` `docs(runbook)`) plus the `docs(context)` handoff (nothing pushed;
+nothing applied to DigitalOcean). Slice 0, auth
 slices 1a–1e, slices 2–10, row 11
 (import framework + external mappings — **complete**: the `DEC-085`
 `file_object` platform table was delivered 2026-09-21 with migrations
@@ -33,28 +34,46 @@ points** (the `numeric(19,6)` digit cap, commit `bda0b6b`; the
 `IMPORT_DISPOSITION` yaml key, commit `8b22468`; the
 `FakeCountStore.withTransaction` rollback fidelity, commit `02f7c33`), the
 **`DEC-089` HMS monitoring points + readings slice** (programme row 19a;
-migrations `0037`–`0039`) and the **`DEC-090` HMS incidents +
+migrations `0037`–`0039`), the **`DEC-090` HMS incidents +
 corrective-actions slice** (programme row 19b; migrations
-`0040`–`0041`; decision entries `DEC-090`/`DEC-095`) are
+`0040`–`0041`; decision entries `DEC-090`/`DEC-095`) and the **`DEC-091`
+HMS checklists slice** (programme row 19c; migrations `0042`–`0043`;
+decision entry `DEC-091`/`DEC-096`) are
 `done` and committed; `ADR-0006` was accepted 2026-09-21 and `ADR-0007` and
 `ADR-0008` accepted 2026-09-20 (owner-delegated, revertible).
 **Programme approved (Phase A, 2026-09-21):** the owner approved an
 HMS & food-safety (IK-mat) module, employee personnel documents (contracts)
 and a staff document library — recorded as `DEC-086`…`DEC-094`, requirement
 ids `WF-007`, `DOC-001…DOC-004`, `HMS-001…HMS-007`, delivery **Phase 6 +
-Epics 20/21** (§4 rows 19/20); rows 19a and 19b are delivered.
-Verification at the incidents-slice tree:
-`typecheck`/`lint`/`build`/`format:check` clean; **1574/1574 tests with
+Epics 20/21** (§4 rows 19/20); rows 19a, 19b and 19c are delivered.
+Verification at the checklists-slice tree:
+`typecheck`/`lint`/`build`/`format:check` clean; **1699/1699 tests with
 `DATABASE_URL`**
-(149 files); `npm audit --omit=dev` 0; `db:migrate` through `0041` is a no-op
-on re-run; 72 tables.
+(154 files); `npm audit --omit=dev` 0; `db:migrate` through `0043` is a no-op
+on re-run; 74 tables.
 Programme
 direction: proceed autonomously, per task — parallel background agents →
 adversarial review + fixes → document status and next steps → commit → next
-task. **Next task — buildable now:** **HMS checklists / cleaning**
-(`DEC-091`, requirement `HMS-005`) — programme row 19c; self-contained, no
-ADR gate; then the programme
-build order (§4 rows 19–20). **New open points from the incidents-slice
+task. **Next task — buildable now:** **HMS equipment / maintenance**
+(`DEC-092`, requirement `HMS-006`) — programme row 19d; self-contained, but
+needs a `DEC-097` provisional clarification (no access-matrix row, no
+`equipment.kind`/`maintenance_kind` vocabularies, the `maintenance_log`
+location-scope ceiling, and the `DEC-093`/`HMS-007` and `HMS-001`
+requirement-vs-decision conflicts); then the programme
+build order (§4 rows 19–20). **New open points from the checklists-slice
+reviews (recorded, do not resolve silently):** template versioning has **no
+completeness rule** (a `completed` run may omit an item's result); **no
+per-item evidence**; **no link from a failed item to a `corrective_action`**
+(`DEC-090`'s action FKs cover incidents and readings only); the jsonb
+**500-element ceiling is provisional**; list-filter values are not
+vocabulary-validated (shared precedent); the route tests do not exercise
+`withMutationGuards` (shared debt); a multi-location scope filter can return
+a short page; **no scheduling** — `frequency` is stored on the template only
+and due dates/reminders/assignment remain with the unbuilt
+`task`/`approval` (`DEC-094`), so nothing may depend on them; the `DEC-096`
+provisional items (category/status/outcome vocabularies, the `items`/
+`results` shapes, the checklist access extrapolation, versioning) still need
+owner/OPS confirmation. **Open points from the incidents-slice
 reviews (recorded, do not resolve silently):** the **corrective-action
 location-scope ceiling** (`corrective_action` has no `location_id`; a
 scoped caller must supply `incidentId` on the flat list and a
@@ -83,7 +102,7 @@ inputs; the receipt→ledger wiring needs the OPS destination
 history/grain quality (I11); rows 15–18 remain blocked (data /
 `ADR-0009`–`0011`); the deployment rehearsal is parked on the owner inputs;
 the golden fixtures are unsigned.
-Next free decision id `DEC-096`.
+Next free decision id `DEC-097`.
 
 ## 2. The execution loop (per slice)
 
@@ -152,7 +171,7 @@ Pause the loop and raise to the owner, recording it in `CONTEXT.md`, when any of
   approval in `DEC-015`, a named credentials owner, and a documented, tested rollback
   (`AGENTS.md` Rule 2). Never perform it without both.
 - **A decision would have to be invented.** *Needed from owner:* append the decision to
-  `12_OPEN_DECISIONS.md` (next id `DEC-096`) — never resolve accounting, tax, valuation,
+  `12_OPEN_DECISIONS.md` (next id `DEC-097`) — never resolve accounting, tax, valuation,
   privacy or system-of-record ambiguity in code (`13_AGENT_BUILD_BRIEF.md`).
 - **Slice budget reached.** The session has completed its agreed slice budget. *Needed from
   owner:* confirm the next slice (or that work pauses); hand off via `CONTEXT.md`.
@@ -190,7 +209,7 @@ sequence). Requirement IDs are from `11_REQUIREMENTS_CATALOG.md`; decision IDs f
 | 16 | Publishing integrations | P3 / epic 17 | `INTG-001`–`003`; `DEC-002`, `DEC-015`, `DEC-041`, `DEC-044`; `ADR-0011` (**Proposed**), `ADR-0008` | 3, 7, 12 | `ADR-0011` acceptance; per-source approval + named credentials owner (I18) | blocked (owner) |
 | 17 | AI-assisted advisory | P4 / epic 18 | `FCST-004`; `DEC-039`; `ADR-0009` (**Proposed**), `ADR-0004` (**Proposed**), `ADR-0007` | 13, 15 | `ADR-0009` acceptance; provider privacy/DPA review (I16) | blocked (owner) |
 | 18 | Automated connectors / optimization | P5 / epic 19 | `COMP-001`–`004`, `PLAN-003`; `DEC-020`; `ADR-0010` (**Proposed**) | 15, 16, 17 | `ADR-0010` acceptance; approved competitor sources (I17); measured history/accuracy | blocked (owner) |
-| 19 | HMS & food safety (IK-mat): monitoring points/readings, incidents + corrective actions, checklists/cleaning, equipment/maintenance, compliance export (the programme's full IK-mat package) | P6 / epics 20 (a/b/c/d/e) | `HMS-001`–`007`; `DEC-086` (programme), `DEC-089`–`DEC-093`; the privacy review (approved 2026-09-21) | 3, 8 (as-of balances isolated) | none for a/b/c/d/e — the named decider's **`ADR-0004` acceptance is required only for the `DEC-094` job/worker/outbox layer**, not for these tables | 19a: **done** — HMS monitoring points + readings (`DEC-089`, requirement `HMS-002`) delivered 2026-09-21 (migrations `0037`–`0039`, 70 tables; append-only readings decimal-only `numeric(19,6)` with an UPDATE/DELETE/TRUNCATE guard, only `notes` amendable; cross-org coherence guards; edit/deactivate; `/api/v1/hms/monitoring-points` enforces role + location scope — the first route in the repo to do so; verified 1459/1459 with `DATABASE_URL`). **19b: done** — HMS incidents + corrective actions (`DEC-090`/`DEC-095`, requirements `HMS-003`/`HMS-004`) delivered 2026-09-21 (migrations `0040`–`0041`, 72 tables; `hms_incident` + `corrective_action` org-scoped with cross-org coherence guards, role + location-scope enforcement on every route, evidence via the polymorphic `file_object` link, derived invariants with idempotent re-close/re-verify; verified 1574/1574 with `DATABASE_URL`); next: 19c checklists/cleaning (`DEC-091`), then 19d equipment/maintenance (`DEC-092`; the draft table was renamed asset→equipment, no decision-history rewrite), 19e the compliance export (`DEC-093`) |
+| 19 | HMS & food safety (IK-mat): monitoring points/readings, incidents + corrective actions, checklists/cleaning, equipment/maintenance, compliance export (the programme's full IK-mat package) | P6 / epics 20 (a/b/c/d/e) | `HMS-001`–`007`; `DEC-086` (programme), `DEC-089`–`DEC-093`; the privacy review (approved 2026-09-21) | 3, 8 (as-of balances isolated) | none for a/b/c/d/e — the named decider's **`ADR-0004` acceptance is required only for the `DEC-094` job/worker/outbox layer**, not for these tables | 19a: **done** — HMS monitoring points + readings (`DEC-089`, requirement `HMS-002`) delivered 2026-09-21 (migrations `0037`–`0039`, 70 tables; append-only readings decimal-only `numeric(19,6)` with an UPDATE/DELETE/TRUNCATE guard, only `notes` amendable; cross-org coherence guards; edit/deactivate; `/api/v1/hms/monitoring-points` enforces role + location scope — the first route in the repo to do so; verified 1459/1459 with `DATABASE_URL`). **19b: done** — HMS incidents + corrective actions (`DEC-090`/`DEC-095`, requirements `HMS-003`/`HMS-004`) delivered 2026-09-21 (migrations `0040`–`0041`, 72 tables; `hms_incident` + `corrective_action` org-scoped with cross-org coherence guards, role + location-scope enforcement on every route, evidence via the polymorphic `file_object` link, derived invariants with idempotent re-close/re-verify; verified 1574/1574 with `DATABASE_URL`). **19c: done** — HMS checklists (`DEC-091`/`DEC-096`, requirement `HMS-005`) delivered 2026-09-21 (migrations `0042`–`0043`, 74 tables; `checklist_template` with a nullable `supersedes_id` self-FK for versioning and `checklist_run`, org-scoped with cross-org coherence guards and role + location-scope enforcement on every route — templates organization-wide, runs location-scoped; `items`/`results` JSON arrays with a provisional element shape and a shared 500-element ceiling; a supersede is atomic; verified 1699/1699 with `DATABASE_URL`). Next: 19d equipment/maintenance (`DEC-092`, requirement `HMS-006`; the draft table was renamed asset→equipment, no decision-history rewrite; needs a `DEC-097` provisional clarification), then 19e the compliance export (`DEC-093`) |
 | 20 | Task/approval platform + programme candidate gater (contracts, staff document library, personnel documents) | P6 / epics 21 | `WF-007`, `DOC-001`–`004`; `DEC-087`–`DEC-094`; `ADR-0004` (**Proposed** — job/worker/outbox layer only) | 19a; row 14 for `employee` | `task`/`approval` build now (`DEC-094`); the `job`/worker/outbox layer is **gated on `ADR-0004` acceptance** by the named decider | todo — build order: 20a `employee` + personnel documents (`DEC-087`; contracts visible only to owner + general_manager + admin, finance excluded), 20b the staff document library (`DEC-088`; all-staff read published `all_staff` docs, managers publish, versioned, optional acknowledgement, append-only), then the `task`/`approval` platform tables (`DEC-094`) |
 
 Convention: `blocked (owner)` means an owner/tech acceptance or approval named in the gate
@@ -632,14 +651,15 @@ dates assigned):
   `app_user` login?); the **privacy-review retention periods per file
   class** (personnel documents, incident register, acknowledgements).
   **Build order:** ~~row 19a HMS monitoring points + readings (`DEC-089`,
-  the next task)~~ delivered 2026-09-21 (see the bullet below) → incidents +
-  corrective actions (`DEC-090`) →
-  `employee` + personnel documents (`DEC-087`) → staff document library
-  (`DEC-088`) → checklists/cleaning (`DEC-091`) → equipment/maintenance
-  (`DEC-092`) → compliance export (`DEC-093`) → `task`/`approval`
-  (`DEC-094`, job layer gated). Reversed next-free-id note: the register's
+  the next task)~~ delivered 2026-09-21 (see the bullet below) →
+  ~~incidents + corrective actions (`DEC-090`)~~ delivered 2026-09-21 →
+  ~~checklists/cleaning (`DEC-091`)~~ delivered 2026-09-21 (see the bullet
+  below) → equipment/maintenance (`DEC-092`) → compliance export
+  (`DEC-093`) → `employee` + personnel documents (`DEC-087`) → staff
+  document library (`DEC-088`) → `task`/`approval` (`DEC-094`, job layer
+  gated). Reversed next-free-id note: the register's
   historical "next free id `DEC-086`" pointers below predate Phase A and
-  were superseded — the live id is **`DEC-095`**.
+  were superseded — the live id is **`DEC-097`**.
 - **HMS incidents-slice open points (2026-09-21, from the `DEC-090`
   reviews and reconciliation; recorded not decided — do not resolve
   silently):** the **corrective-action location-scope ceiling** —
@@ -660,6 +680,22 @@ dates assigned):
   `in_progress`/`done` but never `verified`; a standalone corrective action
   with neither FK link is allowed by `DEC-090`. The `DEC-090` slice itself
   is done (row 19b; migrations `0040`–`0041`; 72 tables).
+- **HMS checklists-slice open points (2026-09-21, from the `DEC-091`
+  reviews and reconciliation; recorded not decided — do not resolve
+  silently):** template versioning is a `supersedes_id` chain but there is
+  **no completeness rule** (a `completed` run may omit an item's result);
+  **no per-item evidence**; and **no link from a failed item to a
+  `corrective_action`** (`DEC-090`'s action FKs cover incidents and readings
+  only). The jsonb **500-element ceiling is provisional**. List-filter
+  values are not vocabulary-validated (shared precedent); the route tests do
+  not exercise `withMutationGuards` (shared debt); a multi-location scope
+  filter can return a short page. **No scheduling** — `frequency` is stored
+  on the template only, and due dates/reminders/assignment remain with the
+  unbuilt `task`/`approval` (`DEC-094`), so nothing may depend on them. The
+  **`DEC-096` provisional items** (category/status/outcome vocabularies, the
+  `items`/`results` shapes, the checklist access extrapolation, the
+  versioning approach) need owner/OPS confirmation. The `DEC-091` slice
+  itself is done (row 19c; migrations `0042`–`0043`; 74 tables).
 - **HMS monitoring-slice open points (2026-09-21, from the `DEC-089` reviews;
   recorded not decided — do not resolve silently):** the **systemic
   location-scope gap** — the `/api/v1/hms/monitoring-points` routes are the
