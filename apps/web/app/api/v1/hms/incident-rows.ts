@@ -53,6 +53,9 @@ function readPaging(
   if (limit !== undefined && (limit < 1 || limit > MAX_LIMIT)) {
     return { ok: false };
   }
+  if (offset !== undefined && offset > MAX_LIMIT) {
+    return { ok: false };
+  }
   return { ok: true, limit: limit ?? DEFAULT_LIMIT, offset: offset ?? 0 };
 }
 

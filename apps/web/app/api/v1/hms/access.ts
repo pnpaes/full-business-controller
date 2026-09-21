@@ -99,6 +99,47 @@ export const HMS_CORRECTIVE_ACTION_VERIFY_ROLES = [
   "admin",
 ] as const;
 
+/**
+ * Role sets for the IK-mat checklist slice (`HMS-005`, `DEC-091`, `DEC-096`),
+ * implementing `DEC-096` exactly. Unlike incidents (`DEC-095`) an `analyst` may
+ * read checklists — they are operational records like the monitoring logs — and
+ * `purchasing`/`finance` get nothing. There is no implicit admin bypass
+ * (`isAuthorizedFor`), so `admin` appears only where `DEC-096` grants it: it may
+ * read and write templates and record runs.
+ */
+export const HMS_CHECKLIST_TEMPLATE_READ_ROLES = [
+  "owner",
+  "general_manager",
+  "location_manager",
+  "kitchen",
+  "front_of_house",
+  "admin",
+  "analyst",
+] as const;
+
+/** Authoring/replacing a template is a managed configuration write. */
+export const HMS_CHECKLIST_TEMPLATE_WRITE_ROLES = ["owner", "general_manager", "admin"] as const;
+
+export const HMS_CHECKLIST_RUN_READ_ROLES = [
+  "owner",
+  "general_manager",
+  "location_manager",
+  "kitchen",
+  "front_of_house",
+  "admin",
+  "analyst",
+] as const;
+
+/** Recording a run is operational; kitchen/front_of_house may walk a checklist. */
+export const HMS_CHECKLIST_RUN_RECORD_ROLES = [
+  "owner",
+  "general_manager",
+  "location_manager",
+  "kitchen",
+  "front_of_house",
+  "admin",
+] as const;
+
 /** Loads the caller's roles and location scope live from server data (ADR-0003). */
 export async function loadHmsAccess(userId: string): Promise<UserAccess> {
   return loadUserAccess(getAuthStore(), userId);

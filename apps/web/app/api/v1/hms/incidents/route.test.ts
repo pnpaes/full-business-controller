@@ -225,6 +225,13 @@ describe("GET /api/v1/hms/incidents", () => {
     expect(response.status).toBe(400);
     expect(application.listIncidents).not.toHaveBeenCalled();
   });
+
+  it("returns 400 for an out-of-range offset", async () => {
+    const response = await GET(getRequest("?offset=999999999999"));
+
+    expect(response.status).toBe(400);
+    expect(application.listIncidents).not.toHaveBeenCalled();
+  });
 });
 
 describe("POST /api/v1/hms/incidents", () => {
