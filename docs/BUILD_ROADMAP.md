@@ -13,41 +13,41 @@ This file is **updated at the end of every slice** — statuses and the "current
 line move with the work; `CONTEXT.md` keeps the narrative handoff and the immediate
 `Resume here` section.
 
-**Current position:** HEAD `2d4b98b` on `main` (nothing pushed; nothing applied to
+**Current position:** HEAD `387fd89` on `main` (nothing pushed; nothing applied to
 DigitalOcean). Slice 0, auth slices 1a–1e, slices 2–10, row 11
-(import framework + external mappings), row 12 (sales + settlements +
+(import framework + external mappings — **complete**: the `DEC-085`
+`file_object` platform table was delivered 2026-09-21 with migrations
+`0035`/`0036`), row 12 (sales + settlements +
 reconciliation), the **price-version slice (`DEC-064`, PRICE-002/003)**, the
 **`DEC-078` low-risk vocabulary/integrity open points**, the **`DEC-079`
 cross-organization coherence guards**, the **`DEC-080`
 `data_quality_exception` table**, the **`DEC-081` import-profile table**, the
 **`DEC-082` import posting-policy enforcement**, the **`DEC-083`
-first-class `import_disposition` table (migration `0033`)** and the
-**`DEC-084` `PROD-003` variance producers** are `done` and committed;
-`ADR-0007` and `ADR-0008` accepted 2026-09-20 (owner-delegated, revertible).
-**Done 2026-09-21:** the tracked `DEC-083` **contract step** — the data-only
-migration `0034_import_disposition_contract` (commits `4326dec`, `66b0d51`
-tooling fix, `2d4b98b` runbook docs) dropped the frozen
-`diagnostics.dispositions` jsonb key from every run that still carried it
-(the down rebuilds the key from `import_disposition`; no schema change, still
-67 tables; no new decision — it executes accepted `DEC-083`).
-Verification at `2d4b98b`:
-`typecheck`/`lint`/`build`/`format:check` clean; **1375/1375 tests with
+first-class `import_disposition` table (migration `0033`, contract step
+`0034`)**, the **`DEC-084` `PROD-003` variance producers** and the
+**`DEC-085` `file_object` table** are `done` and committed;
+`ADR-0006` was accepted 2026-09-21 and `ADR-0007` and `ADR-0008` accepted
+2026-09-20 (owner-delegated, revertible).
+Verification at `387fd89`:
+`typecheck`/`lint`/`build`/`format:check` clean; **1383/1383 tests with
 `DATABASE_URL`**
-(135 files); `npm audit --omit=dev` 0; `db:migrate` through `0034` is a no-op
-on re-run; 67 tables; the `0034` down/re-apply rehearsed locally.
+(136 files); `npm audit --omit=dev` 0; `db:migrate` through `0036` is a no-op
+on re-run; 68 tables; the `0035`/`0036` down/re-apply rehearsed locally.
 Programme
 direction: proceed autonomously, per task — parallel background agents →
 adversarial review + fixes → document status and next steps → commit → next
-task. **Remaining roadmap:** row 13 is **data-gated** on history/grain
+task. **Remaining roadmap — all gated:** the receipt→ledger wiring needs the
+OPS destination `storage_area_id` policy; row 13 is **data-gated** on
+history/grain
 quality (I11); row 14 is **owner-gated** on a privacy review / access
-matrix; rows 15–18 remain blocked (data / `ADR-0009`–`0011`).
-**Next task `file_object` is gated:** it requires `ADR-0006` (File storage
-and retention), which is `Proposed` and names
-`file_object.retention_policy` — raised to the owner on 2026-09-21. With the
-contract step done, no TECH-owned unblocked task remains: the owner decision
-on `ADR-0006` (then `file_object`) is the only remaining blocker. Most other
-rows remain owner/data-gated.
-Next free decision id `DEC-085`.
+matrix; rows 15–18 remain blocked (data / `ADR-0009`–`0011`); the
+deployment rehearsal is parked on the owner inputs; the golden fixtures are
+unsigned. Candidate small unblocked TECH open points are recorded and
+unscheduled (the `numeric(19,6)` digit cap; the missing
+`schemas/domain-enums.yaml` `IMPORT_DISPOSITION` key; the
+`FakeCountStore.withTransaction` rollback-fidelity gap; the per-IP
+rate-limiter shared store).
+Next free decision id `DEC-086`.
 
 ## 2. The execution loop (per slice)
 
@@ -86,8 +86,9 @@ Next free decision id `DEC-085`.
 Pause the loop and raise to the owner, recording it in `CONTEXT.md`, when any of these is hit:
 
 - **Proposed ADR required by the slice.** The slice cites an ADR whose status is `Proposed`.
-  (As of 2026-09-21 the `Proposed` ADRs are `ADR-0004`, `ADR-0006`, `ADR-0009`,
-  `ADR-0010` and `ADR-0011`; `ADR-0007` and `ADR-0008` are **accepted** 2026-09-20.)
+  (As of 2026-09-21 the `Proposed` ADRs are `ADR-0004`, `ADR-0009`,
+  `ADR-0010` and `ADR-0011`; `ADR-0006` is **accepted** 2026-09-21;
+  `ADR-0005`, `ADR-0007` and `ADR-0008` are **accepted** 2026-09-20.)
   *Needed from owner:* the named decider
   accepts or amends it in `docs/adr/` (`Accepted` with date) before the slice is treated as
   settled. Slice 1 is the owner-directed exception: proceed and accept `ADR-0003` in
@@ -136,7 +137,7 @@ sequence). Requirement IDs are from `11_REQUIREMENTS_CATALOG.md`; decision IDs f
 | 8 | Stock ledger + balances + lots / storage | P1–P2 / epic 7 | `INV-001`–`003`, `INV-008`, `PROD-002`, `WASTE-002`, `COST-008`; `DEC-008`, `DEC-009`, `DEC-010`, `DEC-028`, `DEC-034`; `ADR-0005` (accepted 2026-09-20) | 3, 4 | none — `ADR-0005` **Accepted** (2026-09-20) | done (committed `b525f30`/`40e736b`/`c91e512`/`6c69f7f` with migrations `0017`–`0019`; verified 842/842 with `DATABASE_URL`) |
 | 9 | Counts + transfers + waste | P2 / epic 8 | `INV-004`–`007`, `INV-009`, `WASTE-001`, `WASTE-002`; `DEC-017`, `DEC-018`, `DEC-029`, `DEC-066`–`DEC-068` | 8 | none — I7 opening counts gate the pilot | done (counts/transfers/waste application + `/api/v1` + screens + seeds + tests; persistence in `b525f30`, migration `0020`; verified 989/989 with `DATABASE_URL`) |
 | 10 | Production planning + batches | P2 / epic 9 | `PROD-001`–`005`; `DEC-005`, `DEC-031`, `DEC-036`, `DEC-069`–`DEC-071` | 5, 8 | none | done (migration `0021`; domain `production.ts`; application `production/**` incl. atomic `completeProductionBatch`; web API + `/production` screens + seed; verified 1087/1087 with `DATABASE_URL` at the row-11 tree) |
-| 11 | Import framework + external mappings | P3 / epic 10 | `SALE-002`, `SALE-004`, `SALE-007`, `SALE-008`; `DEC-025`, `DEC-033`, `DEC-035`, `DEC-041`; `ADR-0008` (accepted 2026-09-20) | 3 | none — legacy I19 as reference; I1/I15 Frontline shapes gate real profiles | done (committed — migration `0022` (`import_run`/`import_staging_row`/`external_mapping`), vocabularies `IMPORT_STATUS`/`MAPPING_STATE`/`IMPORT_POSTING_POLICY`, domain `sales-mapping.ts` (`resolveExternalEntity`, SKU-first then external id, both `DEC-033` conflict directions), application `imports/**` (create/stage/validate/map/dispose/preview + list/get), web `/api/v1/imports/**` + `(app)/sales/**` + `seed-imports.ts`; verified 1087/1087 with `DATABASE_URL`) |
+| 11 | Import framework + external mappings | P3 / epic 10 | `SALE-002`, `SALE-004`, `SALE-007`, `SALE-008`; `DEC-025`, `DEC-033`, `DEC-035`, `DEC-041`, `DEC-085`; `ADR-0008` (accepted 2026-09-20) | 3 | none — legacy I19 as reference; I1/I15 Frontline shapes gate real profiles | done (committed — migration `0022` (`import_run`/`import_staging_row`/`external_mapping`), vocabularies `IMPORT_STATUS`/`MAPPING_STATE`/`IMPORT_POSTING_POLICY`, domain `sales-mapping.ts` (`resolveExternalEntity`, SKU-first then external id, both `DEC-033` conflict directions), application `imports/**` (create/stage/validate/map/dispose/preview + list/get), web `/api/v1/imports/**` + `(app)/sales/**` + `seed-imports.ts`; row 11 **complete** 2026-09-21 — the `DEC-085` `file_object` table (migrations `0035`/`0036`) closed the last open point; verified 1383/1383 with `DATABASE_URL`) |
 | 12 | Sales + settlements + reconciliation | P3 / epic 11 | `SALE-001`–`011`, `PRICE-006`, `REC-001`–`006`; `DEC-026`, `DEC-035`, `DEC-040`, `DEC-042`, `DEC-043`, `DEC-045`; `ADR-0008` (**Accepted** 2026-09-20) | 8, 11 | none — `ADR-0008` accepted 2026-09-20 (inputs: I1 channel/SKU) | done (committed — migration `0023` (`sales_transaction`/`sales_line`/`settlement`/`reconciliation` + the `sales_line` branch in `stock_movement_source_guard`), vocabularies `RECONCILIATION_STATUS`/`OPTION_KIND`, domain `sales-consumption.ts` (recipe explosion + the `DEC-026` tolerance evaluator), application `sales/**` (`postImportRun`, `postTheoreticalConsumption`, list/get) + `reconciliation/**` (`reconcileImportRun`, `reconcileSettlement`, `resolveReconciliation`, list, `resolveTolerance`), web `/api/v1/sales/**` + `/api/v1/reconciliations/**` + `(app)/sales/**` screens (landing, transactions list/detail, reconciliation with resolve) + `seed-sales.ts`; verified 1186/1186 with `DATABASE_URL`) |
 | 13 | Close + dashboards + menu engineering | P3 / epic 12 | `REC-003`, `REC-006`, `RPT-001`–`005`; `DEC-027`, `DEC-032`; `ADR-0007` (**Accepted** 2026-09-20) | 12 | data — history/grain quality (I11) | todo (data-gated — synthetic fixtures until real history) |
 | 14 | Workforce: employees, shifts, worked hours, payroll-input report | P3 / epics 13–15 | `WF-001`–`006`; `DEC-012`, `DEC-037`, `DEC-038` | 1 | privacy review / access matrix approved (`SEC-003`) | blocked (owner) — note: owner-gated on the privacy review / access matrix |
@@ -165,10 +166,13 @@ dates assigned):
   the jobs runtime (`3505aa8` comparison). `ADR-0004` acceptance itself is still tracked
   with the remaining `Proposed` ADRs below.
 - **`ADR-0005` accepted (2026-09-20); `ADR-0007` + `ADR-0008` accepted (2026-09-20);
-  `ADR-0009`/`0010`/`0011` acceptance** — `ADR-0005`, `ADR-0007` and `ADR-0008` are
+  `ADR-0006` accepted (2026-09-21); `ADR-0009`/`0010`/`0011` acceptance** —
+  `ADR-0005`, `ADR-0007` and `ADR-0008` are
   settled (2026-09-20; `ADR-0007`/`ADR-0008` owner-delegated in-session, revertible;
   slices 8 unblocked and rows 12/13 unblocked — row 12 is now `done` and committed,
-  and row 13 is data-gated on history/grain quality); the
+  and row 13 is data-gated on history/grain quality); `ADR-0006` is settled
+  (2026-09-21; the `file_object` slice is delivered — see the row-11 note
+  below); the
   remaining `Proposed` ADRs (`0009`/`0010`/`0011`) gate
   slices 16, 17, 18.
 - **~~Multi-tenancy posture~~ resolved (2026-09-20, `DEC-061`)** — shared schema with
@@ -254,18 +258,19 @@ dates assigned):
    8. ~~`price_version` is not created (deferred)~~ resolved 2026-09-21
        (`DEC-064`/`DEC-077`): the `price_version` table (migration `0027`,
        half-open `[effective_from, effective_to)`, non-overlapping per scope
-       via an EXCLUDE with a COALESCE sentinel) and approval-driven effective
-       versions — `approvePriceScenario` creates the version for the
-       scenario's scope in the same transaction with the CAS
-       `approvePriceScenarioIfApprovable` race fix; only an approved scenario
-       yields a version (PRICE-003 served). Remaining recorded open point:
-       the scope-resolution fallback (company-wide → specific
-       location/channel) is not implemented — see the assert below.
-  9. The `approval` platform table (`DATA_DICTIONARY.md` §9, FND-005) does **not**
-     exist — `packages/persistence/src/schema/platform.ts` has only
-     `outbox_event` and `audit_event`; a `CONTEXT.md` claim that approval
-     platform tables exist is incorrect. Model cost-card/scenario approval via
-     state columns + `audit_event` for now, or add the table later. owner/TECH.
+      via an EXCLUDE with a COALESCE sentinel) and approval-driven effective
+        versions — `approvePriceScenario` creates the version for the
+        scenario's scope in the same transaction with the CAS
+        `approvePriceScenarioIfApprovable` race fix; only an approved scenario
+        yields a version (PRICE-003 served). Remaining recorded open point:
+        the scope-resolution fallback (company-wide → specific
+        location/channel) is not implemented — see the assert below.
+   9. The `approval` platform table (`DATA_DICTIONARY.md` §9, FND-005) does **not**
+      exist — `packages/persistence/src/schema/platform.ts` now has
+      `outbox_event`, `audit_event` and the `file_object` platform table
+      (`DEC-085`, migration `0035`); the `approval` table itself is still
+      absent. Model cost-card/scenario approval via
+      state columns + `audit_event` for now, or add the table later. owner/TECH.
   10. Cost-card version chain/effective dating — `cost_card` has no `version_no`
       or effective dates and no uniqueness in scope; the supersede rule in
       `DEC-060` is provisional until the owner defines the chain. owner/FIN.
@@ -435,6 +440,15 @@ dates assigned):
   8. `lotTracked` is unenforced (overlaps slice-8 point 3). owner/TECH.
   9. `DEC-009` daily theoretical consumption is not implemented (overlaps slice-8
       point 6). owner/TECH.
+- **`file_object` open points from the `DEC-085` slice (2026-09-21; recorded not
+  decided — do not resolve silently):** the `file_object`
+  **immutability/soft-delete posture**; the **five deferred file FKs**
+  (`goods_receipt.evidence_file_id`, `cost_observation.receipt_file_id`,
+  `operating_cost.evidence_file_id`, `settlement.source_file_id`,
+  `waste_event.photo_file_id` — plain uuids until a slice needs them); the
+  **storage integration** (Spaces client / signed URLs / retention
+  enforcement) deferred; `ADR-0006`'s **retention periods per file class**
+  (privacy review). owner/TECH.
 - **Row-11 import-framework open points (deliberate; recorded not decided)** —
   surfaced by the row-11 build (uncommitted working tree at HEAD `7f6aa78`);
     record each resolution in `12_OPEN_DECISIONS.md` (next free id **`DEC-082`**);
@@ -458,21 +472,23 @@ dates assigned):
    5. ~~No tolerance-configuration table exists~~ resolved 2026-09-20 (`DEC-072`):
       an effective-dated `reconciliation_tolerance` table (migration `0024`);
       missing config blocks close.
-   6. `file_object` is absent from the schema, so `import_run.file_object_id` is a
-      plain uuid with no FK target. owner/TECH. **Gated (2026-09-21):** `file_object`
-      requires `ADR-0006` (File storage and retention), which is `Proposed` and names
-      `file_object.retention_policy` — raised to the owner; the loop pauses on this
-      point per §3.
-   7. ~~Dispositions live in `import_run.diagnostics.dispositions` (jsonb), not a
-       table.~~ resolved 2026-09-21 (`DEC-083` — the first-class
-       `import_disposition` table, migration `0033`, one disposition per
-       staging row; commits `dbb7d97`/`64a7cfc`); ~~the frozen jsonb keys are
-       retained pending the tracked contract step~~ **resolved 2026-09-21**
-       (the data-only migration `0034_import_disposition_contract`, commit
-       `4326dec`, removed the frozen key from every run that still carried
-       it; the down rebuilds it from `import_disposition`; rehearsed
-       locally). The remaining row-11 point
-       is `file_object` absent (point 6).
+   6. ~~`file_object` is absent from the schema, so `import_run.file_object_id` is a
+        plain uuid with no FK target. owner/TECH.~~ resolved 2026-09-21
+        (`DEC-085` — the `file_object` table, migration `0035`, the
+        `import_run.file_object_id` FK and the `file_object_org_guard`
+        trigger, migration `0036`; `ADR-0006` accepted 2026-09-21). **Row 11
+        is now complete** (points 6 and 7 both closed); the five deferred
+        file FKs and the `file_object` immutability posture stay recorded
+        open points (see `CONTEXT.md`).
+    7. ~~Dispositions live in `import_run.diagnostics.dispositions` (jsonb), not a
+        table.~~ resolved 2026-09-21 (`DEC-083` — the first-class
+        `import_disposition` table, migration `0033`, one disposition per
+        staging row; commits `dbb7d97`/`64a7cfc`); ~~the frozen jsonb keys are
+        retained pending the tracked contract step~~ **resolved 2026-09-21**
+        (the data-only migration `0034_import_disposition_contract`, commit
+        `4326dec`, removed the frozen key from every run that still carried
+        it; the down rebuilds it from `import_disposition`; rehearsed
+        locally). Row 11 is complete (point 6 resolved by `DEC-085`).
   8. ~~Two routes return 404 by matching the text `/not found/i` on the
       `DomainError` message~~ resolved 2026-09-20 (`DEC-076`): a typed
       `NotFoundError` maps to 404 by `instanceof`.
@@ -480,6 +496,12 @@ dates assigned):
       (`DEC-074`): `conflict` is a first-class value (migration `0025`).
   (Local note: a live-check left one dev `import_run` row in the local database —
   a local dev-data artefact, no repository impact.)
+- **Row-11 completion note (2026-09-21):** all nine row-11 open points above
+  are now resolved or closed — the last build point (`file_object`) was
+  delivered as `DEC-085` (migrations `0035`/`0036`). Remaining recorded
+  spillover (open in `CONTEXT.md`): the five deferred file FKs, the
+  `file_object` immutability/soft-delete posture and the storage integration
+  (Spaces client / signed URLs / retention enforcement).
 - **Row-12 sales/reconciliation open points (deliberate; recorded not decided)** —
   surfaced by the row-12 build (uncommitted working tree on top of HEAD
    `c324418`); record each resolution in `12_OPEN_DECISIONS.md` (next free id
@@ -511,13 +533,18 @@ dates assigned):
   8. A local dev-DB side effect: the demo import run left a
      `partially_posted` import run and a reconciliation reopened to `pending`
      in the local database. Local dev-data artefact, no repository impact.
-- **Next unblocked task (2026-09-21, after the `DEC-083` contract step):**
-  with rows 13–18 gated
-  (row 13 data-gated on history/grain quality I11; row 14 owner-gated on the
-  privacy review / access matrix; rows 15–18 blocked on data /
-  `ADR-0009`–`0011`), no roadmap slice is buildable purely from code without
-  owner inputs or real history. The recorded low-risk open points resolved so
-  far are decisions `DEC-072`–`DEC-084` (2026-09-20/21; tolerance table
+- **No unblocked TECH-owned task remains (2026-09-21, after `file_object`):**
+  **row 11 is complete** — the `DEC-085` `file_object` table (migrations
+  `0035`/`0036`) closed the last open row-11 build point; the `ADR-0006`
+  acceptance (2026-09-21) unblocked it and `DEC-085` was recorded. With rows
+  13–18 gated (row 13 data-gated on history/grain quality I11; row 14
+  owner-gated on the privacy review / access matrix; rows 15–18 blocked on
+  data / `ADR-0009`–`0011`), no roadmap slice is buildable purely from code
+  without owner inputs or real history: the receipt→ledger wiring needs the
+  OPS destination `storage_area_id` policy; the deployment rehearsal needs
+  the owner inputs; the golden fixtures are unsigned. The recorded low-risk
+  open points resolved so far are decisions `DEC-072`–`DEC-085`
+  (2026-09-20/21; tolerance table
   `DEC-072`, sales-line reversal `DEC-073`, `MAPPING_STATE` `conflict`
   `DEC-074`, `tax_rule_id`/`applied_tax_rate` `DEC-075`, typed not-found error
   `DEC-076`, the price-version slice `DEC-077`, the `settlement.status`/
@@ -526,21 +553,17 @@ dates assigned):
   `data_quality_exception` table + transfer-discrepancy producer `DEC-080`,
   the `import_profile` table + run→profile org-coherence guard `DEC-081`, the
   `postImportRun` posting-policy enforcement `DEC-082`, the first-class
-  `import_disposition` table (migration `0033`) `DEC-083`, and the `PROD-003`
-  count-variance/yield-variance exception producers (`DEC-084`) — committed
-  `dbb7d97`/`64a7cfc`), plus the `DEC-083` **contract step** (data-only
-  migration `0034`, commits `4326dec`/`66b0d51`/`2d4b98b`) removing the
-  frozen `diagnostics.dispositions` keys — done 2026-09-21.
-  The previously-planned next buildable TECH-owned task, `file_object` (row-11
-  import-framework point 6), remains **gated on `ADR-0006`** (`Proposed`; raised
-  to the
-  owner 2026-09-21); with the contract step done, no TECH-owned unblocked
-  task remains — the owner decision on `ADR-0006` (then `file_object`) is
-  the only remaining blocker. The variance tolerance thresholds stay a
-  recorded FIN open point.
-  Most other rows remain owner/data-gated.
-  The remaining recorded open points above stay open. Next free decision id
-  **`DEC-085`**.
+  `import_disposition` table (migration `0033` + contract step `0034`)
+  `DEC-083`, the `PROD-003` count-variance/yield-variance exception producers
+  (`DEC-084`) and the `file_object` platform table (migrations `0035`/`0036`)
+  `DEC-085`).
+  Candidate small unblocked TECH open points (recorded, unscheduled — take
+  one only if asked): the `numeric(19,6)` digit cap in
+  `packages/domain/src/decimal.ts`; the missing `schemas/domain-enums.yaml`
+  key for `IMPORT_DISPOSITION`; the `FakeCountStore.withTransaction`
+  no-rollback fake-fidelity gap; the per-IP rate-limiter shared store (needs
+  a migration). The remaining recorded open points above stay open. Next free
+  decision id **`DEC-086`**.
 - **Unit `m` vs the missing `length` dimension** — a dimension-vocabulary mismatch in
   `schemas/domain-enums.yaml` surfaced by slice 3; owner/TECH to resolve (FND-003).
 - **`numeric(19,6)` digit cap in `packages/domain/src/decimal.ts`** — the domain decimal
