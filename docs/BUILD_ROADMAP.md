@@ -13,41 +13,47 @@ This file is **updated at the end of every slice** — statuses and the "current
 line move with the work; `CONTEXT.md` keeps the narrative handoff and the immediate
 `Resume here` section.
 
-**Current position:** HEAD `ddc9e06` on `main` (nothing pushed; the working tree
+**Current position:** HEAD `cb3aff5` on `main` (nothing pushed; the working tree
 holds only the next docs commit). Slice 0, auth slices 1a–1e, slices 2–10, row 11
 (import framework + external mappings), row 12 (sales + settlements +
 reconciliation), the **price-version slice (`DEC-064`, PRICE-002/003)**, the
 **`DEC-078` low-risk vocabulary/integrity open points**, the **`DEC-079`
-cross-organization coherence guards** and the **`DEC-080`
-`data_quality_exception` table** are `done` and committed;
+cross-organization coherence guards**, the **`DEC-080`
+`data_quality_exception` table** and the **`DEC-081` import-profile table**
+are `done` and committed;
 `ADR-0007` and `ADR-0008` accepted 2026-09-20 (owner-delegated, revertible).
-The `DEC-080` (DQ-001) slice delivered (commits `40b5d7e`, `d1d0fad`,
-`ddc9e06`): the `data_quality_exception` table (`rule_code`,
-`severity ∈ {low, medium, high, critical}` default `medium`,
-`entity_type`/`entity_id` polymorphic, `detected_at`, `owner_id`, `due_date`,
-`status ∈ {open, acknowledged, resolved, dismissed}` default `open`,
-`resolution`), repository create/find/list/update, and the first producer —
-`receiveStockTransfer` creates a `transfer_discrepancy` exception (severity
-`high`, entity `stock_transfer`, status `open`) in the same transaction as
-the receive, alongside the human `discrepancy_note`. Migration `0030` is
-additive with a rehearsed down path. Verification at `ddc9e06`:
-`typecheck`, `lint`, `build`, `format:check` clean; **1305/1305 tests with
-`DATABASE_URL`** (134 files); `npm audit --omit=dev` 0; `db:migrate` through
-`0030` is a no-op; the `0030` down path rehearsed; 65 tables. Programme
+The `DEC-081` slice delivered (commits `2997587`, `f4a8110`, `e9ec176`,
+`1914795`, `cb3aff5`): the `import_profile` table keyed
+`(organization_id, source)` (unique) carrying `profile_version`,
+`posting_policy` (default `allow_partial`, checked against
+`import_posting_policy`) and `validation_rules` jsonb (checked to be a jsonb
+object), plus a nullable `import_run.import_profile_id` FK; migrations `0031`
+(generated, additive) and `0032` (hand-written — the
+`import_run_profile_org_guard` coherence trigger); application resolution of a
+run's profile by source in `createImportRun`/`validateImportRun`; web
+profile-aware creation and seed. Verification at `cb3aff5`: `typecheck`,
+`lint`, `build`, `format:check` clean; **1353/1353 tests with
+`DATABASE_URL`** (135 files); `npm audit --omit=dev` 0; `db:migrate` through
+`0032` is a no-op; both the `0031` and `0032` down paths rehearsed; 66 tables.
+Programme
 direction: proceed autonomously, per task — parallel background agents →
 adversarial review + fixes → document status and next steps → commit → next
 task. **Remaining roadmap:** row 13 is **data-gated** on history/grain
 quality (I11); row 14 is **owner-gated** on a privacy review / access
 matrix; rows 15–18 remain blocked (data / `ADR-0009`–`0011`). **Next
-unblocked task:** the **import-profile table** (the row-11 open point:
-`import_run.source`/`profile_version` are opaque labels; a profile keyed by
-`(organization_id, source)` carrying the per-source posting policy /
-validation config, recorded from `DEC-081`, wired to `import_run`) —
-TECH-owned and buildable without owner input; after it, the remaining
-buildable technical items are smaller. Still owner/data-gated: the
+unblocked task:** enforce the import profile's posting policy in
+**`postImportRun`** (`DEC-025`) — the policy is now stored on `import_profile`
+(and mirrored into the run's `diagnostics.posting_policy`) but `postImportRun`
+never reads it, so `all_or_nothing` currently behaves exactly like
+`allow_partial`; `allow_partial` posts valid/mapped rows and marks the run
+`partially_posted`, `all_or_nothing` must refuse to post when any row is not
+postable, and every non-posted row still requires an approved disposition
+(`DEC-035`) — TECH-owned and buildable without owner input; after it, the
+remaining buildable technical items are smaller (the dispositions table, the
+`PROD-003` exception producers, `file_object`). Still owner/data-gated: the
 receipts→ledger wiring, row 13, row 14, rows 15–18, the price-version
 scope-resolution fallback and consumption grain A1. Next free decision id
-`DEC-081`.
+`DEC-082`.
 
 ## 2. The execution loop (per slice)
 
@@ -411,10 +417,10 @@ dates assigned):
   OPS+TECH define one); `DEC-070` expected trim/cooking loss never posts a `waste`
   movement (only actual abnormal loss becomes a `waste_event`); `DEC-071`
   `production_batch_output.kind` uses a provisional local vocabulary pending a
-   `domain-enums.yaml` key. Next free decision id **`DEC-081`**.
+   `domain-enums.yaml` key. Next free decision id **`DEC-082`**.
 - **Slice-9/10 open owner questions (deliberate; recorded not decided)** — surfaced
   by the concurrent slice-9/10 build (uncommitted working tree at HEAD `2a5799e`);
-   record each resolution in `12_OPEN_DECISIONS.md` (next free id **`DEC-081`**); do
+   record each resolution in `12_OPEN_DECISIONS.md` (next free id **`DEC-082`**); do
    not resolve silently:
    1. Output-cost allocation across multiple outputs/by-products of one batch.
      owner/FIN.
@@ -431,7 +437,7 @@ dates assigned):
       point 6). owner/TECH.
 - **Row-11 import-framework open points (deliberate; recorded not decided)** —
   surfaced by the row-11 build (uncommitted working tree at HEAD `7f6aa78`);
-    record each resolution in `12_OPEN_DECISIONS.md` (next free id **`DEC-081`**);
+    record each resolution in `12_OPEN_DECISIONS.md` (next free id **`DEC-082`**);
    do not resolve silently:
   1. ~~Row 12 is gated on `ADR-0008` acceptance~~ resolved 2026-09-20:
      `ADR-0008` is accepted (owner-delegated in-session); the I1 channel/SKU
@@ -443,8 +449,11 @@ dates assigned):
   3. Sales/consumption grain ambiguity: `DEC-009` daily-per-location vs a single
      `sales_line` `source_id` — unresolved. owner/TECH.
    4. ~~No import-profile table exists (profiles are implicit in the run payload)~~
-      still open — **next unblocked TECH task** (build the profile keyed by
-      `(organization_id, source)` from `DEC-081`, wire `import_run` to it).
+      resolved 2026-09-21 (`DEC-081` — the `import_profile` table keyed
+      `(organization_id, source)`, migrations `0031`/`0032`, wired into
+      `createImportRun`/`validateImportRun`; the profile's posting policy is
+      still **not enforced** by `postImportRun` — see the next unblocked task
+      below).
   5. ~~No tolerance-configuration table exists~~ resolved 2026-09-20 (`DEC-072`):
       an effective-dated `reconciliation_tolerance` table (migration `0024`);
       missing config blocks close.
@@ -462,7 +471,7 @@ dates assigned):
 - **Row-12 sales/reconciliation open points (deliberate; recorded not decided)** —
   surfaced by the row-12 build (uncommitted working tree on top of HEAD
    `c324418`); record each resolution in `12_OPEN_DECISIONS.md` (next free id
-    **`DEC-081`**); do not resolve silently:
+    **`DEC-082`**); do not resolve silently:
   1. Consumption grain A1: `DEC-009` daily-per-location vs a single `sales_line`
      `source_id` — unresolved. owner/TECH.
   2. ~~No tolerance-configuration table exists; the `DEC-026` tolerance is
@@ -490,26 +499,32 @@ dates assigned):
   8. A local dev-DB side effect: the demo import run left a
      `partially_posted` import run and a reconciliation reopened to `pending`
      in the local database. Local dev-data artefact, no repository impact.
-- **Next unblocked task (2026-09-21, after `DEC-080`):** with rows 13–18 gated
+- **Next unblocked task (2026-09-21, after `DEC-081`):** with rows 13–18 gated
   (row 13 data-gated on history/grain quality I11; row 14 owner-gated on the
   privacy review / access matrix; rows 15–18 blocked on data /
   `ADR-0009`–`0011`), no roadmap slice is buildable purely from code without
   owner inputs or real history. The recorded low-risk open points resolved so
-  far are decisions `DEC-072`–`DEC-080` (2026-09-20/21; tolerance table
+  far are decisions `DEC-072`–`DEC-081` (2026-09-20/21; tolerance table
   `DEC-072`, sales-line reversal `DEC-073`, `MAPPING_STATE` `conflict`
   `DEC-074`, `tax_rule_id`/`applied_tax_rate` `DEC-075`, typed not-found error
   `DEC-076`, the price-version slice `DEC-077`, the `settlement.status`/
   `reconciliation.scope_type` vocabularies + `lotTracked` enforcement
-  `DEC-078`, the cross-organization coherence guards `DEC-079`, and the
-  `data_quality_exception` table + transfer-discrepancy producer `DEC-080`).
-  The next buildable TECH-owned task is the **import-profile table** (the
-  row-11 open point: `import_run.source`/`profile_version` are opaque labels;
-  a profile keyed by `(organization_id, source)` carrying the per-source
-  posting policy / validation config the run accepts as static config today,
-  recorded from `DEC-081`, wired to `import_run`). After it, the remaining
-  buildable technical items are smaller; most other work is owner/data-gated.
+  `DEC-078`, the cross-organization coherence guards `DEC-079`, the
+  `data_quality_exception` table + transfer-discrepancy producer `DEC-080`,
+  and the `import_profile` table + run→profile org-coherence guard `DEC-081`).
+  The next buildable TECH-owned task is the **`postImportRun` posting-policy
+  enforcement (`DEC-025`)**: the policy is stored on `import_profile` (and
+  mirrored into the run's `diagnostics.posting_policy`) but `postImportRun`
+  (`packages/application/src/sales/post-import-run.ts`) never reads it, so
+  `all_or_nothing` currently behaves exactly like `allow_partial`.
+  `allow_partial` posts valid/mapped rows and marks the run `partially_posted`;
+  `all_or_nothing` must refuse to post when any row is not postable; every
+  non-posted row still requires an approved disposition (`DEC-035`). After it,
+  the remaining buildable technical items are smaller (the dispositions table,
+  the `PROD-003` exception producers, `file_object`); most other work is
+  owner/data-gated.
   The remaining recorded open points above stay open. Next free decision id
-  **`DEC-081`**.
+  **`DEC-082`**.
 - **Unit `m` vs the missing `length` dimension** — a dimension-vocabulary mismatch in
   `schemas/domain-enums.yaml` surfaced by slice 3; owner/TECH to resolve (FND-003).
 - **`numeric(19,6)` digit cap in `packages/domain/src/decimal.ts`** — the domain decimal
