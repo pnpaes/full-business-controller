@@ -168,9 +168,9 @@ is guarded by the `0017` `stock_movement_source_guard` trigger rather than an FK
 because its target table varies by `source_type`.
 
 ## Pre-apply preflight for validating constraints and indexes
-
 Migrations 0014, 0016, 0017, 0018, 0019, 0020, 0021, 0022, 0023, 0024, 0025,
-0026, 0027, 0028, 0029, 0030, 0031, 0032, 0033, 0035 and 0037 add objects that validate or build, so a failure
+0026, 0027, 0028, 0029, 0030, 0031, 0032, 0033, 0035, 0037, 0040 and 0041 add
+objects that validate or build, so a failure
 aborts the whole transactional migration (drizzle-kit runs each file in one
 transaction). Run the matching preflight against the target database **before**
 applying and reconcile any hits; drizzle-kit cannot detect them because these
@@ -186,8 +186,8 @@ applying and reconcile any hits; drizzle-kit cannot detect them because these
   the organization/location/storage-area/point FKs validate empty child tables.
   The migration adds no hand-written statement, the tables are new and empty at
   first apply (no validating constraint on an existing row, no full-table lock),
-  and `0038_hms_monitoring_append_only.sql` (below) adds triggers only, so it
-  scans no existing row either. No separate preflight query is needed.
+and `0038_hms_monitoring_append_only.sql` (below) adds triggers only, so it
+scans no existing row either. No separate preflight query is needed.
 
 - **`0035_file_object.sql`** — one new, empty table (`file_object`) with its
   `file_object_size_bytes_check` check, the `file_object_org_storage_key_key`
@@ -1201,6 +1201,44 @@ only, so the down file is an explicit operator action, not an automatic one.
   `psql "$DATABASE_URL" -f packages/persistence/drizzle/0039_hms_monitoring_org_guard_down.sql`.
   Apply `0039`'s down **before** `0037`'s down if the tables go too: its triggers
   live on `monitoring_point`/`monitoring_reading`, which `0037`'s down drops.
+- **0040 adds the HMS incidents tables and follows the down convention:**
+  `0040_hms_incidents.sql` is generated DDL for the two tables, additive like
+  `0037`: `hms_incident` (with the `hms_incident_category_check` /
+  `hms_incident_severity_check` / `hms_incident_status_check` vocabulary checks,
+  the organization/location FKs and org-first indexes) and `corrective_action`
+  (with the `corrective_action_status_check` vocabulary check and the FKs to
+  `organization`, `location`, `hms_incident` and `monitoring_reading`), all
+  cheap at first apply because both tables start empty. It adds two tables and
+  no hand-written statement.
+  `0040_hms_incidents_down.sql` drops the two tables (FK-safe order:
+  `corrective_action` first — it references `hms_incident` and
+  `monitoring_reading` — then `hms_incident`), inside one `BEGIN;`/`COMMIT;`
+  and with `DROP ... IF EXISTS` so a half-applied manual run cannot wedge. It is
+  **destructive** — every incident and corrective action is lost — so run it
+  only while those rows need not be preserved (AGENTS.md Rule 2). Apply it
+  manually with
+  `psql "$DATABASE_URL" -f packages/persistence/drizzle/0040_hms_incidents_down.sql`.
+  Apply `0041`'s down **before** `0040`'s down: its guard triggers live on
+  `hms_incident`/`corrective_action`, which `0040`'s down drops.
+- **0041 adds the HMS incidents cross-organization coherence guards and follows
+  the down convention:** `0041_hms_incidents_org_guard.sql` is hand-written
+  (`DEC-079`'s `BEFORE INSERT OR UPDATE` guard shape, mirroring `0039`). Two
+  functions and two triggers: `hms_incident_org_guard` on `hms_incident`
+  rejects a `location_id` whose `location` belongs to another organization
+  than the incident, and `corrective_action_org_guard` on `corrective_action`
+  rejects an `incident_id` or a `monitoring_reading_id` whose
+  `hms_incident`/`monitoring_reading` belongs to another organization than the
+  corrective action. Each resolves the referenced row's organization through
+  the existing FK path (a missing row falls through to the FK error) and
+  raises `ERRCODE = '23514'`, naming the offending column. It is
+  **trigger-only and table-neutral**: it adds no table and no constraint that
+  validates an existing row, so it scans no row and needs no preflight query.
+  `0041_hms_incidents_org_guard_down.sql` drops the two triggers and their
+  functions inside one `BEGIN;`/`COMMIT;` (with `DROP ... IF EXISTS` so a
+  half-applied manual run cannot wedge). No table and no row is touched, so the
+  down cannot fail on data; while dropped, the references' organization
+  coherence is validated only by the application. Apply it manually with
+  `psql "$DATABASE_URL" -f packages/persistence/drizzle/0041_hms_incidents_org_guard_down.sql`.
 
 **Re-applying after a manual down:** drizzle-kit tracks applied migrations in
 `drizzle.__drizzle_migrations`, not by comparing the schema, so a plain
@@ -1232,7 +1270,9 @@ for 0003, `… = 1789850858806` for 0004, `… = 1789851925634` for 0005,
 `… = 1789990766802` for 0036 and
 `… = 1789995070090` for 0037 and
 `… = 1789995080123` for 0038 and
-`… = 1789996231921` for 0039, then
+`… = 1789996231921` for 0039 and
+`… = 1790024758839` for 0040 and
+`… = 1790024895228` for 0041, then
 `npm run db:migrate` (0003 verified 2026-09-19; 0005 rehearsed in the slice-3
 review follow-up; 0006 rehearsed with the slice-4 receiving work; 0007 and
 0008 rehearsed with the slice-4 review follow-up; 0009 rehearsed with the
@@ -1287,7 +1327,18 @@ monitoring tables and 0038 the `monitoring_reading` append-only guard, then
 0037's down dropped the index and the two tables (68 tables) and 0038's down
 dropped the three triggers and the function with no table change, and deleting
 their ledger rows and re-applying restored the tables, their checks, uniques, FKs
-and index and the guard — 70 tables).
+and index and the guard — 70 tables; 0040 on 2026-09-21 added the two HMS
+incidents tables and 0041 the two guards, then 0041's down dropped the two guard
+triggers and their functions with no table change (72 → 72 tables) and 0040's
+down dropped the two tables (72 → 70 tables), and deleting their ledger rows and
+re-applying restored the tables, their checks, FKs and indexes and both guards —
+72 tables, with a further `db:migrate` run a no-op; the rehearsal also observed
+the three guard messages (`hms_incident.location_id … belongs to organization …`,
+`corrective_action.incident_id …`,
+`corrective_action.monitoring_reading_id …`) and the CHECK violations
+(`hms_incident_category_check`, `hms_incident_severity_check`,
+`hms_incident_status_check`, `corrective_action_status_check`) all raise
+`23514`).
 A **full 0011 down** drops the tables the three 0012 constraints live on, so its
 replay must clear **both** ledger rows, not just 0011's:
 `DELETE FROM drizzle.__drizzle_migrations WHERE created_at IN (1789862475550, 1789862630158);`
@@ -1574,6 +1625,8 @@ session will not serialise against each other.
 | 0037 | `0037_hms_monitoring.sql` | Generated (`DEC-089`/`HMS-002`): the two HMS monitoring tables — `monitoring_point` (`organization_id`, `location_id`, the nullable `storage_area_id`, `code`, `name`, `kind` (`monitoring_point_kind_check`), `unit`, `target_min`/`target_max` numeric(19,6) (`monitoring_point_target_range_check`, `target_min <= target_max`), `check_frequency` (`monitoring_point_check_frequency_check`), `active` default `true` and the audit columns, with the `monitoring_point_organization_id_code_key` unique on `(organization_id, code)` and the organization/location/storage-area FKs) and `monitoring_reading` (`organization_id`, `monitoring_point_id`, `value` numeric(19,6), `unit`, `measured_at`, the nullable `recorded_by`, `in_range`, the nullable `notes` and the audit columns, with the organization and point FKs and the `monitoring_reading_org_point_measured_idx` index on `(organization_id, monitoring_point_id, measured_at)`). No hand-written statement. Down companion: `0037_hms_monitoring_down.sql` (drops the index, then `monitoring_reading`, then `monitoring_point`, FK-safe order — destructive) |
 | 0038 | `0038_hms_monitoring_append_only.sql` | Hand-written (`DEC-089`/`HMS-002`): the `monitoring_reading` append-only guard — one function (`monitoring_reading_append_only()`) and three triggers: two `BEFORE FOR EACH ROW` triggers (`monitoring_reading_immutable` on UPDATE, `monitoring_reading_no_delete` on DELETE) and one `BEFORE TRUNCATE FOR EACH STATEMENT` trigger (`monitoring_reading_no_truncate`) that reject a DELETE, a TRUNCATE and an UPDATE of `value`/`unit`/`measured_at`/`monitoring_point_id`/`organization_id`, so only `notes` may be amended. No table and no TypeScript schema change. Down companion: `0038_hms_monitoring_append_only_down.sql` (drops the three triggers and their function — no row is touched) |
 | 0039 | `0039_hms_monitoring_org_guard.sql` | Hand-written (`DEC-079`'s guard shape applied to `DEC-089`'s HMS monitoring FKs, mirroring `0036`): two functions and two `BEFORE INSERT OR UPDATE FOR EACH ROW` triggers — `monitoring_point_org_guard` on `monitoring_point` (rejects a `location_id` or a non-null `storage_area_id` whose `location`/`storage_area` belongs to another organization) and `monitoring_reading_org_guard` on `monitoring_reading` (rejects a `monitoring_point_id` whose `monitoring_point` belongs to another organization). No table and no TypeScript schema change. Down companion: `0039_hms_monitoring_org_guard_down.sql` (drops the two triggers and their functions — no row is touched) |
+| 0040 | `0040_hms_incidents.sql` | Generated (HMS incidents): the two tables, additive like `0037` — `hms_incident` (`hms_incident_category_check` / `hms_incident_severity_check` / `hms_incident_status_check` vocabulary checks, the organization/location FKs and org-first indexes) and `corrective_action` (`corrective_action_status_check` and the FKs to `organization`, `location`, `hms_incident` and `monitoring_reading`). No hand-written statement. Down companion: `0040_hms_incidents_down.sql` (drops the two tables, FK-safe order — destructive) |
+| 0041 | `0041_hms_incidents_org_guard.sql` | Hand-written (`DEC-079`'s guard shape applied to the HMS incidents FKs, mirroring `0039`): two functions and two `BEFORE INSERT OR UPDATE FOR EACH ROW` triggers — `hms_incident_org_guard` on `hms_incident` (rejects a `location_id` whose `location` belongs to another organization) and `corrective_action_org_guard` on `corrective_action` (rejects an `incident_id` or a `monitoring_reading_id` whose `hms_incident`/`monitoring_reading` belongs to another organization). No table and no TypeScript schema change. Down companion: `0041_hms_incidents_org_guard_down.sql` (drops the two triggers and their functions — no row is touched) |
 
 Order matters: extensions before DDL that calls `gen_random_uuid()`, and before
 the exclusion constraints. Verify with:
@@ -1603,7 +1656,7 @@ DATABASE_URL=postgres://aquarela:aquarela@localhost:5432/aquarela npm run db:mig
 `public` alone leaves the ledger intact, so `db:migrate` reports success while
 restoring nothing. `DROP SCHEMA drizzle CASCADE` clears the ledger so all
 migrations replay from 0000. Verified: after this sequence `db:migrate`
-  re-applies 0000–0039 and the database has all 70 tables plus both extensions
+  re-applies 0000–0041 and the database has all 72 tables plus both extensions
 (0004 adds the four slice-3 master-data tables; 0006 adds the two slice-4
 receiving tables; 0007 adds the `goods_receipt_line` guard trigger — no table;
 0008 relaxes the `supplier_price` range check — no table; 0009 adds the two
@@ -1649,19 +1702,23 @@ file-object org-coherence guard trigger on `import_run` — no table; 0037 adds 
 index — two tables; 0038 adds the `DEC-089`/`HMS-002` `monitoring_reading`
 append-only guard trigger — no table, table-neutral; 0039 adds the `DEC-089` HMS
 monitoring cross-organization coherence guards on `monitoring_point` and
-`monitoring_reading` — no table, table-neutral).
+`monitoring_reading` — no table, table-neutral; 0040 adds the two HMS incidents
+tables (`hms_incident` and `corrective_action`) with their vocabulary checks,
+FKs and org-first indexes — two tables; 0041 adds the two HMS incidents
+cross-organization coherence guards on `hms_incident` and `corrective_action`
+— no table, table-neutral).
 0013–0019 were added after this replay was verified; all are additive and
 table-count-neutral. `0020`, `0021`, `0022`, `0023`, `0024`, `0027`, `0030`,
-`0031`, `0033`, `0035` and `0037`
+`0031`, `0033`, `0035`, `0037` and `0040`
 are the only migrations after the replay was written to add tables (four, four,
-three, four, one, one, one, one, one, one and two respectively), so the 70-table
-figure above is the
-expected post-`0038` count (51 after `0020`, 55 after `0021`, 58 after `0022`,
+three, four, one, one, one, one, one, one, two and two respectively), so the
+72-table figure above is the
+expected post-`0041` count (51 after `0020`, 55 after `0021`, 58 after `0022`,
 62 after `0023`, 63 after `0024`, 64 after `0029`, 65 after `0030`, 66 after
 `0031` and `0032`, 67 after `0033`, still 67 after `0034`, 68 after `0035`,
 still 68 after `0036`, 70 after `0037`, still 70 after `0038` and still 70 after
-`0039`); `0025`, `0026`,
-`0028`, `0032`, `0034`, `0036`, `0038` and `0039`
+`0039` and 72 after `0040`); `0025`, `0026`,
+`0028`, `0032`, `0034`, `0036`, `0038`, `0039` and `0041`
 are table-neutral.
 `0014`–`0038`'s
 apply/re-run/down/re-apply was rehearsed on the local dev database 2026-09-20
@@ -1679,7 +1736,11 @@ tables; 0037 on 2026-09-21 — its down dropped the
 tables (68 tables) and the re-apply restored the tables, their checks, uniques
 and FKs and the index — 70 tables; 0038 on 2026-09-21 — its down dropped the three
 `monitoring_reading` append-only triggers and their function with no table change
-and the re-apply restored the guard — still 70 tables).
+and the re-apply restored the guard — still 70 tables; 0040 on 2026-09-21 — its
+down dropped the two HMS incidents tables (70 tables) and the re-apply restored
+the tables, their checks, FKs and indexes — 72 tables; 0041 on 2026-09-21 — its
+down dropped the two guard triggers and their functions with no table change and
+the re-apply restored both guards — still 72 tables).
 
 Once real data exists, this path is no longer acceptable: use small atomic
 commits, expand → migrate → contract for schema changes, and a tested
