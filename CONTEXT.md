@@ -7,42 +7,47 @@ duplicate their content.
 
 ## Resume here (next session)
 
-**Say "resume the work" and start here.** A fresh session must be able to continue
-from this section alone.
+**Say "resume the work" and start here.** A fresh session must be able to
+continue from this section alone. (This section was just updated by the
+`DEC-078` handoff pass; the next commit is this docs update itself.)
 
-**Next task:** resolve and implement the remaining low-risk **technical** open
-points as decisions from **`DEC-078`** (append to `12_OPEN_DECISIONS.md`):
-(1) the `settlement.status` vocabulary; (2) the `reconciliation.scope_type`
-vocabulary; (3) `lotTracked` enforcement (a lot-tracked item must not post a
-movement with a null `lotId`). These are TECH-owned and need no owner input.
-Then, if unblocked, the receipt→ledger wiring (needs the OPS destination
-`storage_area_id` policy). Row 13 remains data-gated on history/grain quality
-(I11); row 14 is owner-gated on the privacy review; rows 15–18 are blocked
-(data / `ADR-0009`–`0011`).
+**Next buildable code task:** the **cross-organization referential-integrity /
+deferred-FK hardening** — `DEC-054`'s open point on the recipe FKs
+(`recipe_allergen.allergen_id`, `recipe_line.item_id`,
+`recipe_line.sub_recipe_id`) plus the `goods_receipt_line` composite FKs (its
+`supplier_item_id`/`item_id` are org-agnostic single-column FKs; a foreign-org
+item, a mismatched supplier or a unit that does not match the item is guarded
+only in the application until those FKs are added) — implemented
+**additively** as composite FKs/trigger invariants using the runbook's
+`NOT VALID` → `VALIDATE CONSTRAINT` pattern (new migration(s) `0029`+,
+never editing `0000–0028`). This is a documented, TECH-owned gap buildable
+without owner input. Fallback if it hits a gate: the `data_quality_exception`
+table (`DEC-066`'s interim replacement for
+`stock_transfer.discrepancy_note`). Still owner/data-gated: the
+receipts→ledger wiring (needs the OPS destination `storage_area_id` policy);
+row 13 (data-gated on history/grain quality, I11); row 14 (owner-gated on
+the privacy review); rows 15–18 (blocked: data / `ADR-0009`–`0011`); the
+price-version scope-resolution fallback; consumption grain A1.
 
-**State:** `main` HEAD **`80bbe1c`** (the last code commit; this handoff update
-is the next commit), working tree **clean**, nothing pushed; **5 commits** this
-slice: `4e755a0` docs(decisions) accept `DEC-077`; `e94dfe1` feat(domain)
-price-version effective-window helpers; `414832b` feat(persistence)
-`price_version` table (migration `0027`) + repository incl. the approval CAS;
-`e2bd2b1` feat(application) price-version approval and reads
-(`DEC-064`/`DEC-077`); `80bbe1c` feat(web) price-version approval action and
-versions screen. **Delivered:** the price-version slice (`DEC-064`, `DEC-077`,
-PRICE-002/003) — the `price_version` table (half-open
-`[effective_from, effective_to)`, non-overlapping per
-`(organization_id, product_variant_id, location_id, channel_id)` via a
-hand-written EXCLUDE with a COALESCE sentinel so a null location/channel is a
-single "any" scope); `approvePriceScenario` creates an effective version for
-the scenario's scope in the same transaction, rejects a null price and an
-overlapping window, and uses a compare-and-swap state transition
-(`approvePriceScenarioIfApprovable`) so a concurrent approval cannot
-double-create; only an approved scenario yields a version (PRICE-003);
-application reads `listPriceVersions`/`getPriceVersion`; web approve route +
-price-versions API + Costs UI approval action and Price-versions screen.
-**Verification at `80bbe1c`:** `format:check`, `typecheck`, `lint`, `build`
-clean; **1269/1269 tests with `DATABASE_URL`** (132 files);
-`npm audit --omit=dev` = 0; `db:migrate` through `0027` is a no-op on re-run;
-the `0027` down path rehearsed; **64 tables**; all new reads/writes
+**State:** `main` HEAD **`a5c3db2`** (the last code commit; this handoff update
+is the next commit), working tree **clean**, nothing pushed; **4 commits**
+this slice: `3673633` docs(decisions) accept `DEC-078`; `ed93288`
+feat(persistence) settlement/reconciliation vocabularies (migration `0028`);
+`39d3364` feat(inventory) enforce `lotTracked` on stock movements; `a5c3db2`
+feat(reconciliation) validate `scope_type` against the `DEC-078` vocabulary.
+**Delivered (`DEC-078`)**: `settlement.status` constrained to `{received,
+paid, void}` (default `received`); `reconciliation.scope_type` constrained to
+a new `reconciliation_scope_type` `{import_run, sales_source, settlement,
+supplier_invoice}` (migration `0028`, check constraints
+`settlement_status_check`/`reconciliation_scope_type_check`) with
+`assertReconciliationScopeType` rejecting an unknown scope before any write;
+and a `lotTracked` item may no longer post a stock movement with a null
+`lotId` (one guard in `postStockMovementInternal`, covering all posting
+paths; reversal stays exempt because it mirrors the original lot).
+**Verification at `a5c3db2`:** `format:check`, `typecheck`, `lint`, `build`
+clean; **1279/1279 tests with `DATABASE_URL`** (132 files);
+`npm audit --omit=dev` = 0; `db:migrate` through `0028` is a no-op on re-run;
+the `0028` down path rehearsed; **64 tables**; all new reads/writes
 organization-scoped (`DEC-061`).
 
 **Dev server / demo data (session-scoped):** the previous session ran a dev
@@ -60,45 +65,44 @@ steps → commit → next task. Global ruleset (`~/.config/kilo/AGENTS.md`): com
 context at 25 %; pausing is permitted above USD 20 at a clean point (committed,
 verified, documented).
 
-**Scope (do):** append the decisions from **`DEC-078`** and implement the
-low-risk ones (the `settlement.status` / `reconciliation.scope_type`
-vocabularies in `schemas/domain-enums.yaml` +
-`packages/persistence/src/schema/vocabularies.ts` + `sales.ts` — a migration
-`0028` for the check constraints; `lotTracked` enforcement in
-`packages/application/src/inventory/post-stock-movement.ts`); run the
-verification commands; small atomic layer commits with the rollback approach in
-the body (per `AGENTS.md` Rule 2). Update `CONTEXT.md` at the end.
+**Scope (do):** resolve/record any new decision from **`DEC-079`** if genuinely
+needed (append to `12_OPEN_DECISIONS.md` — never invent silently); implement
+the composite-FK/trigger invariants **additively** (`NOT VALID` → `VALIDATE`,
+new migration `0029`+ with down companions + runbook entries); run the
+verification commands; small atomic layer commits with the rollback approach
+in the body (per `AGENTS.md` Rule 2). Update `CONTEXT.md` at the end.
 
-**Scope (do not):** do not start row 13 (close + dashboards + menu engineering
-— data-gated on history/grain quality, I11) or row 14 (workforce —
-owner-gated on the privacy review); rows 15–18 remain blocked (data /
-`ADR-0009`–`0011`). Do not edit migrations `0000–0027`; do not deploy,
-`terraform apply`, or write externally (per-source approval remains `DEC-015`);
-do not resolve the recorded owner inputs silently (consumption grain A1, the
-price-version scope-resolution fallback, the OPS storage-area policy); do not
-rewrite the specification inputs (`00_README.md` … `13_`, `docs/phase0/`,
-`schemas/`, `samples/`).
+**Scope (do not):** do not start row 13 (close + dashboards + menu
+engineering — data-gated on history/grain quality, I11) or row 14 (workforce
+— owner-gated on the privacy review); rows 15–18 remain blocked (data /
+`ADR-0009`–`0011`). Do not edit migrations `0000–0028`; do not deploy,
+`terraform apply`, or write externally (per `DEC-015`); do not resolve the
+recorded owner inputs silently (consumption grain A1, the price-version
+scope-resolution fallback, the OPS storage-area policy); do not rewrite the
+specification inputs (`00_README.md` … `13_`, `docs/phase0/`, `schemas/`,
+`samples/`).
 
-**Files/paths:** `12_OPEN_DECISIONS.md` for `DEC-078`+; the
-`settlement.status`/`reconciliation.scope_type` vocabularies in
-`schemas/domain-enums.yaml` + `packages/persistence/src/schema/vocabularies.ts`
-
-- `sales.ts` (a migration for the check constraints, `0028`);
-  `lotTracked` enforcement in
-  `packages/application/src/inventory/post-stock-movement.ts`; update
-  `CONTEXT.md` at the end.
+**Files/paths:** for the next code task —
+`packages/persistence/src/schema/` (recipe/receipt FK relations),
+`packages/persistence/drizzle/0029_*` (new hand-written migration(s) +
+down companions + `meta/_journal.json`), the migration runbook
+(`docs/runbooks/persistence-migrations.md`) for the new entries,
+`12_OPEN_DECISIONS.md` for `DEC-079` if needed; update `CONTEXT.md` at the
+end.
 
 **Authoritative docs to read first:** `docs/BUILD_ROADMAP.md` §1 (current
-position) and §4–§5; `12_OPEN_DECISIONS.md` (`DEC-064`, `DEC-077`, next free
-id **`DEC-078`**); the slice-8/row-12 open-point lists; this file's
-"Open decisions / inputs"; `AGENTS.md` Rules 1–3.
+position) and §4–§5; `12_OPEN_DECISIONS.md` (`DEC-054`, `DEC-066`, next free
+id **`DEC-079`**); `docs/runbooks/persistence-migrations.md` (the
+`NOT VALID` → `VALIDATE` deferred-FK pattern, `[ShareLock]` preflight note);
+this file's "Open decisions / inputs"; `AGENTS.md` Rules 1–3.
 
 **Acceptance / verification:** `export NVM_DIR="$HOME/.nvm"; . "$NVM_DIR/nvm.sh";
 nvm use 22`, then `npm run lint`, `npm run typecheck`, `npm run test` (with
-`DATABASE_URL` — current baseline: **1269/1269**, 132 files), `npm run build`,
-`npm run format:check`, `npm audit --omit=dev` = 0; `db:migrate` through `0027`
-is a no-op on re-run; after each commit re-run the suite at the clean tree and
-confirm HEAD advanced.
+`DATABASE_URL` — current baseline: **1279/1279**, 132 files), `npm run build`,
+`npm run format:check`, `npm audit --omit=dev` = 0; `db:migrate` through `0028`
+is a no-op on re-run; rehearse each new down path; 64 tables confirmed after
+`0029` (the FK/trigger migrations add no tables); after each commit re-run the
+suite at the clean tree and confirm HEAD advanced.
 
 **Open inputs (recorded, do not decide):** consumption grain A1 (`DEC-009`
 daily-per-location vs a single `sales_line` source); the price-version
@@ -106,7 +110,7 @@ daily-per-location vs a single `sales_line` source); the price-version
 inputs"); the OPS receipt destination `storage_area_id` policy; no
 import-profile table; `file_object` absent so `import_run.file_object_id` is a
 plain uuid; receipts not wired to the ledger; the owner/deployment inputs.
-Full list under "Open decisions / inputs"; next free decision id **`DEC-078`**.
+Full list under "Open decisions / inputs"; next free decision id **`DEC-079`**.
 
 **Parallel owner action — golden-fixture sign-off:** the six golden fixtures are
 prepared as machine-readable JSON under `tests/fixtures/` (`DEC-065`) with the
@@ -132,19 +136,20 @@ slice 7 (cost card + snapshots + price scenario + approval), slice 8 (stock
 ledger + balances + lots/storage), slices 9 (counts + transfers + waste), slice
 10 (production planning + batches, including the web layer), row 11 (import
 framework + external mappings) and row 12 (sales + settlements + reconciliation)
-— **all committed** (through HEAD `80bbe1c`; rows 11 and 12 complete; the
+— **all committed** (through HEAD `a5c3db2`; rows 11 and 12 complete; the
 price-version slice — `price_version` with approval-driven effective versions —
-complete), with the
-design system/app shell/screens and migrations `0017`–`0027`; the
-`DEC-072`–`DEC-077` low-risk implementations (effective-dated reconciliation
+complete, and the `DEC-078` vocabulary/`lotTracked` integrity points), with the
+design system/app shell/screens and migrations `0017`–`0028`; the
+`DEC-072`–`DEC-078` low-risk implementations (effective-dated reconciliation
 tolerance, sales-line reversal, `MAPPING_STATE` `conflict`, typed recipe 404s,
-the `price_version` slice).
+the `price_version` slice, the `settlement.status`/`reconciliation.scope_type`
+vocabularies and `lotTracked` enforcement).
 
 ## Where things live
 
 - `00_README.md` … `13_AGENT_BUILD_BRIEF.md` — the specification package
   (inputs, rarely edited). Start with `00_README.md`.
-- `12_OPEN_DECISIONS.md` — the accepted decisions (DEC-001…DEC-076); the
+- `12_OPEN_DECISIONS.md` — the accepted decisions (DEC-001…DEC-078); the
   authority. New decisions are appended here.
 - `docs/phase0/` — close-out plan, calculation contract, data dictionary, golden
   fixtures, source-data request, notes. See `docs/phase0/PHASE0_CLOSEOUT_PLAN.md`
@@ -164,33 +169,33 @@ the `price_version` slice).
 
 ## Current status
 
-- **As of:** 2026-09-21 — branch `main`; HEAD `80bbe1c` (the last code commit;
+- **As of:** 2026-09-21 — branch `main`; HEAD `a5c3db2` (the last code commit;
   this handoff/docs commit is next);
-  working tree **clean**; nothing pushed. **5 commits** this slice:
-  `4e755a0` docs(decisions) accept `DEC-077`; `e94dfe1` feat(domain)
-  price-version effective-window helpers; `414832b` feat(persistence)
-  `price_version` (migration `0027`) + repository incl. the approval CAS;
-  `e2bd2b1` feat(application) price-version approval and reads
-  (`DEC-064`/`DEC-077`); `80bbe1c` feat(web) price-version approval action and
-  versions screen — **all committed**
+  working tree **clean**; nothing pushed. **4 commits** this slice:
+  `3673633` docs(decisions) accept `DEC-078`; `ed93288` feat(persistence)
+  settlement/reconciliation vocabularies (migration `0028`); `39d3364`
+  feat(inventory) enforce `lotTracked` on stock movements; `a5c3db2`
+  feat(reconciliation) validate `scope_type` against the `DEC-078` vocabulary
+  — **all committed**
   (see "Work log" and "Reversibility").
-  **Delivered:** the price-version slice (`DEC-064`, `DEC-077`, PRICE-002/003)
-  — the `price_version` table (half-open `[effective_from, effective_to)`,
-  non-overlapping per `(organization_id, product_variant_id, location_id,
-channel_id)` via a hand-written EXCLUDE with a COALESCE sentinel so a null
-  location/channel is a single "any" scope); `approvePriceScenario` creates an
-  effective version for the scenario's scope in the same transaction, rejects
-  a null price and an overlapping window, and uses the compare-and-swap
-  `approvePriceScenarioIfApprovable` transition so a concurrent approval
-  cannot double-create; only an approved scenario yields a version
-  (PRICE-003); application reads `listPriceVersions`/`getPriceVersion`; web
-  approve route + price-versions API + Costs UI approval action and
-  Price-versions screen. Two adversarial reviews (`reviewer-qwen`,
-  `reviewer-minimax`) were run and reconciled — see the work log.
-  **Verification at `80bbe1c`:** `format:check`, `typecheck`, `lint`, `build`
-  clean; **1269/1269 tests with `DATABASE_URL`** (132 files);
-  `npm audit --omit=dev` 0; `db:migrate` through `0027` is a no-op; the
-  `0027` down path rehearsed; **64 tables**; every new
+  **Delivered (`DEC-078`):** `settlement.status` constrained to `{received,
+paid, void}` (default `received`); `reconciliation.scope_type` constrained
+  to a new `reconciliation_scope_type` `{import_run, sales_source,
+settlement, supplier_invoice}` (migration `0028`, check constraints
+  `settlement_status_check`/`reconciliation_scope_type_check`) with
+  `assertReconciliationScopeType` rejecting an unknown scope before any
+  write; and a `lotTracked` item may no longer post a stock movement with a
+  null `lotId` (one guard in `postStockMovementInternal`, covering all
+  posting paths; the reversal stays exempt because it mirrors the original
+  lot). One cheap code-level review (`reviewer-glm`) — no blockers/majors;
+  accepted one minor (strengthened the two unknown-scope rejection tests
+  with a message assertion); declined the runbook-rehearsal note (the down
+  path was genuinely rehearsed) and the vocabulary-alias note (matches the
+  existing `imports/vocabularies.ts` alias convention) — see the work log.
+  **Verification at `a5c3db2`:** `format:check`, `typecheck`, `lint`, `build`
+  clean; **1279/1279 tests with `DATABASE_URL`** (132 files);
+  `npm audit --omit=dev` 0; `db:migrate` through `0028` is a no-op; the
+  `0028` down path rehearsed; **64 tables**; every new
   read/write organization-scoped (`DEC-061`).
   **Dev server (session-scoped):** the previous session ran http://localhost:3000
   with `DATABASE_URL=postgres://aquarela:aquarela@localhost:5432/aquarela`,
@@ -198,9 +203,11 @@ channel_id)` via a hand-written EXCLUDE with a COALESCE sentinel so a null
   key and demo data from `npm run seed:demo` + the seed scripts under
   `apps/web/scripts/` (see "Resume here"); sign in with `owner` /
   `LocalDevPass123`; a fresh session must restart the server.
-  Remaining roadmap: the next unblocked task is the `DEC-078` low-risk
-  technical open points (the `settlement.status` /
-  `reconciliation.scope_type` vocabularies, `lotTracked` enforcement), then
+  Remaining roadmap: the next unblocked task is the
+  **cross-organization referential-integrity / deferred-FK hardening**
+  (`DEC-054` recipe FKs + the `goods_receipt_line` composite FKs, via the
+  runbook's `NOT VALID` → `VALIDATE` pattern; fallback: the
+  `data_quality_exception` table, `DEC-066`), then
   the receipt→ledger wiring if the OPS policy lands; row 13 is data-gated on
   history/grain quality
   (I11); row 14 owner-gated on the privacy review / access matrix; rows 15–18
@@ -249,9 +256,9 @@ channel_id)` via a hand-written EXCLUDE with a COALESCE sentinel so a null
 - **DEC-049 closed:** drizzle-orm 0.45.2 / drizzle-kit 0.31.10 upgrade (`cc86f13`);
   `npm audit --omit=dev` = 0.
 - **Tests:** without `DATABASE_URL` the integration tests skip; with it
-  **1269/1269 passed** (132 files) — recorded
-  2026-09-21 at the clean HEAD `80bbe1c` (all
-  checks pass; `db:migrate` through `0027` is a
+  **1279/1279 passed** (132 files) — recorded
+  2026-09-21 at the clean HEAD `a5c3db2` (all
+  checks pass; `db:migrate` through `0028` is a
   no-op, and the `0027` down path was rehearsed). Re-verify with `npm run test`
   and update if they differ.
   Open verification debt: the per-process rate limiter needs a shared
@@ -260,7 +267,7 @@ channel_id)` via a hand-written EXCLUDE with a COALESCE sentinel so a null
   await owner sign-off (see "Open decisions / inputs"); the six golden fixtures
   remain unsigned and are the "verified" gate.
 - **Persistence core + deployment foundation (committed):** Drizzle schema,
-  migrations `0000_enable_extensions` → `0026` additive with tested down paths
+  migrations `0000_enable_extensions` → `0028` additive with tested down paths
   (`0011_cost_allocation.sql` adds the four slice-6 tables; `0014_cost_card_pricing`
   adds four deferred `price_scenario` columns + `snapshot_component_kind_check`;
   `0015` adds `calculation_snapshot_cost_card_index`; the hand-written `0016` adds
@@ -287,7 +294,11 @@ channel_id)` via a hand-written EXCLUDE with a COALESCE sentinel so a null
   `[effective_from, effective_to)` for PRICE-002/003, non-overlapping per
   `(organization_id, product_variant_id, location_id, channel_id)` via a
   hand-written EXCLUDE with a COALESCE sentinel; committed in `414832b`);
-  ledger 27 rows through `0027`; the `asset`
+  **`0028`** adds the `DEC-078` check constraints
+  `settlement_status_check` and `reconciliation_scope_type_check` (the
+  `{received, paid, void}` and `reconciliation_scope_type` vocabularies;
+  committed in `ed93288`);
+  ledger 28 rows through `0028`; the `asset`
   register is deliberately deferred), the
   advisory-locked migrator, worker/scheduler
   stubs and the `infra/` Terraform scaffold validated offline. Not applied.
@@ -306,19 +317,19 @@ channel_id)` via a hand-written EXCLUDE with a COALESCE sentinel so a null
 ## Next up (prioritised)
 
 `docs/BUILD_ROADMAP.md` is the ordered execution tracker for these slices (slice 0,
-1a–1e and 2–12 done, incl. row 11 and row 12; the `DEC-072`–`DEC-077` decisions +
-low-risk implementations are done, committed `aaec400`–`80bbe1c`; further rows are
+1a–1e and 2–12 done, incl. row 11 and row 12; the `DEC-072`–`DEC-078` decisions +
+low-risk implementations are done, committed `aaec400`–`a5c3db2`; further rows are
 gated — row 13 on data (I11), row 14 owner-only, rows 15–18 on data/ADRs).
 The list below is the short narrative form.
 
-1. **`DEC-078` — the remaining low-risk technical open points** — resolve the
-   `settlement.status` and `reconciliation.scope_type` vocabularies and the
-   `lotTracked` enforcement (a lot-tracked item must not post a movement with
-   a null `lotId`) as decisions appended to `12_OPEN_DECISIONS.md` from
-   `DEC-078`, implement them (vocabularies + migration `0028`; the
-   `lotTracked` check in `post-stock-movement.ts`), then, if unblocked, the
-   receipt→ledger wiring (needs the OPS destination `storage_area_id`
-   policy). Programme direction: proceed
+1. **Cross-organization referential-integrity / deferred-FK hardening** —
+   implement `DEC-054`'s open point on the recipe FKs
+   (`recipe_allergen.allergen_id`, `recipe_line.item_id`,
+   `recipe_line.sub_recipe_id`) and the `goods_receipt_line` composite FKs
+   additively via the runbook's `NOT VALID` → `VALIDATE CONSTRAINT` pattern
+   (migration `0029`+; fallback if it hits a gate: the
+   `data_quality_exception` table, `DEC-066`); a new decision from `DEC-079`
+   only if genuinely needed. Programme direction: proceed
    autonomously (agents → review/fix → document → commit → next task).
 2. **Row 13 — close + dashboards + menu engineering** — `ADR-0007` is accepted
    (2026-09-20); **data-gated** on history/grain quality (I11) — synthetic
@@ -354,13 +365,25 @@ The list below is the short narrative form.
 
 ## Open decisions / inputs (do not block development)
 
+- **Resolved this session (2026-09-21, `DEC-078`):** the remaining low-risk
+  vocabulary/integrity open points are delivered — `settlement.status`
+  constrained to `{received, paid, void}` (default `received`),
+  `reconciliation.scope_type` constrained to the new `reconciliation_scope_type`
+  `{import_run, sales_source, settlement, supplier_invoice}` (migration `0028`
+  check constraints; the "no settlement.status / reconciliation.scope_type
+  vocabulary" point from the row-12 open list is closed) with
+  `assertReconciliationScopeType` rejecting an unknown scope before any
+  write; and `lotTracked` enforcement (the slice-8/9 "`lotTracked`
+  unenforced" point is closed — a null-`lotId` posting is rejected for a
+  lot-tracked item; the reversal path stays exempt because it mirrors the
+  original lot).
+  Next free decision id **`DEC-079`**.
 - **Resolved this session (2026-09-21, `DEC-077`):** the price-version slice
   (`DEC-064`, PRICE-002/003) is delivered — the `price_version` table
   (migration `0027`, half-open `[effective_from, effective_to)`, non-overlap
   per scope via an EXCLUDE with a COALESCE sentinel; the "no `price_version`
   table" point from the slice-7 open list is closed) and approval-driven
   effective versions with the CAS `approvePriceScenarioIfApprovable` race fix.
-  Next free decision id **`DEC-078`**.
 - **Price-version scope resolution is exact-scope only (new, 2026-09-21;
   recorded not decided — do not resolve silently):** there is no
   company-wide (`null` location/channel) → specific-location/channel fallback
@@ -377,7 +400,7 @@ The list below is the short narrative form.
   `MAPPING_STATE` `conflict` (`DEC-074`, migration `0025`); `tax_rule_id`
   canonical with `applied_tax_rate` as the source-reported applied rate (A4,
   `DEC-075`, docs-only); the typed `NotFoundError` replacing the
-  `/not found/i` message match (`DEC-076`). Next free decision id **`DEC-078`**.
+  `/not found/i` message match (`DEC-076`). Next free decision id **`DEC-079`**.
 - **Resolved this session (2026-09-20, previous session):** `ADR-0005` is **Accepted** (stock
   valuation/consumption — slice 8 unblocked); `ADR-0007` (reporting aggregates)
   and `ADR-0008` (integration ownership) are **Accepted** (2026-09-20,
@@ -412,13 +435,14 @@ The list below is the short narrative form.
   `diagnostics.dispositions` jsonb, not a table (TECH). Also a
   live-check left one dev `import_run` row in the local database (see "Local
   dev-DB cleanup" below). Record each resolution in `12_OPEN_DECISIONS.md`
-  (next free id **`DEC-078`**); do not resolve silently.
+  (next free id **`DEC-079`**); do not resolve silently.
 - **Row-12 sales/reconciliation open points (2026-09-20; also tracked in
   `docs/BUILD_ROADMAP.md` §5 "Row-12 sales/reconciliation open points";
   recorded, not decided — do not resolve silently):** consumption grain A1
   (`DEC-009` daily-per-location vs a single `sales_line` source);
-  `settlement.status` and
-  `reconciliation.scope_type` have no vocabulary; the `sales_line`-guard test
+  ~~`settlement.status` and
+  `reconciliation.scope_type` have no vocabulary~~ resolved 2026-09-21
+  (`DEC-078`); the `sales_line`-guard test
   fix (a pre-existing inventory test posting a `sales_line` movement with a
   fake source id was fixed — the new guard correctly rejects it); the legacy
   I19 import carries no resolvable `location_id`, so the demo theoretical
@@ -427,7 +451,7 @@ The list below is the short narrative form.
   `pending`). Row 13 is data-gated on history/grain quality (I11); row 14 is
   owner-gated on the privacy review / access matrix; rows 15–18 remain blocked
   (data / `ADR-0009`–`0011`). Record each resolution in
-  `12_OPEN_DECISIONS.md` (next free id **`DEC-078`**); do not resolve silently.
+  `12_OPEN_DECISIONS.md` (next free id **`DEC-079`**); do not resolve silently.
 - **Slice-9/10 open owner questions (2026-09-20; also tracked in
   `docs/BUILD_ROADMAP.md` §5 "Slice-9/10 open owner questions"):** output-cost
   allocation across multiple outputs/by-products (FIN); yield-variance tolerance
@@ -436,9 +460,10 @@ The list below is the short narrative form.
   (OPS+TECH); lot-tracked cross-location transfer policy (OPS); per-source stock
   reversal semantics (`DEC-028` — the sales-line variant is now implemented via
   `DEC-073`) not yet implemented for stock (TECH); receipts not wired to the
-  ledger (TECH); `lotTracked` unenforced (TECH); `DEC-009` daily theoretical
+  ledger (TECH); ~~`lotTracked` unenforced (TECH)~~ resolved 2026-09-21
+  (`DEC-078`); `DEC-009` daily theoretical
   consumption not implemented (TECH). Record each resolution in
-  `12_OPEN_DECISIONS.md` (next free id **`DEC-078`**); do not resolve silently.
+  `12_OPEN_DECISIONS.md` (next free id **`DEC-079`**); do not resolve silently.
 - **Deployment prerequisite inputs (owner; before any real `apply`):** `ADR-0004`
   acceptance; a real scoped `DIGITALOCEAN_TOKEN`; a provisioned private Spaces
   state bucket + state credentials; the sanitized-data owner; the legacy
@@ -502,9 +527,11 @@ The list below is the short narrative form.
   storage-area policy are unresolved, `post-stock-movement.ts`); per-source
   reversal semantics are not enumerated (a non-receipt reversal posts movement
   type `correction`; only `receipt` → `receipt_reversal`; `DEC-028` defines the
-  semantics per source type, `reverse-stock-movement.ts`); `lotTracked` is not
+  semantics per source type, `reverse-stock-movement.ts`); ~~`lotTracked` is not
   enforced (a lot-tracked item can post with `lotId` null,
-  `post-stock-movement.ts`); the `DEC-028` "reversal blocked when reconciled
+  `post-stock-movement.ts`)~~ resolved 2026-09-21 (`DEC-078` — the null-`lotId`
+  posting is rejected for a lot-tracked item; the reversal path stays exempt
+  because it mirrors the original lot); the `DEC-028` "reversal blocked when reconciled
   downstream sales depend on the original" gate is deferred until the sales slice
   exposes reconciliation state (reversal always requires an explicit reason
   today); the `0017` `source_id` guard originally covered only
@@ -653,6 +680,19 @@ and Spaces credentials via `-backend-config` / `AWS_ACCESS_KEY_ID` +
 
 ## Reversibility
 
+- **`DEC-078` vocabulary/`lotTracked` slice (committed as four commits since
+  the `80bbe1c` baseline; nothing pushed)**: `3673633` (the `DEC-078` decision
+  entry), `ed93288` (persistence migration `0028` — the
+  `settlement_status_check`/`reconciliation_scope_type_check` constraints +
+  the vocabulary schema), `39d3364` (the `lotTracked` null-`lotId` guard in
+  `postStockMovementInternal`) and `a5c3db2` (`scope_type` validation via
+  `assertReconciliationScopeType`, incl. the review-strengthened
+  message-assertion tests) — each is independently revertible with
+  `git revert <sha>`. Migration `0028` is **additive** (two CHECK
+  constraints + the new vocabulary type) with a rehearsed unjournaled down
+  path (drop the checks/column default, restore the enum, delete the ledger
+  row, re-migrate); no data migration. The docs commits are trivial reverts.
+  Nothing pushed; nothing applied to DigitalOcean.
 - Revert any commit with `git revert <sha>`; no destructive git operations.
 - **Everything through `aa4ab29` is committed** (slices 4–7 and their review fixes
   included, with migrations `0006`–`0016` and additive down paths); `git revert`
@@ -750,11 +790,11 @@ and Spaces credentials via `-backend-config` / `AWS_ACCESS_KEY_ID` +
   them with `git revert` if needed. **No cloud resource was created — only offline
   `fmt`/`validate`/`plan` ran, never `apply`; no Terraform state exists, and
   nothing has been applied to DigitalOcean.**
-- Migrations 0000–0027 are additive with tested down paths (`0011` down drops the
+- Migrations 0000–0028 are additive with tested down paths (`0011` down drops the
   four slice-6 tables; `0012` down drops the three EXCLUDE constraints; `0015`/
-  `0016` down drop their indexes/invariant — rehearsed; `0017`–`0027` down are
+  `0016` down drop their indexes/invariant — rehearsed; `0017`–`0028` down are
   rehearsed — see the slice-8 bullet, the slice-9/10, row-11, row-12,
-  DEC-072–076 and price-version bullets
+  DEC-072–076, price-version and `DEC-078` bullets
   above). While the
   database is
   empty the tested recovery is `DROP SCHEMA public CASCADE; DROP SCHEMA drizzle
@@ -765,6 +805,49 @@ CASCADE; CREATE SCHEMA public; npm run db:migrate` (see the runbook). Once data
   (`DEC-015`).
 
 ## Work log (append-only, newest first)
+
+### 2026-09-21 — DEC-078 accepted and implemented (migration 0028, lotTracked, scope_type validation); handoff updated
+
+`main` HEAD `a5c3db2`; the working tree holds only this handoff update — the
+next commit (nothing pushed; nothing applied to DigitalOcean). **4 commits**
+this slice: `3673633` docs(decisions) accept `DEC-078`; `ed93288`
+feat(persistence) settlement/reconciliation vocabularies (migration `0028`);
+`39d3364` feat(inventory) enforce `lotTracked` on stock movements; `a5c3db2`
+feat(reconciliation) validate `scope_type` against the `DEC-078` vocabulary.
+
+- **Delivered (`DEC-078`):** `settlement.status` constrained to `{received,
+paid, void}` (default `received`); `reconciliation.scope_type` constrained
+  to a new `reconciliation_scope_type` `{import_run, sales_source,
+settlement, supplier_invoice}` (migration `0028`, check constraints
+  `settlement_status_check`/`reconciliation_scope_type_check`) with
+  `assertReconciliationScopeType` rejecting an unknown scope before any
+  write; and a `lotTracked` item may no longer post a stock movement with a
+  null `lotId` (one guard in `postStockMovementInternal`, covering all
+  posting paths; the reversal stays exempt because it mirrors the original
+  lot).
+- **Review and reconciliation.** One cheap code-level pass (`reviewer-glm`)
+  — no blockers or majors. **Accepted and applied:** one minor — the two
+  unknown-scope rejection tests were strengthened with a message assertion.
+  **Declined with reasons:** the runbook-rehearsal note (the `0028` down
+  path was genuinely rehearsed by the implementing agent) and the
+  vocabulary-alias note (the implementation matches the existing
+  `imports/vocabularies.ts` alias convention).
+- **Verification at `a5c3db2` (exact):** `format:check`, `typecheck`, `lint`,
+  `build` clean; **1279/1279 tests with `DATABASE_URL`** (132 files);
+  `npm audit --omit=dev` = 0; `db:migrate` through `0028` is a no-op on
+  re-run; the `0028` down path rehearsed; **64 tables**; every new
+  read/write organization-scoped (`DEC-061`).
+- **Resume task:** the cross-organization referential-integrity /
+  deferred-FK hardening (`DEC-054` recipe FKs + the `goods_receipt_line`
+  composite FKs, `NOT VALID` → `VALIDATE`, migration `0029`+) — see
+  "Resume here". A dev server was running at http://localhost:3000
+  (owner/LocalDevPass123, demo-seeded); a fresh session must restart it
+  (session-scoped).
+
+Rollback: each commit is independently `git revert`-able; migration `0028` is
+additive with a rehearsed unjournaled down path (drop the check constraints
+and column default, delete the ledger row, re-migrate); no data migration;
+nothing pushed; nothing applied to DigitalOcean.
 
 ### 2026-09-21 — Price-version slice delivered (DEC-064/DEC-077, migration 0027); handoff updated
 

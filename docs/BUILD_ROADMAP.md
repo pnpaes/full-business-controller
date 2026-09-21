@@ -13,36 +13,41 @@ This file is **updated at the end of every slice** — statuses and the "current
 line move with the work; `CONTEXT.md` keeps the narrative handoff and the immediate
 `Resume here` section.
 
-**Current position:** HEAD `80bbe1c` on `main` (nothing pushed; the working tree is
+**Current position:** HEAD `a5c3db2` on `main` (nothing pushed; the working tree is
 clean). Slice 0, auth slices 1a–1e, slices 2–10, row 11 (import framework +
-external mappings), row 12 (sales + settlements + reconciliation) and the
-**price-version slice (`DEC-064`, PRICE-002/003)** are `done` and committed;
+external mappings), row 12 (sales + settlements + reconciliation), the
+**price-version slice (`DEC-064`, PRICE-002/003)** and the **`DEC-078`
+low-risk vocabulary/integrity open points** are `done` and committed;
 `ADR-0007` and `ADR-0008` accepted 2026-09-20 (owner-delegated, revertible).
-The price-version slice delivered: migration `0027` (the `price_version`
-table — half-open `[effective_from, effective_to)`, non-overlapping per
-`(organization_id, product_variant_id, location_id, channel_id)` via a
-hand-written EXCLUDE with a COALESCE sentinel so a null location/channel is a
-single "any" scope), the domain effective-window helpers, the
-`approvePriceScenario` same-transaction version creation with the CAS
-`approvePriceScenarioIfApprovable` race fix (only an approved scenario yields
-a version; PRICE-003), the application reads `listPriceVersions`/
-`getPriceVersion`, and the web approve route + price-versions API +
-Price-versions screen (commits `4e755a0`, `e94dfe1`, `414832b`, `e2bd2b1`,
-`80bbe1c` plus the `DEC-077` decision acceptance). Verification at `80bbe1c`:
-`typecheck`, `lint`, `build`, `format:check` clean; **1269/1269 tests with
-`DATABASE_URL`** (132 files); `npm audit --omit=dev` 0; `db:migrate` through
-`0027` is a no-op; the `0027` down path rehearsed; 64 tables. Programme
-direction: proceed autonomously, per task — parallel background agents →
-adversarial review + fixes → document status and next steps → commit → next
-task. **Remaining roadmap:** row 13 is **data-gated** on history/grain quality
-(I11); row 14 is **owner-gated** on a privacy review / access matrix; rows
-15–18 remain blocked (data / `ADR-0009`–`0011`) — so no roadmap slice is
-buildable from code alone without owner inputs or real history. **Next
-unblocked task:** the remaining low-risk technical open points are to be
-resolved as decisions `DEC-078`+ (2026-09-21): the `settlement.status` and
-`reconciliation.scope_type` vocabularies and the `lotTracked` enforcement
-(TECH-owned, no owner input), then the receipt→ledger wiring if the OPS
-destination `storage_area_id` policy lands. Next free decision id `DEC-078`.
+The `DEC-078` slice delivered (commits `3673633`, `ed93288`, `39d3364`,
+`a5c3db2`): `settlement.status` constrained to `{received, paid, void}`
+(default `received`); `reconciliation.scope_type` constrained to a new
+`reconciliation_scope_type` `{import_run, sales_source, settlement,
+supplier_invoice}` (migration `0028`, check constraints
+`settlement_status_check`/`reconciliation_scope_type_check`, with
+`assertReconciliationScopeType` rejecting an unknown scope before any write);
+and a `lotTracked` item may no longer post a stock movement with a null
+`lotId` (one guard in `postStockMovementInternal` covering all posting paths;
+reversal stays exempt because it mirrors the original lot). Verification at
+`a5c3db2`: `typecheck`, `lint`, `build`, `format:check` clean;
+**1279/1279 tests with `DATABASE_URL`** (132 files); `npm audit --omit=dev`
+0; `db:migrate` through `0028` is a no-op; the `0028` down path rehearsed;
+64 tables. Programme direction: proceed autonomously, per task — parallel
+background agents → adversarial review + fixes → document status and next
+steps → commit → next task. **Remaining roadmap:** row 13 is
+**data-gated** on history/grain quality (I11); row 14 is **owner-gated** on a
+privacy review / access matrix; rows 15–18 remain blocked (data /
+`ADR-0009`–`0011`) — so no roadmap slice is buildable from code alone without
+owner inputs or real history. **Next unblocked task:** the
+**cross-organization referential-integrity / deferred-FK hardening**
+(`DEC-054` for `recipe_allergen.allergen_id`, `recipe_line.item_id`/
+`sub_recipe_id`, and the `goods_receipt_line` composite FKs) using the
+runbook's `NOT VALID` → `VALIDATE CONSTRAINT` pattern — a documented,
+TECH-owned gap buildable without owner input (fallback if it hits a gate:
+the `data_quality_exception` table, `DEC-066`'s interim replacement for
+`stock_transfer.discrepancy_note`). Still owner/data-gated: the receipts→ledger
+wiring, row 13, row 14, rows 15–18, the price-version scope-resolution
+fallback and consumption grain A1. Next free decision id `DEC-079`.
 
 ## 2. The execution loop (per slice)
 
@@ -404,10 +409,10 @@ dates assigned):
   OPS+TECH define one); `DEC-070` expected trim/cooking loss never posts a `waste`
   movement (only actual abnormal loss becomes a `waste_event`); `DEC-071`
   `production_batch_output.kind` uses a provisional local vocabulary pending a
-   `domain-enums.yaml` key. Next free decision id **`DEC-078`**.
+   `domain-enums.yaml` key. Next free decision id **`DEC-079`**.
 - **Slice-9/10 open owner questions (deliberate; recorded not decided)** — surfaced
   by the concurrent slice-9/10 build (uncommitted working tree at HEAD `2a5799e`);
-   record each resolution in `12_OPEN_DECISIONS.md` (next free id **`DEC-078`**); do
+   record each resolution in `12_OPEN_DECISIONS.md` (next free id **`DEC-079`**); do
    not resolve silently:
    1. Output-cost allocation across multiple outputs/by-products of one batch.
      owner/FIN.
@@ -424,7 +429,7 @@ dates assigned):
       point 6). owner/TECH.
 - **Row-11 import-framework open points (deliberate; recorded not decided)** —
   surfaced by the row-11 build (uncommitted working tree at HEAD `7f6aa78`);
-  record each resolution in `12_OPEN_DECISIONS.md` (next free id **`DEC-078`**);
+   record each resolution in `12_OPEN_DECISIONS.md` (next free id **`DEC-079`**);
   do not resolve silently:
   1. ~~Row 12 is gated on `ADR-0008` acceptance~~ resolved 2026-09-20:
      `ADR-0008` is accepted (owner-delegated in-session); the I1 channel/SKU
@@ -454,7 +459,7 @@ dates assigned):
 - **Row-12 sales/reconciliation open points (deliberate; recorded not decided)** —
   surfaced by the row-12 build (uncommitted working tree on top of HEAD
    `c324418`); record each resolution in `12_OPEN_DECISIONS.md` (next free id
-   **`DEC-078`**); do not resolve silently:
+   **`DEC-079`**); do not resolve silently:
   1. Consumption grain A1: `DEC-009` daily-per-location vs a single `sales_line`
      `source_id` — unresolved. owner/TECH.
   2. ~~No tolerance-configuration table exists; the `DEC-026` tolerance is
@@ -467,8 +472,13 @@ dates assigned):
   4. ~~`DEC-028` sales-line reversal semantics are not implemented~~ resolved
       2026-09-20 (`DEC-073`): a new negated `sales_line` with `reversal_of_id`,
       mandatory reason, linked consumption reversed via `reverseStockMovement`.
-  5. `settlement.status` and `reconciliation.scope_type` have no vocabulary
-     (free status strings today). owner/TECH.
+  5. ~~`settlement.status` and `reconciliation.scope_type` have no vocabulary
+      (free status strings today)~~ resolved 2026-09-21 (`DEC-078`):
+      `settlement.status` is constrained to `{received, paid, void}`
+      (default `received`) and `reconciliation.scope_type` to the new
+      `reconciliation_scope_type` `{import_run, sales_source, settlement,
+      supplier_invoice}` (migration `0028` check constraints;
+      `assertReconciliationScopeType` rejects an unknown scope before any write).
   6. A pre-existing inventory test posted a `sales_line` movement with a fake
      source id and was fixed — the new `sales_line` branch in
      `stock_movement_source_guard` correctly rejects it. TECH (fixed).
@@ -477,16 +487,24 @@ dates assigned):
   8. A local dev-DB side effect: the demo import run left a
      `partially_posted` import run and a reconciliation reopened to `pending`
      in the local database. Local dev-data artefact, no repository impact.
-- **Next unblocked task (after row 12, 2026-09-20):** with rows 13–18 gated
+- **Next unblocked task (2026-09-21, after `DEC-078`):** with rows 13–18 gated
   (row 13 data-gated on history/grain quality I11; row 14 owner-gated on the
   privacy review / access matrix; rows 15–18 blocked on data /
   `ADR-0009`–`0011`), no roadmap slice is buildable purely from code without
-  owner inputs or real history. The recorded low-risk open owner questions
-  have now been **resolved** as decisions `DEC-072`–`DEC-076` (2026-09-20;
-  effective-dated tolerance table `DEC-072`, sales-line reversal `DEC-073`,
-  `MAPPING_STATE` `conflict` `DEC-074`, `tax_rule_id`/`applied_tax_rate`
-  `DEC-075`, typed not-found error `DEC-076`). The remaining recorded open
-  points above stay open. Next free decision id **`DEC-078`**.
+  owner inputs or real history. The recorded low-risk open points resolved so
+  far are decisions `DEC-072`–`DEC-078` (2026-09-20/21; tolerance table
+  `DEC-072`, sales-line reversal `DEC-073`, `MAPPING_STATE` `conflict`
+  `DEC-074`, `tax_rule_id`/`applied_tax_rate` `DEC-075`, typed not-found error
+  `DEC-076`, the price-version slice `DEC-077`, and the `settlement.status`/
+  `reconciliation.scope_type` vocabularies + `lotTracked` enforcement
+  `DEC-078`). The next buildable TECH-owned task is the
+  **cross-organization referential-integrity / deferred-FK hardening** —
+  `DEC-054`'s `recipe_allergen.allergen_id` and `recipe_line.item_id`/
+  `sub_recipe_id` FKs plus the `goods_receipt_line` composite FKs — using the
+  runbook's `NOT VALID` → `VALIDATE CONSTRAINT` pattern (fallback if it hits
+  a gate: the `data_quality_exception` table, `DEC-066`'s interim replacement
+  for `stock_transfer.discrepancy_note`). The remaining recorded open points
+  above stay open. Next free decision id **`DEC-079`**.
 - **Unit `m` vs the missing `length` dimension** — a dimension-vocabulary mismatch in
   `schemas/domain-enums.yaml` surfaced by slice 3; owner/TECH to resolve (FND-003).
 - **`numeric(19,6)` digit cap in `packages/domain/src/decimal.ts`** — the domain decimal
