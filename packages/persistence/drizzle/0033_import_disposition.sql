@@ -19,7 +19,9 @@ ALTER TABLE "import_disposition" ADD CONSTRAINT "import_disposition_import_stagi
 -- frozen (expand → migrate → contract). The latest record per staging row wins,
 -- so the one-disposition-per-row unique key holds. Rows with a malformed
 -- uuid/vocabulary, or whose staging row no longer exists, are skipped (the
--- runbook preflight reports them).
+-- runbook preflight reports them). A malformed `at`, though, is NOT skipped:
+-- its cast aborts the migration, so run the runbook preflight first (it now
+-- flags those records too).
 INSERT INTO "import_disposition" ("import_staging_row_id", "disposition", "reason", "actor_id", "created_at")
 SELECT
   (latest.element ->> 'stagingRowId')::uuid,

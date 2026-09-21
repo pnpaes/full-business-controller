@@ -6,8 +6,13 @@
 -- Reverses `DEC-083` inside one transaction. The application writes only the
 -- `import_disposition` table after the migration, so the jsonb is rebuilt from
 -- the table before it is dropped: the rollback is lossless (each run's
--- `diagnostics.dispositions` is restored in `source_row_no` order, with the
--- same keys the pre-migration jsonb held). Apply it manually with
+-- `diagnostics.dispositions` is restored with the same keys the pre-migration
+-- jsonb held). The rebuilt array is ordered by `source_row_no`, which may
+-- differ from the original append order — value-identical, not order-identical
+-- (no reader depends on the order). One qualifier: the rebuild restores
+-- one record per staging row, so any pre-migration duplicate records that the
+-- forward backfill superseded are not restored; the jsonb is otherwise
+-- restored with the same keys. Apply it manually with
 --   psql "$DATABASE_URL" -f packages/persistence/drizzle/0033_import_disposition_down.sql
 BEGIN;
 -- `DEC-083` down: rebuild `import_run.diagnostics.dispositions` from the table

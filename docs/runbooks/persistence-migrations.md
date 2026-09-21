@@ -170,11 +170,60 @@ because its target table varies by `source_type`.
 ## Pre-apply preflight for validating constraints and indexes
 
 Migrations 0014, 0016, 0017, 0018, 0019, 0020, 0021, 0022, 0023, 0024, 0025,
-0026, 0027, 0028, 0029, 0030, 0031 and 0032 add objects that validate or build, so a failure
+0026, 0027, 0028, 0029, 0030, 0031, 0032 and 0033 add objects that validate or build, so a failure
 aborts the whole transactional migration (drizzle-kit runs each file in one
 transaction). Run the matching preflight against the target database **before**
 applying and reconcile any hits; drizzle-kit cannot detect them because these
 files diff against existing data.
+
+- **`0033_import_disposition.sql`** — one new, empty table (`import_disposition`)
+  with its `import_disposition_disposition_check` check, the
+  `import_disposition_staging_row_key` unique and the cascade FK to
+  `import_staging_row` (all cheap at first apply: the table is empty), plus a
+  hand-appended `INSERT … SELECT` backfill from
+  `import_run.diagnostics.dispositions`. The backfill itself **skips** records
+  with a malformed `stagingRowId`/`actorId`, an out-of-vocabulary `disposition`
+  or a staging row that no longer exists, but it takes a validating unique key
+  and FK inside the transactional migration, so preflight which records will be
+  skipped before applying and reconcile every hit (repair the record, or accept
+  the loss — the jsonb keys stay frozen either way). Note the backfill's
+  `ORDER BY … (element ->> 'at')::timestamptz` casts every record that passes
+  the uuid/vocabulary filters, so a record with a malformed `at` string would
+  abort the whole migration; its `at` must be a valid timestamp. The skip query
+  below flags those records too; it compares ids and `at` as
+  text, so the preflight itself cannot abort on a malformed cast:
+
+  ```sql
+  SELECT ir.id AS import_run_id, element AS skipped_record
+  FROM import_run ir
+  CROSS JOIN LATERAL jsonb_array_elements(COALESCE(ir.diagnostics -> 'dispositions', '[]'::jsonb)) AS element
+  WHERE (element ->> 'stagingRowId') IS NULL
+     OR (element ->> 'actorId') IS NULL
+     OR (element ->> 'disposition') IS NULL
+     OR (element ->> 'stagingRowId') !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+     OR (element ->> 'actorId') !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+     OR (element ->> 'disposition') NOT IN ('unmapped', 'rejected', 'ignored')
+     OR NOT EXISTS (SELECT 1 FROM import_staging_row r WHERE r.id::text = element ->> 'stagingRowId')
+     OR (element ->> 'at' ~* '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}')
+        IS NOT TRUE;
+  ```
+
+  The backfill keeps the **latest record per staging row**
+  (`DISTINCT ON (stagingRowId) … ORDER BY at DESC NULLS LAST`), so a jsonb that
+  holds more than one record for a staging row is **not** an error — the earlier
+  records are superseded. List those runs for awareness (the superseded records
+  are simply not backfilled):
+
+  ```sql
+  SELECT ir.id AS import_run_id,
+         element ->> 'stagingRowId' AS staging_row_id,
+         count(*) AS record_count
+  FROM import_run ir
+  CROSS JOIN LATERAL jsonb_array_elements(COALESCE(ir.diagnostics -> 'dispositions', '[]'::jsonb)) AS element
+  WHERE (element ->> 'stagingRowId') IS NOT NULL
+  GROUP BY ir.id, element ->> 'stagingRowId'
+  HAVING count(*) > 1;
+  ```
 
 - **`0032_import_run_profile_org_guard.sql`** — one `BEFORE INSERT OR UPDATE FOR
   EACH ROW` guard trigger plus its function (`import_run_profile_org_guard` on
@@ -906,6 +955,45 @@ only, so the down file is an explicit operator action, not an automatic one.
   fail on data; while dropped, the reference's organization coherence is
   validated only by the application. Apply it manually with
   `psql "$DATABASE_URL" -f packages/persistence/drizzle/0032_import_run_profile_org_guard_down.sql`.
+- **0033 adds the `DEC-083` import-disposition table and follows the down
+  convention:** `0033_import_disposition.sql` is generated DDL for
+  `import_disposition` (`import_staging_row_id` with the cascade FK to
+  `import_staging_row(id)`, `disposition` with the
+  `import_disposition_disposition_check` check (`unmapped`/`rejected`/
+  `ignored`), the nullable `reason`, the required `actor_id` (a plain uuid; the
+  `app_user` FK is deferred), `created_at` (the approval instant) and the
+  `created_by`/`updated_at`/`updated_by`/`version` audit columns, with the
+  `import_disposition_staging_row_key` unique on `(import_staging_row_id)` —
+  one disposition per staging row) plus one hand-appended statement: the
+  `DEC-083` backfill `INSERT … SELECT` that moves the pre-existing approved
+  dispositions out of `import_run.diagnostics.dispositions` jsonb, keeping the
+  latest record per staging row (`DISTINCT ON (stagingRowId) … ORDER BY at
+  DESC NULLS LAST`) and skipping records with a malformed
+  `stagingRowId`/`actorId`, an out-of-vocabulary `disposition` or a staging row
+  that no longer exists (see the preflight above). The table has **no
+  `organization_id`** — it is scoped through `import_staging_row` →
+  `import_run`, the same precedence the `import_staging_row` table follows. It
+  adds one table, and the jsonb keys are retained frozen (expand → migrate →
+  contract).
+  `0033_import_disposition_down.sql` is **not destructive in the usual sense**:
+  the application writes only the table after the migration, so the down path
+  first rebuilds each run's `diagnostics.dispositions` from the table (same
+  keys, `source_row_no` order, `at` from `created_at` as an ISO instant) and
+  then drops the table, inside one `BEGIN;`/`COMMIT;` (with `DROP TABLE IF
+  EXISTS` so a half-applied manual run cannot wedge). The rebuild makes the
+  rollback lossless; its one caveat is that it reflects the table's **current**
+  contents — dispositions written to the table after `0033` was applied are
+  restored into the jsonb, and any jsonb state is superseded. It also restores
+  **one record per staging row** (the
+  `import_disposition_staging_row_key` unique guarantees at most one), so if
+  the pre-migration jsonb held more than one record for a staging row, only
+  the surviving (latest) one comes back — the superseded earlier records are
+  not recoverable from the table. If any earlier records matter, copy them out
+  before running the down (the superseded-records preflight above lists the
+  affected runs). Re-applying
+  `0033` re-creates the table and re-backfills from the retained jsonb. Apply
+  it manually with
+  `psql "$DATABASE_URL" -f packages/persistence/drizzle/0033_import_disposition_down.sql`.
 
 **Re-applying after a manual down:** drizzle-kit tracks applied migrations in
 `drizzle.__drizzle_migrations`, not by comparing the schema, so a plain
@@ -930,7 +1018,8 @@ for 0003, `… = 1789850858806` for 0004, `… = 1789851925634` for 0005,
 `… = 1789952943481` for 0029 and
 `… = 1789954073839` for 0030,
 `… = 1789972623859` for 0031 and
-`… = 1789973761461` for 0032, then
+`… = 1789973761461` for 0032 and
+`… = 1789977792561` for 0033, then
 `npm run db:migrate` (0003 verified 2026-09-19; 0005 rehearsed in the slice-3
 review follow-up; 0006 rehearsed with the slice-4 receiving work; 0007 and
 0008 rehearsed with the slice-4 review follow-up; 0009 rehearsed with the
@@ -1243,6 +1332,7 @@ session will not serialise against each other.
 | 0030 | `0030_data_quality_exception.sql` | Generated (`DEC-080`, `DQ-001`): the `data_quality_exception` table — `organization_id`, the provisional-text `rule_code`, `severity` (`data_quality_exception_severity_check`, default `medium`), the polymorphic `entity_type`/`entity_id`, `detected_at` (default `now()`), the nullable `owner_id`/`due_date`, `status` (`data_quality_exception_status_check`, default `open`), `resolution` and the audit columns, with the organization FK and the `data_quality_exception_org_status_idx` / `data_quality_exception_org_entity_idx` indexes. No hand-written statement. Down companion: `0030_data_quality_exception_down.sql` (drops the table — destructive) |
 | 0031 | `0031_import_profile.sql` | Generated (`DEC-081`): the `import_profile` table — `organization_id`, `source`, `profile_version`, `posting_policy` (`import_profile_posting_policy_check`, default `allow_partial`), `validation_rules` jsonb (`import_profile_validation_rules_check` requiring a jsonb object, default `'{}'`) and the audit columns, with the `import_profile_org_source_key` unique on `(organization_id, source)` and the organization FK — plus the nullable `import_run.import_profile_id` column with its `import_run_import_profile_id_import_profile_id_fk` FK → `import_profile(id)`. No hand-written statement. Down companion: `0031_import_profile_down.sql` (drops `import_run.import_profile_id` first, then the table — destructive) |
 | 0032 | `0032_import_run_profile_org_guard.sql` | Hand-written (`DEC-079`'s guard shape applied to `DEC-081`'s `import_run.import_profile_id` FK): the `import_run_profile_org_guard` `BEFORE INSERT OR UPDATE FOR EACH ROW` trigger on `import_run` (one function) that rejects a non-null `import_profile_id` whose `import_profile` belongs to another organization than the run. No table and no TypeScript schema change. Down companion: `0032_import_run_profile_org_guard_down.sql` (drops the trigger and its function — no row is touched) |
+| 0033 | `0033_import_disposition.sql` | Generated + hand-appended (`DEC-083`): the `import_disposition` table — `import_staging_row_id` (FK → `import_staging_row(id)` `ON DELETE cascade`, required), `disposition` (`import_disposition_disposition_check`, in `unmapped`/`rejected`/`ignored`), the nullable `reason`, the required `actor_id` (a plain uuid; the `app_user` FK is deferred), `created_at` (the approval instant) and the `created_by`/`updated_at`/`updated_by`/`version` audit columns — with the `import_disposition_staging_row_key` unique on `(import_staging_row_id)` and **no `organization_id`** (scoped through `import_staging_row` → `import_run`, the `import_staging_row` precedent). Hand-appended: the backfill `INSERT … SELECT` from `import_run.diagnostics.dispositions` keeping the latest record per staging row (`DISTINCT ON (stagingRowId) … ORDER BY at DESC NULLS LAST`) and skipping malformed/out-of-vocabulary/orphaned records; the jsonb keys are retained frozen. Down companion: `0033_import_disposition_down.sql` (rebuilds each run's `diagnostics.dispositions` from the table, then drops it — lossless) |
 
 Order matters: extensions before DDL that calls `gen_random_uuid()`, and before
 the exclusion constraints. Verify with:
@@ -1272,7 +1362,7 @@ DATABASE_URL=postgres://aquarela:aquarela@localhost:5432/aquarela npm run db:mig
 `public` alone leaves the ledger intact, so `db:migrate` reports success while
 restoring nothing. `DROP SCHEMA drizzle CASCADE` clears the ledger so all
 migrations replay from 0000. Verified: after this sequence `db:migrate`
-re-applies 0000–0032 and the database has all 66 tables plus both extensions
+re-applies 0000–0033 and the database has all 67 tables plus both extensions
 (0004 adds the four slice-3 master-data tables; 0006 adds the two slice-4
 receiving tables; 0007 adds the `goods_receipt_line` guard trigger — no table;
 0008 relaxes the `supplier_price` range check — no table; 0009 adds the two
@@ -1308,19 +1398,23 @@ org-coherence guard triggers (`recipe_allergen_org_guard`,
 the `DEC-080` `data_quality_exception` table — one table; 0031 adds the
 `DEC-081` `import_profile` table and the nullable `import_run.import_profile_id`
 FK — one table; 0032 adds the `DEC-081` import-run profile org-coherence guard
-trigger on `import_run` — no table).
+trigger on `import_run` — no table; 0033 adds the `DEC-083`
+`import_disposition` table and backfills it from the run
+`diagnostics.dispositions` jsonb — one table).
 0013–0019 were added after this replay was verified; all are additive and
-table-count-neutral. `0020`, `0021`, `0022`, `0023`, `0024`, `0027`, `0030` and
-`0031`
+table-count-neutral. `0020`, `0021`, `0022`, `0023`, `0024`, `0027`, `0030`,
+`0031` and `0033`
 are the only migrations after the replay was written to add tables (four, four,
-three, four, one, one, one and one respectively), so the 66-table figure above is the
-expected post-`0032` count (51 after `0020`, 55 after `0021`, 58 after `0022`,
+three, four, one, one, one, one and one respectively), so the 67-table figure above is the
+expected post-`0033` count (51 after `0020`, 55 after `0021`, 58 after `0022`,
 62 after `0023`, 63 after `0024`, 64 after `0029`, 65 after `0030`, 66 after
-`0031` and `0032`); `0025`, `0026`, `0028` and `0032`
+`0031` and `0032`, 67 after `0033`); `0025`, `0026`, `0028` and `0032`
 are table-neutral.
-`0014`–`0032`'s
+`0014`–`0033`'s
 apply/re-run/down/re-apply was rehearsed on the local dev database 2026-09-20
-(0030 and 0031 on 2026-09-21; 0032 on 2026-09-21).
+(0030 and 0031 on 2026-09-21; 0032 on 2026-09-21; 0033 on 2026-09-21 — its
+down restored the two dev dispositions byte-identically and the re-apply
+rebuilt the table; the re-run was a no-op).
 
 Once real data exists, this path is no longer acceptable: use small atomic
 commits, expand → migrate → contract for schema changes, and a tested
@@ -1535,6 +1629,17 @@ After applying to an empty database the following were verified with `psql`:
   untouched; a profile id that names no `import_profile` is rejected by
   `import_run_import_profile_id_import_profile_id_fk`. The guard is forward-only
   (it does not re-validate rows written before the migration).
+- `import_disposition` (0033, `DEC-083`): a `disposition` outside
+  `{unmapped, rejected, ignored}` is rejected by
+  `import_disposition_disposition_check`; a second disposition for the same
+  staging row is rejected by `import_disposition_staging_row_key`; deleting a
+  staging row cascades to its dispositions (the FK is `ON DELETE cascade`); a
+  create without `actor_id` is rejected (the column is not null, the `app_user`
+  FK deferred). After the backfill `select count(*) from import_disposition`
+  equals the number of records the forward backfill accepted — the preflight
+  skip query returns 0 rows once its hits are reconciled, and each run's
+  `diagnostics.dispositions` still holds its records (the jsonb keys stay
+  frozen).
 - Deferrable FKs: a `calculation_snapshot` and its `cost_card` can be inserted
   in the same transaction in either order and commit together.
 - `calculation_snapshot`: a plain `TRUNCATE` is blocked first by the FK from
