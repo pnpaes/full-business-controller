@@ -204,6 +204,13 @@
       "when": 1789951616253,
       "tag": "0028_settlement_reconciliation_vocabularies",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1789952943481,
+      "tag": "0029_org_coherence_guards",
+      "breakpoints": true
     }
   ]
 }

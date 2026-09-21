@@ -154,25 +154,44 @@ This applies to: `supplier_price.supplier_item_id`, `supplier_price.source_recei
 `cost_card.approved_by`, `price_version.approved_by`, `audit_event.actor_id`,
 `goods_receipt.purchase_order_id`,
 `goods_receipt.accepted_by`, `goods_receipt.evidence_file_id`,
-`goods_receipt_line.supplier_item_id`, `operating_cost.evidence_file_id`,
+~~`goods_receipt_line.supplier_item_id`~~, `operating_cost.evidence_file_id`,
 `waste_event.production_batch_id`.
 
 `stock_lot.source_movement_id` was closed by `0017_stock_ledger_invariants.sql`
 as an ordinary validating FK (drizzle-kit generated it) because `stock_lot` is
-empty at first apply. `waste_event.production_batch_id` was closed by
-`0021_slice10_production.sql` using the `NOT VALID` → `VALIDATE` form above
-(the `waste_event` table may already hold rows). `stock_movement.source_id`
+empty at first apply. `goods_receipt_line.supplier_item_id` was closed by
+`0029_org_coherence_guards.sql` using the `NOT VALID` → `VALIDATE` form above
+(the table may already hold rows). `waste_event.production_batch_id` was closed
+by `0021_slice10_production.sql` using the same form (the `waste_event` table may
+already hold rows). `stock_movement.source_id`
 is guarded by the `0017` `stock_movement_source_guard` trigger rather than an FK,
 because its target table varies by `source_type`.
 
 ## Pre-apply preflight for validating constraints and indexes
 
 Migrations 0014, 0016, 0017, 0018, 0019, 0020, 0021, 0022, 0023, 0024, 0025,
-0026, 0027 and 0028 add objects that validate or build, so a failure aborts the
-whole transactional migration (drizzle-kit runs each file in one transaction).
-Run the matching preflight against the target database **before** applying and
-reconcile any hits; drizzle-kit cannot detect them because these files diff
-against existing data.
+0026, 0027, 0028 and 0029 add objects that validate or build, so a failure aborts
+the whole transactional migration (drizzle-kit runs each file in one
+transaction). Run the matching preflight against the target database **before**
+applying and reconcile any hits; drizzle-kit cannot detect them because these
+files diff against existing data.
+
+- **`0029_org_coherence_guards.sql`** — the `VALIDATE CONSTRAINT` step scans
+  `goods_receipt_line` for `supplier_item_id` values with no matching
+  `supplier_item`; the three `BEFORE INSERT OR UPDATE` guard triggers create
+  immediately and never scan an existing row (they are **forward-only** and do
+  not re-validate pre-existing rows). Preflight the orphan count before applying
+  and reconcile every hit (or leave the FK added `NOT VALID`):
+
+  ```sql
+  SELECT l.id, l.supplier_item_id
+  FROM goods_receipt_line l
+  LEFT JOIN supplier_item si ON si.id = l.supplier_item_id
+  WHERE l.supplier_item_id IS NOT NULL AND si.id IS NULL;
+  ```
+
+  The dev database holds 0 orphan `supplier_item_id` rows, so the `VALIDATE`
+  proceeds. The guards themselves cannot fail the apply on existing data.
 
 - **`0028_settlement_reconciliation_vocabularies.sql`** — the two `ALTER TABLE …
   ADD CONSTRAINT CHECK` statements tighten `settlement.status` and
@@ -776,6 +795,37 @@ only, so the down file is an explicit operator action, not an automatic one.
   `settlement.status` and `reconciliation.scope_type` are validated only by the
   application. Apply it manually with
   `psql "$DATABASE_URL" -f packages/persistence/drizzle/0028_settlement_reconciliation_vocabularies_down.sql`.
+- **0029 adds the cross-organization coherence guards and follows the down
+  convention:** `0029_org_coherence_guards.sql` is hand-written (`DEC-079`,
+  closing `DEC-054`'s open point). It adds `goods_receipt_line.supplier_item_id`'s
+  deferred existence FK (`NOT VALID` → `VALIDATE CONSTRAINT`, the pattern above)
+  and three `BEFORE INSERT OR UPDATE FOR EACH ROW` guard triggers
+  (`recipe_allergen_org_guard`, `recipe_line_org_guard`,
+  `goods_receipt_line_org_guard`, mirroring the `0017`
+  `stock_movement_source_guard` style, raising `ERRCODE = '23514'`):
+  - `recipe_allergen_org_guard` resolves the recipe organization via
+    `recipe_version.recipe_id → recipe.organization_id` and rejects an
+    `allergen_id` in another organization.
+  - `recipe_line_org_guard` resolves the recipe organization once and rejects an
+    `item_id` (when set) or a `sub_recipe_id` (when set) in another organization.
+  - `goods_receipt_line_org_guard` resolves the receipt's `organization_id` and
+    `supplier_id`; it rejects an `item_id` in another organization, and a
+    non-null `supplier_item_id` that is in another organization, belongs to
+    another supplier, or packs a different item. A store-only receipt (null
+    `supplier_id`) can never carry a supplier item.
+
+  The guards resolve the parent row's organization through the existing FK
+  paths; existence of the referenced row stays the FK's job (a missing parent
+  falls through to the FK error). `DEC-079` chose triggers over denormalized
+  composite FKs plus a backfill; the application guards remain the friendly-error
+  layer. The triggers are **forward-only** — they validate new writes, they do
+  not re-validate rows already present. It adds no table.
+  `0029_org_coherence_guards_down.sql` drops the three triggers, their functions
+  and the FK inside one `BEGIN;`/`COMMIT;` (with `DROP ... IF EXISTS` so a
+  half-applied manual run cannot wedge). No table and no row is touched, so the
+  down cannot fail on data; while dropped, those references are validated only by
+  the application. Apply it manually with
+  `psql "$DATABASE_URL" -f packages/persistence/drizzle/0029_org_coherence_guards_down.sql`.
 
 **Re-applying after a manual down:** drizzle-kit tracks applied migrations in
 `drizzle.__drizzle_migrations`, not by comparing the schema, so a plain
@@ -795,8 +845,9 @@ for 0003, `… = 1789850858806` for 0004, `… = 1789851925634` for 0005,
 `… = 1789915583040` for 0022, `… = 1789917983755` for 0023,
 `… = 1789938630318` for 0024, `… = 1789938645539` for 0025,
 `… = 1789940067864` for 0026,
-`… = 1789949551665` for 0027 and
-`… = 1789951616253` for 0028, then
+`… = 1789949551665` for 0027,
+`… = 1789951616253` for 0028 and
+`… = 1789952943481` for 0029, then
 `npm run db:migrate` (0003 verified 2026-09-19; 0005 rehearsed in the slice-3
 review follow-up; 0006 rehearsed with the slice-4 receiving work; 0007 and
 0008 rehearsed with the slice-4 review follow-up; 0009 rehearsed with the
@@ -823,7 +874,10 @@ deleting its ledger row and re-applying restored the table, its index and the
 EXCLUDE constraint — 64 tables; 0028's down dropped `settlement_status_check`,
 `reconciliation_scope_type_check` and the `settlement.status` default with no
 row changes, then deleting its ledger row and re-applying restored the default
-and both checks).
+and both checks; 0029's down dropped the three `DEC-079` org-coherence guard
+triggers, their functions and the `goods_receipt_line.supplier_item_id` FK with
+no row changes, then deleting its ledger row and re-applying restored the three
+guards and the FK).
 A **full 0011 down** drops the tables the three 0012 constraints live on, so its
 replay must clear **both** ledger rows, not just 0011's:
 `DELETE FROM drizzle.__drizzle_migrations WHERE created_at IN (1789862475550, 1789862630158);`
@@ -1086,6 +1140,7 @@ session will not serialise against each other.
 | 0026 | `0026_sales_line_reversal_unique.sql` | Generated: adds `sales_line_reversal_of_id_key`, a partial unique index on `sales_line.reversal_of_id` `WHERE "reversal_of_id" is not null`, so at most one line reverses a given line (`DEC-073`) — the race-safe database backstop for `reverseSalesLine`'s application pre-check. No table. Down companion: `0026_sales_line_reversal_unique_down.sql` (drops the index) |
 | 0027 | `0027_price_version.sql` | Generated + hand-written: the `DEC-064`/`DEC-077` `price_version` table (`organization_id`, `product_variant_id`, nullable `location_id`/`channel_id`, `gross_price`/`net_price` numeric(19,4), the `effective_from`/`effective_to` window, `approved_by`/`approved_at`, the required `source_scenario_id` FK, `created_at`, the `price_version_price_check` / `price_version_effective_range_check` constraints, the five FKs and `price_version_scope_idx`). Hand-written: the `price_version_no_overlap` EXCLUDE constraint on the scope columns and `tstzrange(effective_from, effective_to, '[)')`, normalizing a null `location_id`/`channel_id` to a single "any" scope with a COALESCE sentinel. Down companion: `0027_price_version_down.sql` (drops the constraint then the table — destructive) |
 | 0028 | `0028_settlement_reconciliation_vocabularies.sql` | Generated: adds the `settlement.status` default `received` and `settlement_status_check` (`DEC-078` (a)) plus `reconciliation_scope_type_check` on `reconciliation.scope_type` (`DEC-078` (b), the distinct `RECONCILIATION_SCOPE_TYPE` vocabulary). No table and no hand-written statement. Down companion: `0028_settlement_reconciliation_vocabularies_down.sql` (drops both checks and the `settlement.status` default — no row is touched) |
+| 0029 | `0029_org_coherence_guards.sql` | Hand-written (`DEC-079`, closing `DEC-054`'s open point): the `goods_receipt_line.supplier_item_id` existence FK (`NOT VALID` → `VALIDATE CONSTRAINT`) and three `BEFORE INSERT OR UPDATE FOR EACH ROW` guard triggers — `recipe_allergen_org_guard`, `recipe_line_org_guard` and `goods_receipt_line_org_guard` — that reject a reference whose parent resolves to another organization (and, for a receipt line, a supplier item from another supplier or for a different item). No table and no TypeScript schema change. Down companion: `0029_org_coherence_guards_down.sql` (drops the three triggers, their functions and the FK — no row is touched) |
 
 Order matters: extensions before DDL that calls `gen_random_uuid()`, and before
 the exclusion constraints. Verify with:
@@ -1115,7 +1170,7 @@ DATABASE_URL=postgres://aquarela:aquarela@localhost:5432/aquarela npm run db:mig
 `public` alone leaves the ledger intact, so `db:migrate` reports success while
 restoring nothing. `DROP SCHEMA drizzle CASCADE` clears the ledger so all
 migrations replay from 0000. Verified: after this sequence `db:migrate`
-re-applies 0000–0028 and the database has all 64 tables plus both extensions
+re-applies 0000–0029 and the database has all 64 tables plus both extensions
 (0004 adds the four slice-3 master-data tables; 0006 adds the two slice-4
 receiving tables; 0007 adds the `goods_receipt_line` guard trigger — no table;
 0008 relaxes the `supplier_price` range check — no table; 0009 adds the two
@@ -1144,13 +1199,17 @@ recreates the two five-value mapping-state checks — no table; 0026 adds the
 `sales_line_reversal_of_id_key` partial unique index — no table; 0027 adds the
 `DEC-064`/`DEC-077` `price_version` table and its `price_version_no_overlap`
 EXCLUDE constraint — one table; 0028 adds the `settlement.status` default and
-check and the `reconciliation.scope_type` check — no table).
+check and the `reconciliation.scope_type` check — no table; 0029 adds the
+`goods_receipt_line.supplier_item_id` existence FK and the three `DEC-079`
+org-coherence guard triggers (`recipe_allergen_org_guard`,
+`recipe_line_org_guard`, `goods_receipt_line_org_guard`) — no table).
 0013–0019 were added after this replay was verified; all are additive and
 table-count-neutral. `0020`, `0021`, `0022`, `0023`, `0024` and `0027` are the
 only migrations after the replay was written to add tables (four, four, three,
 four, one and one respectively), so the 64-table figure above is the expected
-post-`0028` count (51 after `0020`, 55 after `0021`, 58 after `0022`, 62 after
-`0023`, 63 after `0024`); `0025`, `0026` and `0028` are table-neutral. `0014`–`0028`'s
+post-`0029` count (51 after `0020`, 55 after `0021`, 58 after `0022`, 62 after
+`0023`, 63 after `0024`); `0025`, `0026`, `0028` and `0029` are table-neutral.
+`0014`–`0029`'s
 apply/re-run/down/re-apply was rehearsed on the local dev database 2026-09-20.
 
 Once real data exists, this path is no longer acceptable: use small atomic
@@ -1332,6 +1391,18 @@ After applying to an empty database the following were verified with `psql`:
   omitting `status` stores the default `received`; a `reconciliation.scope_type`
   outside `{import_run, sales_source, settlement, supplier_invoice}` is rejected
   by `reconciliation_scope_type_check`.
+- `recipe_allergen` / `recipe_line` / `goods_receipt_line` (0029, `DEC-079`): a
+  `recipe_allergen.allergen_id` in a different organization from the one reached
+  via `recipe_version → recipe` is rejected by `recipe_allergen_org_guard`;
+  likewise a `recipe_line.item_id` (or `sub_recipe_id`) in a different
+  organization from its recipe is rejected by `recipe_line_org_guard`, on both
+  INSERT and UPDATE. A `goods_receipt_line.item_id` in a different organization
+  from its receipt, or a `supplier_item_id` whose `supplier_item` is in another
+  organization, belongs to another supplier or packs a different item, is
+  rejected by `goods_receipt_line_org_guard`; a matching supplier item is
+  accepted, and a `supplier_item_id` that names no `supplier_item` is rejected by
+  `goods_receipt_line_supplier_item_id_supplier_item_id_fk`. The guards are
+  forward-only (they do not re-validate rows written before the migration).
 - Deferrable FKs: a `calculation_snapshot` and its `cost_card` can be inserted
   in the same transaction in either order and commit together.
 - `calculation_snapshot`: a plain `TRUNCATE` is blocked first by the FK from
