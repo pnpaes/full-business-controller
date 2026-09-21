@@ -344,3 +344,18 @@ export const ADJUSTMENT_REASON = [
 export const EXCEPTION_SEVERITY = ["low", "medium", "high", "critical"] as const;
 
 export const EXCEPTION_STATUS = ["open", "acknowledged", "resolved", "dismissed"] as const;
+
+// `DEC-089` (`HMS-002`): the HMS monitoring-point kind and how often a reading
+// is due. From `schemas/domain-enums.yaml` (`monitoring_point_kind`,
+// `check_frequency`). `kind` backs the `monitoring_point_kind_check` and
+// `check_frequency` the `monitoring_point_check_frequency_check`; a point's
+// `unit` stays provisional free text (no closed vocabulary yet, `DEC-071`).
+export const MONITORING_POINT_KIND = [
+  "refrigerator",
+  "freezer",
+  "cooler",
+  "hot_holding",
+  "other",
+] as const;
+
+export const CHECK_FREQUENCY = ["daily", "twice_daily", "weekly", "monthly", "other"] as const;

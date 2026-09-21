@@ -17,3 +17,4 @@ export * from "./waste";
 export * from "./production";
 export * from "./sales";
 export * from "./platform";
+export * from "./hms";

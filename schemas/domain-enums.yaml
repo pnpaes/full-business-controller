@@ -117,3 +117,7 @@ publish_status: [pending, running, succeeded, failed, rolled_back]
 # Added 2026-09-18 from the persistence slice
 app_user_status: [invited, active, disabled, locked]
 price_scenario_state: [draft, submitted, approved, rejected]
+
+# DEC-089 (HMS-002): the HMS monitoring-point kind and reading cadence.
+monitoring_point_kind: [refrigerator, freezer, cooler, hot_holding, other]
+check_frequency: [daily, twice_daily, weekly, monthly, other]

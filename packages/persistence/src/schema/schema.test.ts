@@ -14,7 +14,7 @@ import * as schema from "./index";
 
 const tables = Object.values(schema).filter((value) => is(value, PgTable));
 
-/** The 68 in-scope Phase 1-2 tables: the 35 core tables, the slice-3
+/** The 70 in-scope Phase 1-2 tables: the 35 core tables, the slice-3
  * master-data additions (`unit_conversion`, `supplier`, `supplier_item`,
  * `cost_center`), the slice-4 receiving additions (`goods_receipt`,
  * `goods_receipt_line`), the slice-5 allergen additions (`allergen`,
@@ -29,8 +29,9 @@ const tables = Object.values(schema).filter((value) => is(value, PgTable));
  * `settlement`, `reconciliation`), the `DEC-072` `reconciliation_tolerance`
  * config table, the `DEC-064`/`DEC-077` `price_version` table, the `DEC-080`
  * `data_quality_exception` table, the `DEC-081` `import_profile` table, the
- * `DEC-083` `import_disposition` table and the `ADR-0006`/`DEC-085`
- * `file_object` table, from
+ * `DEC-083` `import_disposition` table, the `ADR-0006`/`DEC-085`
+ * `file_object` table and the `DEC-089` HMS monitoring slice
+ * (`monitoring_point`, `monitoring_reading`), from
  * `schemas/phase1_2_draft.sql` / `DATA_DICTIONARY`. */
 const EXPECTED_TABLES = [
   "addon_applicability",
@@ -60,6 +61,8 @@ const EXPECTED_TABLES = [
   "item",
   "labor_rate",
   "location",
+  "monitoring_point",
+  "monitoring_reading",
   "operating_cost",
   "organization",
   "outbox_event",

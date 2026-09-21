@@ -13,6 +13,7 @@ import {
   importStagingRow,
   item,
   location,
+  monitoringPoint,
   organization,
   product,
   productVariant,
@@ -783,6 +784,36 @@ export async function createTestFileObject(
       sizeBytes: 1,
       checksumSha256: uniqueName("sha"),
       retentionPolicy: "default",
+      ...overrides,
+    })
+    .returning();
+  return rows[0]!;
+}
+
+/**
+ * A `DEC-089` monitoring point. `code` gets a unique test value because
+ * `(organization_id, code)` is unique; the vocabulary columns and the
+ * `target_min <= target_max` check get valid defaults, so a test need only
+ * override the field under test.
+ */
+export async function createTestMonitoringPoint(
+  db: Database,
+  organizationId: string,
+  locationId: string,
+  overrides: Partial<typeof monitoringPoint.$inferInsert> = {},
+): Promise<typeof monitoringPoint.$inferSelect> {
+  const rows = await db
+    .insert(monitoringPoint)
+    .values({
+      organizationId,
+      locationId,
+      code: uniqueName("mp"),
+      name: "Test Monitoring Point",
+      kind: "refrigerator",
+      unit: "celsius",
+      targetMin: "0",
+      targetMax: "4",
+      checkFrequency: "daily",
       ...overrides,
     })
     .returning();

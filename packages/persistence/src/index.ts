@@ -14,6 +14,7 @@ export * from "./repositories/file-object";
 export * from "./repositories/imports";
 export * from "./repositories/inventory";
 export * from "./repositories/master-data";
+export * from "./repositories/monitoring";
 export * from "./repositories/password-reset";
 export * from "./repositories/price-scenario";
 export * from "./repositories/price-version";
