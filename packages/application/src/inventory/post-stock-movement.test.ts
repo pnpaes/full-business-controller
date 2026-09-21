@@ -424,6 +424,75 @@ describe("postStockMovement", () => {
     ).rejects.toThrow(/lot not found in organization/);
   });
 
+  it("rejects a lot-tracked item posted without a lot", async () => {
+    const store = new FakeInventoryStore();
+    const fixture = seedInventoryFixture(store);
+    store.items.set(fixture.itemId, { ...store.items.get(fixture.itemId)!, lotTracked: true });
+
+    await expect(postStockMovement(store, postInput(fixture))).rejects.toThrow(
+      /a lot-tracked item requires a lotId/,
+    );
+    expect(store.stockMovements.size).toBe(0);
+    expect(store.stockBalances.size).toBe(0);
+  });
+
+  it("accepts a lot-tracked item posted with a lot", async () => {
+    const store = new FakeInventoryStore();
+    const fixture = seedInventoryFixture(store);
+    store.items.set(fixture.itemId, { ...store.items.get(fixture.itemId)!, lotTracked: true });
+
+    const posted = await postStockMovement(store, postInput(fixture, { lot: { lotNumber: "L1" } }));
+    expect(store.stockMovements.get(posted.movementId)?.lotId).not.toBeNull();
+    expect(posted.quantityOnHand).toBe("10.000000");
+  });
+
+  it("accepts a non-lot-tracked item posted without a lot", async () => {
+    const store = new FakeInventoryStore();
+    const fixture = seedInventoryFixture(store);
+
+    const posted = await postStockMovement(store, postInput(fixture));
+    expect(store.stockMovements.get(posted.movementId)?.lotId).toBeNull();
+    expect(posted.quantityOnHand).toBe("10.000000");
+  });
+
+  it("rejects a batch line whose lot-tracked item has no lot, atomically", async () => {
+    const store = new FakeInventoryStore();
+    const fixture = seedInventoryFixture(store);
+    store.items.set(fixture.itemId, { ...store.items.get(fixture.itemId)!, lotTracked: true });
+
+    await expect(
+      postStockMovements(store, {
+        organizationId: fixture.organizationId,
+        actorId: "actor",
+        sourceType: "adjustment",
+        sourceId: "batch-lots",
+        occurredAt: "2026-01-01T10:00:00.000Z",
+        movements: [
+          {
+            locationId: fixture.locationId,
+            storageAreaId: fixture.storageAreaId,
+            itemId: fixture.itemId,
+            movementType: "count_adjustment",
+            quantityDelta: "1.000000",
+            unitCost: "1.0000",
+            reasonCode: "opening",
+          },
+          {
+            locationId: fixture.locationId,
+            storageAreaId: fixture.storageAreaId,
+            itemId: fixture.itemId,
+            movementType: "count_adjustment",
+            quantityDelta: "2.000000",
+            unitCost: "2.0000",
+            reasonCode: "opening",
+            lot: { lotNumber: "L1" },
+          },
+        ],
+      }),
+    ).rejects.toThrow(/a lot-tracked item requires a lotId/);
+    expect(store.stockMovements.size).toBe(0);
+  });
+
   it("validates the vocabulary, quantity, timestamp and inbound cost", async () => {
     const store = new FakeInventoryStore();
     const fixture = seedInventoryFixture(store);

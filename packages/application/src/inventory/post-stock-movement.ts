@@ -259,9 +259,7 @@ async function postStockMovementInternal(
     }
 
     // Lot resolution: an explicit `lotId` is loaded and org-checked; a `lot`
-    // descriptor is create-or-find by `(item, location, lot_number)`. A
-    // `lotTracked` item without a lot is deliberately accepted: the slice does
-    // not force lot capture (open point for the counts/receiving slices).
+    // descriptor is create-or-find by `(item, location, lot_number)`.
     let lotId: string | null = input.lotId ?? null;
     if (input.lotId !== undefined && input.lotId !== null) {
       const lot = await lookups.findStockLot(input.lotId);
@@ -286,6 +284,10 @@ async function postStockMovementInternal(
         sourceMovementId: null,
       });
       lotId = lot.id;
+    }
+
+    if (item.lotTracked && lotId === null) {
+      throw new DomainError("a lot-tracked item requires a lotId");
     }
 
     const occurredAt = new Date(input.occurredAt);
