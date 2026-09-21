@@ -54,9 +54,13 @@ matrix; rows 15–18 remain blocked (data / `ADR-0009`–`0011`). **Done
 2026-09-21:** the **`PROD-003` count-variance/yield-variance exception
 producers** using the `DEC-080` `data_quality_exception` table (`DEC-084` —
 recorded unconditionally whenever the variance is non-zero, pending the FIN
-variance-tolerance thresholds, which stay a recorded FIN open point). **Next
-unblocked task:** `file_object` (row-11 import-framework point 6). Most other
-rows remain owner/data-gated.
+variance-tolerance thresholds, which stay a recorded FIN open point).
+**Next task `file_object` is gated:** it requires `ADR-0006` (File storage
+and retention), which is `Proposed` and names
+`file_object.retention_policy` — raised to the owner on 2026-09-21. The
+next unblocked TECH item meanwhile is the tracked `DEC-083` **contract
+step** (delete the frozen `diagnostics.dispositions` jsonb keys once
+nothing depends on them). Most other rows remain owner/data-gated.
 Next free decision id `DEC-085`.
 
 ## 2. The execution loop (per slice)
@@ -96,8 +100,9 @@ Next free decision id `DEC-085`.
 Pause the loop and raise to the owner, recording it in `CONTEXT.md`, when any of these is hit:
 
 - **Proposed ADR required by the slice.** The slice cites an ADR whose status is `Proposed`.
-  (As of 2026-09-20 only `ADR-0009`/`ADR-0010`/`ADR-0011` remain `Proposed`; `ADR-0007` and
-  `ADR-0008` are **accepted** 2026-09-20.) *Needed from owner:* the named decider
+  (As of 2026-09-21 the `Proposed` ADRs are `ADR-0004`, `ADR-0006`, `ADR-0009`,
+  `ADR-0010` and `ADR-0011`; `ADR-0007` and `ADR-0008` are **accepted** 2026-09-20.)
+  *Needed from owner:* the named decider
   accepts or amends it in `docs/adr/` (`Accepted` with date) before the slice is treated as
   settled. Slice 1 is the owner-directed exception: proceed and accept `ADR-0003` in
   parallel, without treating it as settled (`CONTEXT.md`).
@@ -468,7 +473,10 @@ dates assigned):
       an effective-dated `reconciliation_tolerance` table (migration `0024`);
       missing config blocks close.
    6. `file_object` is absent from the schema, so `import_run.file_object_id` is a
-      plain uuid with no FK target. owner/TECH.
+      plain uuid with no FK target. owner/TECH. **Gated (2026-09-21):** `file_object`
+      requires `ADR-0006` (File storage and retention), which is `Proposed` and names
+      `file_object.retention_policy` — raised to the owner; the loop pauses on this
+      point per §3.
    7. ~~Dispositions live in `import_run.diagnostics.dispositions` (jsonb), not a
        table.~~ resolved 2026-09-21 (`DEC-083` — the first-class
        `import_disposition` table, migration `0033`, one disposition per
@@ -529,8 +537,10 @@ dates assigned):
   `import_disposition` table (migration `0033`) `DEC-083`, and the `PROD-003`
   count-variance/yield-variance exception producers (`DEC-084`) — committed
   `dbb7d97`/`64a7cfc`).
-  The next buildable TECH-owned task is `file_object` (row-11 import-framework
-  point 6); the variance tolerance thresholds stay a recorded FIN open point.
+  The previously-planned next buildable TECH-owned task, `file_object` (row-11
+  import-framework point 6), is now **gated on `ADR-0006`** (`Proposed`; raised to the
+  owner 2026-09-21); the next unblocked TECH item meanwhile is the tracked `DEC-083`
+  **contract step**. The variance tolerance thresholds stay a recorded FIN open point.
   Most other rows remain owner/data-gated.
   The remaining recorded open points above stay open. Next free decision id
   **`DEC-085`**.
