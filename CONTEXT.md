@@ -9,43 +9,51 @@ duplicate their content.
 
 **Say "resume the work" and start here.** A fresh session must be able to
 continue from this section alone. (This section was just updated by the
-`DEC-079` handoff pass; the next commit is this docs update itself.)
+`DEC-080` handoff pass; the next commit is this docs update itself.)
 
-**Next buildable code task:** the **`data_quality_exception` table** —
-`DEC-066`'s interim replacement for `stock_transfer.discrepancy_note` (the
-"no transfer-discrepancy exception table exists" point) and the natural home
-for count-variance and yield-variance exceptions (`PROD-003`) — implemented
-**additively** via `npm run db:generate` (migration `0030`+, never editing
-`0000–0029`), with the application wiring + tests. If time remains in the
-session, continue with the **import-profile table** (the row-11 open point:
-`import_run.source`/`profile_version` are opaque labels today). Both are
-TECH-owned and need no owner input. Record any genuinely new decision from
-**`DEC-080`** if one is needed (append to `12_OPEN_DECISIONS.md` — never
-invent silently). Still owner/data-gated (do not start): the receipts→ledger
-wiring (needs the OPS destination `storage_area_id` policy); row 13
-(data-gated on history/grain quality, I11); row 14 (owner-gated on the
-privacy review); rows 15–18 (blocked: data / `ADR-0009`–`0011`); the
-price-version scope-resolution fallback; consumption grain A1;
-`file_object`/evidence upload (deployment/Spaces); the `asset` register.
+**Next buildable code task:** the **import-profile table** — the row-11 open
+point where `import_run.source`/`profile_version` are opaque labels (no
+profile table exists). Build it as a TECH-owned slice: a profile keyed by
+`(organization_id, source)`, carrying the per-source posting policy /
+validation config the run accepts as static config today, implemented
+**additively** via `npm run db:generate` (migration `0031`+, never editing
+`0000–0030`), record any needed decision from **`DEC-081`** (append to
+`12_OPEN_DECISIONS.md` — never invent silently), wire `import_run` to it,
+and add the application wiring + tests. After that, the remaining buildable
+technical items are smaller; most other work is owner/data-gated. Still
+owner/data-gated (do not start): the receipts→ledger wiring (needs the OPS
+destination `storage_area_id` policy); row 13 (data-gated on history/grain
+quality, I11); row 14 (owner-gated on the privacy review); rows 15–18
+(blocked: data / `ADR-0009`–`0011`); the price-version scope-resolution
+fallback; consumption grain A1; `file_object`/evidence upload
+(deployment/Spaces); the `asset` register; the `approval`/`task`/`job`/
+`outbox_event` platform tables.
 
-**State:** `main` HEAD **`9d0e055`** (the last code commit; this handoff update
-is the next commit), working tree **clean**, nothing pushed; **2 commits**
-this slice: `8376209` docs(decisions) accept `DEC-079`; `9d0e055`
-feat(persistence) cross-organization coherence guards (migration `0029`).
-**Delivered (`DEC-079`, closing `DEC-054`)**: cross-organization coherence for
-`recipe_allergen.allergen_id`, `recipe_line.item_id`/`sub_recipe_id` and
-`goods_receipt_line.supplier_item_id` is enforced by
-`BEFORE INSERT OR UPDATE` guard triggers (the `stock_movement_source_guard`
-precedent), not denormalized composite FKs plus a backfill; the receipt-line
-guard also enforces the supplier and item match;
-`goods_receipt_line.supplier_item_id` got its deferred single-column FK
-(`NOT VALID` → `VALIDATE`). Migration `0029` is hand-written/journaled,
-forward-only, with a rehearsed unjournaled down path.
-**Verification at `9d0e055`:** `format:check`, `typecheck`, `lint`, `build`
-clean; **1297/1297 tests with `DATABASE_URL`** (133 files);
-`npm audit --omit=dev` = 0; `db:migrate` through `0029` is a no-op on re-run;
-the `0029` down path rehearsed; **64 tables**; all new reads/writes
+**State:** `main` HEAD **`ddc9e06`** (the last code commit; this handoff update
+is the next commit), working tree **clean**, nothing pushed; **3 commits**
+this slice: `40b5d7e` docs(decisions) accept `DEC-080`; `d1d0fad`
+feat(persistence) `data_quality_exception` table (migration `0030`); `ddc9e06`
+feat(transfers) record a data-quality exception on receive discrepancy.
+**Delivered (`DEC-080`, DQ-001)**: the `data_quality_exception` table
+(`rule_code`, `severity ∈ {low, medium, high, critical}` default `medium`,
+`entity_type`/`entity_id` polymorphic, `detected_at`, `owner_id`, `due_date`,
+`status ∈ {open, acknowledged, resolved, dismissed}` default `open`,
+`resolution`), repository create/find/list/update, and the first producer:
+`receiveStockTransfer` creates a `transfer_discrepancy` exception (severity
+`high`, entity `stock_transfer`, status `open`) in the same transaction as
+the receive, alongside the human `discrepancy_note`. Migration `0030` is
+additive with a rehearsed down path.
+**Verification at `ddc9e06`:** `format:check`, `typecheck`, `lint`, `build`
+clean; **1305/1305 tests with `DATABASE_URL`** (134 files);
+`npm audit --omit=dev` = 0; `db:migrate` through `0030` is a no-op on re-run;
+the `0030` down path rehearsed; **65 tables**; all new reads/writes
 organization-scoped (`DEC-061`).
+**Review:** one code-level pass (`reviewer-glm`) — no blockers/majors; four
+minors all **declined** as convention-consistent/cosmetic/test-only (the
+id-only `updateDataQualityException` matches the `updateStockCount`
+convention; the application mapping drops audit columns no consumer needs;
+the record fields are typed `string` like other tables; a dead savepoint in
+one rollback test is harmless) — see the work log.
 
 **Dev server / demo data (session-scoped):** the previous session ran a dev
 server at http://localhost:3000 with
@@ -62,18 +70,18 @@ steps → commit → next task. Global ruleset (`~/.config/kilo/AGENTS.md`): com
 context at 25 %; pausing is permitted above USD 20 at a clean point (committed,
 verified, documented).
 
-**Scope (do):** record any genuinely new decision from **`DEC-080`** if one is
+**Scope (do):** record any genuinely new decision from **`DEC-081`** if one is
 needed (append to `12_OPEN_DECISIONS.md` — never invent silently); implement
-the `data_quality_exception` table (and, if time, the import-profile table)
-**additively** via `npm run db:generate` (migration `0030`+ with down
-companions + runbook entries); application wiring + tests; run the
-verification commands; small atomic layer commits with the rollback approach
-in the body (per `AGENTS.md` Rule 2). Update `CONTEXT.md` at the end.
+the import-profile table **additively** via `npm run db:generate` (migration
+`0031`+ with down companions + runbook entries); wire the import flow and
+tests; run the verification commands; small atomic layer commits with the
+rollback approach in the body (per `AGENTS.md` Rule 2). Update `CONTEXT.md`
+at the end.
 
 **Scope (do not):** do not start row 13 (close + dashboards + menu
-engineering — data-gated on history/grain quality, I11) or row 14 (workforce
-— owner-gated on the privacy review); rows 15–18 remain blocked (data /
-`ADR-0009`–`0011`). Do not edit migrations `0000–0029`; do not deploy,
+engineering — data-gated on history/grain quality, I11), row 14 (workforce —
+owner-gated on the privacy review), or rows 15–18 (blocked: data /
+`ADR-0009`–`0011`). Do not edit migrations `0000–0030`; do not deploy,
 `terraform apply`, or write externally (per `DEC-015`); do not resolve the
 recorded owner inputs silently (consumption grain A1, the price-version
 scope-resolution fallback, the OPS storage-area policy); do not rewrite the
@@ -81,48 +89,48 @@ specification inputs (`00_README.md` … `13_`, `docs/phase0/`, `schemas/`,
 `samples/`).
 
 **Files/paths:** for the next code task —
-`packages/persistence/src/schema/` (the new table relations),
-`packages/persistence/drizzle/0030_*` (generated migration + down companion +
+`packages/persistence/src/schema/` (the new import-profile table relations),
+`packages/persistence/drizzle/0031_*` (generated migration + down companion +
 `meta/_journal.json`), the migration runbook
 (`docs/runbooks/persistence-migrations.md`) for the new entries,
-`packages/application/src/` (exception store/wiring + tests),
-`12_OPEN_DECISIONS.md` for `DEC-080` if needed; update `CONTEXT.md` at the
+`packages/application/src/` (import-flow wiring + tests),
+`apps/web/` if the run-create surface needs the profile, and
+`12_OPEN_DECISIONS.md` for `DEC-081` if needed; update `CONTEXT.md` at the
 end.
 
 **Authoritative docs to read first:** `docs/BUILD_ROADMAP.md` §1 (current
-position) and §4–§5; `12_OPEN_DECISIONS.md` (`DEC-066`, next free
-id **`DEC-080`**); the slice-9/row-11 open-point lists (the exception-table
-and import-profile points); this file's "Open decisions / inputs";
-`AGENTS.md` Rules 1–3.
+position) and §4–§5; `12_OPEN_DECISIONS.md` (`DEC-025`, `DEC-080`, next free
+id **`DEC-081`**); the row-11 open-point list (the import-profile point);
+this file's "Open decisions / inputs"; `AGENTS.md` Rules 1–3.
 
 **Acceptance / verification:** `export NVM_DIR="$HOME/.nvm"; . "$NVM_DIR/nvm.sh";
 nvm use 22`, then `npm run lint`, `npm run typecheck`, `npm run test` (with
-`DATABASE_URL` — current baseline: **1297/1297**, 133 files), `npm run build`,
-`npm run format:check`, `npm audit --omit=dev` = 0; `db:migrate` through `0029`
+`DATABASE_URL` — current baseline: **1305/1305**, 134 files), `npm run build`,
+`npm run format:check`, `npm audit --omit=dev` = 0; `db:migrate` through `0030`
 is a no-op on re-run; rehearse each new down path; confirm the table count
-after the new migration (64 → 65 with `data_quality_exception`); after each
+after the new migration (65 → 66 with the import-profile table); after each
 commit re-run the suite at the clean tree and confirm HEAD advanced.
 
 **Open inputs (recorded, do not decide):** consumption grain A1 (`DEC-009`
 daily-per-location vs a single `sales_line` source); the price-version
 **scope-resolution fallback** (exact-scope only today — see "Open decisions /
-inputs"); the OPS receipt destination `storage_area_id` policy; no
-import-profile table (the next TECH task if time remains); `file_object`
-absent so `import_run.file_object_id` is a plain uuid; receipts not wired to
-the ledger; the owner/deployment inputs. Full list under "Open decisions /
-inputs"; next free decision id **`DEC-080`**.
+inputs"); the OPS receipt destination `storage_area_id` policy;
+`file_object` absent so `import_run.file_object_id` is a plain uuid;
+receipts not wired to the ledger; the owner/deployment inputs. Full list
+under "Open decisions / inputs"; next free decision id **`DEC-081`**.
 
 **Parallel owner action — golden-fixture sign-off:** the six golden fixtures are
 prepared as machine-readable JSON under `tests/fixtures/` (`DEC-065`) with the
 sign-off trail ready; finance + product owner sign. Until signed, no cost is
 "verified"; `I8`/`I9` still gate the real rates behind the fixtures.
 
-**Step after this one:** the import-profile table (row-11 open point) if not
-reached this session; the receipt→ledger wiring if the OPS destination
-`storage_area_id` policy lands; row 13 (close + dashboards + menu engineering)
-when history/grain quality (I11) is confirmed; then row 14 when the privacy
-review lands; the deployment rehearsal once the owner inputs arrive (see
-"Next up").
+**Step after this one:** the remaining smaller TECH items (the count-variance
+and yield-variance exception producers, `PROD-003`; dispositions table;
+`file_object`) if any becomes buildable; the receipt→ledger wiring if the OPS
+destination `storage_area_id` policy lands; row 13 (close + dashboards + menu
+engineering) when history/grain quality (I11) is confirmed; then row 14 when
+the privacy review lands; the deployment rehearsal once the owner inputs
+arrive (see "Next up").
 
 ## What this is
 
@@ -137,22 +145,23 @@ slice 7 (cost card + snapshots + price scenario + approval), slice 8 (stock
 ledger + balances + lots/storage), slices 9 (counts + transfers + waste), slice
 10 (production planning + batches, including the web layer), row 11 (import
 framework + external mappings) and row 12 (sales + settlements + reconciliation)
-— **all committed** (through HEAD `9d0e055`; rows 11 and 12 complete; the
-price-version slice — `price_version` with approval-driven effective versions —
-complete, and the `DEC-078` vocabulary/`lotTracked` + `DEC-079`
-cross-organization coherence integrity points), with the design
-system/app shell/screens and migrations `0017`–`0029`; the
-`DEC-072`–`DEC-079` low-risk implementations (effective-dated reconciliation
+— **all committed** (through HEAD `ddc9e06`; rows 11 and 12 complete; the
+price-version slice — `price_version` with approval-driven effective versions
+— complete, and the `DEC-078` vocabulary/`lotTracked`, `DEC-079`
+cross-organization coherence and `DEC-080` `data_quality_exception`
+integrity points), with the design
+system/app shell/screens and migrations `0017`–`0030`; the
+`DEC-072`–`DEC-080` low-risk implementations (effective-dated reconciliation
 tolerance, sales-line reversal, `MAPPING_STATE` `conflict`, typed recipe 404s,
 the `price_version` slice, the `settlement.status`/`reconciliation.scope_type`
-vocabularies, `lotTracked` enforcement and the cross-organization coherence
-guards).
+vocabularies, `lotTracked` enforcement, the cross-organization coherence
+guards and the `data_quality_exception` table).
 
 ## Where things live
 
 - `00_README.md` … `13_AGENT_BUILD_BRIEF.md` — the specification package
   (inputs, rarely edited). Start with `00_README.md`.
-- `12_OPEN_DECISIONS.md` — the accepted decisions (DEC-001…DEC-079); the
+- `12_OPEN_DECISIONS.md` — the accepted decisions (DEC-001…DEC-080); the
   authority. New decisions are appended here.
 - `docs/phase0/` — close-out plan, calculation contract, data dictionary, golden
   fixtures, source-data request, notes. See `docs/phase0/PHASE0_CLOSEOUT_PLAN.md`
@@ -172,33 +181,33 @@ guards).
 
 ## Current status
 
-- **As of:** 2026-09-21 — branch `main`; HEAD `9d0e055` (the last code commit;
+- **As of:** 2026-09-21 — branch `main`; HEAD `ddc9e06` (the last code commit;
   this handoff/docs commit is next);
-  working tree **clean**; nothing pushed. **2 commits** this slice:
-  `8376209` docs(decisions) accept `DEC-079`; `9d0e055`
-  feat(persistence) cross-organization coherence guards (migration `0029`)
+  working tree **clean**; nothing pushed. **3 commits** this slice:
+  `40b5d7e` docs(decisions) accept `DEC-080`; `d1d0fad`
+  feat(persistence) `data_quality_exception` table (migration `0030`); `ddc9e06`
+  feat(transfers) record a data-quality exception on receive discrepancy
   — **all committed**
   (see "Work log" and "Reversibility").
-  **Delivered (`DEC-079`, closing `DEC-054`):** cross-organization coherence
-  for `recipe_allergen.allergen_id`, `recipe_line.item_id`/`sub_recipe_id`
-  and `goods_receipt_line.supplier_item_id` is enforced by
-  `BEFORE INSERT OR UPDATE` guard triggers (the `stock_movement_source_guard`
-  precedent), not denormalized composite FKs plus a backfill; the
-  receipt-line guard also enforces the supplier and item match;
-  `goods_receipt_line.supplier_item_id` got its deferred single-column FK
-  (`NOT VALID` → `VALIDATE`). Migration `0029` is hand-written/journaled,
-  forward-only, with a rehearsed unjournaled down path. One structural
-  review (`reviewer-minimax`) — no blockers/majors; accepted the five
-  test-coverage gaps (UPDATE-repoint of `recipe_version_id`/`goods_receipt_id`
-  on the three tables, the `DEC-047` store-fallback accept path, and a
-  unit-mismatch negative assertion); declined the cosmetic `FOUND` note, the
-  no-op-UPDATE performance note, the `recipe_line` XOR invariant (a separate
-  application-owned concern) and the `CREATE TRIGGER` non-idempotency note
-  (covered by the down companion + ledger discipline) — see the work log.
-  **Verification at `9d0e055`:** `format:check`, `typecheck`, `lint`, `build`
-  clean; **1297/1297 tests with `DATABASE_URL`** (133 files);
-  `npm audit --omit=dev` 0; `db:migrate` through `0029` is a no-op; the
-  `0029` down path rehearsed; **64 tables**; every new
+  **Delivered (`DEC-080`, DQ-001):** the `data_quality_exception` table
+  (`rule_code`, `severity ∈ {low, medium, high, critical}` default `medium`,
+  `entity_type`/`entity_id` polymorphic, `detected_at`, `owner_id`,
+  `due_date`, `status ∈ {open, acknowledged, resolved, dismissed}` default
+  `open`, `resolution`), repository create/find/list/update, and the first
+  producer: `receiveStockTransfer` creates a `transfer_discrepancy` exception
+  (severity `high`, entity `stock_transfer`, status `open`) in the same
+  transaction as the receive, alongside the human `discrepancy_note`.
+  Migration `0030` is additive with a rehearsed down path. One code-level
+  review (`reviewer-glm`) — no blockers/majors; four minors all **declined**
+  as convention-consistent/cosmetic/test-only (the id-only
+  `updateDataQualityException` matches the `updateStockCount` convention; the
+  application mapping drops audit columns no consumer needs; the record
+  fields are typed `string` like other tables; a dead savepoint in one
+  rollback test is harmless) — see the work log.
+  **Verification at `ddc9e06`:** `format:check`, `typecheck`, `lint`, `build`
+  clean; **1305/1305 tests with `DATABASE_URL`** (134 files);
+  `npm audit --omit=dev` 0; `db:migrate` through `0030` is a no-op; the
+  `0030` down path rehearsed; **65 tables**; every new
   read/write organization-scoped (`DEC-061`).
   **Dev server (session-scoped):** the previous session ran http://localhost:3000
   with `DATABASE_URL=postgres://aquarela:aquarela@localhost:5432/aquarela`,
@@ -207,11 +216,10 @@ guards).
   `apps/web/scripts/` (see "Resume here"); sign in with `owner` /
   `LocalDevPass123`; a fresh session must restart the server.
   Remaining roadmap: the next unblocked task is the
-  **`data_quality_exception` table** (`DEC-066`'s interim replacement for
-  `stock_transfer.discrepancy_note`; also the natural home for count-variance
-  and yield-variance exceptions), then the **import-profile table** (the
-  row-11 open point: `import_run.source`/`profile_version` are opaque
-  labels) — both TECH-owned and buildable without owner input — then
+  **import-profile table** (the row-11 open point: `import_run.source`/
+  `profile_version` are opaque labels) — TECH-owned and buildable without
+  owner input (record any needed decision from `DEC-081`) — after which the
+  remaining buildable technical items are smaller; then
   the receipt→ledger wiring if the OPS policy lands; row 13 is data-gated on
   history/grain quality
   (I11); row 14 owner-gated on the privacy review / access matrix; rows 15–18
@@ -260,10 +268,10 @@ guards).
 - **DEC-049 closed:** drizzle-orm 0.45.2 / drizzle-kit 0.31.10 upgrade (`cc86f13`);
   `npm audit --omit=dev` = 0.
 - **Tests:** without `DATABASE_URL` the integration tests skip; with it
-  **1297/1297 passed** (133 files) — recorded
-  2026-09-21 at the clean HEAD `9d0e055` (all
-  checks pass; `db:migrate` through `0029` is a
-  no-op, and the `0029` down path was rehearsed). Re-verify with `npm run test`
+  **1305/1305 passed** (134 files) — recorded
+  2026-09-21 at the clean HEAD `ddc9e06` (all
+  checks pass; `db:migrate` through `0030` is a
+  no-op, and the `0030` down path was rehearsed). Re-verify with `npm run test`
   and update if they differ.
   Open verification debt: the per-process rate limiter needs a shared
   store before multi-instance deployment; the reset-token delivery is a no-op stub
@@ -271,7 +279,7 @@ guards).
   await owner sign-off (see "Open decisions / inputs"); the six golden fixtures
   remain unsigned and are the "verified" gate.
 - **Persistence core + deployment foundation (committed):** Drizzle schema,
-  migrations `0000_enable_extensions` → `0029` additive with tested down paths
+  migrations `0000_enable_extensions` → `0030` additive with tested down paths
   (`0011_cost_allocation.sql` adds the four slice-6 tables; `0014_cost_card_pricing`
   adds four deferred `price_scenario` columns + `snapshot_component_kind_check`;
   `0015` adds `calculation_snapshot_cost_card_index`; the hand-written `0016` adds
@@ -308,9 +316,14 @@ guards).
   `goods_receipt_line.supplier_item_id` — the receipt-line guard also
   enforcing the supplier and item match) plus the deferred single-column
   FK on `goods_receipt_line.supplier_item_id` (`NOT VALID` → `VALIDATE`;
-  committed in `9d0e055`);
-  ledger 29 rows through `0029`; the `asset`
-  register is deliberately deferred), the
+   committed in `9d0e055`);
+   **`0030`** adds the `data_quality_exception` table (`rule_code`,
+   `severity ∈ {low, medium, high, critical}` default `medium`,
+   `entity_type`/`entity_id` polymorphic, `detected_at`, `owner_id`,
+   `due_date`, `status ∈ {open, acknowledged, resolved, dismissed}` default
+   `open`, `resolution`; committed in `d1d0fad`);
+   ledger 30 rows through `0030`; the `asset`
+   register is deliberately deferred), the
   advisory-locked migrator, worker/scheduler
   stubs and the `infra/` Terraform scaffold validated offline. Not applied.
 - **Not yet built:** row 13 (close + dashboards + menu engineering —
@@ -328,21 +341,20 @@ guards).
 ## Next up (prioritised)
 
 `docs/BUILD_ROADMAP.md` is the ordered execution tracker for these slices (slice 0,
-1a–1e and 2–12 done, incl. row 11 and row 12; the `DEC-072`–`DEC-079` decisions +
-low-risk implementations are done, committed `aaec400`–`9d0e055`; further rows are
+1a–1e and 2–12 done, incl. row 11 and row 12; the `DEC-072`–`DEC-080` decisions +
+low-risk implementations are done, committed `aaec400`–`ddc9e06`; further rows are
 gated — row 13 on data (I11), row 14 owner-only, rows 15–18 on data/ADRs).
 The list below is the short narrative form.
 
-1. **`data_quality_exception` table** — `DEC-066`'s interim replacement for
-   `stock_transfer.discrepancy_note` (the "no transfer-discrepancy exception
-   table exists" point) and the natural home for count-variance and
-   yield-variance exceptions (`PROD-003`); implement additively via
-   `npm run db:generate` (migration `0030`+), application wiring + tests; a
-   new decision from `DEC-080` only if genuinely needed. If time remains,
-   continue with the **import-profile table** (the row-11 open point:
-   `import_run.source`/`profile_version` are opaque labels). Programme
-   direction: proceed autonomously (agents → review/fix → document → commit
-   → next task).
+1. **Import-profile table** — the row-11 open point: `import_run.source`/
+   `profile_version` are opaque labels (no profile table exists). Build it
+   as a TECH-owned slice — a profile keyed by `(organization_id, source)`,
+   carrying the per-source posting policy / validation config the run
+   accepts as static config today; implement additively via
+   `npm run db:generate` (migration `0031`+), record any needed decision
+   from `DEC-081`, wire `import_run` + tests. After it, the remaining
+   buildable technical items are smaller. Programme direction: proceed
+   autonomously (agents → review/fix → document → commit → next task).
 2. **Row 13 — close + dashboards + menu engineering** — `ADR-0007` is accepted
    (2026-09-20); **data-gated** on history/grain quality (I11) — synthetic
    fixtures until real data.
@@ -377,6 +389,17 @@ The list below is the short narrative form.
 
 ## Open decisions / inputs (do not block development)
 
+- **Resolved this session (2026-09-21, `DEC-080`, DQ-001):** the
+  `data_quality_exception` table is delivered (migration `0030`) —
+  `DEC-066`'s replacement for the interim `stock_transfer.discrepancy_note`
+  and the natural home for count-variance and yield-variance exceptions
+  (`PROD-003`) — with repository create/find/list/update and the first
+  producer: `receiveStockTransfer` creates a `transfer_discrepancy`
+  exception (severity `high`, entity `stock_transfer`, status `open`) in
+  the same transaction as the receive, alongside the note (commits
+  `40b5d7e`/`d1d0fad`/`ddc9e06`). The "no transfer-discrepancy exception
+  table exists" point from the slice-9 open list is closed. Next free
+  decision id **`DEC-081`**.
 - **Resolved this session (2026-09-21, `DEC-079`, closing `DEC-054`):** the
   cross-organization referential-integrity / deferred-FK hardening is
   delivered — coherence on `recipe_allergen.allergen_id`,
@@ -387,7 +410,7 @@ The list below is the short narrative form.
   receipt-line guard also enforces the supplier and item match;
   `goods_receipt_line.supplier_item_id` got its deferred single-column FK
   (`NOT VALID` → `VALIDATE`) — migration `0029` (commits `8376209`/`9d0e055`).
-  The "deferred-FK hardening on `goods_receipt_line`" and "`DEC-054`
+   The "deferred-FK hardening on `goods_receipt_line`" and "`DEC-054`
   cross-organization integrity on the recipe FKs" points from the surfaced
   lists are closed. Next free decision id **`DEC-080`**.
 - **Resolved this session (2026-09-21, `DEC-078`):** the remaining low-risk
@@ -454,13 +477,15 @@ The list below is the short narrative form.
   gate; the I1 channel/SKU confirmations remain recorded owner inputs.
   Remaining items: the
   sales/consumption grain ambiguity (`DEC-009` daily-per-location vs a single
-  `sales_line` `source_id`, FIN+TECH); no import-profile table (TECH);
+  `sales_line` `source_id`, FIN+TECH); ~~no import-profile table (TECH)~~
+  now the **next unblocked TECH task** (the import-profile row-11 point —
+  build it from decision `DEC-081`, see "Resume here");
   `file_object` is absent, so
   `import_run.file_object_id` is a plain uuid (TECH); dispositions live in
   `diagnostics.dispositions` jsonb, not a table (TECH). Also a
   live-check left one dev `import_run` row in the local database (see "Local
   dev-DB cleanup" below). Record each resolution in `12_OPEN_DECISIONS.md`
-  (next free id **`DEC-080`**); do not resolve silently.
+  (next free id **`DEC-081`**); do not resolve silently.
 - **Row-12 sales/reconciliation open points (2026-09-20; also tracked in
   `docs/BUILD_ROADMAP.md` §5 "Row-12 sales/reconciliation open points";
   recorded, not decided — do not resolve silently):** consumption grain A1
@@ -476,7 +501,7 @@ The list below is the short narrative form.
   `pending`). Row 13 is data-gated on history/grain quality (I11); row 14 is
   owner-gated on the privacy review / access matrix; rows 15–18 remain blocked
   (data / `ADR-0009`–`0011`). Record each resolution in
-  `12_OPEN_DECISIONS.md` (next free id **`DEC-080`**); do not resolve silently.
+  `12_OPEN_DECISIONS.md` (next free id **`DEC-081`**); do not resolve silently.
 - **Slice-9/10 open owner questions (2026-09-20; also tracked in
   `docs/BUILD_ROADMAP.md` §5 "Slice-9/10 open owner questions"):** output-cost
   allocation across multiple outputs/by-products (FIN); yield-variance tolerance
@@ -488,7 +513,7 @@ The list below is the short narrative form.
   ledger (TECH); ~~`lotTracked` unenforced (TECH)~~ resolved 2026-09-21
   (`DEC-078`); `DEC-009` daily theoretical
   consumption not implemented (TECH). Record each resolution in
-  `12_OPEN_DECISIONS.md` (next free id **`DEC-080`**); do not resolve silently.
+  `12_OPEN_DECISIONS.md` (next free id **`DEC-081`**); do not resolve silently.
 - **Deployment prerequisite inputs (owner; before any real `apply`):** `ADR-0004`
   acceptance; a real scoped `DIGITALOCEAN_TOKEN`; a provisioned private Spaces
   state bucket + state credentials; the sanitized-data owner; the legacy
@@ -596,9 +621,10 @@ The list below is the short narrative form.
   moving average is undecided** (which value the waste record is judged against,
   and whether they may diverge — owner/FIN); **count `scope` shape and recount
   thresholds are undefined** (whole area vs item subset, plus the escalation
-  rule, `DEC-017`/`DEC-029` — owner/FIN); **no transfer-discrepancy exception
-  table exists** (a discrepancy between shipped and received movements is only
-  derivable from the ledger — owner/TECH).
+   rule, `DEC-017`/`DEC-029` — owner/FIN); ~~**no transfer-discrepancy exception
+   table exists** (a discrepancy between shipped and received movements is only
+   derivable from the ledger — owner/TECH)~~ resolved 2026-09-21 (`DEC-080` —
+   the `data_quality_exception` table with the `transfer_discrepancy` producer).
 - **Local dev-DB cleanup (not a code issue):** an ad-hoc reviewer probe left 3
   `stock_movement` rows under a throwaway org in the local dev database; the
   append-only trigger makes them undeletable (the documented destructive replay
@@ -709,6 +735,16 @@ and Spaces credentials via `-backend-config` / `AWS_ACCESS_KEY_ID` +
 
 ## Reversibility
 
+- **`DEC-080` data-quality-exception slice (committed as three commits since
+  the `9d0e055` baseline; nothing pushed)**: `40b5d7e` (the `DEC-080`
+  decision entry), `d1d0fad` (persistence migration `0030` — the
+  `data_quality_exception` table + repository) and `ddc9e06` (the
+  `transfer_discrepancy` producer in `receiveStockTransfer`) — each is
+  independently revertible with `git revert <sha>`. Migration `0030` is
+  **additive** (a new table, no data migration, nothing rewrites existing
+  schema objects) with a rehearsed unjournaled down path (drop the table,
+  delete the ledger row, re-migrate). Nothing pushed; nothing applied to
+  DigitalOcean.
 - **`DEC-079` cross-organization coherence guards (committed as two commits
   since the `a5c3db2` baseline; nothing pushed)**: `8376209` (the `DEC-079`
   decision entry) and `9d0e055` (persistence migration `0029` — the
@@ -829,11 +865,11 @@ and Spaces credentials via `-backend-config` / `AWS_ACCESS_KEY_ID` +
   them with `git revert` if needed. **No cloud resource was created — only offline
   `fmt`/`validate`/`plan` ran, never `apply`; no Terraform state exists, and
   nothing has been applied to DigitalOcean.**
-- Migrations 0000–0029 are additive with tested down paths (`0011` down drops the
+- Migrations 0000–0030 are additive with tested down paths (`0011` down drops the
   four slice-6 tables; `0012` down drops the three EXCLUDE constraints; `0015`/
-  `0016` down drop their indexes/invariant — rehearsed; `0017`–`0029` down are
+  `0016` down drop their indexes/invariant — rehearsed; `0017`–`0030` down are
   rehearsed — see the slice-8 bullet, the slice-9/10, row-11, row-12,
-  DEC-072–076, price-version, `DEC-078` and `DEC-079` bullets
+  DEC-072–076, price-version, `DEC-078`, `DEC-079` and `DEC-080` bullets
   above). While the
   database is
   empty the tested recovery is `DROP SCHEMA public CASCADE; DROP SCHEMA drizzle
@@ -844,6 +880,47 @@ CASCADE; CREATE SCHEMA public; npm run db:migrate` (see the runbook). Once data
   (`DEC-015`).
 
 ## Work log (append-only, newest first)
+
+### 2026-09-21 — DEC-080 accepted and implemented (migration 0030, `data_quality_exception` + transfer-discrepancy producer); handoff updated
+
+`main` HEAD `ddc9e06`; the working tree holds only this handoff update — the
+next commit (nothing pushed; nothing applied to DigitalOcean). **3 commits**
+this slice: `40b5d7e` docs(decisions) accept `DEC-080`; `d1d0fad`
+feat(persistence) `data_quality_exception` table (migration `0030`); `ddc9e06`
+feat(transfers) record a data-quality exception on receive discrepancy.
+
+- **Delivered (`DEC-080`, DQ-001):** the `data_quality_exception` table
+  (`rule_code`, `severity ∈ {low, medium, high, critical}` default
+  `medium`, `entity_type`/`entity_id` polymorphic, `detected_at`,
+  `owner_id`, `due_date`, `status ∈ {open, acknowledged, resolved,
+  dismissed}` default `open`, `resolution`); repository
+  create/find/list/update; and the first producer —
+  `receiveStockTransfer` creates a `transfer_discrepancy` exception
+  (severity `high`, entity `stock_transfer`, status `open`) in the same
+  transaction as the receive, alongside the human `discrepancy_note`.
+  Migration `0030` is additive with a rehearsed down path.
+- **Review and reconciliation.** One cheap code-level pass (`reviewer-glm`)
+  — no blockers or majors. **Declined with reasons (all four minors):** the
+  id-only `updateDataQualityException` (matches the `updateStockCount`
+  convention); the application mapping dropping audit columns (no consumer
+  needs them); the record fields typed `string` (like the other tables); a
+  dead savepoint in one rollback test (harmless).
+- **Verification at `ddc9e06` (exact):** `format:check`, `typecheck`, `lint`,
+  `build` clean; **1305/1305 tests with `DATABASE_URL`** (134 files);
+  `npm audit --omit=dev` = 0; `db:migrate` through `0030` is a no-op on
+  re-run; the `0030` down path rehearsed; **65 tables**; every new
+  read/write organization-scoped (`DEC-061`).
+- **Resume task:** the **import-profile table** — the row-11 open point
+  (`import_run.source`/`profile_version` are opaque labels), keyed by
+  `(organization_id, source)`, recorded from `DEC-081` if needed — see
+  "Resume here". A dev server was running at http://localhost:3000
+  (owner/LocalDevPass123, demo-seeded); a fresh session must restart it
+  (session-scoped).
+
+Rollback: each commit is independently `git revert`-able; migration `0030`
+is additive (a new table; no data migration) with a rehearsed **unjournaled**
+down path (drop the table, delete the ledger row, re-migrate); nothing
+pushed; nothing applied to DigitalOcean.
 
 ### 2026-09-21 — DEC-079 accepted and implemented (migration 0029, cross-organization coherence guards); handoff updated
 

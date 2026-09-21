@@ -13,41 +13,41 @@ This file is **updated at the end of every slice** — statuses and the "current
 line move with the work; `CONTEXT.md` keeps the narrative handoff and the immediate
 `Resume here` section.
 
-**Current position:** HEAD `9d0e055` on `main` (nothing pushed; the working tree is
-clean). Slice 0, auth slices 1a–1e, slices 2–10, row 11 (import framework +
-external mappings), row 12 (sales + settlements + reconciliation), the
-**price-version slice (`DEC-064`, PRICE-002/003)**, the **`DEC-078`
-low-risk vocabulary/integrity open points** and the **`DEC-079`
-cross-organization coherence guards** are `done` and committed;
+**Current position:** HEAD `ddc9e06` on `main` (nothing pushed; the working tree
+holds only the next docs commit). Slice 0, auth slices 1a–1e, slices 2–10, row 11
+(import framework + external mappings), row 12 (sales + settlements +
+reconciliation), the **price-version slice (`DEC-064`, PRICE-002/003)**, the
+**`DEC-078` low-risk vocabulary/integrity open points**, the **`DEC-079`
+cross-organization coherence guards** and the **`DEC-080`
+`data_quality_exception` table** are `done` and committed;
 `ADR-0007` and `ADR-0008` accepted 2026-09-20 (owner-delegated, revertible).
-The `DEC-079` slice delivered (commits `8376209`, `9d0e055`; closing
-`DEC-054`): cross-organization coherence for
-`recipe_allergen.allergen_id`, `recipe_line.item_id`/`sub_recipe_id` and
-`goods_receipt_line.supplier_item_id` is enforced by
-`BEFORE INSERT OR UPDATE` guard triggers (the `stock_movement_source_guard`
-precedent), not denormalized composite FKs plus a backfill; the receipt-line
-guard also enforces the supplier and item match;
-`goods_receipt_line.supplier_item_id` got its deferred single-column FK
-(`NOT VALID` → `VALIDATE`). Migration `0029` is hand-written/journaled,
-forward-only, with a rehearsed unjournaled down path. Verification at
-`9d0e055`: `typecheck`, `lint`, `build`, `format:check` clean;
-**1297/1297 tests with `DATABASE_URL`** (133 files); `npm audit --omit=dev`
-0; `db:migrate` through `0029` is a no-op; the `0029` down path rehearsed;
-64 tables. Programme direction: proceed autonomously, per task — parallel
-background agents → adversarial review + fixes → document status and next
-steps → commit → next task. **Remaining roadmap:** row 13 is
-**data-gated** on history/grain quality (I11); row 14 is **owner-gated** on a
-privacy review / access matrix; rows 15–18 remain blocked (data /
-`ADR-0009`–`0011`) — so no roadmap slice is buildable from code alone without
-owner inputs or real history. **Next unblocked task:** the
-**`data_quality_exception` table** (`DEC-066`'s interim replacement for
-`stock_transfer.discrepancy_note`; also the natural home for count-variance
-and yield-variance exceptions), then the **import-profile table** (the
-row-11 open point: `import_run.source`/`profile_version` are opaque labels)
-— both TECH-owned and buildable without owner input (record any genuinely
-new decision from `DEC-080`). Still owner/data-gated: the receipts→ledger
-wiring, row 13, row 14, rows 15–18, the price-version scope-resolution
-fallback and consumption grain A1. Next free decision id `DEC-080`.
+The `DEC-080` (DQ-001) slice delivered (commits `40b5d7e`, `d1d0fad`,
+`ddc9e06`): the `data_quality_exception` table (`rule_code`,
+`severity ∈ {low, medium, high, critical}` default `medium`,
+`entity_type`/`entity_id` polymorphic, `detected_at`, `owner_id`, `due_date`,
+`status ∈ {open, acknowledged, resolved, dismissed}` default `open`,
+`resolution`), repository create/find/list/update, and the first producer —
+`receiveStockTransfer` creates a `transfer_discrepancy` exception (severity
+`high`, entity `stock_transfer`, status `open`) in the same transaction as
+the receive, alongside the human `discrepancy_note`. Migration `0030` is
+additive with a rehearsed down path. Verification at `ddc9e06`:
+`typecheck`, `lint`, `build`, `format:check` clean; **1305/1305 tests with
+`DATABASE_URL`** (134 files); `npm audit --omit=dev` 0; `db:migrate` through
+`0030` is a no-op; the `0030` down path rehearsed; 65 tables. Programme
+direction: proceed autonomously, per task — parallel background agents →
+adversarial review + fixes → document status and next steps → commit → next
+task. **Remaining roadmap:** row 13 is **data-gated** on history/grain
+quality (I11); row 14 is **owner-gated** on a privacy review / access
+matrix; rows 15–18 remain blocked (data / `ADR-0009`–`0011`). **Next
+unblocked task:** the **import-profile table** (the row-11 open point:
+`import_run.source`/`profile_version` are opaque labels; a profile keyed by
+`(organization_id, source)` carrying the per-source posting policy /
+validation config, recorded from `DEC-081`, wired to `import_run`) —
+TECH-owned and buildable without owner input; after it, the remaining
+buildable technical items are smaller. Still owner/data-gated: the
+receipts→ledger wiring, row 13, row 14, rows 15–18, the price-version
+scope-resolution fallback and consumption grain A1. Next free decision id
+`DEC-081`.
 
 ## 2. The execution loop (per slice)
 
@@ -389,9 +389,11 @@ dates assigned):
       and whether they may diverge). owner/FIN.
   12. Count `scope` shape (whole area vs item subset) and the recount thresholds
       are undefined (`DEC-017`/`DEC-029` leave the escalation rule open). owner/FIN.
-  13. No transfer-discrepancy exception table exists; a discrepancy between the
-      shipped and received movements is currently only derivable from the ledger.
-      owner/TECH.
+  13. No transfer-discrepancy exception table existed; a discrepancy between the
+      shipped and received movements was only derivable from the ledger.
+      owner/TECH. ~~No transfer-discrepancy exception table exists~~ resolved
+      2026-09-21 (`DEC-080` — the `data_quality_exception` table with the
+      `transfer_discrepancy` producer in `receiveStockTransfer`).
   (Process note: the slice-8/9 backlog was committed in dependency-ordered **layer
   commits** — persistence → domain → application → web/ui → infra — because the
   migrations/schema barrels shared files across tasks; per-task feature commits
@@ -400,8 +402,8 @@ dates assigned):
   technical defaults implemented by the slice-9/10 code, consistent with `ADR-0005`,
   are now recorded as accepted decisions in `12_OPEN_DECISIONS.md`: `DEC-066`
   transfers as a header plus paired `stock_movement.transfer_id` movements (no line
-  table; the discrepancy is derived; `discrepancy_note` is the interim exception
-  record); `DEC-067` positive count variance valued at a caller-supplied `unit_cost`
+   table; the discrepancy is derived; `discrepancy_note` is the interim exception
+   record — since superseded by `DEC-080`'s `data_quality_exception` table); `DEC-067` positive count variance valued at a caller-supplied `unit_cost`
   falling back to `item.current_cost` (provisional — FIN to confirm the valuation
   source); `DEC-068` operational waste valued at the ledger's moving weighted average
   at posting (`cost_selection`/`latest_price`/`manual` unimplemented); `DEC-069`
@@ -409,10 +411,10 @@ dates assigned):
   OPS+TECH define one); `DEC-070` expected trim/cooking loss never posts a `waste`
   movement (only actual abnormal loss becomes a `waste_event`); `DEC-071`
   `production_batch_output.kind` uses a provisional local vocabulary pending a
-   `domain-enums.yaml` key. Next free decision id **`DEC-080`**.
+   `domain-enums.yaml` key. Next free decision id **`DEC-081`**.
 - **Slice-9/10 open owner questions (deliberate; recorded not decided)** — surfaced
   by the concurrent slice-9/10 build (uncommitted working tree at HEAD `2a5799e`);
-   record each resolution in `12_OPEN_DECISIONS.md` (next free id **`DEC-080`**); do
+   record each resolution in `12_OPEN_DECISIONS.md` (next free id **`DEC-081`**); do
    not resolve silently:
    1. Output-cost allocation across multiple outputs/by-products of one batch.
      owner/FIN.
@@ -429,7 +431,7 @@ dates assigned):
       point 6). owner/TECH.
 - **Row-11 import-framework open points (deliberate; recorded not decided)** —
   surfaced by the row-11 build (uncommitted working tree at HEAD `7f6aa78`);
-   record each resolution in `12_OPEN_DECISIONS.md` (next free id **`DEC-080`**);
+    record each resolution in `12_OPEN_DECISIONS.md` (next free id **`DEC-081`**);
    do not resolve silently:
   1. ~~Row 12 is gated on `ADR-0008` acceptance~~ resolved 2026-09-20:
      `ADR-0008` is accepted (owner-delegated in-session); the I1 channel/SKU
@@ -440,8 +442,9 @@ dates assigned):
      quality remains the data gate.
   3. Sales/consumption grain ambiguity: `DEC-009` daily-per-location vs a single
      `sales_line` `source_id` — unresolved. owner/TECH.
-  4. No import-profile table exists (profiles are implicit in the run payload).
-      owner/TECH.
+   4. ~~No import-profile table exists (profiles are implicit in the run payload)~~
+      still open — **next unblocked TECH task** (build the profile keyed by
+      `(organization_id, source)` from `DEC-081`, wire `import_run` to it).
   5. ~~No tolerance-configuration table exists~~ resolved 2026-09-20 (`DEC-072`):
       an effective-dated `reconciliation_tolerance` table (migration `0024`);
       missing config blocks close.
@@ -459,7 +462,7 @@ dates assigned):
 - **Row-12 sales/reconciliation open points (deliberate; recorded not decided)** —
   surfaced by the row-12 build (uncommitted working tree on top of HEAD
    `c324418`); record each resolution in `12_OPEN_DECISIONS.md` (next free id
-   **`DEC-080`**); do not resolve silently:
+    **`DEC-081`**); do not resolve silently:
   1. Consumption grain A1: `DEC-009` daily-per-location vs a single `sales_line`
      `source_id` — unresolved. owner/TECH.
   2. ~~No tolerance-configuration table exists; the `DEC-026` tolerance is
@@ -487,23 +490,26 @@ dates assigned):
   8. A local dev-DB side effect: the demo import run left a
      `partially_posted` import run and a reconciliation reopened to `pending`
      in the local database. Local dev-data artefact, no repository impact.
-- **Next unblocked task (2026-09-21, after `DEC-079`):** with rows 13–18 gated
+- **Next unblocked task (2026-09-21, after `DEC-080`):** with rows 13–18 gated
   (row 13 data-gated on history/grain quality I11; row 14 owner-gated on the
   privacy review / access matrix; rows 15–18 blocked on data /
   `ADR-0009`–`0011`), no roadmap slice is buildable purely from code without
   owner inputs or real history. The recorded low-risk open points resolved so
-  far are decisions `DEC-072`–`DEC-079` (2026-09-20/21; tolerance table
+  far are decisions `DEC-072`–`DEC-080` (2026-09-20/21; tolerance table
   `DEC-072`, sales-line reversal `DEC-073`, `MAPPING_STATE` `conflict`
   `DEC-074`, `tax_rule_id`/`applied_tax_rate` `DEC-075`, typed not-found error
   `DEC-076`, the price-version slice `DEC-077`, the `settlement.status`/
   `reconciliation.scope_type` vocabularies + `lotTracked` enforcement
-  `DEC-078`, and the cross-organization coherence guards `DEC-079`). The next
-  buildable TECH-owned task is the **`data_quality_exception` table**
-  (`DEC-066`'s interim replacement for `stock_transfer.discrepancy_note`;
-  also the natural home for count-variance and yield-variance exceptions,
-  `PROD-003`), then the **import-profile table** (the row-11 open point:
-  `import_run.source`/`profile_version` are opaque labels). The remaining
-  recorded open points above stay open. Next free decision id **`DEC-080`**.
+  `DEC-078`, the cross-organization coherence guards `DEC-079`, and the
+  `data_quality_exception` table + transfer-discrepancy producer `DEC-080`).
+  The next buildable TECH-owned task is the **import-profile table** (the
+  row-11 open point: `import_run.source`/`profile_version` are opaque labels;
+  a profile keyed by `(organization_id, source)` carrying the per-source
+  posting policy / validation config the run accepts as static config today,
+  recorded from `DEC-081`, wired to `import_run`). After it, the remaining
+  buildable technical items are smaller; most other work is owner/data-gated.
+  The remaining recorded open points above stay open. Next free decision id
+  **`DEC-081`**.
 - **Unit `m` vs the missing `length` dimension** — a dimension-vocabulary mismatch in
   `schemas/domain-enums.yaml` surfaced by slice 3; owner/TECH to resolve (FND-003).
 - **`numeric(19,6)` digit cap in `packages/domain/src/decimal.ts`** — the domain decimal
