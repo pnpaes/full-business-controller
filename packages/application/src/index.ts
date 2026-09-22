@@ -13,4 +13,5 @@ export * from "./recipes";
 export * from "./receiving";
 export * from "./transfers";
 export * from "./waste";
+export * from "./workforce";
 export { lineTotal } from "./line-total";
