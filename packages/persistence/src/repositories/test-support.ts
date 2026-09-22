@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import type { Database, DatabaseTransaction, NodeDatabase } from "../client";
 import {
+  approval,
   channel,
   checklistRun,
   checklistTemplate,
@@ -47,6 +48,7 @@ import {
   stockMovement,
   stockTransfer,
   storageArea,
+  task,
   unit,
   wasteEvent,
 } from "../schema";
@@ -1094,6 +1096,53 @@ export async function createTestDocumentAcknowledgement(
       documentVersionId,
       acknowledgedBy: randomUUID(),
       acknowledgedAt: new Date("2026-01-01T08:00:00.000Z"),
+      ...overrides,
+    })
+    .returning();
+  return rows[0]!;
+}
+
+/**
+ * A `DEC-094` workflow task. `type`/`priority` get valid free-text defaults and
+ * `status` takes the schema default `open`, so a test need only override the
+ * field under test; the polymorphic link, `owner_id`, `due_date` and
+ * `created_from_event_id` stay null unless a test sets them.
+ */
+export async function createTestTask(
+  db: Database,
+  organizationId: string,
+  overrides: Partial<typeof task.$inferInsert> = {},
+): Promise<typeof task.$inferSelect> {
+  const rows = await db
+    .insert(task)
+    .values({
+      organizationId,
+      type: "review",
+      priority: "normal",
+      ...overrides,
+    })
+    .returning();
+  return rows[0]!;
+}
+
+/**
+ * A `DEC-094` approval request, undecided by default (`decision`/`decided_by`/
+ * `decided_at` stay null). `requested_by` gets a random uuid (the `app_user` FK
+ * is deferred) and `entity_id` a random uuid because the target is polymorphic.
+ */
+export async function createTestApproval(
+  db: Database,
+  organizationId: string,
+  overrides: Partial<typeof approval.$inferInsert> = {},
+): Promise<typeof approval.$inferSelect> {
+  const rows = await db
+    .insert(approval)
+    .values({
+      organizationId,
+      entityType: "document",
+      entityId: randomUUID(),
+      requestedBy: randomUUID(),
+      requestedAt: new Date("2026-01-01T08:00:00.000Z"),
       ...overrides,
     })
     .returning();

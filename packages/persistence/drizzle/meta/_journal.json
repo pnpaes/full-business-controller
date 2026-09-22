@@ -351,6 +351,13 @@
       "when": 1790054714766,
       "tag": "0049_staff_documents_org_guard",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1790061475649,
+      "tag": "0050_workflow_platform",
+      "breakpoints": true
     }
   ]
 }

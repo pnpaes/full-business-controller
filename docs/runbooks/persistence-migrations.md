@@ -1444,6 +1444,34 @@ only, so the down file is an explicit operator action, not an automatic one.
   down cannot fail on data; while dropped, the references' organization
   coherence is validated only by the application. Apply it manually with
   `psql "$DATABASE_URL" -f packages/persistence/drizzle/0049_staff_documents_org_guard_down.sql`.
+- **0050 adds the `DEC-094` schema-only workflow platform tables and follows the
+  down convention:** `0050_workflow_platform.sql` is generated DDL for the two
+  tables — `task` (`organization_id`, the free-text `type`, the nullable
+  polymorphic `linked_entity_type`/`linked_entity_id` pair, the plain-uuid
+  `owner_id`, the nullable `due_date`, the free-text `priority`, `status`
+  defaulting to `open`, the nullable `resolution` and plain-uuid
+  `created_from_event_id`, the audit columns, the organization FK and the
+  `task_status_check` / `task_linked_entity_check` checks plus the
+  `task_org_status_idx` / `task_org_owner_due_idx` / `task_org_linked_idx`
+  org-first indexes) and `approval` (`organization_id`, the polymorphic
+  `entity_type`/`entity_id`, the nullable `entity_version`, the required
+  `requested_by`/`requested_at`, the nullable `decided_by`/`decided_at`/
+  `decision`/`comment`, the audit columns, the organization FK and the
+  `approval_decision_check` / `approval_decided_check` checks plus the
+  `approval_org_entity_idx` / `approval_org_decision_idx` indexes). Both tables
+  are mutable and carry the standard audit columns. The `job` table, the
+  worker/scheduler and the outbox async layer are deliberately **not** built
+  (`ADR-0004` gated), so `created_from_event_id` stays a plain uuid; `task` has
+  no `location_id` (the `corrective_action` location-scope ceiling). It adds two
+  tables and no hand-written statement, and has **no companion org-guard
+  migration**: neither table has a cross-organization FK beyond
+  `organization_id`, so `0050` is the only file.
+  `0050_workflow_platform_down.sql` drops `approval` then `task` inside one
+  `BEGIN;`/`COMMIT;` (with `DROP TABLE IF EXISTS` so a half-applied manual run
+  cannot wedge); the checks, FKs and indexes drop with the tables. It is
+  **destructive** — every task and approval row is lost — so run it only while
+  those rows need not be preserved (AGENTS.md Rule 2). Apply it manually with
+  `psql "$DATABASE_URL" -f packages/persistence/drizzle/0050_workflow_platform_down.sql`.
 
 **Re-applying after a manual down:** drizzle-kit tracks applied migrations in
 `drizzle.__drizzle_migrations`, not by comparing the schema, so a plain
@@ -1484,8 +1512,9 @@ for 0003, `… = 1789850858806` for 0004, `… = 1789851925634` for 0005,
 `… = 1790030073708` for 0045,
 `… = 1790035770192` for 0046,
 `… = 1790035771192` for 0047,
-`… = 1790054700573` for 0048 and
-`… = 1790054714766` for 0049, then
+`… = 1790054700573` for 0048,
+`… = 1790054714766` for 0049 and
+`… = 1790061475649` for 0050, then
 `npm run db:migrate` (0003 verified 2026-09-19; 0005 rehearsed in the slice-3
 review follow-up; 0006 rehearsed with the slice-4 receiving work; 0007 and
 0008 rehearsed with the slice-4 review follow-up; 0009 rehearsed with the
@@ -1907,6 +1936,7 @@ session will not serialise against each other.
 | 0047 | `0047_workforce_org_guard.sql` | Hand-written (`DEC-079`'s guard shape applied to the workforce FKs, mirroring `0045`): four functions and four `BEFORE INSERT OR UPDATE FOR EACH ROW` triggers — `employee_primary_location_org_guard` on `employee` (rejects a non-null `primary_location_id` whose `location` belongs to another organization), `employee_user_org_guard` on `employee` (rejects a non-null `user_id` whose `app_user` belongs to another organization), `employee_document_employee_org_guard` on `employee_document` (rejects an `employee_id` whose `employee` belongs to another organization) and `employee_document_file_object_org_guard` on `employee_document` (rejects a non-null `file_object_id` whose `file_object` belongs to another organization). No table and no TypeScript schema change. Down companion: `0047_workforce_org_guard_down.sql` (drops the four triggers and their functions — no row is touched) |
 | 0048 | `0048_staff_documents.sql` | Generated (`DEC-088`, `DOC-001`…`DOC-004`): the three staff document library tables, additive like `0037`/`0040`/`0042`/`0044`/`0046` — `document` (`organization_id`, `title`, `category` (`document_category_check`), `audience` (`document_audience_check`), `status` (`document_status_check`, default `draft`), the plain-uuid `owner_id` and the audit columns, with the organization FK and the `document_org_status_idx` / `document_org_audience_idx` org-first indexes), `document_version` (`organization_id`, `document_id`, `version_no` (`document_version_version_no_check`, `> 0`), the nullable `file_object_id`, the nullable `notes`/`published_at`/`published_by` with the all-or-nothing `document_version_published_check`, the audit columns, the FKs to organization/document/file-object, the `document_version_document_version_key` unique on `(document_id, version_no)` and the `document_version_org_document_idx` index) and `document_acknowledgement` (`organization_id`, `document_version_id`, `acknowledged_by`, `acknowledged_at` with **no** audit columns — the `import_disposition` fact-table precedent — the FKs to organization/document-version, the `document_acknowledgement_version_user_key` unique on `(document_version_id, acknowledged_by)` and the `document_acknowledgement_org_version_idx` / `_org_user_idx` indexes). No hand-written statement. Journal `when` `1790054700573`, sha256 `a3583018395213ae882880c3bbb773fc74fa8a70c6b80aa36ca54a4b3fe091e5`. Down companion: `0048_staff_documents_down.sql` (drops the three tables, FK-safe order: `document_acknowledgement` then `document_version` then `document` — destructive) |
 | 0049 | `0049_staff_documents_org_guard.sql` | Hand-written (`DEC-079`'s guard shape applied to the `DEC-088` staff-document FKs, mirroring `0047`): three functions and three `BEFORE INSERT OR UPDATE FOR EACH ROW` triggers — `document_version_document_org_guard` on `document_version` (rejects a `document_id` whose `document` belongs to another organization), `document_version_file_object_org_guard` on `document_version` (rejects a non-null `file_object_id` whose `file_object` belongs to another organization) and `document_acknowledgement_document_version_org_guard` on `document_acknowledgement` (rejects a `document_version_id` whose `document_version` belongs to another organization). No table and no TypeScript schema change. Journal `when` `1790054714766`, sha256 `91dd4a2c63e0f3201f9c4626ee80b644358bc75d92353ecb8510d6bc323408da`. Down companion: `0049_staff_documents_org_guard_down.sql` (drops the three triggers and their functions — no row is touched) |
+| 0050 | `0050_workflow_platform.sql` | Generated (`DEC-094`, schema-only workflow platform): the two tables, additive like `0037`/`0040`/`0042`/`0044`/`0046`/`0048` — `task` (`organization_id`, the free-text `type`, the nullable polymorphic `linked_entity_type`/`linked_entity_id` pair, the plain-uuid `owner_id`, the nullable `due_date`, the free-text `priority`, `status` defaulting to `open`, the nullable `resolution` and plain-uuid `created_from_event_id`, the audit columns, the organization FK, the `task_status_check` / `task_linked_entity_check` checks and the `task_org_status_idx` / `task_org_owner_due_idx` / `task_org_linked_idx` org-first indexes) and `approval` (`organization_id`, the polymorphic `entity_type`/`entity_id`, the nullable `entity_version`, the required `requested_by`/`requested_at`, the nullable `decided_by`/`decided_at`/`decision`/`comment`, the audit columns, the organization FK, the `approval_decision_check` / `approval_decided_check` checks and the `approval_org_entity_idx` / `approval_org_decision_idx` indexes). The `job` table, the worker/scheduler and the outbox layer are deliberately not built (`ADR-0004` gated). No hand-written statement and no companion org-guard migration (only the `organization_id` FK). Journal `when` `1790061475649`, sha256 `19438c2f5ead0664a2ed74b19395d833555e999826b8c6787b6ed88aa44ebdc9`. Down companion: `0050_workflow_platform_down.sql` (drops `approval` then `task` — destructive) |
 
 Order matters: extensions before DDL that calls `gen_random_uuid()`, and before
 the exclusion constraints. Verify with:
@@ -1936,7 +1966,7 @@ DATABASE_URL=postgres://aquarela:aquarela@localhost:5432/aquarela npm run db:mig
 `public` alone leaves the ledger intact, so `db:migrate` reports success while
 restoring nothing. `DROP SCHEMA drizzle CASCADE` clears the ledger so all
 migrations replay from 0000. Verified: after this sequence `db:migrate`
-  re-applies 0000–0049 and the database has all 81 tables plus both extensions
+  re-applies 0000–0050 and the database has all 83 tables plus both extensions
 (0004 adds the four slice-3 master-data tables; 0006 adds the two slice-4
 receiving tables; 0007 adds the `goods_receipt_line` guard trigger — no table;
 0008 relaxes the `supplier_price` range check — no table; 0009 adds the two
@@ -2003,19 +2033,21 @@ three `DEC-088` staff document library tables (`document`, `document_version`,
 `document_acknowledgement`) with their checks, uniques, FKs and org-first
 indexes — three tables; 0049 adds the three staff-document cross-organization
 coherence guards on `document_version` and `document_acknowledgement` — no
-table, table-neutral).
+table, table-neutral; 0050 adds the two `DEC-094` workflow platform tables
+(`task` and `approval`) with their checks, FKs and org-first indexes — two
+tables).
 0013–0019 were added after this replay was verified; all are additive and
 table-count-neutral. `0020`, `0021`, `0022`, `0023`, `0024`, `0027`, `0030`,
-`0031`, `0033`, `0035`, `0037`, `0040`, `0042`, `0044`, `0046` and `0048`
+`0031`, `0033`, `0035`, `0037`, `0040`, `0042`, `0044`, `0046`, `0048` and `0050`
 are the only migrations after the replay was written to add tables (four, four,
-three, four, one, one, one, one, one, one, two, two, two, two, two and three
-respectively), so the 81-table figure above is the expected post-`0049` count (51
+three, four, one, one, one, one, one, one, two, two, two, two, two, three and two
+respectively), so the 83-table figure above is the expected post-`0050` count (51
 after `0020`, 55 after `0021`, 58 after `0022`, 62 after `0023`, 63 after
 `0024`, 64 after `0029`, 65 after `0030`, 66 after `0031` and `0032`, 67 after
 `0033`, still 67 after `0034`, 68 after `0035`, still 68 after `0036`, 70 after
 `0037`, still 70 after `0038`, still 70 after `0039`, 72 after `0040`, still 72
-after `0041`, 74 after `0042`, 76 after `0044`, 78 after `0046` and 81 after
-`0048`);
+after `0041`, 74 after `0042`, 76 after `0044`, 78 after `0046`, 81 after
+`0048` and 83 after `0050`);
 `0025`, `0026`,
 `0028`, `0032`, `0034`, `0036`, `0038`, `0039`, `0041`, `0043`, `0045`,
 `0047` and `0049` are table-neutral.
@@ -2060,6 +2092,14 @@ staff document library tables and 0049 the three guards — 81 tables; the
 0048/0049 down/re-apply rehearsal ran 2026-09-22 (downs 81 → 78 tables with 0
 guards, the two ledger rows deleted and re-created, final 81 tables, 3 guards,
 50 ledger rows, a further `db:migrate` a no-op as recorded above).
+0050 on 2026-09-22 added the two `DEC-094` workflow platform tables (`task`,
+`approval`) with their checks and org-first indexes — the database went to 83
+tables; the 0050 down/re-apply rehearsal ran 2026-09-22: starting from 83 public
+base tables and 51 ledger rows, `0050_workflow_platform_down.sql` dropped
+`approval` then `task` (83 → 81 tables, both tables absent), deleting its ledger
+row (`created_at = 1790061475649`) deleted 1 row (51 → 50), and
+`npm run db:migrate` re-applied 0050 — final 83 public base tables, both tables
+present and 51 ledger rows, with a further `npm run db:migrate` a no-op.
 
 Once real data exists, this path is no longer acceptable: use small atomic
 commits, expand → migrate → contract for schema changes, and a tested

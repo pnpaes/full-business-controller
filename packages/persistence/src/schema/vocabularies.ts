@@ -438,3 +438,16 @@ export const DOCUMENT_CATEGORY = ["routine", "guideline", "policy", "form", "oth
 export const DOCUMENT_AUDIENCE = ["all_staff", "managers"] as const;
 
 export const STAFF_DOCUMENT_STATUS = ["draft", "published", "archived"] as const;
+
+// `DEC-094` (the schema-only workflow platform): the `task.status` state and the
+// `approval.decision` outcome. Both keys already exist in
+// `schemas/domain-enums.yaml` (`task_status`, `approval_decision`) but were
+// deliberately unexported until the workflow-platform tables needed them, so
+// `vocabularies.test.ts`'s `UNEXPORTED_YAML_KEYS` guard shrinks accordingly.
+// `task_status` backs `task_status_check`; `approval_decision` backs
+// `approval_decision_check`, and a nullable `decision` is deliberately absent
+// from the set — an undecided approval is `decision is null`, not a `pending`
+// value (the yaml has none).
+export const TASK_STATUS = ["open", "in_progress", "blocked", "resolved", "dismissed"] as const;
+
+export const APPROVAL_DECISION = ["approved", "rejected"] as const;

@@ -33,4 +33,5 @@ export * from "./repositories/totp";
 export * from "./repositories/transfers";
 export * from "./repositories/users";
 export * from "./repositories/waste";
+export * from "./repositories/workflow";
 export * from "./repositories/workforce";

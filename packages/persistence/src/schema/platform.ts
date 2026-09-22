@@ -14,7 +14,12 @@ import {
 
 import { auditColumns, enumCheck, orgId, tstz, uuidPk } from "./columns";
 import { organization } from "./organization";
-import { EXCEPTION_SEVERITY, EXCEPTION_STATUS } from "./vocabularies";
+import {
+  APPROVAL_DECISION,
+  EXCEPTION_SEVERITY,
+  EXCEPTION_STATUS,
+  TASK_STATUS,
+} from "./vocabularies";
 
 export const outboxEvent = pgTable(
   "outbox_event",
@@ -152,5 +157,90 @@ export const fileObject = pgTable(
   (t) => [
     check("file_object_size_bytes_check", sql`${t.sizeBytes} >= 0`),
     unique("file_object_org_storage_key_key").on(t.organizationId, t.storageKey),
+  ],
+);
+
+/*
+ * `DEC-094` (the schema-only workflow platform): the `task` and `approval`
+ * platform tables, built now with no ADR dependency. This is the schema-only
+ * host for ownership and due-dates: `task` records a unit of follow-up work
+ * (its `type`/`priority` are free text — no vocabulary authority in the spec,
+ * the `equipment.kind`/`DEC-097` precedent), and `approval` records a
+ * polymorphic approval request on `(entity_type, entity_id)` with an
+ * all-or-nothing decision.
+ *
+ * The `job` table, the worker/scheduler and the outbox async layer are
+ * deliberately **not** built here: they are gated on `ADR-0004`, still
+ * `Proposed`, so `created_from_event_id` stays a **plain uuid** rather than an
+ * FK to `outbox_event` (the outbox table exists but the workflow link is not
+ * part of this slice). `task` has no `location_id` — the `corrective_action`
+ * location-scope ceiling: a task is organization-scoped, and a location-scoped
+ * task is not modelled until the spec defines one. `HMS-001`'s task/approval
+ * link is not defined by the spec, so no FK joins them (recorded open conflict,
+ * `DEC-094`).
+ *
+ * Both tables are mutable (not append-only) and carry the standard
+ * `auditColumns()`. `owner_id`/`requested_by`/`decided_by` are plain uuids (the
+ * `app_user` FK is deferred repo-wide); `approval.entity_id` is a plain uuid
+ * (polymorphic target, no single FK — the `data_quality_exception.entity_id`
+ * precedent) and `approval.entity_version` matches `audit_event.entity_version`.
+ * A `task` is either standalone or linked: `task_linked_entity_check` requires
+ * `linked_entity_type` and `linked_entity_id` to be both null or both set. An
+ * `approval` is undecided while `decision is null` (the `approval_decision` yaml
+ * has no `pending` value); `approval_decided_check` requires the
+ * `decided_by`/`decided_at`/`decision` triple all-null or all-set.
+ */
+export const task = pgTable(
+  "task",
+  {
+    id: uuidPk(),
+    organizationId: orgId().references(() => organization.id),
+    type: text("type").notNull(),
+    linkedEntityType: text("linked_entity_type"),
+    linkedEntityId: uuid("linked_entity_id"),
+    ownerId: uuid("owner_id"),
+    dueDate: date("due_date"),
+    priority: text("priority").notNull(),
+    status: text("status").notNull().default("open"),
+    resolution: text("resolution"),
+    createdFromEventId: uuid("created_from_event_id"),
+    ...auditColumns(),
+  },
+  (t) => [
+    check("task_status_check", enumCheck(t.status, TASK_STATUS)),
+    check(
+      "task_linked_entity_check",
+      sql`(${t.linkedEntityType} is null) = (${t.linkedEntityId} is null)`,
+    ),
+    index("task_org_status_idx").on(t.organizationId, t.status),
+    index("task_org_owner_due_idx").on(t.organizationId, t.ownerId, t.dueDate),
+    index("task_org_linked_idx").on(t.organizationId, t.linkedEntityType, t.linkedEntityId),
+  ],
+);
+
+export const approval = pgTable(
+  "approval",
+  {
+    id: uuidPk(),
+    organizationId: orgId().references(() => organization.id),
+    entityType: text("entity_type").notNull(),
+    entityId: uuid("entity_id").notNull(),
+    entityVersion: integer("entity_version"),
+    requestedBy: uuid("requested_by").notNull(),
+    requestedAt: tstz("requested_at").notNull(),
+    decidedBy: uuid("decided_by"),
+    decidedAt: tstz("decided_at"),
+    decision: text("decision"),
+    comment: text("comment"),
+    ...auditColumns(),
+  },
+  (t) => [
+    check("approval_decision_check", enumCheck(t.decision, APPROVAL_DECISION)),
+    check(
+      "approval_decided_check",
+      sql`(${t.decidedBy} is null and ${t.decidedAt} is null and ${t.decision} is null) or (${t.decidedBy} is not null and ${t.decidedAt} is not null and ${t.decision} is not null)`,
+    ),
+    index("approval_org_entity_idx").on(t.organizationId, t.entityType, t.entityId),
+    index("approval_org_decision_idx").on(t.organizationId, t.decision),
   ],
 );

@@ -126,9 +126,7 @@ describe("vocabularies vs schemas/domain-enums.yaml", () => {
     // `check` uses them yet. Listed explicitly rather than silently ignored so
     // an accidental new yaml key shows up as a failure here.
     const UNEXPORTED_YAML_KEYS = [
-      "task_status",
       "channel_code",
-      "approval_decision",
       "forecast_grain",
       "valuation_method",
       "period_close_status",

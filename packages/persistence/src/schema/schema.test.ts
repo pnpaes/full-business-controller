@@ -14,7 +14,7 @@ import * as schema from "./index";
 
 const tables = Object.values(schema).filter((value) => is(value, PgTable));
 
-/** The 81 in-scope Phase 1-2 tables: the 35 core tables, the slice-3
+/** The 83 in-scope Phase 1-2 tables: the 35 core tables, the slice-3
  * master-data additions (`unit_conversion`, `supplier`, `supplier_item`,
  * `cost_center`), the slice-4 receiving additions (`goods_receipt`,
  * `goods_receipt_line`), the slice-5 allergen additions (`allergen`,
@@ -37,13 +37,15 @@ const tables = Object.values(schema).filter((value) => is(value, PgTable));
  * equipment/maintenance slice (`equipment`, `maintenance_log`) and the `DEC-087`
  * workforce personnel slice (`employee`, `employee_document`), and the `DEC-088`
  * staff document library (`document`, `document_version`,
- * `document_acknowledgement`), from
+ * `document_acknowledgement`), and the `DEC-094` schema-only workflow platform
+ * (`task`, `approval`), from
  * `schemas/phase1_2_draft.sql` / `DATA_DICTIONARY`. */
 const EXPECTED_TABLES = [
   "addon_applicability",
   "allergen",
   "allocation_rule",
   "app_user",
+  "approval",
   "audit_event",
   "auth_session",
   "calculation_snapshot",
@@ -114,6 +116,7 @@ const EXPECTED_TABLES = [
   "supplier",
   "supplier_item",
   "supplier_price",
+  "task",
   "tax_rule",
   "unit",
   "unit_conversion",
@@ -145,6 +148,9 @@ const NOT_EXPECTED_TABLES = [
   // The fixed-asset register is deferred; depreciation is entered as an
   // `operating_cost` (`DATA_DICTIONARY` §4 `asset`) until its slice lands.
   "asset",
+  // The `job`/worker/outbox layer is gated on `ADR-0004`, still Proposed, per
+  // `DEC-094`; only `task`/`approval` are in the schema-only workflow slice.
+  "job",
 ];
 
 /** New DB-enforced checks added to the generated core DDL (0001). */
