@@ -54,7 +54,7 @@ workforce-documents half is complete); `ADR-0006` was accepted 2026-09-21 and `A
 HMS & food-safety (IK-mat) module, employee personnel documents (contracts)
 and a staff document library — recorded as `DEC-086`…`DEC-094`, requirement
 ids `WF-007`, `DOC-001…DOC-004`, `HMS-001…HMS-007`, delivery **Phase 6 +
-Epics 20/21** (§4 rows 19/20); rows 19a–19e, 20a and 20b are delivered.
+Epics 20/21** (§4 rows 19/20); rows 19a–19e, 20a, 20b and 20c are delivered.
 Verification at the workforce-slice tree:
 `typecheck`/`lint`/`build`/`format:check` clean; **2057/2057 tests with
 `DATABASE_URL`**
@@ -70,10 +70,16 @@ tables**): `document`, `document_version` and `document_acknowledgement` — the
 **first versioned** entity in the programme; all-staff read of published
 `all_staff` documents, managers publish, superseded versions retrievable to
 managers only, optional audited acknowledgements; `/api/v1/documents/**` and
-`/api/v1/document-versions/**`. **Next task — buildable now:** the
-**`task`/`approval` platform tables** (`DEC-094`) — schema-only, no ADR
-dependency; the `job`/worker/outbox layer stays gated on `ADR-0004`
-acceptance. Then the
+`/api/v1/document-versions/**`. **Delivered — the `task`/`approval` platform
+tables** (`DEC-094`) 2026-09-22 (migration `0050`, **83 tables**;
+`task`/`approval` schema-only, org-scoped, no `job`/worker/outbox —
+`ADR-0004` still `Proposed`; provisional clarifications recorded as
+`DEC-101`). **Next task — buildable now:** row 14 workforce/scheduling
+(`WF-001`–`WF-007`; shifts/worked-hours/payroll-input; the `employee` entity
+has landed), subject to the **WF-003 self-assignment login model** and the
+privacy-review retention periods per file class (a recorded provisional
+clarification if needed); the receipt→ledger wiring (the OPS destination
+`storage_area_id` policy) remains the alternative buildable item. Then the
 programme
 build order (§4 rows 19–20). **New open points from the workforce-slice
 reviews (recorded, do not resolve silently):** `WF-007`'s audited
@@ -158,7 +164,7 @@ inputs; the receipt→ledger wiring needs the OPS destination
 history/grain quality (I11); rows 15–18 remain blocked (data /
 `ADR-0009`–`0011`); the deployment rehearsal is parked on the owner inputs;
 the golden fixtures are unsigned.
-Next free decision id `DEC-100`.
+Next free decision id `DEC-102`.
 
 ## 2. The execution loop (per slice)
 
@@ -282,8 +288,8 @@ checklist runs and **maintenance logs** — with per-source, fail-closed role au
 denied; no partial bundle) and exactly one `hms.compliance_export.generated` audit event per
 generation; no persisted artifact, storage client or signed URL; verified 1861/1861 with
 `DATABASE_URL`). **The HMS epic is complete** — all of `HMS-001`…`HMS-007` are delivered across
-19a–19e; the programme continues at row 20 (20a and 20b delivered). |
-| 20 | Task/approval platform + programme candidate gater (contracts, staff document library, personnel documents) | P6 / epics 21 | `WF-007`, `DOC-001`–`004`; `DEC-087`–`DEC-094`; `ADR-0004` (**Proposed** — job/worker/outbox layer only) | 19a; row 14 for `employee` | `task`/`approval` build now (`DEC-094`); the `job`/worker/outbox layer is **gated on `ADR-0004` acceptance** by the named decider | **20a: done** — `employee` + personnel documents (`DEC-087`/`DEC-099`, requirement `WF-007`) delivered 2026-09-22 (migrations `0046`/`0047`, **78 tables**; the `employee` parent — a real nullable `user_id` FK to the org-scoped `app_user`, `name`, free-text `role_code`, CHECK-backed `employment_type`, `base_hourly_rate numeric(19,4)`, a plain-uuid `cost_center_id`, `primary_location_id`, `active_from`/`active_to`, `retired_at`, retired-never-deleted — and `employee_document` — `employee_id` FK, `employee_document_kind` vocabulary, `title`, a nullable real `file_object_id` FK, nullable `issued_at`/`expires_at` calendar dates; org-scoped with four cross-org coherence guards; employees follow the `Employee records` matrix row, personnel documents the `Employee personnel documents` row — owner/general_manager/admin only, finance excluded; a location-scoped caller cannot see a NULL-`primary_location_id` employee; `/api/v1/workforce/**`; committed `246c735`…`5b932a8`; verified 2057/2057 with `DATABASE_URL`). **20b: done** — the staff document library (`DEC-088`/`DEC-100`, requirements `DOC-001`…`DOC-004`) delivered 2026-09-22 (migrations `0048`/`0049`, **81 tables**; `document`, `document_version`, `document_acknowledgement`; all-staff read published `all_staff` docs, managers publish, superseded versions retrievable to managers only, optional audited acknowledgement; the first versioned entity in the programme; `/api/v1/documents/**` and `/api/v1/document-versions/**`; `DEC-100` provisional clarifications recorded), then the `task`/`approval` platform tables (`DEC-094`) |
+19a–19e; the programme continues at row 20 (20a, 20b and 20c delivered). |
+| 20 | Task/approval platform + programme candidate gater (contracts, staff document library, personnel documents) | P6 / epics 21 | `WF-007`, `DOC-001`–`004`; `DEC-087`–`DEC-094`; `ADR-0004` (**Proposed** — job/worker/outbox layer only) | 19a; row 14 for `employee` | `task`/`approval` build now (`DEC-094`); the `job`/worker/outbox layer is **gated on `ADR-0004` acceptance** by the named decider | **20a: done** — `employee` + personnel documents (`DEC-087`/`DEC-099`, requirement `WF-007`) delivered 2026-09-22 (migrations `0046`/`0047`, **78 tables**; the `employee` parent — a real nullable `user_id` FK to the org-scoped `app_user`, `name`, free-text `role_code`, CHECK-backed `employment_type`, `base_hourly_rate numeric(19,4)`, a plain-uuid `cost_center_id`, `primary_location_id`, `active_from`/`active_to`, `retired_at`, retired-never-deleted — and `employee_document` — `employee_id` FK, `employee_document_kind` vocabulary, `title`, a nullable real `file_object_id` FK, nullable `issued_at`/`expires_at` calendar dates; org-scoped with four cross-org coherence guards; employees follow the `Employee records` matrix row, personnel documents the `Employee personnel documents` row — owner/general_manager/admin only, finance excluded; a location-scoped caller cannot see a NULL-`primary_location_id` employee; `/api/v1/workforce/**`; committed `246c735`…`5b932a8`; verified 2057/2057 with `DATABASE_URL`). **20b: done** — the staff document library (`DEC-088`/`DEC-100`, requirements `DOC-001`…`DOC-004`) delivered 2026-09-22 (migrations `0048`/`0049`, **81 tables**; `document`, `document_version`, `document_acknowledgement`; all-staff read published `all_staff` docs, managers publish, superseded versions retrievable to managers only, optional audited acknowledgement; the first versioned entity in the programme; `/api/v1/documents/**` and `/api/v1/document-versions/**`; `DEC-100` provisional clarifications recorded), **20c: done** — the `task`/`approval` platform tables (`DEC-094`) delivered 2026-09-22 (migration `0050`, **83 tables**; `task`/`approval` schema-only, org-scoped, no `job`/worker/outbox — `ADR-0004` still `Proposed`; provisional clarifications `DEC-101`); **next: row 14** workforce/scheduling (`WF-001`–`WF-007` — shifts/worked-hours/payroll-input; the `employee` entity has landed), subject to the **WF-003 self-assignment login model** and the privacy-review retention periods per file class |
 
 Convention: `blocked (owner)` means an owner/tech acceptance or approval named in the gate
 is required before the slice can be implemented or relied on; `blocked (data)` means a
