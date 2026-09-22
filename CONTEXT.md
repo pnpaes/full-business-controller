@@ -12,41 +12,49 @@ orientation and the next step. See "Handover archive" and "Update protocol".
 ## Resume here (next session)
 
 **Say "resume the work" and start here.** A fresh session must be able to
-continue from this section alone. (Rewritten by the 2026-09-22 row-13c
-sales-&-margin-reporting session.)
+continue from this section alone. (Rewritten by the 2026-09-22 row-13d
+menu-engineering session.)
 
-**State:** `main`; HEAD before the row-13c slice was **`e592188`** (the row-13b
-handoff). Row 13c lands as **`e79c88e`** `feat(domain)`, **`ea9140e`**
-`feat(persistence)`, **`b76fc0b`** `feat(application)`, **`3957ad8`**
-`feat(web)`, the `docs(decisions)` commit (`DEC-108`/`DEC-109`) and this
-`docs(context)` handoff. Nothing pushed; nothing applied to DigitalOcean.
-Schema: migrations through **`0059`**; **89 tables**; next free decision id
-**`DEC-110`**. Baseline with `DATABASE_URL`: **3255/3255 tests** (214 files).
-Handoffs: `docs/handoffs/066-…md` (the read model) and `067-…md` (the review
-fixes). **The row-13 close half (13a + 13b) is complete; the dashboards half has
-started (13c delivered).**
+**State:** `main`; HEAD before the row-13d slice was **`4f77c0c`** (the row-13c
+handoff). Row 13d lands as **`af2b81c`** `feat(domain)`, **`b360c82`**
+`feat(persistence)`, **`eb6dbb6`** `feat(application)`, **`7f7dfc7`**
+`feat(web)`, plus this `docs(context)` handoff. Nothing pushed; nothing applied
+to DigitalOcean. Schema: migrations through **`0059`**; **89 tables**; next free
+decision id **`DEC-110`**. Baseline with `DATABASE_URL`: **3324/3324 tests**
+(219 files). Handoff: `docs/handoffs/068-…md` (13d), `066-…md`/`067-…md` (13c).
+**Row 13's close half (13a + 13b) and its dashboards + menu-engineering half
+(13c + 13d) are complete**; only `RPT-004` remains of the row-13 reporting set.
 
-**Next task — row 13 menu engineering (`RPT-005`, the last row-13 item).** It is
-data-gated: build it over synthetic fixtures (I11 still gates real history/grain
-data). Objective: the contribution/popularity matrix with labor/waste context and
-a drill-down, per `04_CALCULATIONS.md` §4.11 and `08_UI_UX.md` §8.3. Reuse the
-row-13c read model (`packages/application/src/reporting/`, `RPT-001`) rather than
-re-deriving net sales/contribution; menu engineering adds popularity thresholds
-and the strategic role annotation. The variant-resolution chain now exists
-(`DEC-108` item 5, `DEC-109` item 4: `product_variant_id → sku →
-external_mapping → unmapped`), so product-level grouping shows real labels over
-synthetic fixtures; the row-11 importer still never writes
-`sales_line.product_variant_id`, so the mapping writer remains the lead
-sub-task if real product labels are wanted. Do not resolve I11, the OPS
-`storage_area_id` policy or any recorded open input silently.
+**Next task — `RPT-004`: stock value/variance, production yield and waste
+value/reasons reporting.** The last `RPT` item. Reuse the reporting read model
+where possible (`packages/application/src/reporting/`); the facts are
+`stock_balance`/`stock_movement` (value/variance, as-of), `production_batch`
+input/output variance (yield) and `waste_event` (value/reasons — note the
+`DEC-068` moving-average-only valuation and the item→product attribution gap).
+It is **data-gated on I11** (history/grain quality) — build over synthetic
+fixtures. Alternatives: the **cost-card composition assembler** (unblocks the
+contract's full `unit_variable_cost`/`unit_full_cost`, which would let the
+row-13c/d reports show real contribution and full cost); the deferred close
+follow-ups (correction-posting wiring `DEC-028`/`DEC-073`, `daily_close`); the
+**receipt→ledger wiring** once the OPS `storage_area_id` policy lands; the
+row-11 **import mapping writer** (so `sales_line.product_variant_id` is
+populated — the variant chain resolves by sku meanwhile). Do not resolve I11, the
+OPS policy or any recorded open input silently.
 
-**Scope (do):** read this file, `docs/handoffs/066-…md` and `065-…md`,
-`04_CALCULATIONS.md` §4.11, `08_UI_UX.md` §8.3/§8.4, `RPT-005` in
-`11_REQUIREMENTS_CATALOG.md`, `docs/adr/0007-reporting-aggregates.md` and
-`DEC-032`/`DEC-063`; keep changes organization-scoped (`DEC-061`), additive,
-decimal-only (`CALCULATION_CONTRACT.md`: never floats, HALF_UP), with a
-`.test.ts` for new non-trivial logic. Reuse the reporting read model and the
-`report-labels` helpers.
+**Objective:** the `RPT-004` stock/production/waste reporting deliverables per
+the existing package boundaries — metric definitions once in domain/application,
+not in dashboard SQL (`ADR-0007`), decimal-only, with scope and freshness
+displayed (`FND-006`) and a drill-down path to records (`RPT-002`), over
+synthetic fixtures.
+
+**Scope (do):** read this file, `docs/handoffs/068-…md`/`066-…md`,
+`RPT-004`/`RPT-002`/`FND-006` in `11_REQUIREMENTS_CATALOG.md`,
+`docs/adr/0007-reporting-aggregates.md`, `04_CALCULATIONS.md` §4.8,
+`CALCULATION_CONTRACT.md`, `DEC-032`/`DEC-063`/`DEC-068` and
+`docs/BUILD_ROADMAP.md` §1/§4 first; keep changes organization-scoped
+(`DEC-061`), additive, decimal-only, with a rehearsed down path for any
+migration, `EXPECTED_TABLES` updated, a `.test.ts` for new non-trivial logic, and
+small atomic commits with the rollback approach in the commit body (Rule 2).
 
 **Scope (do not):** do not invent a cost-card composition assembler or report
 full cost/direct labour/channel fees (none is computable today — report
@@ -58,14 +66,15 @@ inputs.
 
 **Acceptance / verification:** `export NVM_DIR="$HOME/.nvm"; . "$NVM_DIR/nvm.sh";
 nvm use 22`; then `npm run typecheck`, `npm run lint`, `npm run test` (with
-`DATABASE_URL` — current baseline **3255/3255**, 214 files), `npm run build`,
-`npm run format:check`, `npm audit --omit=dev` = 0; `db:migrate` a no-op. If the
-row-13c slice is committed first, split it into layer commits
-(`feat(domain)`, `feat(persistence)`, `feat(application)`, `feat(web)`,
-`feat(ui)`, `docs(context)`) — see `docs/handoffs/066-…md`.
+`DATABASE_URL` — current baseline **3324/3324**, 219 files), `npm run build`,
+`npm run format:check`, `npm audit --omit=dev` = 0; `db:migrate` a no-op. Commit
+in layers (`feat(domain)`, `feat(persistence)`, `feat(application)`, `feat(web)`,
+`docs(decisions)`, `docs(context)`) with the rollback approach in the body
+(Rule 2).
 
-**Step after:** menu engineering then the deferred close follow-ups
-(correction-posting wiring `DEC-028`/`DEC-073`, `daily_close`); the
+**Step after:** `RPT-004` then the cost-card composition assembler (real
+contribution/full cost); the deferred close follow-ups (correction-posting wiring
+`DEC-028`/`DEC-073`, `daily_close`); the row-11 import mapping writer; the
 receipt→ledger wiring once the OPS policy lands; the test-deployment rehearsal
 and golden-fixture sign-off (both parked on owner inputs).
 
@@ -123,10 +132,16 @@ Per-slice detail, commits and reconciliation are in `docs/handoffs/`.
 
 ## Current status
 
-- **As of:** 2026-09-22 — branch `main`; the row-13c slice is committed
-  (`e79c88e`…`3957ad8`, plus the `docs(decisions)` and this `docs(context)`
-  handoff). Lineage and full per-slice detail: `docs/handoffs/README.md` and the
-  files it lists.
+- **As of:** 2026-09-22 — branch `main`; the row-13d slice is committed
+  (`af2b81c`…`7f7dfc7`, plus this `docs(context)` handoff). Lineage and full
+  per-slice detail: `docs/handoffs/README.md` and the files it lists.
+- **Row 13d menu engineering is delivered (`RPT-005`, `DEC-109`):** computed
+  median thresholds (popularity; category-relative contribution before
+  labour/fees) over all resolved products before the cap, high/low classification
+  (no Star/Puzzle labels), waste annotations (`moving_average` only, `DEC-068`),
+  the `unmapped` bucket, `GET /api/v1/insights/menu-engineering` and the Insights
+  matrix screen with each row's actual threshold value + source period and a
+  drill-down link. Reuses the row-13c read model; no migration.
 - **Row 13c sales & margin reporting read model is delivered:**
   the domain (`SALES_REPORT_GRAINS`, `periodBucket`, `netSalesFromLine`,
   `contributionBeforeLabour`, `contributionMarginPctOrNull`), the org-scoped
@@ -166,19 +181,23 @@ Per-slice detail, commits and reconciliation are in `docs/handoffs/`.
 - **Schema:** migrations through **`0059`**; **89 tables** (all additive, tested
   down paths). Next free decision id **`DEC-110`** (`DEC-108`/`DEC-109` are
   committed).
-- **Verification (2026-09-22, at the row-13c tree):** `typecheck`, `lint`,
-  `format:check`, `build` clean; **3255/3255 tests with `DATABASE_URL`**
-  (214 files); `npm audit --omit=dev` = 0; `db:migrate` through `0059` a no-op on
+- **Verification (2026-09-22, at the row-13d tree):** `typecheck`, `lint`,
+  `format:check`, `build` clean; **3324/3324 tests with `DATABASE_URL`**
+  (219 files); `npm audit --omit=dev` = 0; `db:migrate` through `0059` a no-op on
   re-run; 89 public base tables.
-- **Not yet built:** row 13 menu engineering (`RPT-005`; `RPT-004` stock/
-  production/waste reporting; `ADR-0007`; data-gated on I11 — synthetic
-  fixtures), the deferred `daily_close` and the correction-posting wiring
-  (`DEC-028`/`DEC-073`), the receipt→ledger wiring (gated on the OPS destination
-  `storage_area_id` policy) and rows 15–18 (blocked: data / `ADR-0009`–`0011`).
-  The deferred file FKs (`goods_receipt.evidence_file_id`,
-  `cost_observation.receipt_file_id`, `operating_cost.evidence_file_id`,
-  `settlement.source_file_id`, `waste_event.photo_file_id`) stay plain uuids —
-  `file_object` exists (`DEC-085`, migration `0035`) but has no application port.
+- **Not yet built:** `RPT-004` (stock value/variance, production yield, waste
+  value/reasons; `ADR-0007`; data-gated on I11 — synthetic fixtures); the
+  cost-card composition assembler (which would make the contract's full
+  `unit_variable_cost`/`unit_full_cost` computable); the deferred `daily_close`
+  and the correction-posting wiring (`DEC-028`/`DEC-073`); the row-11 import
+  mapping writer (`sales_line.product_variant_id` is never written — the variant
+  chain resolves by sku meanwhile); the receipt→ledger wiring (gated on the OPS
+  destination `storage_area_id` policy) and rows 15–18 (blocked: data /
+  `ADR-0009`–`0011`). The deferred file FKs
+  (`goods_receipt.evidence_file_id`, `cost_observation.receipt_file_id`,
+  `operating_cost.evidence_file_id`, `settlement.source_file_id`,
+  `waste_event.photo_file_id`) stay plain uuids — `file_object` exists
+  (`DEC-085`, migration `0035`) but has no application port.
 - **Dev server (session-scoped):** `DATABASE_URL=postgres://aquarela:aquarela@localhost:5432/aquarela`,
   `ORGANIZATION_ID=1448a476-32f2-426f-b153-11a851011e48`; sign in `owner` /
   `LocalDevPass123`; MFA disabled for `owner`; demo data seeded including the
@@ -198,14 +217,14 @@ open-point lists. Per-slice detail is in `docs/handoffs/`.
    (2026-09-20). **The close half is delivered:** 13a `period_close`
    (`REC-003`, `REC-006`, `DEC-027`, `DEC-105`, migrations `0057`/`0058`) and
    13b prerequisites + `adjustment_period` (`REC-005`, `DEC-106`/`DEC-107`,
-   migration `0059`), committed `415297b`…`956ceb6`. **Row 13c — the sales &
-   margin reporting read model + Management-home wiring (`RPT-001`–`RPT-003`,
-   `FND-006`, `DEC-108`) — is delivered** (`e79c88e`…`3957ad8`,
-   `docs/handoffs/066-…md`/`067-…md`; no migration). **Next:** menu engineering
-   (`RPT-005`, `DEC-109`) over synthetic fixtures — **data-gated** on
-   history/grain quality (I11) and on the row-11 import mapping gap that leaves
-   `sales_line.product_variant_id` null — plus `RPT-004` and the deferred
-   `daily_close`/correction-posting wiring.
+   migration `0059`), committed `415297b`…`956ceb6`. **The reporting half is
+   delivered:** 13c sales & margin (`RPT-001`–`RPT-003`, `FND-006`, `DEC-108`,
+   `e79c88e`…`4f77c0c`) and 13d menu engineering (`RPT-005`, `DEC-109`,
+   `af2b81c`…`7f7dfc7`), both no-migration. **Next:** `RPT-004` (stock
+   value/variance, production yield, waste value/reasons) over synthetic
+   fixtures — **data-gated** on history/grain quality (I11) — then the deferred
+   `daily_close`/correction-posting wiring and the cost-card composition
+   assembler.
 2. **Receipt→ledger wiring — the lead item, gated:** on the **OPS receipt
    destination `storage_area_id` policy** (a recorded owner input). If it has
    not landed it stays blocked; do not resolve the policy silently
@@ -259,7 +278,13 @@ Full detail for each item lives in its slice's handoff file and in
   Variant resolution (`product_variant_id → sku → external_mapping → unmapped`)
   is implemented, but the row-11 importer still never writes
   `sales_line.product_variant_id`, so the **mapping writer** remains the lead
-  sub-task for real product labels.
+  sub-task for real product labels. 13d also records: waste annotations are
+  **`moving_average`-only** (`DEC-068`), and that filter also excludes
+  non-`moving_average` events from the **quantity** sum (inert while those
+  methods are unimplemented); `waste_event.currency` is not cross-checked
+  against the hard-coded NOK; the waste read has no covering index (a future
+  index review); and the top-level `threshold.contribution.value` is `null` by
+  design (category-relative — each row carries its own threshold).
 - **Row 14 (provisional, awaiting owner/OPS):** `DEC-104` — the "remaining
   planned shifts run as scheduled" assumption is **not** implemented (only
   `{assigned, completed}` shifts count, so a pre-month-end payroll report
