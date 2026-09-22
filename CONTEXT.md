@@ -15,8 +15,8 @@ orientation and the next step. See "Handover archive" and "Update protocol".
 continue from this section alone. (Rewritten by the 2026-09-22 handoff-folder
 refactor session.)
 
-**State:** `main`; HEAD **`0fa8224`** (the row-14b-2 `docs(context)` handoff),
-clean tree. Nothing pushed; nothing applied to DigitalOcean. Schema: migrations
+**State:** `main`; HEAD **`d70b32c`** (the handoff-folder refactor), clean tree.
+Nothing pushed; nothing applied to DigitalOcean. Schema: migrations
 through **`0056`**; **87 tables**; next free decision id **`DEC-105`**.
 Baseline with `DATABASE_URL`: **2830/2830 tests** (196 files).
 
