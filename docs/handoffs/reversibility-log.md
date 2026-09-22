@@ -1,5 +1,18 @@
 # Reversibility log
 
+- **2026-09-22 row-13c sales & margin reporting read model + its review fixes
+  (`RPT-001`–`RPT-003`, `FND-006`, `DEC-108`; 6 commits incl. this docs commit;
+  nothing pushed)**: 1. `e79c88e` `feat(domain)`; 2. `ea9140e`
+  `feat(persistence)`; 3. `b76fc0b` `feat(application)`; 4. `3957ad8`
+  `feat(web)`; 5. `4d495d2` `docs(decisions)` (`DEC-108`/`DEC-109`); 6. this
+  `docs(context)` update — each independently revertible with
+  `git revert <sha>`. **No migration and no data written** (the read model is
+  on-demand over the canonical facts); schema stays **89 tables / `0059`**;
+  `db:migrate` is a no-op. The review fixes (F1–F11: the variant-resolution
+  chain, the window-level distinct transaction count, the multi-location
+  drill-down scope, the `included`-line disclosure, the fake exclusion, the
+  removed dead seams, safe count casts, doc/label fixes and the added tests) are
+  folded into the same layer commits. Nothing applied to DigitalOcean.
 - **2026-09-22 row-13b close prerequisites + `adjustment_period` slice
   (`REC-003`/`REC-005`/`REC-006`/`DEC-027`, provisional `DEC-106`/`DEC-107`; 6
   commits incl. this docs commit; nothing pushed)**: 1. `3ee7b25`

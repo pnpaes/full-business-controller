@@ -8,6 +8,8 @@ for that slice, including commits, verification and reconciliation notes.
 The per-slice rollback/commit inventory lives in
 [`reversibility-log.md`](reversibility-log.md).
 
+- **2026-09-22** — [Row 13c review findings applied: full variant resolution (product_variant_id → sku → external_mapping → unmapped) for product/category grouping, a window-level distinct transaction count, the multi-location drill-down scope, the `included`-line disclosure and the F1–F11 fixes; no migration](067-2026-09-22-row-13c-review-fixes-variant-resolution-window-count.md)
+- **2026-09-22** — [Row 13c delivered: the sales & margin reporting read model (`RPT-001`–`RPT-003`, `FND-006`) — domain buckets/net-sales/contribution, the org-scoped on-demand application + persistence read model, `/api/v1/reports/sales` + `/records`, and the Management-home + Insights→Reports wiring; no migration](066-2026-09-22-row-13c-sales-margin-reporting-read-model.md)
 - **2026-09-22** — [Row 13b delivered: close prerequisites + `adjustment_period` (DEC-106/DEC-107, migration 0059); the row-13 close half is complete; the row-13a create-race recovery fixed](065-2026-09-22-row-13b-close-prerequisites-adjustment-period-dec-106-dec-107.md)
 - **2026-09-22** — [Row 13a period close/lock delivered (REC-003/REC-006, DEC-027, DEC-105, migrations 0057–0058); the `period_close` table + domain + application + web port; adversarial-review fixes applied (row locking, create race, reopen scope, hardened 0058 guards)](064-2026-09-22-row-13a-period-close-lock-delivered-rec-003-rec-006.md)
 - **2026-09-22** — [Handoff folder introduced; `CONTEXT.md` slimmed to a live orientation](063-2026-09-22-handoff-folder-refactor.md)
