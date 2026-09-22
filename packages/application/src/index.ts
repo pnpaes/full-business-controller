@@ -11,6 +11,7 @@ export * from "./inventory";
 export * from "./imports";
 export * from "./production";
 export * from "./reconciliation";
+export * from "./reporting";
 export * from "./sales";
 export * from "./scheduling";
 export * from "./recipes";
