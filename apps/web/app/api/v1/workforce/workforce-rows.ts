@@ -7,6 +7,7 @@ import {
   DEFAULT_SHIFT_LIMIT,
   EMPLOYEE_DOCUMENT_KINDS,
   EMPLOYMENT_TYPES,
+  PAYROLL_REPORT_STATUSES,
   SHIFT_STATES,
   type EmployeeDocumentRecord,
   type EmployeeRecord,
@@ -1187,15 +1188,6 @@ export function toShiftAdjustmentRows(
  * defensively, like the other slices, even though the application reads are
  * already organization-scoped (`DEC-061`).
  */
-
-/**
- * The `payroll_report_status` vocabulary (`DATA_DICTIONARY.md` §4A,
- * `schemas/domain-enums.yaml`): `draft, generated, exported, superseded`.
- * Declared locally rather than imported because the enum is still unexported by
- * `@aquarela/application` (`UNEXPORTED_YAML_KEYS`); the four literal values are
- * the check, so a non-member filter is fail-closed.
- */
-const PAYROLL_REPORT_STATUSES = ["draft", "generated", "exported", "superseded"] as const;
 
 /** An optional `YYYY-MM-DD` filter: absent → `undefined`; malformed → `"invalid"`. */
 function readDateFilter(

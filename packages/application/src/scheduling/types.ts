@@ -400,10 +400,22 @@ export interface SchedulingStore {
     readonly payrollReportId: string;
   }): Promise<PayrollReportRecord | undefined>;
   /**
-   * The report for one `(organization, periodStart)` pair, organization-scoped
-   * (`DEC-061`), or `undefined` — the unique supersede key lookup.
+   * The **live** report for one `(organization, periodStart)` pair,
+   * organization-scoped (`DEC-061`), or `undefined` — the partial unique
+   * supersede-key lookup. Retained `superseded` rows are excluded, so a
+   * regenerated period still returns exactly one (live) row.
    */
   findPayrollReportForPeriod(query: {
+    readonly organizationId: string;
+    readonly periodStart: string;
+  }): Promise<PayrollReportRecord | undefined>;
+  /**
+   * The same live-report lookup as `findPayrollReportForPeriod`, taking the
+   * row's write lock (`SELECT … FOR UPDATE`) for the rest of the surrounding
+   * transaction, so concurrent regenerations for one period serialise. Used by
+   * `generatePayrollReport` to resolve the prior report it must supersede.
+   */
+  lockPayrollReportForPeriod(query: {
     readonly organizationId: string;
     readonly periodStart: string;
   }): Promise<PayrollReportRecord | undefined>;

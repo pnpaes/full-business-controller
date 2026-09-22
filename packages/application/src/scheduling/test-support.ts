@@ -392,14 +392,32 @@ export class FakeSchedulingStore implements SchedulingStore {
       : undefined;
   }
 
+  /**
+   * The live report for one `(organization, periodStart)` pair, or `undefined`.
+   * Superseded rows are retained under the same key, so they are excluded to
+   * mirror the real adapter's partial-unique predicate.
+   */
   async findPayrollReportForPeriod(query: {
     readonly organizationId: string;
     readonly periodStart: string;
   }): Promise<PayrollReportRecord | undefined> {
     return [...this.payrollReports.values()].find(
       (report) =>
-        report.organizationId === query.organizationId && report.periodStart === query.periodStart,
+        report.organizationId === query.organizationId &&
+        report.periodStart === query.periodStart &&
+        report.status !== "superseded",
     );
+  }
+
+  /**
+   * The fake has no row locks, so locking is the same live-report read as
+   * `findPayrollReportForPeriod`.
+   */
+  async lockPayrollReportForPeriod(query: {
+    readonly organizationId: string;
+    readonly periodStart: string;
+  }): Promise<PayrollReportRecord | undefined> {
+    return this.findPayrollReportForPeriod(query);
   }
 
   async listPayrollReports(query: PayrollReportListQuery): Promise<readonly PayrollReportRecord[]> {

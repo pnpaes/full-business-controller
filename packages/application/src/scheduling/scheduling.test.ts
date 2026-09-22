@@ -1535,7 +1535,7 @@ describe("generatePayrollReport", () => {
       before: { status: "generated" },
       after: { status: "superseded" },
     });
-    // The unique `(organization, periodStart)` key leaves exactly one live report.
+    // The partial unique `(organization, period_start)` key leaves exactly one live report.
     expect(
       (
         await listPayrollReports(store, {
@@ -1544,6 +1544,59 @@ describe("generatePayrollReport", () => {
         })
       ).map((row) => row.id),
     ).toEqual([second.id]);
+  });
+
+  it("resolves the prior period report through the row lock before superseding and inserting", async () => {
+    const { store, fixture } = setup();
+    const first = await generate(store, fixture);
+
+    const lock = vi.spyOn(store, "lockPayrollReportForPeriod");
+    const supersede = vi.spyOn(store, "updatePayrollReport");
+    const insert = vi.spyOn(store, "createPayrollReport");
+
+    await generate(store, fixture);
+
+    expect(lock).toHaveBeenCalledWith({
+      organizationId: fixture.organizationId,
+      periodStart: PAYROLL_PERIOD.periodStart,
+    });
+    expect(supersede).toHaveBeenCalledWith(
+      expect.objectContaining({ payrollReportId: first.id, status: "superseded" }),
+    );
+    // The lock read must happen before the supersede and the replacement insert.
+    expect(lock.mock.invocationCallOrder[0]!).toBeLessThan(supersede.mock.invocationCallOrder[0]!);
+    expect(lock.mock.invocationCallOrder[0]!).toBeLessThan(insert.mock.invocationCallOrder[0]!);
+  });
+
+  it("keeps exactly one live report across repeated regenerations", async () => {
+    const { store, fixture } = setup();
+    const first = await generate(store, fixture);
+    const second = await generate(store, fixture);
+    const third = await generate(store, fixture);
+
+    expect(store.payrollReports.size).toBe(3);
+    // The third regeneration must resolve the live second report (not the
+    // retained superseded first) and supersede it, leaving one live report.
+    expect(
+      (
+        await listPayrollReports(store, {
+          organizationId: fixture.organizationId,
+          status: "generated",
+        })
+      ).map((row) => row.id),
+    ).toEqual([third.id]);
+    await expect(
+      findPayrollReport(store, {
+        organizationId: fixture.organizationId,
+        payrollReportId: first.id,
+      }),
+    ).resolves.toMatchObject({ status: "superseded" });
+    await expect(
+      findPayrollReport(store, {
+        organizationId: fixture.organizationId,
+        payrollReportId: second.id,
+      }),
+    ).resolves.toMatchObject({ status: "superseded" });
   });
 
   it("rejects malformed dates and a non-advancing period", async () => {
@@ -1626,6 +1679,27 @@ describe("markPayrollReportExported", () => {
       markPayrollReportExported(store, {
         organizationId: fixture.organizationId,
         payrollReportId: first.id,
+        actorId: fixture.actorId,
+      }),
+    ).rejects.toThrow(/cannot be exported/);
+  });
+
+  it("refuses to export a draft report", async () => {
+    const { store, fixture } = setup();
+    const draft = await store.createPayrollReport({
+      organizationId: fixture.organizationId,
+      periodStart: PAYROLL_PERIOD.periodStart,
+      periodEnd: PAYROLL_PERIOD.periodEnd,
+      generatedBy: fixture.actorId,
+      status: "draft",
+      snapshot: { lines: [] },
+      createdBy: fixture.actorId,
+    });
+
+    await expect(
+      markPayrollReportExported(store, {
+        organizationId: fixture.organizationId,
+        payrollReportId: draft.id,
         actorId: fixture.actorId,
       }),
     ).rejects.toThrow(/cannot be exported/);

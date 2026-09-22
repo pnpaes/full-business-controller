@@ -7,6 +7,7 @@ import {
   createShift,
   createShiftAdjustment,
   createShiftAssignment,
+  findPayrollReportForPeriod,
   findShift,
   findShiftAdjustment,
   findShiftAssignment,
@@ -15,6 +16,7 @@ import {
   listShiftAssignments,
   listShifts,
   listWorkedHoursAssignments,
+  lockPayrollReportForPeriod,
   lockShift,
   updateShift,
   updateShiftAssignment,
@@ -23,6 +25,7 @@ import {
   createTestEmployee,
   createTestLocation,
   createTestOrganization,
+  createTestPayrollReport,
   createTestShift,
   createTestShiftAdjustment,
   createTestShiftAssignment,
@@ -906,6 +909,69 @@ describe.skipIf(!databaseUrl)("scheduling repository", () => {
 
       // Sanity: the "latest" correction is the newest, not the first.
       expect(latest.adjustedHours).toBe("6.25");
+    });
+  });
+
+  it("reads and locks only the live report for a period, ignoring a retained superseded row", async () => {
+    await inRollback(client.db, async (tx) => {
+      const live = await createTestPayrollReport(tx, orgId, {
+        periodStart: "2026-05-01",
+        periodEnd: "2026-05-31",
+        status: "generated",
+      });
+      // The partial unique `(organization_id, period_start)` excludes
+      // `superseded`, so a retained superseded row shares the period key. The
+      // live lookup must ignore it, or a regeneration would skip the supersede.
+      await createTestPayrollReport(tx, orgId, {
+        periodStart: "2026-05-01",
+        periodEnd: "2026-05-31",
+        status: "superseded",
+      });
+
+      expect(
+        (
+          await findPayrollReportForPeriod(tx, {
+            organizationId: orgId,
+            periodStart: "2026-05-01",
+          })
+        )?.id,
+      ).toBe(live.id);
+      expect(
+        (
+          await lockPayrollReportForPeriod(tx, {
+            organizationId: orgId,
+            periodStart: "2026-05-01",
+          })
+        )?.id,
+      ).toBe(live.id);
+
+      // A period whose only row is superseded has no live report to supersede.
+      await createTestPayrollReport(tx, orgId, {
+        periodStart: "2026-06-01",
+        periodEnd: "2026-06-30",
+        status: "superseded",
+      });
+      expect(
+        await findPayrollReportForPeriod(tx, {
+          organizationId: orgId,
+          periodStart: "2026-06-01",
+        }),
+      ).toBeUndefined();
+
+      // Cross-organization scope: another organization sees neither report.
+      const otherOrgId = await createTestOrganization(tx, uniqueSuffix());
+      expect(
+        await findPayrollReportForPeriod(tx, {
+          organizationId: otherOrgId,
+          periodStart: "2026-05-01",
+        }),
+      ).toBeUndefined();
+      expect(
+        await lockPayrollReportForPeriod(tx, {
+          organizationId: otherOrgId,
+          periodStart: "2026-05-01",
+        }),
+      ).toBeUndefined();
     });
   });
 });

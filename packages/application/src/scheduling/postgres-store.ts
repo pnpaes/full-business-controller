@@ -296,6 +296,13 @@ export function createPostgresSchedulingStore(db: Database): SchedulingStore {
       });
       return row === undefined ? undefined : toPayrollReport(row);
     },
+    lockPayrollReportForPeriod: async (query) => {
+      const row = await repo.lockPayrollReportForPeriod(db, {
+        organizationId: query.organizationId,
+        periodStart: query.periodStart,
+      });
+      return row === undefined ? undefined : toPayrollReport(row);
+    },
     listPayrollReports: async (query: PayrollReportListQuery) => {
       const rows = await repo.listPayrollReports(db, {
         organizationId: query.organizationId,

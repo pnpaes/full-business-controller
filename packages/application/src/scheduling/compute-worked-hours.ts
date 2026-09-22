@@ -70,6 +70,12 @@ export async function computeWorkedHours(
   // Every assignment carries its employee's `base_hourly_rate`; an employee's
   // rate is one value, so the first assignment row for an employee supplies it
   // for the summed row (the payroll report needs hours and rate together).
+  //
+  // ponytail: the current `employee.base_hourly_rate` is applied to the whole
+  // period, so a mid-period rate change reprices every hour in the window and a
+  // regenerate can differ from an earlier frozen snapshot. Ceiling: one rate per
+  // period. Upgrade path: an effective-dated rate history (the rate as of each
+  // shift) so a period spanning a rate change prices each hour correctly.
   const rateByEmployee = new Map<string, string>();
   for (const assignment of assignments) {
     if (!rateByEmployee.has(assignment.employeeId)) {

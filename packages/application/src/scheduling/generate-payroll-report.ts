@@ -33,12 +33,15 @@ export interface GeneratePayrollReportInput {
  * that window. `periodStart`/`periodEnd` must be `YYYY-MM-DD` calendar dates and
  * `periodEnd > periodStart` (`DomainError` otherwise).
  *
- * **Supersede:** `(organization_id, period_start)` is unique
- * (`payroll_report_org_period_key`), so a prior report for the same period that
- * is not already `superseded` is first moved to `superseded` (audited
- * `payrollReportSuperseded`) and only then is the replacement inserted
- * (`generated`, audited `payrollReportGenerated`). The report, its supersede and
- * both audit facts commit or roll back together.
+ * **Supersede:** `(organization_id, period_start)` is the partial unique
+ * `payroll_report_org_period_key` (it excludes `superseded` rows), so a prior
+ * report for the same period that is not already `superseded` is first moved to
+ * `superseded` (audited `payrollReportSuperseded`) and only then is the
+ * replacement inserted (`generated`, audited `payrollReportGenerated`). The
+ * prior live report is resolved through `lockPayrollReportForPeriod`
+ * (`SELECT … FOR UPDATE`), so two concurrent generations for one period
+ * serialise rather than both passing the existence check. The report, its
+ * supersede and both audit facts commit or roll back together.
  */
 export async function generatePayrollReport(
   store: SchedulingStore,
@@ -75,7 +78,7 @@ export async function generatePayrollReport(
       })),
     });
 
-    const existing = await tx.findPayrollReportForPeriod({
+    const existing = await tx.lockPayrollReportForPeriod({
       organizationId: input.organizationId,
       periodStart: input.periodStart,
     });

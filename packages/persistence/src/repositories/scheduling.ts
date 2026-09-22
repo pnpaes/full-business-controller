@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, inArray, lt, lte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, lt, lte, ne, sql } from "drizzle-orm";
 
 import type { Database } from "../client";
 import { employee, payrollReport, shift, shiftAdjustment, shiftAssignment } from "../schema";
@@ -615,10 +615,15 @@ export interface FindPayrollReportForPeriodQuery {
 }
 
 /**
- * The report for one `(organization, periodStart)` pair, organization-scoped
- * (`DEC-061`), or `undefined`. `(organization_id, period_start)` is the unique
- * supersede key (`DEC-104`), so this is the natural-key lookup the generator uses
- * to find a report it must supersede before inserting its replacement.
+ * The **live** report for one `(organization, periodStart)` pair,
+ * organization-scoped (`DEC-061`), or `undefined`. `(organization_id,
+ * period_start)` is the partial unique supersede key (`DEC-104`) — the index
+ * excludes `status = 'superseded'` — so this is the natural-key lookup the
+ * generator uses to find the report it must supersede before inserting its
+ * replacement. Superseded rows are retained under the same key, so the predicate
+ * excludes them and returns the one live row (or `undefined`); without it a
+ * later regeneration would read a retained superseded row, skip the supersede
+ * and collide with the partial unique (23505).
  */
 export async function findPayrollReportForPeriod(
   db: Database,
@@ -631,8 +636,37 @@ export async function findPayrollReportForPeriod(
       and(
         eq(payrollReport.organizationId, query.organizationId),
         eq(payrollReport.periodStart, query.periodStart),
+        ne(payrollReport.status, "superseded"),
       ),
     )
+    .limit(1);
+  return rows[0];
+}
+
+/**
+ * The same org-scoped, superseded-excluding select as
+ * `findPayrollReportForPeriod`, but taking the row's write lock
+ * (`SELECT … FOR UPDATE`) for the rest of the surrounding transaction. The
+ * generator resolves the prior live report through this lock, so two concurrent
+ * regenerations for one period serialise instead of both passing the existence
+ * check and colliding on the partial unique `(organization_id, period_start)`
+ * (23505). A period with no live report returns `undefined` without locking.
+ */
+export async function lockPayrollReportForPeriod(
+  db: Database,
+  query: FindPayrollReportForPeriodQuery,
+): Promise<PayrollReport | undefined> {
+  const rows = await db
+    .select()
+    .from(payrollReport)
+    .where(
+      and(
+        eq(payrollReport.organizationId, query.organizationId),
+        eq(payrollReport.periodStart, query.periodStart),
+        ne(payrollReport.status, "superseded"),
+      ),
+    )
+    .for("update")
     .limit(1);
   return rows[0];
 }
