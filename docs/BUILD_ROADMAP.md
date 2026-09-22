@@ -13,11 +13,13 @@ This file is **updated at the end of every slice** — statuses and the "current
 line move with the work; `CONTEXT.md` keeps the narrative handoff and the immediate
 `Resume here` section.
 
-**Current position:** HEAD on `main` = `d8bd98d` + **the HMS compliance /
-evidence export slice, 4 commits** (`05caf1b` `docs(decisions)` `DEC-098`,
-`7cb4f68` `feat(persistence)`, `275c3d5` `feat(application)`, `00508a3`
-`feat(web)`) plus the `docs(context)` handoff (nothing pushed; nothing applied
-to DigitalOcean). Slice 0, auth
+**Current position:** HEAD on `main` = `282046d` + **the `employee` +
+personnel-documents slice (programme row 20a, `DEC-087`/`DEC-099`), 5
+commits** (`246c735` `docs(decisions)` `DEC-099`, `59ad19e` `feat(persistence)`,
+`4faa6aa` `feat(application)`, `603054f` `feat(web)`, `5b932a8`
+`docs(runbook)`) plus the `docs(context)` handoff (nothing pushed; nothing
+applied to DigitalOcean).
+Slice 0, auth
 slices 1a–1e, slices 2–10, row 11
 (import framework + external mappings — **complete**: the `DEC-085`
 `file_object` platform table was delivered 2026-09-21 with migrations
@@ -40,36 +42,53 @@ corrective-actions slice** (programme row 19b; migrations
 HMS checklists slice** (programme row 19c; migrations `0042`–`0043`;
 decision entry `DEC-091`/`DEC-096`), the **`DEC-092` HMS equipment /
 maintenance slice** (programme row 19d; migrations `0044`–`0045`;
-decision entry `DEC-092`/`DEC-097`) and the **`DEC-093` HMS compliance /
-evidence export slice** (programme row 19e; **no migration** — migrations stay
-through `0045`; decision entry `DEC-093`/`DEC-098`) are
-`done` and committed (the **HMS half of the programme is complete**); `ADR-0006` was accepted 2026-09-21 and `ADR-0007` and
+decision entry `DEC-092`/`DEC-097`), the **`DEC-093` HMS compliance /
+evidence export slice** (programme row 19e; **no migration** — decision entry
+`DEC-093`/`DEC-098`) and the **`DEC-087` `employee` + personnel-documents
+slice** (programme row 20a; migrations `0046`/`0047`; decision entry
+`DEC-087`/`DEC-099`) are
+`done` and committed (the **HMS half of the programme is complete**; the
+workforce-documents half is under way); `ADR-0006` was accepted 2026-09-21 and `ADR-0007` and
 `ADR-0008` accepted 2026-09-20 (owner-delegated, revertible).
 **Programme approved (Phase A, 2026-09-21):** the owner approved an
 HMS & food-safety (IK-mat) module, employee personnel documents (contracts)
 and a staff document library — recorded as `DEC-086`…`DEC-094`, requirement
 ids `WF-007`, `DOC-001…DOC-004`, `HMS-001…HMS-007`, delivery **Phase 6 +
-Epics 20/21** (§4 rows 19/20); rows 19a–19e are delivered (the **HMS half of
-the programme is complete**).
-Verification at the compliance-export-slice tree:
-`typecheck`/`lint`/`build`/`format:check` clean; **1861/1861 tests with
+Epics 20/21** (§4 rows 19/20); rows 19a–19e and 20a are delivered.
+Verification at the workforce-slice tree:
+`typecheck`/`lint`/`build`/`format:check` clean; **2057/2057 tests with
 `DATABASE_URL`**
-(160 files); `npm audit --omit=dev` 0; `db:migrate` through `0045` is a no-op
-on re-run; 76 tables (no migration was needed for the export slice).
+(168 files); `npm audit --omit=dev` 0; `db:migrate` through `0047` is a no-op
+on re-run; 78 tables.
 Programme
 direction: proceed autonomously, per task — parallel background agents →
 adversarial review + fixes → document status and next steps → commit → next
-task. **Next task — buildable now:** the **`employee` entity + personnel
-documents** (`DEC-087`; requirements `WF-007` and `DOC-001`…`DOC-004`) —
-programme row 20a, the first slice of the workforce-documents half and the
-first that is not HMS; it needs its own reconnaissance (the `employee` entity;
-personnel documents — contracts and certificates — with versioning; the access
-rule that employee contracts are visible to owner + general_manager + admin
-with finance excluded) and a provisional clarification decision if the text
-leaves gaps (next free id `DEC-099`); it must not resolve the privacy-review
-retention periods silently. Then the
+task. **Next task — buildable now:** the **staff document library**
+(`DEC-088`; requirements `DOC-001`…`DOC-004`) — programme row 20b, the last
+slice of the workforce-documents half; it builds `document`,
+`document_version` and `document_acknowledgement`, with all-staff read of
+published `all_staff` documents, managers publish, superseded versions
+retrievable to managers only, and optional audited acknowledgements; it is the
+**first versioned** entity in the programme, so `DEC-088`'s version model must
+be implemented; it needs its own reconnaissance and a provisional
+clarification decision if the text leaves gaps (next free id `DEC-100`); it
+must not resolve the privacy-review retention periods silently. Then the
 programme
-build order (§4 rows 19–20). **New open points from the export-slice
+build order (§4 rows 19–20). **New open points from the workforce-slice
+reviews (recorded, do not resolve silently):** `WF-007`'s audited
+upload/replace **and retention** is not implementable while `DEC-087` defers
+the storage path — the bytes cannot be uploaded, downloaded, scanned or
+retention-enforced; there is no storage client, no signed URLs, and
+`file_object` has **no application port at all**; retention periods per file
+class remain a privacy-review input; there is **no version model** for
+personnel documents (a `supersedes_id` chain is the upgrade path); `role_code`
+has **no CHECK** (the vocabulary carries non-employee values);
+`employee.cost_center_id` is a plain uuid (the cost-centre FK stays deferred);
+**no un-retire path** and no delete path (retired, never deleted); the
+NULL-`primary_location_id` fail-closed rule is provisional; **location scope
+is enforced in the web layer only** (the systemic pattern); the fake's
+codepoint ordering vs Postgres collation for non-ASCII names. **New open
+points from the export-slice
 reviews (recorded, do not resolve silently):** the export's **DB-side location
 push-down** (the per-source cap is applied org-wide then filtered in memory,
 so a scoped caller can still get an incomplete bundle — now honestly flagged
@@ -138,7 +157,7 @@ inputs; the receipt→ledger wiring needs the OPS destination
 history/grain quality (I11); rows 15–18 remain blocked (data /
 `ADR-0009`–`0011`); the deployment rehearsal is parked on the owner inputs;
 the golden fixtures are unsigned.
-Next free decision id `DEC-099`.
+Next free decision id `DEC-100`.
 
 ## 2. The execution loop (per slice)
 
@@ -262,8 +281,8 @@ checklist runs and **maintenance logs** — with per-source, fail-closed role au
 denied; no partial bundle) and exactly one `hms.compliance_export.generated` audit event per
 generation; no persisted artifact, storage client or signed URL; verified 1861/1861 with
 `DATABASE_URL`). **The HMS epic is complete** — all of `HMS-001`…`HMS-007` are delivered across
-19a–19e; the **next row is 20a**, the `employee` entity + personnel documents (`DEC-087`). |
-| 20 | Task/approval platform + programme candidate gater (contracts, staff document library, personnel documents) | P6 / epics 21 | `WF-007`, `DOC-001`–`004`; `DEC-087`–`DEC-094`; `ADR-0004` (**Proposed** — job/worker/outbox layer only) | 19a; row 14 for `employee` | `task`/`approval` build now (`DEC-094`); the `job`/worker/outbox layer is **gated on `ADR-0004` acceptance** by the named decider | todo — build order: 20a `employee` + personnel documents (`DEC-087`; contracts visible only to owner + general_manager + admin, finance excluded), 20b the staff document library (`DEC-088`; all-staff read published `all_staff` docs, managers publish, versioned, optional acknowledgement, append-only), then the `task`/`approval` platform tables (`DEC-094`) |
+19a–19e; the programme continues at row 20 (20a delivered, 20b next). |
+| 20 | Task/approval platform + programme candidate gater (contracts, staff document library, personnel documents) | P6 / epics 21 | `WF-007`, `DOC-001`–`004`; `DEC-087`–`DEC-094`; `ADR-0004` (**Proposed** — job/worker/outbox layer only) | 19a; row 14 for `employee` | `task`/`approval` build now (`DEC-094`); the `job`/worker/outbox layer is **gated on `ADR-0004` acceptance** by the named decider | **20a: done** — `employee` + personnel documents (`DEC-087`/`DEC-099`, requirement `WF-007`) delivered 2026-09-22 (migrations `0046`/`0047`, **78 tables**; the `employee` parent — a real nullable `user_id` FK to the org-scoped `app_user`, `name`, free-text `role_code`, CHECK-backed `employment_type`, `base_hourly_rate numeric(19,4)`, a plain-uuid `cost_center_id`, `primary_location_id`, `active_from`/`active_to`, `retired_at`, retired-never-deleted — and `employee_document` — `employee_id` FK, `employee_document_kind` vocabulary, `title`, a nullable real `file_object_id` FK, nullable `issued_at`/`expires_at` calendar dates; org-scoped with four cross-org coherence guards; employees follow the `Employee records` matrix row, personnel documents the `Employee personnel documents` row — owner/general_manager/admin only, finance excluded; a location-scoped caller cannot see a NULL-`primary_location_id` employee; `/api/v1/workforce/**`; committed `246c735`…`5b932a8`; verified 2057/2057 with `DATABASE_URL`). **20b: next** — the staff document library (`DEC-088`; `document`, `document_version`, `document_acknowledgement`; all-staff read published `all_staff` docs, managers publish, superseded versions retrievable to managers only, optional audited acknowledgement; the first versioned entity in the programme), then the `task`/`approval` platform tables (`DEC-094`) |
 
 Convention: `blocked (owner)` means an owner/tech acceptance or approval named in the gate
 is required before the slice can be implemented or relied on; `blocked (data)` means a
@@ -277,6 +296,24 @@ arrives.
 Outstanding owner decisions/inputs that gate slices (no new decisions invented here; no
 dates assigned):
 
+- **`employee` + personnel-documents-slice open points (2026-09-22, from the
+  `DEC-087` reviews and reconciliation; recorded not decided — do not resolve
+  silently):** `WF-007` (Must) requires "audited upload/replace **and
+  retention**", but `DEC-087` defers the storage path — **the bytes cannot be
+  uploaded, downloaded, scanned or retention-enforced**; there is no storage
+  client, no signed URLs, and `file_object` has **no application port at
+  all**. owner/OPS + privacy review. **Retention periods per file class**
+  remain a privacy-review input. There is **no version model** for personnel
+  documents — a `supersedes_id` chain is the upgrade path. owner/TECH.
+  `role_code` has **no CHECK** (the vocabulary carries non-employee values) —
+  an owner/OPS vocabulary question. `employee.cost_center_id` is a **plain
+  uuid** (the cost-centre FK stays deferred). owner/TECH. **No un-retire path**
+  and no delete path (retired, never deleted). The NULL-`primary_location_id`
+  fail-closed rule is **provisional**. **Location scope is enforced in the web
+  layer only** — the systemic pattern (see below). The fake sorts by JS
+  codepoint while Postgres uses collation for **non-ASCII names**. The
+  `DEC-087` slice itself is done (row 20a; migrations `0046`/`0047`; **78
+  tables**; committed `246c735`…`5b932a8`).
 - **HMS compliance/evidence-export-slice open points (2026-09-22, from the
   `DEC-093` reviews and reconciliation; recorded not decided — do not resolve
   silently):** the export's **DB-side location push-down** — today the

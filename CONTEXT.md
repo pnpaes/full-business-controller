@@ -9,137 +9,147 @@ duplicate their content.
 
 **Say "resume the work" and start here.** A fresh session must be able to
 continue from this section alone. (This section was rewritten by the
-2026-09-22 HMS compliance/evidence-export handoff session.)
+2026-09-22 `employee` + personnel-documents handoff session.)
 
-**State:** `main`; HEAD before this slice's commits was **`d8bd98d`**
-(`docs(context)` — the HMS equipment-slice handoff, `DEC-092`/`DEC-097`);
-the branch was clean before these handoff edits; nothing pushed; nothing
-applied to DigitalOcean. Lineage: `d8bd98d` → **the HMS compliance / evidence
-export slice, 5 commits** (the orchestrator commits them as the slice closes;
-the real hashes are `05caf1b` … `00508a3`):
+**State:** `main`; HEAD before this slice was **`282046d`** (`docs(context)` —
+the HMS compliance / evidence-export handoff, `DEC-093`/`DEC-098`). The slice
+lands as **5 commits** (the orchestrator committed them as the slice closed),
+plus this `docs(context)` handoff as the last: 1. `246c735` `docs(decisions)` —
+`DEC-099`; 2. `59ad19e` `feat(persistence)` — the `employee` +
+`employee_document` tables (migrations `0046`/`0047`), the
+`employee_document_kind` vocabulary and the repository + tests; 3. `4faa6aa`
+`feat(application)` — the workforce commands/queries + store port + adapter +
+fake + tests; 4. `603054f` `feat(web)` — the `/api/v1/workforce/**` routes with
+role + location scope; 5. `5b932a8` `docs(runbook)` — the
+migration-ledger/rehearsal entries. Nothing pushed; nothing applied to
+DigitalOcean.
 
-1. `05caf1b` `docs(decisions)` — `DEC-098`; 2. `7cb4f68` `feat(persistence)`
-   — the optional `from`/`to` period filter on the five HMS list queries; 3. `275c3d5` `feat(application)` — the compliance evidence export bundle; 4. `00508a3` `feat(web)` — the export route with fail-closed scope; 5. `docs(context)` — this handoff. **No migration was needed** (migrations
-   stay through `0045`; **76 tables**).
+**Delivered (programme step 20a — `DEC-087`, requirement `WF-007`, provisional
+`DEC-099`):** the **`employee`** parent — `user_id` (a real nullable FK to the
+organization-scoped `app_user`), `name`, `role_code` free text,
+`employment_type` CHECK-backed, `base_hourly_rate numeric(19,4)`,
+`cost_center_id` plain uuid (the cost-centre FK stays deferred),
+`primary_location_id`, `active_from`/`active_to`, `retired_at`; **retired,
+never deleted** — and **`employee_document`** — `employee_id` FK,
+`kind ∈ {contract, certificate, id_document, other}` from the new
+`employee_document_kind` vocabulary, `title`, a **nullable real FK**
+`file_object_id`, `issued_at`/`expires_at` as nullable calendar dates.
+Org-scoped (`DEC-061`); **four** cross-org coherence guards
+(`employee.primary_location_id`, `employee.user_id`,
+`employee_document.employee_id`, the nullable `employee_document.file_object_id`)
+raising `23514`. **No document version model** (`DEC-087` defines none — the
+"versioning" wording belongs to `DEC-088`'s staff library, which was
+deliberately **not** built). Access: employees follow the matrix row
+`Employee records` (owner, general_manager, location_manager location-scoped,
+**finance**, admin); personnel documents follow `Employee personnel documents`
+(**owner, general_manager, admin only — finance explicitly excluded**, a
+deliberate asymmetry). A location-scoped caller cannot see or mutate an
+employee whose `primary_location_id` is NULL (fail-closed). `baseHourlyRate`
+is a decimal **string** end to end, never a float. The API is
+`/api/v1/workforce/**`.
 
-**Delivered (programme step 19e — `DEC-093`, requirement `HMS-007`,
-provisional `DEC-098`):** a **synchronous, storage-free JSON evidence bundle**
-at `GET /api/v1/hms/compliance-export`. It gathers **five** sources
-org-scoped and period-filtered — monitoring readings, incidents, corrective
-actions, checklist runs and **maintenance logs** (maintenance is included
-because `HMS-007` is a _Must_ and the UI agrees; `DEC-098` item 1 resolved the
-`DEC-093` omission) — and returns `{ generatedAt, organizationId, period,
-counts, truncated, personalDataFields, monitoringReadings[], incidents[],
-correctiveActions[], checklistRuns[], maintenanceLogs[] }` with provenance
-carried by the ids already on each record. **No file artifact, no storage
-client, no signed URL, no persisted bundle** (deferred by
-`DEC-085`/`ADR-0006`). Authorization is per-source and **fail-closed**:
-`owner`, `general_manager`, `location_manager`, `admin` only — `analyst` is
-denied (it has no incident/corrective-action read) and a partial bundle is
-explicitly **not** implemented; `kitchen`/`front_of_house`/`purchasing`/
-`finance` are denied. A location-scoped caller is bounded to their locations
-(`corrective_action` and `maintenance_log` are scoped through their parents —
-the recorded ceiling); an unscoped caller gets the organization-wide bundle,
-and an **empty** location scope now means organization-wide at both the route
-and the query. Generating the bundle writes exactly **one** `audit_event`
-(`hms.compliance_export.generated`) carrying the actor, scope, period, sources
-and counts. Period semantics: optional inclusive `from`/`to`, one date column
-per source (`measured_at`, `occurred_at`, `due_date`, `run_at`,
-`performed_at`).
-
-**Also delivered:** the optional `from`/`to` period filter on the five HMS
-list queries at every layer (persistence repository → application query →
-store port → adapter → fake → web parsers) — additive, **no migration**.
-
-**Schema:** unchanged — migrations through **`0045`**; **76 tables**. Next
-free decision id **`DEC-099`**.
+**Schema:** migrations through **`0047`**; **78 tables** (was 76). Next free
+decision id **`DEC-100`**.
 
 **Verification (exact):** `typecheck`, `lint`, `format:check`, `build` clean;
-**1861/1861 tests with `DATABASE_URL`** (160 files); `npm audit --omit=dev`
-= 0; `db:migrate` through `0045` a no-op on re-run; **76** public base tables.
-**No new migration was needed for this slice** (so no runbook entry).
+**2057/2057 tests with `DATABASE_URL`** (168 files); `npm audit --omit=dev`
+= 0; `db:migrate` through `0047` a no-op on re-run; **78** public base tables;
+the four workforce guard triggers present.
 
-**Reviews and reconciliation (recorded honestly):** `reviewer-qwen` and
-`reviewer-glm` each found **the same blocker**: the route forwarded
-`access.locationIds` (an **empty array** for owner/GM/admin) and the query
-treated `locationIds !== undefined` as scoped, so the primary use case — an
-owner exporting the whole organization — returned an **empty bundle** and
-audited an empty scope; the route test even asserted the buggy forwarding.
-**Accepted + fixed at both layers** (the route forwards `undefined` for an
-empty scope; the query treats `[]` as organization-wide) and the test was
-corrected. `reviewer-qwen` blocker 2: `truncated` was dishonest for a scoped
-caller — the per-source cap was applied before the in-memory scope filter, so
-a scoped caller could receive fewer than all in-scope rows while the bundle
-attested `truncated: false` — **accepted + fixed**: `truncated` is now
-conservative ("in-scope rows may be missing") — set when a source's own raw
-window filled **or** when a parent list feeding its scoping filled its window
-— and the child id sets are built from the **filtered** parents, not the
-capped output; the **DB-side location push-down remains the recorded upgrade
-path**. `reviewer-qwen` major: `DEC-098` item 5 asserted that `07.4`'s
-personal-data minimization applies, but nothing implements it — **accepted +
-fixed**: `DEC-098` was amended to state explicitly that **no minimization is
-applied in this increment** and that redaction is an open point pending the
-privacy review, and the bundle now declares a `personalDataFields` list
-naming the personal-data fields so a later pass has a contract to shrink.
-`reviewer-glm` major: the parent id sets were built from the capped window,
-silently dropping in-scope children — **accepted + fixed** (same fix as
-blocker 2). Minors **accepted + fixed**: the `due_date` calendar-day
-extraction from a non-UTC offset bound is now documented and tested; a
-scoped-window-filled `truncated: true` test was added; empty-roles and
-unknown-role 403 tests were added; the "allows admin" test now asserts the
-forwarded query; an O(n) `includes` became a `Set`. Minor **declined**: the
-audit write is best-effort outside a transaction — the export is a read and a
-failed audit surfaces as a 500 to the caller; this stays a recorded systemic
-open point alongside the driver-error→500 point. **Coverage gap:**
-`reviewer-glm`'s step-capped pass did **not** read part of the export-period
-test body in `hms.postgres.test.ts` or the persistence `*.postgres.test.ts`
-diffs — recorded, not resolved.
+**Migrations:** `0046_workforce` (journal `idx` 46, `when` `1790035770192`,
+sha256 `c6ac6a67a527bfeeda6392733b76ad14112d56d3549cbbc1545c5485879dc158`);
+`0047_workforce_org_guard` (journal `idx` 47, `when` `1790035771192`, sha256
+`51cdb6d141c38c36d50393e22ef8183160c531c58e2e9245978108521f558940`). Down
+companions (unjournalled): `0046_workforce_down.sql` (drops `employee_document`
+then `employee`; 78 → 76), `0047_workforce_org_guard_down.sql` (trigger-only;
+78 → 78). Rehearsed: apply → 78; the four CHECKs and four guards all `23514`;
+NULL-skipping accepted; down `0047` → `0046` → 76; ledger rows deleted +
+re-apply → 78; further run no-op. **Note:** `0047` was amended **before
+commit** to add the `employee_user_org_guard` after a review established that
+`app_user` is organization-scoped; the migration was uncommitted, so its
+ledger hash was updated and the rehearsal re-run. Also note `employee` moved
+from `schema.test.ts`'s `NOT_EXPECTED_TABLES` into `EXPECTED_TABLES`.
 
-**Next task:** the **`employee` entity + personnel documents** slice
-(`DEC-087`; requirements `WF-007` and `DOC-001`…`DOC-004`) — programme step
-20a, the **first slice of the workforce-documents half** of the programme and
-the first that is **not** HMS. It needs its own reconnaissance: the `employee`
-entity, personnel documents — contracts and certificates — with versioning,
-and the access rule that employee contracts are visible to **owner +
-general_manager + admin with finance excluded**. It should follow the same
-pattern (a provisional clarification decision if the decision text leaves
-gaps — next free id **`DEC-099`**), and it must not resolve the recorded
-privacy-review retention periods silently. The programme's HMS half is now
-**complete** (all of `HMS-001`…`HMS-007` delivered across steps 19a–19e).
-Programme build order after it: the staff document library (`DEC-088`), then
-the `task`/`approval` platform tables (`DEC-094`; the `job`/worker/outbox
-layer stays gated on `ADR-0004` acceptance, which is still `Proposed`).
+**Reviews and reconciliation (recorded honestly):** both reviewers found **no
+blockers and no majors**. `reviewer-qwen`'s three minors: route comments cited
+`DOC-001`…`DOC-004` (the `DEC-088` staff-library requirements) instead of
+`WF-007` (**accepted + fixed**); the NULL-`primary_location_id` fail-closed
+rule was an unrecorded design decision (**accepted — recorded in `DEC-099`
+item 6**); `employee.user_id` had no org guard (**accepted + fixed** once
+`app_user` was confirmed organization-scoped, which also amended `0047`
+pre-commit). `reviewer-glm`'s seven minors: the document list filter did not
+vocabulary-check `kind` (**accepted + fixed**); the fake store defaulted
+`limit` to unbounded (**accepted + fixed**); a repeat retire wrote a spurious
+audit fact and bumped `updated_at` (**accepted + fixed** — now a true no-op);
+a dead `NotFoundError` branch in the employees POST route (**accepted +
+fixed**); contradictory `active`/`retired` list filters were silently accepted
+(**accepted + fixed** — now a `DomainError`); the fake sorts by JS codepoint
+while Postgres uses collation for non-ASCII names (**declined, noted**); a
+blank-string PATCH date clears the field (**declined** — the documented
+convention). `reviewer-glm` reported no unreached areas this time.
 
-**Scope (do):** implement the `employee` entity + personnel documents slice
-(`DEC-087`, requirements `WF-007` and `DOC-001`…`DOC-004`) — programme step
-20a: additive migrations (the `employee` entity, plus personnel documents —
-contracts and certificates — with versioning), plus the domain/application/web
+**Next task:** the **staff document library** slice (`DEC-088`; requirements
+`DOC-001`…`DOC-004`) — programme step 20b, the **last slice of the
+workforce-documents half**. It builds `document` (`category ∈ {routine,
+guideline, policy, form, other}`, `audience ∈ {all_staff, managers}`,
+`status ∈ {draft, published, archived}`, `owner_id`), `document_version` (a
+`version`, `file_object_id`, `published_at`/`published_by`) and
+`document_acknowledgement`; **all staff may read published `all_staff`
+documents**, **managers publish**, superseded versions stay retrievable to
+managers only, acknowledgements are optional per document and audited. Note
+for the next session: it needs its own reconnaissance, it is the **first
+versioned** entity in the programme (so `DEC-088`'s version model must be
+implemented, unlike personnel documents), it must not resolve the privacy
+review's retention periods silently, and it should record a provisional
+clarification decision if the text leaves gaps (next free id **`DEC-100`**).
+Programme build order after it: the `task`/`approval` platform tables
+(`DEC-094`; the `job`/worker/outbox layer stays gated on `ADR-0004` acceptance,
+which is still `Proposed`).
+
+**Scope (do):** implement the staff document library (`DEC-088`, requirements
+`DOC-001`…`DOC-004`) — programme step 20b: additive migrations (`document`,
+`document_version`, `document_acknowledgement`), plus the domain/application/web
 layer per the existing package boundaries, keeping every change
 organization-scoped (`DEC-061`) and reusing the established role +
-location-scope enforcement pattern (the `/api/v1/hms/*` routes are the
-reference); enforce the access rule that employee contracts are visible to
-**owner + general_manager + admin with finance excluded**; do the
+location-scope enforcement pattern (the `/api/v1/workforce/**` and
+`/api/v1/hms/*` routes are the reference); implement `DEC-088`'s version model
+(a versioned document chain; superseded versions retrievable to managers only);
+enforce **all-staff read of published `all_staff` documents** and **managers
+publish**; make acknowledgements optional per document and audited; do the
 reconnaissance first and add a provisional clarification decision only if the
-decision text leaves gaps (`DEC-099`); do not resolve the privacy-review
+decision text leaves gaps (`DEC-100`); do not resolve the privacy-review
 retention periods silently; rehearse the down path, add a `.test.ts` for new
 non-trivial logic, make small atomic commits with the rollback approach in the
 body (per `AGENTS.md` Rule 2), and update `CONTEXT.md` at the end. Then
 continue down the programme build order above.
 
-**Scope (do not):** do not build the staff document library (`DEC-088` — the
-next slice after this one) or the `task`/`approval` platform tables
-(`DEC-094`); do not build the `job`/worker/outbox layer (`ADR-0004` gate,
-still `Proposed` — only `task`/`approval` build under `DEC-094`); do not touch
-the storage integration (deferred) or resolve the `file_object`
-immutability/soft-delete posture or the five deferred file FKs silently; do
-not resolve the recorded open inputs silently — the new export-slice open
-points (the export's **DB-side location push-down** — today the per-source cap
-is applied org-wide then filtered in memory, so a scoped caller can still
-receive an incomplete bundle, now honestly flagged via `truncated` rather than
-silently; **no personal-data minimization/redaction** — a privacy-review
-input, the bundle declares a `personalDataFields` list as the contract to
-shrink; the bundle is **not persisted**, so no retention class applies to it
-yet — a persisted export artifact's class and period remain open (`DEC-093`,
+**Scope (do not):** do not build the `task`/`approval` platform tables
+(`DEC-094` — the next slice after this one) or the `job`/worker/outbox layer
+(`ADR-0004` gate, still `Proposed` — only `task`/`approval` build under
+`DEC-094`); do not touch the storage integration (deferred) or resolve the
+`file_object` immutability/soft-delete posture or the five deferred file FKs
+silently; do not resolve the recorded open inputs silently — the new
+workforce-slice open points (`WF-007` (Must) requires "audited
+upload/replace **and retention**", but `DEC-087` defers the storage path, so
+**the bytes cannot be uploaded, downloaded, scanned or retention-enforced** —
+there is no storage client, no signed URLs, and `file_object` has **no
+application port at all**; retention periods per file class remain a
+privacy-review input; there is **no version model** for personnel documents —
+a `supersedes_id` chain is the upgrade path; `role_code` has **no CHECK**
+(the vocabulary carries non-employee values); `employee.cost_center_id` is a
+plain uuid — the cost-centre FK stays deferred; **no un-retire path** and no
+delete path (retired, never deleted); the NULL-`primary_location_id`
+fail-closed rule is provisional; **location scope is enforced in the web layer
+only** — the systemic pattern; the fake's codepoint ordering vs Postgres
+collation for non-ASCII names; the standing systemic `writeAudit` transaction
+binding and driver-error→500 mapping), the export-slice open points (the
+export's **DB-side location push-down** — today the per-source cap is applied
+org-wide then filtered in memory, so a scoped caller can still receive an
+incomplete bundle, now honestly flagged via `truncated` rather than silently;
+**no personal-data minimization/redaction** — a privacy-review input, the
+bundle declares a `personalDataFields` list as the contract to shrink; the
+bundle is **not persisted**, so no retention class applies to it yet — a
+persisted export artifact's class and period remain open (`DEC-093`,
 `ADR-0006:47`); a **partial bundle for `analyst`** is not implemented
 (fail-closed); a **regulator-final format** (CSV/ZIP, per-regulator shapes) is
 a later slice; evidence **file bytes / signed URLs** stay deferred
@@ -174,24 +184,25 @@ externally (per `DEC-015`); do not rewrite the specification inputs
 the already-amended programme scope.
 
 **Files/paths:** new additive migrations under
-`packages/persistence/drizzle/` (the `employee` entity + personnel documents)
+`packages/persistence/drizzle/` (the `document`, `document_version` and
+`document_acknowledgement` tables) — the Drizzle schema
+(`packages/persistence/src/schema/`) + repository + domain/application packages
 
-- the Drizzle schema (`packages/persistence/src/schema/`) + repository +
-  domain/application packages + `apps/web` workforce slice +
-  `docs/runbooks/persistence-migrations.md`; `12_OPEN_DECISIONS.md` for any
-  `DEC-099` provisional clarification; update `CONTEXT.md` at the end.
+- `apps/web` staff-library slice + `docs/runbooks/persistence-migrations.md`;
+  `12_OPEN_DECISIONS.md` for any `DEC-100` provisional clarification; update
+  `CONTEXT.md` at the end.
 
-**Authoritative docs to read first:** the programme requirements (`WF-007`,
-`DOC-001…DOC-004` and the phase map in `11_REQUIREMENTS_CATALOG.md`, the scope
+**Authoritative docs to read first:** the programme requirements (`DOC-001`…
+`DOC-004` and the phase map in `11_REQUIREMENTS_CATALOG.md`, the scope
 amendment in `01_PRODUCT_SCOPE.md`, the access-matrix rows + retention notes
-in `07_SECURITY_AND_NFR.md`, the screens in `08_UI_UX.md`); `DEC-086`…`DEC-098`
-in `12_OPEN_DECISIONS.md` (next free id **`DEC-099`**);
+in `07_SECURITY_AND_NFR.md`, the screens in `08_UI_UX.md`); `DEC-086`…`DEC-099`
+in `12_OPEN_DECISIONS.md` (next free id **`DEC-100`**);
 `docs/BUILD_ROADMAP.md` §1 and §4 (rows 19/20); this file's "Open decisions /
 inputs"; `AGENTS.md` Rules 1–3.
 
 **Acceptance / verification:** `export NVM_DIR="$HOME/.nvm"; . "$NVM_DIR/nvm.sh";
 nvm use 22`, then `npm run typecheck` before the change, `npm run lint`,
-`npm run test` (with `DATABASE_URL` — current baseline: **1861/1861**, 160
+`npm run test` (with `DATABASE_URL` — current baseline: **2057/2057**, 168
 files), `npm run build`, `npm run format:check`, `npm audit --omit=dev` = 0;
 `db:migrate` applies any new migration, is a no-op on re-run, and its down
 path is rehearsed; after each commit re-run the suite at the clean tree and
@@ -203,7 +214,20 @@ and next steps → commit → next task. Global ruleset
 (`~/.config/kilo/AGENTS.md`): compact context at 25 %; pausing is permitted
 above USD 20 at a clean point (committed, verified, documented).
 
-**Open inputs (recorded, do not decide):** from this slice — the export's
+**Open inputs (recorded, do not decide):** from this slice — the
+workforce-slice open points (`WF-007` (Must) requires "audited
+upload/replace **and retention**", but `DEC-087` defers the storage path, so
+**the bytes cannot be uploaded, downloaded, scanned or retention-enforced**;
+there is no storage client, no signed URLs, and `file_object` has **no
+application port at all**; retention periods per file class remain a
+privacy-review input; there is **no version model** for personnel documents —
+a `supersedes_id` chain is the upgrade path; `role_code` has **no CHECK**;
+`employee.cost_center_id` is a plain uuid and the cost-centre FK stays
+deferred; **no un-retire path** and no delete path; the NULL-`primary_location_id`
+fail-closed rule is provisional; **location scope is enforced in the web layer
+only**; the fake's codepoint ordering vs Postgres collation for non-ASCII
+names; and the standing systemic points — the `writeAudit` transaction binding
+and the driver-error→500 mapping); from the export slice — the export's
 **DB-side location push-down** (today the per-source cap is applied org-wide
 then filtered in memory, so a scoped caller can still receive an incomplete
 bundle — now honestly flagged via `truncated` rather than silently, with the
@@ -256,21 +280,20 @@ integration, the FIN variance-tolerance thresholds, consumption grain A1
 destination `storage_area_id` policy, receipts not wired to the ledger, the
 unsigned golden fixtures, the remaining `DEC-083`-review points, the
 owner/deployment inputs. Full list under "Open decisions / inputs"; next
-free decision id **`DEC-099`**.
+free decision id **`DEC-100`**.
 
 **Parallel owner action — golden-fixture sign-off:** the six golden fixtures are
 prepared as machine-readable JSON under `tests/fixtures/` (`DEC-065`) with the
 sign-off trail ready; finance + product owner sign. Until signed, no cost is
 "verified"; `I8`/`I9` still gate the real rates behind the fixtures.
 
-**Step after this one:** the staff document library (`DEC-088`), then the
-`task`/`approval` platform tables (`DEC-094`; the `job`/worker/outbox
-layer gated on `ADR-0004`, still `Proposed`); row 14 workforce/scheduling
-becomes buildable once `employee` lands, subject to the WF-003 self-assignment
-login input; the receipt→ledger wiring if the OPS destination
-`storage_area_id` policy lands; row 13 when history/grain quality (I11) is
-confirmed; the deployment rehearsal once the owner inputs arrive (see
-"Next up").
+**Step after this one:** the `task`/`approval` platform tables (`DEC-094`;
+the `job`/worker/outbox layer gated on `ADR-0004`, still `Proposed`); row 14
+workforce/scheduling is now buildable — the `employee` entity has landed — and
+is subject to the WF-003 self-assignment login input; the receipt→ledger
+wiring if the OPS destination `storage_area_id` policy lands; row 13 when
+history/grain quality (I11) is confirmed; the deployment rehearsal once the
+owner inputs arrive (see "Next up").
 
 ## What this is
 
@@ -306,7 +329,9 @@ incidents + corrective-actions slice, the `DEC-091` checklists slice, the
 evidence export slice —
 the first five build slices of the `DEC-086`–`DEC-094` programme
 (migrations `0037`–`0045`; the HMS half of the programme is now complete) —
-are committed; the
+are committed; the `DEC-087` `employee` + personnel-documents slice (the
+`DEC-099` provisional clarifications; migrations `0046`/`0047`; the first slice
+of the workforce-documents half) is **committed** (`246c735`…`5b932a8`); the
 `DEC-072`–`DEC-085` low-risk implementations (effective-dated reconciliation
 tolerance, sales-line reversal, `MAPPING_STATE` `conflict`, typed recipe 404s,
 the `price_version` slice, the `settlement.status`/`reconciliation.scope_type`
@@ -318,8 +343,8 @@ import posting-policy enforcement).
 
 - `00_README.md` … `13_AGENT_BUILD_BRIEF.md` — the specification package
   (inputs, rarely edited). Start with `00_README.md`.
-- `12_OPEN_DECISIONS.md` — the accepted decisions (DEC-001…DEC-098); the
-  authority. New decisions are appended here (next free id `DEC-099`).
+- `12_OPEN_DECISIONS.md` — the accepted decisions (DEC-001…DEC-099); the
+  authority. New decisions are appended here (next free id `DEC-100`).
 - `docs/phase0/` — close-out plan, calculation contract, data dictionary, golden
   fixtures, source-data request, notes. See `docs/phase0/PHASE0_CLOSEOUT_PLAN.md`
   and `docs/phase0/CALCULATION_CONTRACT.md`.
@@ -338,71 +363,76 @@ import posting-policy enforcement).
 
 ## Current status
 
-- **As of:** 2026-09-22 — branch `main`; HEAD before this slice's commits was
-  `d8bd98d` (the HMS equipment-slice handoff, `DEC-092`/`DEC-097`); the
-  compliance / evidence export slice is 4 commits (`05caf1b` `docs(decisions)`
-  `DEC-098`, `7cb4f68` `feat(persistence)`, `275c3d5` `feat(application)`,
-  `00508a3` `feat(web)`) plus this docs commit; the branch was clean before
-  these handoff edits. Lineage:
+- **As of:** 2026-09-22 — branch `main`; HEAD before this slice was `282046d`
+  (the HMS compliance / evidence-export handoff, `DEC-093`/`DEC-098`); the
+  workforce slice is **5 commits** — `246c735` `docs(decisions)` `DEC-099`,
+  `59ad19e` `feat(persistence)`, `4faa6aa` `feat(application)`, `603054f`
+  `feat(web)`, `5b932a8` `docs(runbook)` — plus this `docs(context)` update;
+  the branch was clean before these handoff edits. Lineage:
   `02f7c33` (the Phase A / small-TECH handoff) → the HMS monitoring slice,
   5 commits → the HMS incidents + corrective-actions slice, 6 commits → the
   HMS checklists slice, 6 commits → the HMS equipment / maintenance slice,
-  6 commits → **the HMS compliance / evidence export slice, 5 commits** — **all
-  committed** (see "Work log" and "Reversibility").
-  **Delivered (programme step 19e — `DEC-093`, requirement `HMS-007`,
-  provisional `DEC-098`):** a synchronous, storage-free JSON evidence bundle at
-  `GET /api/v1/hms/compliance-export` gathering five org-scoped,
-  period-filtered sources (monitoring readings, incidents, corrective actions,
-  checklist runs and maintenance logs — maintenance included per
-  `HMS-007`/`DEC-098`) returning `{ generatedAt, organizationId, period,
-counts, truncated, personalDataFields, monitoringReadings[], incidents[],
-correctiveActions[], checklistRuns[], maintenanceLogs[] }`; no file artifact,
-  storage client, signed URL or persisted bundle (`DEC-085`/`ADR-0006`);
-  per-source, fail-closed authorization (`owner`/`general_manager`/
-  `location_manager`/`admin` only — `analyst` and the operator/finance roles
-  denied; no partial bundle); a location-scoped caller is bounded to their
-  locations (`corrective_action`/`maintenance_log` scoped through their
-  parents — the recorded ceiling), an empty scope means organization-wide; one
-  `hms.compliance_export.generated` audit event per generation. **Also
-  delivered:** the optional `from`/`to` period filter on the five HMS list
-  queries at every layer — additive, **no migration**. **Nothing applied to
-  DigitalOcean.**
-  **Schema:** unchanged — migrations through **`0045`**; **76 tables**. Next
-  free decision id **`DEC-099`**.
-  **Reviews and reconciliation.** `reviewer-qwen` and `reviewer-glm` each found
-  the **same blocker** (the route forwarded an empty `locationIds` array and the
-  query read that as scoped, so an owner's whole-organization export returned an
-  empty bundle and audited an empty scope) — **accepted + fixed at both layers**
-  (route forwards `undefined`; query treats `[]` as organization-wide) and the
-  test corrected; `reviewer-qwen` blocker 2 (a dishonest `truncated` for a
-  scoped caller — the cap was applied before the in-memory scope filter) and
-  `reviewer-glm`'s major (parent id sets built from the capped window) —
-  **accepted + fixed** (`truncated` now conservative; child id sets built from
-  the filtered parents); `reviewer-qwen` major on `DEC-098` item 5
-  (personal-data minimization asserted but unimplemented) — **accepted + fixed**
-  (`DEC-098` amended to state no minimization this increment; a
-  `personalDataFields` list now declares the contract); minors **accepted +
-  fixed** (documented/tested `due_date` calendar-day extraction, a
-  `truncated: true` test, empty-roles and unknown-role 403 tests, the admin test
-  asserting the forwarded query, an `includes` → `Set`); one minor **declined**
-  (the audit write is best-effort outside a transaction — a read; a failed audit
-  is a 500; recorded as a systemic open point). `reviewer-glm`'s step-capped
-  pass left a **coverage gap** (part of the export-period test body in
-  `hms.postgres.test.ts` and the persistence `*.postgres.test.ts` diffs)
-  recorded as an open point.
+  6 commits → the HMS compliance / evidence export slice, 5 commits → **the
+  `employee` + personnel-documents slice (programme step 20a), 5 commits** —
+  **all committed** (see "Work log" and "Reversibility").
+  **Delivered (programme step 20a — `DEC-087`, requirement `WF-007`,
+  provisional `DEC-099`):** the **`employee`** parent (`user_id` — a real
+  nullable FK to the organization-scoped `app_user`; `name`; `role_code` free
+  text; `employment_type` CHECK-backed; `base_hourly_rate numeric(19,4)`;
+  `cost_center_id` plain uuid, the cost-centre FK deferred;
+  `primary_location_id`; `active_from`/`active_to`; `retired_at`; **retired,
+  never deleted**) and **`employee_document`** (`employee_id` FK, `kind ∈
+{contract, certificate, id_document, other}` from the new
+  `employee_document_kind` vocabulary, `title`, a **nullable real FK**
+  `file_object_id`, `issued_at`/`expires_at` as nullable calendar dates).
+  Org-scoped (`DEC-061`); **four** cross-org coherence guards
+  (`employee.primary_location_id`, `employee.user_id`,
+  `employee_document.employee_id`, the nullable
+  `employee_document.file_object_id`) raising `23514`; **no document version
+  model** (`DEC-087` defines none). Access: employees follow the matrix row
+  `Employee records` (owner, general_manager, location_manager location-scoped,
+  **finance**, admin); personnel documents follow `Employee personnel
+documents` (**owner, general_manager, admin only — finance explicitly
+  excluded**); a location-scoped caller cannot see or mutate an employee whose
+  `primary_location_id` is NULL (fail-closed); `baseHourlyRate` is a decimal
+  **string** end to end. The API is `/api/v1/workforce/**`. **Nothing applied
+  to DigitalOcean.**
+  **Schema:** migrations through **`0047`**; **78 tables**. Next free decision
+  id **`DEC-100`**.
+  **Reviews and reconciliation.** Both reviewers found **no blockers and no
+  majors**. `reviewer-qwen`'s three minors: route comments cited
+  `DOC-001`…`DOC-004` instead of `WF-007` (**accepted + fixed**); the
+  NULL-`primary_location_id` fail-closed rule was unrecorded (**accepted —
+  recorded in `DEC-099` item 6**); `employee.user_id` had no org guard
+  (**accepted + fixed** once `app_user` was confirmed organization-scoped,
+  which also amended `0047` pre-commit). `reviewer-glm`'s seven minors: the
+  document list filter did not vocabulary-check `kind` (**accepted + fixed**);
+  the fake store defaulted `limit` to unbounded (**accepted + fixed**); a
+  repeat retire wrote a spurious audit fact and bumped `updated_at`
+  (**accepted + fixed** — now a no-op); a dead `NotFoundError` branch in the
+  employees POST route (**accepted + fixed**); contradictory `active`/`retired`
+  list filters were silently accepted (**accepted + fixed** — now a
+  `DomainError`); the fake's JS-codepoint sort vs Postgres collation for
+  non-ASCII names (**declined, noted**); a blank-string PATCH date clears the
+  field (**declined** — the documented convention). `reviewer-glm` reported no
+  unreached areas this time.
   **Verification:** `typecheck`, `lint`, `format:check`, `build` clean;
-  **1861/1861 tests with `DATABASE_URL`** (160 files); `npm audit --omit=dev`
-  = 0; `db:migrate` through `0045` is a no-op on re-run; **76 tables**;
-  organization-scoped everywhere (`DEC-061`). **No new migration was needed.**
+  **2057/2057 tests with `DATABASE_URL`** (168 files); `npm audit --omit=dev`
+  = 0; `db:migrate` through `0047` is a no-op on re-run; **78 tables**; the
+  four workforce guard triggers present; organization-scoped everywhere
+  (`DEC-061`).
   **Also delivered earlier (the `DEC-089` HMS monitoring slice, the `DEC-090`
-  incidents slice, the `DEC-091` checklists slice and the `DEC-092`
-  equipment/maintenance slice — full detail in "Reversibility" and the work
-  log):** the fridge/freezer monitoring register + append-only reading logs
-  (migrations `0037`–`0039`), the incident register + corrective actions
-  (migrations `0040`/`0041`), the checklist templates + runs (migrations
-  `0042`/`0043`) and the equipment register + maintenance log (migrations
-  `0044`/`0045`); `ADR-0006` accepted 2026-09-21; the storage integration
-  (Spaces client / signed URLs / retention enforcement) stays deferred.
+  incidents slice, the `DEC-091` checklists slice, the `DEC-092`
+  equipment/maintenance slice and the `DEC-093` compliance export slice — full
+  detail in "Reversibility" and the work log):** the fridge/freezer monitoring
+  register + append-only reading logs (migrations `0037`–`0039`), the incident
+  register + corrective actions (migrations `0040`/`0041`), the checklist
+  templates + runs (migrations `0042`/`0043`), the equipment register +
+  maintenance log (migrations `0044`/`0045`) and the storage-free JSON
+  evidence bundle (`GET /api/v1/hms/compliance-export`, **no migration**);
+  `ADR-0006` accepted 2026-09-21; the storage integration (Spaces client /
+  signed URLs / retention enforcement) stays deferred. The **HMS half of the
+  programme is complete**.
   **Dev server (session-scoped):** the previous session ran http://localhost:3000
   with `DATABASE_URL=postgres://aquarela:aquarela@localhost:5432/aquarela`,
   `ORGANIZATION_ID=1448a476-32f2-426f-b153-11a851011e48`; sign in `owner` /
@@ -411,14 +441,13 @@ correctiveActions[], checklistRuns[], maintenanceLogs[] }`; no file artifact,
   (`profile_version` `i19-v1`, `posting_policy` `allow_partial`); a fresh
   session must restart the server.
   Remaining roadmap: the HMS/personnel-documents programme (Phase 6 + Epics
-  20/21 — `DEC-086`…`DEC-094`) is approved; the **HMS half is complete** —
-  rows 19a (monitoring `DEC-089`), 19b (incidents + corrective actions,
-  `DEC-090`/`DEC-095`), 19c (checklists/cleaning, `DEC-091`/`DEC-096`), 19d
-  (equipment/maintenance, `DEC-092`/`DEC-097`) and 19e (compliance export,
-  `DEC-093`/`DEC-098`) are all **delivered**: the next build slice is 20a, the
-  `employee` entity + personnel documents (`DEC-087`), then the staff document
-  library (`DEC-088`) and the `task`/`approval` tables (`DEC-094`; the
-  `job`/worker/outbox layer gated on `ADR-0004`).
+  20/21 — `DEC-086`…`DEC-094`) is approved; the **HMS half is complete** and
+  the **workforce-documents half is under way** — row 20a (the `employee`
+  entity + personnel documents, `DEC-087`/`DEC-099`) is **delivered** (this
+  slice): the next build slice is 20b, the staff document library
+  (`DEC-088`), then the `task`/`approval` tables (`DEC-094`; the
+  `job`/worker/outbox layer gated on `ADR-0004`). Row 14 (
+  workforce/scheduling) is now buildable once the slice commits.
   Beyond the programme: the receipt→ledger wiring needs the OPS destination
   `storage_area_id` policy; row 13 is data-gated
   on history/grain quality (I11); rows 15–18 blocked (data /
@@ -466,8 +495,8 @@ correctiveActions[], checklistRuns[], maintenanceLogs[] }`; no file artifact,
 - **DEC-049 closed:** drizzle-orm 0.45.2 / drizzle-kit 0.31.10 upgrade (`cc86f13`);
   `npm audit --omit=dev` = 0.
 - **Tests:** without `DATABASE_URL` the integration tests skip; with it
-  **1861/1861 passed** (160 files) — recorded 2026-09-22 at the
-  compliance-export-slice tree (all checks pass; `db:migrate` through `0045` is a
+  **2057/2057 passed** (168 files) — recorded 2026-09-22 at the
+  workforce-slice tree (all checks pass; `db:migrate` through `0047` is a
   no-op). Re-verify with `npm run test` and update if they differ.
   Open verification debt: the per-process rate limiter needs a shared
   store before multi-instance deployment; the reset-token delivery is a no-op stub
@@ -475,7 +504,7 @@ correctiveActions[], checklistRuns[], maintenanceLogs[] }`; no file artifact,
   await owner sign-off (see "Open decisions / inputs"); the six golden fixtures
   remain unsigned and are the "verified" gate.
 - **Persistence core + deployment foundation (committed):** Drizzle schema,
-  migrations `0000_enable_extensions` → `0045` additive with tested down paths
+  migrations `0000_enable_extensions` → `0047` additive with tested down paths
   (`0011_cost_allocation.sql` adds the four slice-6 tables; `0014_cost_card_pricing`
   adds four deferred `price_scenario` columns + `snapshot_component_kind_check`;
   `0015` adds `calculation_snapshot_cost_card_index`; the hand-written `0016` adds
@@ -545,21 +574,27 @@ correctiveActions[], checklistRuns[], maintenanceLogs[] }`; no file artifact,
   **`0038`** the append-only triggers incl. a TRUNCATE guard (only `notes`
   amendable) and **`0039`** the cross-org coherence guards (the
   `DEC-079`/`DEC-081` precedent);
-  ledger through `0045` (`0040` the `DEC-090` incident +
+  ledger through `0047` (`0040` the `DEC-090` incident +
   corrective-action tables, `0041` their coherence guards, `0042` the
   `DEC-091` checklist tables, `0043` their coherence guards, `0044` the
-  `DEC-092` equipment/maintenance tables and `0045` their coherence guards);
+  `DEC-092` equipment/maintenance tables, `0045` their coherence guards,
+  `0046` the `DEC-087` `employee` + `employee_document` tables and `0047` the
+  four workforce coherence guards — committed `59ad19e`/`5b932a8`);
   the `asset`
   register is deliberately deferred — note `DEC-092`'s `equipment` is a
   distinct HMS register, not the finance `asset`), the
   advisory-locked migrator, worker/scheduler
   stubs and the `infra/` Terraform scaffold validated offline. Not applied.
 - **Not yet built:** row 13 (close + dashboards + menu engineering —
-  data-gated on history/grain quality, I11), row 14 (workforce — owner-gated
-  on the privacy review / access matrix) and rows 15–18
+  data-gated on history/grain quality, I11), row 14 (workforce/scheduling —
+  the privacy review / access matrix gate is lifted and the `employee` entity
+  has landed; the **WF-003 self-assignment login model** remains open) and
+  rows 15–18
   (blocked: data / `ADR-0009`–`0011`); also
   the deferred tables
-  (workforce, integrations, competitor, AI, procurement, period close,
+  (workforce scheduling — shifts/worked hours; the `employee` and
+  `employee_document` tables have landed — integrations, competitor, AI,
+  procurement, period close,
   platform job/approval — note the
   `approval` platform table from DATA_DICTIONARY §9 does not exist yet, and the
   five deferred file FKs (`goods_receipt.evidence_file_id`,
@@ -578,35 +613,51 @@ variance-producer slice and the `DEC-085` `file_object` slice —
 **row 11 is complete**; the `DEC-072`–`DEC-095`
 decisions + low-risk implementations are done,
 committed `aaec400`–`8b22468` plus the slice commits; the new programme
-(Phase 6 + Epics 20/21, `DEC-086`…`DEC-094`) is approved and its first five
+(Phase 6 + Epics 20/21, `DEC-086`…`DEC-094`) is approved and its first six
 build slices — HMS monitoring points + readings (`DEC-089`), HMS
 incidents + corrective actions (`DEC-090`), HMS checklists (`DEC-091`),
-HMS equipment/maintenance (`DEC-092`) and HMS compliance / evidence export
-(`DEC-093`) —
-are **delivered** (the HMS half of the programme is now complete);
+HMS equipment/maintenance (`DEC-092`), HMS compliance / evidence export
+(`DEC-093`) and the workforce `employee` + personnel-documents slice
+(`DEC-087`) —
+are **delivered** (the HMS half of the programme is complete and the
+workforce-documents half is under way);
 further original rows are
 gated — row 13 on data (I11),
-rows 15–18 on data/ADRs; row 14 becomes buildable once `employee` lands).
+rows 15–18 on data/ADRs; row 14 is now buildable (`employee` has landed)).
 The list below is the short narrative form.
 
-1. **`employee` entity + personnel documents (`DEC-087`; `WF-007`,
-   `DOC-001`…`DOC-004`) — the lead item:** programme step 20a, the **first
-   slice of the workforce-documents half** and the first that is not HMS; it
-   needs its own reconnaissance (the `employee` entity; personnel documents —
-   contracts and certificates — with versioning; the access rule that employee
-   contracts are visible to owner + general_manager + admin with finance
-   excluded) and a provisional clarification decision if the text leaves gaps
-   (next free id **`DEC-099`**); it must not resolve the privacy-review
-   retention periods silently.
-2. **Programme build order after `employee` (`DEC-086`…`DEC-094`):** the staff
-   document library (`DEC-088`), then the `task`/`approval` platform tables
+1. **Staff document library (`DEC-088`; `DOC-001`…`DOC-004`) — the lead
+   item:** programme step 20b, the **last slice of the workforce-documents
+   half**; it builds `document` (`category`/`audience`/`status`/`owner_id`),
+   `document_version` (a `version`, `file_object_id`,
+   `published_at`/`published_by`) and `document_acknowledgement`, with
+   **all-staff read of published `all_staff` documents**, **managers publish**,
+   superseded versions retrievable to managers only and audited, optional
+   per-document acknowledgements; it is the **first versioned** entity in the
+   programme and needs its own reconnaissance and a provisional clarification
+   decision if the text leaves gaps (next free id **`DEC-100`**); it must not
+   resolve the privacy-review retention periods silently.
+2. **Programme build order after the staff library (`DEC-086`…`DEC-094`):** the
+   `task`/`approval` platform tables
    (`DEC-094` — the `job`/worker/outbox layer stays gated on **`ADR-0004`
-   acceptance**, still `Proposed`). Scheduling/shifts (row 14) becomes
-   buildable once `employee` lands, subject to the **WF-003 self-assignment
+   acceptance**, still `Proposed`). Scheduling/shifts (row 14) is buildable
+   now that `employee` has landed, subject to the **WF-003 self-assignment
    login input** (must a self-assigning employee hold an `app_user` login?) and
    the privacy-review retention periods per file class.
-3. **New open points from the export, equipment, checklists and incidents
-   slices (recorded, do not resolve silently):** from the export slice — the
+3. **New open points from the workforce, export, equipment, checklists and
+   incidents slices (recorded, do not resolve silently):** from the workforce
+   slice — `WF-007`'s audited upload/replace **and retention** is not
+   implementable while `DEC-087` defers the storage path (the bytes cannot be
+   uploaded, downloaded, scanned or retention-enforced; there is no storage
+   client, no signed URLs, and `file_object` has **no application port at
+   all**); retention periods per file class remain a privacy-review input;
+   there is **no version model** for personnel documents (a `supersedes_id`
+   chain is the upgrade path); `role_code` has no CHECK;
+   `employee.cost_center_id` is a plain uuid (the cost-centre FK stays
+   deferred); no un-retire/delete path; the provisional NULL-`primary_location_id`
+   fail-closed rule; location scope enforced in the web layer only; the fake's
+   codepoint ordering vs Postgres collation for non-ASCII names. From the
+   export slice — the
    export's **DB-side location push-down** (the per-source cap is applied
    org-wide then filtered in memory, so a scoped caller can still get an
    incomplete bundle — now honestly flagged via `truncated`); **no
@@ -670,10 +721,11 @@ The list below is the short narrative form.
    (2026-09-20); **data-gated** on history/grain quality (I11) — synthetic
    fixtures until real data.
 7. **Row 14 — workforce/scheduling** — the original gate is lifted: the
-   privacy review / access matrix is approved and the new `employee` tables
-   (`DEC-087`) become the entry point; the **WF-003 self-assignment login
-   model** remains an open input (rows 15–18 remain blocked: data /
-   `ADR-0009`–`0011`).
+   privacy review / access matrix is approved and the `employee` tables
+   (`DEC-087`) have **landed** (this slice) as the entry point; the shifts /
+   worked-hours / payroll-input tables are still to build; the **WF-003
+   self-assignment login model** remains an open input (rows 15–18 remain
+   blocked: data / `ADR-0009`–`0011`).
 8. **Test-deployment rehearsal** — per `docs/runbooks/deployment.md`, staging first
    with sanitized/synthetic data only; parked on the deployment prerequisite inputs
    (see "Open decisions / inputs" — a scoped `DIGITALOCEAN_TOKEN`, a private
@@ -708,6 +760,26 @@ The list below is the short narrative form.
 
 ## Open decisions / inputs (do not block development)
 
+- **Recorded this session (2026-09-22, from the `DEC-087` `employee` +
+  personnel-documents-slice reviews and reconciliation; recorded, not decided —
+  do not resolve silently):** `WF-007` (Must) requires "audited
+  upload/replace **and retention**", but `DEC-087` defers the storage path, so
+  **the bytes cannot be uploaded, downloaded, scanned or retention-enforced** —
+  there is no storage client, no signed URLs, and `file_object` has **no
+  application port at all**; retention periods per file class remain a
+  privacy-review input; there is **no version model** for personnel documents
+  (a `supersedes_id` chain is the upgrade path); `role_code` has **no CHECK**
+  (the vocabulary carries non-employee values); `employee.cost_center_id` is a
+  plain uuid (the cost-centre FK stays deferred); **no un-retire path** and no
+  delete path (retired, never deleted); the NULL-`primary_location_id`
+  fail-closed rule is provisional; **location scope is enforced in the web
+  layer only** (the systemic pattern); the fake sorts by JS codepoint while
+  Postgres uses collation for non-ASCII names; plus the standing systemic
+  points (the `writeAudit` transaction binding and the driver-error→500
+  mapping). **The `employee` + personnel-documents slice is delivered**
+  (programme step 20a; `DEC-087`/`DEC-099`; migrations `0046`/`0047`; **78
+  tables**; committed `246c735`…`5b932a8`). Next free decision id
+  **`DEC-100`**.
 - **Recorded this session (2026-09-22, from the `DEC-093` HMS
   compliance/evidence-export-slice reviews and reconciliation; recorded, not
   decided — do not resolve silently):** the export's **DB-side location
@@ -1348,6 +1420,24 @@ and Spaces credentials via `-backend-config` / `AWS_ACCESS_KEY_ID` +
 
 ## Reversibility
 
+- **2026-09-22 `employee` + personnel-documents slice (`DEC-087`/`DEC-099`;
+  5 commits incl. this docs commit; nothing pushed)**: 1. `246c735`
+  `docs(decisions)` — `DEC-099`; 2. `59ad19e` `feat(persistence)` — the
+  `employee` + `employee_document` tables (migrations `0046`/`0047`), the
+  `employee_document_kind` vocabulary, the schema/repository + tests; 3.
+  `4faa6aa` `feat(application)` — the workforce commands/queries + store port
+  - adapter + fake + tests; 4. `603054f` `feat(web)` — the
+    `/api/v1/workforce/**` routes with role + location scope; 5. `5b932a8`
+    `docs(runbook)` — the migration-ledger/rehearsal entries; 6. this
+    `docs(context)` update — each independently revertible with
+    `git revert <sha>`. Migration **`0046` adds two tables** (additive; down
+    drops `employee_document` then `employee`, 78 → 76); **`0047` is
+    trigger-only** (down 78 → 78); the rehearsed down order is **`0047` →
+    `0046`**. If the DB is rolled back, delete the two ledger rows (`when`
+    `1790035770192` / `1790035771192`) and re-migrate; 78 tables after re-apply.
+    `0047` was amended **before commit** to add the `employee_user_org_guard`
+    (the uncommitted ledger hash was updated and the rehearsal re-run). Nothing
+    pushed; nothing applied to DigitalOcean.
 - **2026-09-22 HMS compliance / evidence export slice (`DEC-093`/`DEC-098`;
   5 commits incl. this docs commit; nothing pushed)**: 1. `05caf1b`
   `docs(decisions)` — `DEC-098`; 2. `7cb4f68` `feat(persistence)` — the
@@ -1658,14 +1748,14 @@ scale)` cap in `parseDecimal` + `packages/domain/src/decimal.test.ts`;
   them with `git revert` if needed. **No cloud resource was created — only offline
   `fmt`/`validate`/`plan` ran, never `apply`; no Terraform state exists, and
   nothing has been applied to DigitalOcean.**
-- Migrations 0000–0045 are additive with tested down paths (`0011` down drops the
+- Migrations 0000–0047 are additive with tested down paths (`0011` down drops the
   four slice-6 tables; `0012` down drops the three EXCLUDE constraints; `0015`/
-  `0016` down drop their indexes/invariant — rehearsed; `0017`–`0045` down are
+  `0016` down drop their indexes/invariant — rehearsed; `0017`–`0047` down are
   rehearsed — see the slice-8 bullet, the slice-9/10, row-11, row-12,
   DEC-072–076, price-version, `DEC-078`, `DEC-079`, `DEC-080`, `DEC-081`,
   `DEC-083`, `DEC-085` `file_object`, `DEC-089` HMS monitoring,
-  `DEC-090` HMS incidents, `DEC-091` HMS checklists and `DEC-092` HMS
-  equipment
+  `DEC-090` HMS incidents, `DEC-091` HMS checklists, `DEC-092` HMS
+  equipment and `DEC-087` `employee`/personnel-documents
   bullets
   above; the `DEC-093` HMS compliance / evidence export slice added **no
   migration**). While the
@@ -1678,6 +1768,101 @@ CASCADE; CREATE SCHEMA public; npm run db:migrate` (see the runbook). Once data
   (`DEC-015`).
 
 ## Work log (append-only, newest first)
+
+### 2026-09-22 — `employee` + personnel documents delivered (DEC-087/DEC-099, migrations 0046–0047); programme step 20a, the first slice of the workforce-documents half; handoff updated
+
+`main`; HEAD before the slice was `282046d` (the HMS compliance/evidence-export
+handoff); the slice lands as **5 commits** (`246c735` `docs(decisions)`
+`DEC-099`, `59ad19e` `feat(persistence)`, `4faa6aa` `feat(application)`,
+`603054f` `feat(web)`, `5b932a8` `docs(runbook)`) plus this `docs(context)`
+update (nothing pushed; nothing applied to DigitalOcean).
+
+- **Delivered (`DEC-087`, requirement `WF-007`, provisional `DEC-099` — the
+  first slice of the workforce-documents half, step 20a):** the **`employee`**
+  parent (`user_id` — a real nullable FK to the organization-scoped
+  `app_user`; `name`; `role_code` free text; `employment_type` CHECK-backed;
+  `base_hourly_rate numeric(19,4)`; `cost_center_id` plain uuid (the
+  cost-centre FK stays deferred); `primary_location_id`; `active_from`/
+  `active_to`; `retired_at`; **retired, never deleted**) and
+  **`employee_document`** (`employee_id` FK, `kind ∈ {contract, certificate,
+id_document, other}` from the new `employee_document_kind` vocabulary,
+  `title`, a **nullable real FK** `file_object_id`, `issued_at`/`expires_at`
+  as nullable calendar dates). Org-scoped (`DEC-061`); **four** cross-org
+  coherence guards (`employee.primary_location_id`, `employee.user_id`,
+  `employee_document.employee_id`, the nullable
+  `employee_document.file_object_id`) raising `23514`. **No document version
+  model** (`DEC-087` defines none — the "versioning" wording belongs to
+  `DEC-088`'s staff library, deliberately **not** built). Access: employees
+  follow the matrix row `Employee records` (owner, general_manager,
+  location_manager location-scoped, **finance**, admin); personnel documents
+  follow `Employee personnel documents` (**owner, general_manager, admin only —
+  finance explicitly excluded**, a deliberate asymmetry). A location-scoped
+  caller cannot see or mutate an employee whose `primary_location_id` is NULL
+  (fail-closed). `baseHourlyRate` is a decimal **string** end to end. The API
+  is `/api/v1/workforce/**`. **Schema:** migrations through `0047`; **78
+  tables** (was 76). Next free decision id **`DEC-100`**.
+- **Migrations:** `0046_workforce` (journal `idx` 46, `when` `1790035770192`,
+  sha256 `c6ac6a67a527bfeeda6392733b76ad14112d56d3549cbbc1545c5485879dc158`);
+  `0047_workforce_org_guard` (journal `idx` 47, `when` `1790035771192`, sha256
+  `51cdb6d141c38c36d50393e22ef8183160c531c58e2e9245978108521f558940`); down
+  companions unjournalled (`0046_workforce_down.sql` drops `employee_document`
+  then `employee`, 78 → 76; `0047_workforce_org_guard_down.sql` trigger-only,
+  78 → 78). **Rehearsal evidence (local dev DB):** apply → 78 tables; the four
+  CHECKs and four guards all `23514`; NULL-skipping accepted; down `0047` →
+  `0046` → 76; ledger rows deleted + re-apply → 78; further run a no-op.
+  **Note:** `0047` was amended **before commit** to add the
+  `employee_user_org_guard` after a review established that `app_user` is
+  organization-scoped; the migration was uncommitted, so its ledger hash was
+  updated and the rehearsal re-run. Also note `employee` moved from
+  `schema.test.ts`'s `NOT_EXPECTED_TABLES` into `EXPECTED_TABLES`.
+- **Reviews and reconciliation.** Both reviewers found **no blockers and no
+  majors**. `reviewer-qwen`'s three minors: route comments cited
+  `DOC-001`…`DOC-004` (the `DEC-088` staff-library requirements) instead of
+  `WF-007` (**accepted + fixed**); the NULL-`primary_location_id` fail-closed
+  rule was an unrecorded design decision (**accepted — recorded in `DEC-099`
+  item 6**); `employee.user_id` had no org guard (**accepted + fixed** once
+  `app_user` was confirmed organization-scoped, which also amended `0047`
+  pre-commit). `reviewer-glm`'s seven minors: the document list filter did not
+  vocabulary-check `kind` (**accepted + fixed**); the fake store defaulted
+  `limit` to unbounded (**accepted + fixed**); a repeat retire wrote a spurious
+  audit fact and bumped `updated_at` (**accepted + fixed** — now a true
+  no-op); a dead `NotFoundError` branch in the employees POST route
+  (**accepted + fixed**); contradictory `active`/`retired` list filters were
+  silently accepted (**accepted + fixed** — now a `DomainError`); the fake
+  sorts by JS codepoint while Postgres uses collation for non-ASCII names
+  (**declined, noted**); a blank-string PATCH date clears the field
+  (**declined** — the documented convention). `reviewer-glm` reported no
+  unreached areas this time.
+- **New open points (recorded, do not decide):** `WF-007`'s audited
+  upload/replace **and retention** is not implementable while `DEC-087` defers
+  the storage path; retention periods per file class remain a privacy-review
+  input; no version model for personnel documents; `role_code` has no CHECK;
+  `employee.cost_center_id` is a plain uuid; no un-retire/delete path; the
+  provisional NULL-`primary_location_id` fail-closed rule; location scope
+  enforced in the web layer only; the fake's codepoint ordering vs Postgres
+  collation; the standing systemic `writeAudit` transaction binding and
+  driver-error→500 mapping. See the first bullet under "Open decisions /
+  inputs".
+- **Verification (exact):** `typecheck`, `lint`, `format:check`, `build`
+  clean; **2057/2057 tests with `DATABASE_URL`** (168 files);
+  `npm audit --omit=dev` = 0; `db:migrate` through `0047` is a no-op on
+  re-run; **78** public base tables; the four workforce guard triggers present.
+- **Next step:** the **staff document library** slice (`DEC-088`; requirements
+  `DOC-001`…`DOC-004`) — programme step 20b, the last slice of the
+  workforce-documents half (the **first versioned** entity in the programme;
+  all-staff read of published `all_staff` documents, managers publish,
+  superseded versions retrievable to managers only, optional audited
+  acknowledgements); then the `task`/`approval` platform tables (`DEC-094`,
+  with the `job`/worker/outbox layer gated on `ADR-0004`). Next free decision
+  id **`DEC-100`**.
+
+Rollback: each of the slice's 5 commits is independently
+`git revert`-able; migration `0046` adds two tables (additive), `0047` is
+trigger-only; the rehearsed down order is `0047` → `0046`; `0046` down drops
+`employee_document` then `employee` (78 → 76), `0047` down is trigger-only
+(78 → 78); if the DB is rolled back, delete the two ledger rows (`when`
+`1790035770192` / `1790035771192`) and re-migrate (78 tables); nothing pushed;
+nothing applied to DigitalOcean.
 
 ### 2026-09-22 — HMS compliance / evidence export delivered (DEC-093/DEC-098, no migration); the fifth and last IK-mat build slice; HMS half complete; handoff updated
 
