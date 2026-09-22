@@ -14,7 +14,7 @@ import * as schema from "./index";
 
 const tables = Object.values(schema).filter((value) => is(value, PgTable));
 
-/** The 86 in-scope Phase 1-2 tables: the 35 core tables, the slice-3
+/** The 87 in-scope Phase 1-2 tables: the 35 core tables, the slice-3
  * master-data additions (`unit_conversion`, `supplier`, `supplier_item`,
  * `cost_center`), the slice-4 receiving additions (`goods_receipt`,
  * `goods_receipt_line`), the slice-5 allergen additions (`allergen`,
@@ -40,7 +40,8 @@ const tables = Object.values(schema).filter((value) => is(value, PgTable));
  * `document_acknowledgement`), the `DEC-094` schema-only workflow platform
  * (`task`, `approval`), the `DEC-037`/`DEC-038` shift-scheduling slice
  * (`shift`, `shift_assignment`) and the `DEC-038` worked-hours correction
- * (`shift_adjustment`), from
+ * (`shift_adjustment`), and the `DEC-037`/`WF-005` monthly payroll-input report
+ * (`payroll_report`), from
  * `schemas/phase1_2_draft.sql` / `DATA_DICTIONARY`. */
 const EXPECTED_TABLES = [
   "addon_applicability",
@@ -88,6 +89,7 @@ const EXPECTED_TABLES = [
   "organization",
   "outbox_event",
   "password_reset_token",
+  "payroll_report",
   "price_scenario",
   "price_version",
   "production_batch",
@@ -139,7 +141,6 @@ const NOT_EXPECTED_TABLES = [
   "publish_run",
   "competitor_source",
   "competitor_observation",
-  "payroll_report",
   "ai_analysis_run",
   "ai_suggestion",
   // Procurement/receiving companions left to a later slice (DEC-047 needs only

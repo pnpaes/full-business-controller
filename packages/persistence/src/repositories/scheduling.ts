@@ -1,11 +1,12 @@
 import { and, asc, desc, eq, gte, inArray, lt, lte, sql } from "drizzle-orm";
 
 import type { Database } from "../client";
-import { employee, shift, shiftAdjustment, shiftAssignment } from "../schema";
+import { employee, payrollReport, shift, shiftAdjustment, shiftAssignment } from "../schema";
 
 export type Shift = typeof shift.$inferSelect;
 export type ShiftAssignment = typeof shiftAssignment.$inferSelect;
 export type ShiftAdjustment = typeof shiftAdjustment.$inferSelect;
+export type PayrollReport = typeof payrollReport.$inferSelect;
 
 /*
  * `DEC-037`/`DEC-038` (`WF-002`, `WF-003`): the shift-scheduling slice.
@@ -29,8 +30,9 @@ export type ShiftAdjustment = typeof shiftAdjustment.$inferSelect;
  *
  * This layer exposes **no delete command** and writes **no** `audit_event`
  * (neither table is append-only). Worked hours (`shift_adjustment`, `WF-004`) are
- * modelled below as append-only correction facts; `payroll_report` (`WF-005`) is
- * the next scheduling slice and is not modelled here.
+ * modelled below as append-only correction facts; the monthly payroll-input
+ * report (`payroll_report`, `WF-005`, `DEC-037`) is modelled below as a small
+ * mutable report row whose `snapshot` freezes the lines it was generated from.
  *
  * The vocabulary columns, the `ends_at > starts_at` / `break_minutes >= 0` /
  * actual-range checks, the `(shift_id, employee_id)` unique and the
@@ -538,4 +540,182 @@ export async function listWorkedHoursAssignments(
       ),
     )
     .orderBy(asc(shift.startsAt), asc(shiftAssignment.id));
+}
+
+export interface CreatePayrollReportInput {
+  readonly organizationId: string;
+  /** `date`, `YYYY-MM-DD`; the key of the `(organization_id, period_start)` unique. */
+  readonly periodStart: string;
+  /** `date`, `YYYY-MM-DD`; must be after `periodStart`. */
+  readonly periodEnd: string;
+  /** Plain uuid; the `app_user` FK is deferred. Nullable (unrecorded actor). */
+  readonly generatedBy?: string | null;
+  /** One of `PAYROLL_REPORT_STATUS`; the column default is `draft` when omitted. */
+  readonly status?: string;
+  /** The frozen, reproducible report lines (jsonb; stored verbatim). */
+  readonly snapshot: unknown;
+  /** Audit actor; recorded as `created_by` (the `app_user` FK is deferred). */
+  readonly createdBy?: string | null;
+}
+
+/**
+ * Creates one monthly payroll-input report row (`WF-005`, `DEC-037`).
+ * `organizationId` is supplied by the caller; `generated_at` takes the column
+ * default `now()` and `status` the column default `draft` when omitted. The
+ * `(organization_id, period_start)` unique means a regeneration must supersede
+ * the prior same-period report first (the application's `generatePayrollReport`
+ * does).
+ */
+export async function createPayrollReport(
+  db: Database,
+  input: CreatePayrollReportInput,
+): Promise<PayrollReport> {
+  const rows = await db
+    .insert(payrollReport)
+    .values({
+      organizationId: input.organizationId,
+      periodStart: input.periodStart,
+      periodEnd: input.periodEnd,
+      ...(input.generatedBy === undefined ? {} : { generatedBy: input.generatedBy }),
+      ...(input.status === undefined ? {} : { status: input.status }),
+      snapshot: input.snapshot,
+      createdBy: input.createdBy ?? null,
+    })
+    .returning();
+  return rows[0]!;
+}
+
+export interface FindPayrollReportQuery {
+  readonly organizationId: string;
+  readonly payrollReportId: string;
+}
+
+/** One payroll report by id, organization-scoped (`DEC-061`), or `undefined`. */
+export async function findPayrollReport(
+  db: Database,
+  query: FindPayrollReportQuery,
+): Promise<PayrollReport | undefined> {
+  const rows = await db
+    .select()
+    .from(payrollReport)
+    .where(
+      and(
+        eq(payrollReport.id, query.payrollReportId),
+        eq(payrollReport.organizationId, query.organizationId),
+      ),
+    )
+    .limit(1);
+  return rows[0];
+}
+
+export interface FindPayrollReportForPeriodQuery {
+  readonly organizationId: string;
+  /** `date`, `YYYY-MM-DD`; the period start that identifies the payroll month. */
+  readonly periodStart: string;
+}
+
+/**
+ * The report for one `(organization, periodStart)` pair, organization-scoped
+ * (`DEC-061`), or `undefined`. `(organization_id, period_start)` is the unique
+ * supersede key (`DEC-104`), so this is the natural-key lookup the generator uses
+ * to find a report it must supersede before inserting its replacement.
+ */
+export async function findPayrollReportForPeriod(
+  db: Database,
+  query: FindPayrollReportForPeriodQuery,
+): Promise<PayrollReport | undefined> {
+  const rows = await db
+    .select()
+    .from(payrollReport)
+    .where(
+      and(
+        eq(payrollReport.organizationId, query.organizationId),
+        eq(payrollReport.periodStart, query.periodStart),
+      ),
+    )
+    .limit(1);
+  return rows[0];
+}
+
+export interface ListPayrollReportsQuery {
+  readonly organizationId: string;
+  /** One of `PAYROLL_REPORT_STATUS`, exact match. */
+  readonly status?: string;
+  /** Inclusive lower bound on `period_start` (`>= periodStartFrom`). */
+  readonly periodStartFrom?: string;
+  readonly limit?: number;
+  readonly offset?: number;
+}
+
+/**
+ * Payroll reports for one organization, newest period first (`period_start desc`,
+ * then `id asc`), with optional status and period-start filters. The
+ * organization filter is never optional (`DEC-061`); paging is applied after the
+ * ordering.
+ */
+export async function listPayrollReports(
+  db: Database,
+  query: ListPayrollReportsQuery,
+): Promise<readonly PayrollReport[]> {
+  const statement = db
+    .select()
+    .from(payrollReport)
+    .where(
+      and(
+        eq(payrollReport.organizationId, query.organizationId),
+        query.status === undefined ? undefined : eq(payrollReport.status, query.status),
+        query.periodStartFrom === undefined
+          ? undefined
+          : gte(payrollReport.periodStart, query.periodStartFrom),
+      ),
+    )
+    .orderBy(desc(payrollReport.periodStart), asc(payrollReport.id))
+    .$dynamic();
+  if (query.limit !== undefined) {
+    statement.limit(query.limit);
+  }
+  if (query.offset !== undefined) {
+    statement.offset(query.offset);
+  }
+  return statement;
+}
+
+export interface UpdatePayrollReportInput {
+  readonly organizationId: string;
+  readonly payrollReportId: string;
+  /** One of `PAYROLL_REPORT_STATUS`; e.g. `superseded` or `exported`. */
+  readonly status?: string;
+  /** Replaces the frozen snapshot; an omitted field is untouched. */
+  readonly snapshot?: unknown;
+  /** Explicit `null` clears the export link; an omitted field is untouched. */
+  readonly exportFileId?: string | null;
+  /** Audit actor; recorded as `updated_by` (the `app_user` FK is deferred). */
+  readonly actorId?: string | null;
+}
+
+/**
+ * Updates one payroll report's mutable fields, organization-scoped (`DEC-061`).
+ * A field left out of the patch is untouched (drizzle skips `undefined`), while
+ * an explicit value replaces it and an explicit `null` clears a nullable column;
+ * the audit columns record the amendment. `periodStart`/`periodEnd` are immutable
+ * after creation, and the id alone cannot address another tenant's row — a
+ * missing or cross-organization id returns `undefined`, like `findPayrollReport`.
+ */
+export async function updatePayrollReport(
+  db: Database,
+  input: UpdatePayrollReportInput,
+): Promise<PayrollReport | undefined> {
+  const { organizationId, payrollReportId, actorId, ...patch } = input;
+  const rows = await db
+    .update(payrollReport)
+    .set({
+      ...patch,
+      updatedAt: new Date(),
+      ...(actorId === undefined ? {} : { updatedBy: actorId }),
+    })
+    .where(
+      and(eq(payrollReport.id, payrollReportId), eq(payrollReport.organizationId, organizationId)),
+    )
+    .returning();
+  return rows[0];
 }

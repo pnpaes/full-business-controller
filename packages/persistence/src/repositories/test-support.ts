@@ -32,6 +32,7 @@ import {
   productionBatch,
   productionBatchInput,
   productionBatchOutput,
+  payrollReport,
   priceVersion,
   productionPlan,
   reconciliation,
@@ -1106,6 +1107,30 @@ export async function createTestShiftAdjustment(
       shiftAssignmentId: refs.shiftAssignmentId,
       adjustedHours: "8.00",
       reason: "test correction",
+      ...overrides,
+    })
+    .returning();
+  return rows[0]!;
+}
+
+/**
+ * A `DEC-037`/`WF-005` monthly payroll-input report. `status` defaults to
+ * `generated` and `snapshot` to `{}` (the column default), so a test need only
+ * override the field under test. `(organization_id, period_start)` is unique, so
+ * a test creating more than one report per organization must vary `periodStart`.
+ */
+export async function createTestPayrollReport(
+  db: Database,
+  organizationId: string,
+  overrides: Partial<typeof payrollReport.$inferInsert> = {},
+): Promise<typeof payrollReport.$inferSelect> {
+  const rows = await db
+    .insert(payrollReport)
+    .values({
+      organizationId,
+      periodStart: "2026-03-01",
+      periodEnd: "2026-03-31",
+      status: "generated",
       ...overrides,
     })
     .returning();

@@ -4,10 +4,12 @@ import {
   date,
   index,
   integer,
+  jsonb,
   numeric,
   pgTable,
   text,
   unique,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 
@@ -18,6 +20,7 @@ import { fileObject } from "./platform";
 import {
   EMPLOYEE_DOCUMENT_KIND,
   EMPLOYMENT_TYPE,
+  PAYROLL_REPORT_STATUS,
   SHIFT_ASSIGNMENT_STATE,
   SHIFT_STATE,
 } from "./vocabularies";
@@ -138,8 +141,8 @@ export const employeeDocument = pgTable(
  * repo-wide, like `employee.created_by`) and `created_at`/`updated_at` are the
  * standard audit instants.
  *
- * Worked hours (`shift_adjustment`, `WF-004`) are modelled below; `payroll_report`
- * (`WF-005`) is the **next** scheduling slice and is not modelled here.
+ * Worked hours (`shift_adjustment`, `WF-004`) and the monthly payroll-**input**
+ * report (`payroll_report`, `WF-005`, `DEC-037`) are modelled below.
  */
 export const shift = pgTable(
   "shift",
@@ -248,5 +251,65 @@ export const shiftAdjustment = pgTable(
       sql`(${t.approvedBy} is null and ${t.approvedAt} is null) or (${t.approvedBy} is not null and ${t.approvedAt} is not null)`,
     ),
     index("shift_adjustment_org_assignment_idx").on(t.organizationId, t.shiftAssignmentId),
+  ],
+);
+
+/*
+ * `DEC-037` (`WF-005`): the monthly payroll-**input** report for the accountant,
+ * produced from registered shifts plus the assumption that the remaining planned
+ * shifts run as scheduled (`03_DOMAIN_MODEL.md`, `DATA_DICTIONARY` §4A). This is
+ * a payroll-*input* report only: statutory payroll processing, tax withholding
+ * and payslips stay out of scope. `snapshot` is the **frozen, reproducible**
+ * set of lines (employee, hours, hourly rate, expected pay) captured when the
+ * report is generated, so a later shift or adjustment edit cannot rewrite an
+ * already-issued report; the report is generated **on demand** by the
+ * application (`generatePayrollReport`), and the spec's "about 3 days before
+ * month-end" trigger is an `ADR-0004`-gated job that is **not built** here.
+ *
+ * `(organization_id, ...)` scoping is per `DEC-061`. `generated_by` is a
+ * nullable plain uuid: the `app_user` FK is deferred repo-wide (the `employee`/
+ * `shift.created_by` precedent), and null means the generating actor was not
+ * recorded. `status` is checked against the `payroll_report_status` vocabulary
+ * and defaults to `draft`; its lifecycle is **provisional** (`DEC-104`).
+ *
+ * `export_file_id` is a **nullable real FK** to `file_object.id` (`DEC-085`):
+ * the platform table exists now, so the reference is closed, but the storage
+ * bytes / signed-URL export stays deferred — only the FK column exists.
+ *
+ * `unique (organization_id, period_start)` is a **provisional** rule
+ * (`DEC-104`): at most one live report per organization per period start, so a
+ * regeneration must supersede the prior same-period report first. It is a
+ * **partial** unique index (`WHERE status <> 'superseded'`), because a plain
+ * unique would keep the superseded row occupying the key and make the
+ * "supersede then insert" flow impossible; superseded reports are retained as
+ * history and excluded from the key. The contract's literal "one report per
+ * organization per period start" is thus enforced over the *live* reports.
+ * `period_end` is not part of the key because the period start identifies the
+ * payroll month. `payroll_report_period_check` keeps `period_end > period_start`.
+ */
+export const payrollReport = pgTable(
+  "payroll_report",
+  {
+    id: uuidPk(),
+    organizationId: orgId().references(() => organization.id),
+    periodStart: date("period_start").notNull(),
+    periodEnd: date("period_end").notNull(),
+    generatedAt: tstz("generated_at").notNull().defaultNow(),
+    generatedBy: uuid("generated_by"),
+    status: text("status").notNull().default("draft"),
+    snapshot: jsonb("snapshot")
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    exportFileId: uuid("export_file_id").references(() => fileObject.id),
+    ...auditColumns(),
+  },
+  (t) => [
+    check("payroll_report_status_check", enumCheck(t.status, PAYROLL_REPORT_STATUS)),
+    check("payroll_report_period_check", sql`${t.periodEnd} > ${t.periodStart}`),
+    uniqueIndex("payroll_report_org_period_key")
+      .on(t.organizationId, t.periodStart)
+      .where(sql`${t.status} <> 'superseded'`),
+    index("payroll_report_org_status_idx").on(t.organizationId, t.status),
+    index("payroll_report_org_period_idx").on(t.organizationId, t.periodStart, t.periodEnd),
   ],
 );

@@ -131,7 +131,6 @@ describe("vocabularies vs schemas/domain-enums.yaml", () => {
       "valuation_method",
       "period_close_status",
       "adjustment_period_status",
-      "payroll_report_status",
       "allowed_operation",
       "publish_status",
     ];

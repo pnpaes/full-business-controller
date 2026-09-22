@@ -445,6 +445,16 @@ export const SHIFT_ASSIGNMENT_STATE = [
   "rejected",
 ] as const;
 
+// `DEC-037` (`WF-005`): the monthly payroll-**input** report's lifecycle.
+// `payroll_report_status` backs `payroll_report_status_check`; it was present in
+// `schemas/domain-enums.yaml` from the start but deliberately unexported until
+// the `payroll_report` table needed it, so `vocabularies.test.ts`'s
+// `UNEXPORTED_YAML_KEYS` guard shrinks accordingly. The lifecycle
+// (`draft` → `generated` → `exported`, with `superseded` for a report replaced
+// by a same-period regeneration) is **provisional** — see `DEC-104`. From
+// `schemas/domain-enums.yaml` (`payroll_report_status`).
+export const PAYROLL_REPORT_STATUS = ["draft", "generated", "exported", "superseded"] as const;
+
 // `DEC-088` (`DOC-001`…`DOC-004`): the staff document library. `category` and
 // `audience` back `document_category_check` / `document_audience_check`, and
 // `status` backs `document_status_check` via the distinct

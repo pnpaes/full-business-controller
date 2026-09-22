@@ -1595,6 +1595,47 @@ only, so the down file is an explicit operator action, not an automatic one.
   `psql "$DATABASE_URL" -f packages/persistence/drizzle/0054_shift_adjustment_org_guard_down.sql`.
   Apply `0054`'s down **before** `0053`'s down if the table goes too: its trigger
   lives on `shift_adjustment`, which `0053`'s down drops.
+- **0055 adds the `DEC-037` (`WF-005`) monthly payroll-input report table and
+  follows the down convention** (see the ledger row below): `0055_payroll_report.sql`
+  is generated DDL for one table, additive like `0037`/`0040`/`0042`/`0044`/
+  `0046`/`0048`/`0050`/`0051`/`0053` — `payroll_report` (`organization_id`, the
+  `period_start`/`period_end` `date`s, `generated_at` default `now()`, the nullable
+  plain-uuid `generated_by`, `status` default `draft`, the `snapshot` jsonb, the
+  nullable `export_file_id` FK → `file_object`, the audit columns, the
+  `payroll_report_status_check` / `payroll_report_period_check` checks, the
+  **partial** unique index `payroll_report_org_period_key` on
+  `(organization_id, period_start)` `WHERE status <> 'superseded'` and the
+  `payroll_report_org_status_idx` / `payroll_report_org_period_idx` indexes). The
+  `export_file_id` FK is emitted inline by drizzle-kit: the table is new and
+  empty, so the `NOT VALID` → `VALIDATE CONSTRAINT` dance used for a pre-existing
+  table (`0029`/`0031`/`0035`) is unnecessary.
+  `0055_payroll_report_down.sql` drops the table inside one `BEGIN;`/`COMMIT;`
+  (with `DROP TABLE IF EXISTS` so a half-applied manual run cannot wedge); the
+  FKs, the unique index, the checks and the two indexes drop with the table. It is
+  **destructive** — every report and its frozen snapshot is lost — so run it only
+  while those reports need not be preserved (AGENTS.md Rule 2). Apply `0056`'s
+  down **before** `0055`'s down. Apply it manually with
+  `psql "$DATABASE_URL" -f packages/persistence/drizzle/0055_payroll_report_down.sql`.
+- **0056 adds the `DEC-037` payroll-report cross-organization coherence guard and
+  follows the down convention:** `0056_payroll_report_org_guard.sql` is
+  hand-written (`DEC-079`'s `BEFORE INSERT OR UPDATE` guard shape, mirroring
+  `0045`). One function and one trigger: `payroll_report_export_file_org_guard`
+  on `payroll_report` rejects a non-null `export_file_id` whose `file_object`
+  belongs to another organization than the report. It resolves the referenced
+  row's organization through the existing FK path (a missing row falls through to
+  the FK error) and raises `ERRCODE = '23514'`, naming the offending column.
+  `export_file_id` is nullable, so the guard is conditional and skips a null
+  reference. It is **trigger-only and table-neutral**: it adds no table and no
+  constraint that validates an existing row, so it scans no row and needs no
+  preflight query.
+  `0056_payroll_report_org_guard_down.sql` drops the trigger and its function
+  inside one `BEGIN;`/`COMMIT;` (with `DROP ... IF EXISTS` so a half-applied
+  manual run cannot wedge). No table and no row is touched, so the down cannot
+  fail on data; while dropped, the reference's organization coherence is validated
+  only by the application. Apply it manually with
+  `psql "$DATABASE_URL" -f packages/persistence/drizzle/0056_payroll_report_org_guard_down.sql`.
+  Apply `0056`'s down **before** `0055`'s down if the table goes too: its trigger
+  lives on `payroll_report`, which `0055`'s down drops.
 
 **Re-applying after a manual down:** drizzle-kit tracks applied migrations in
 `drizzle.__drizzle_migrations`, not by comparing the schema, so a plain
@@ -1805,6 +1846,25 @@ guard trigger and its function with no table change (86 tables, 0 guards) and
 (`created_at IN (1790067016722, 1790067030453)`) deleted 2 rows, and
 `npm run db:migrate` re-applied 0053/0054 — final 86 public base tables, 1 guard
 trigger present, 55 ledger rows, with a further `npm run db:migrate` a no-op.
+0055 on 2026-09-22 added the `DEC-037` (`WF-005`) monthly payroll-input report
+(`payroll_report`) and 0056 its cross-organization guard, taking the database to
+87 tables (the ledger holds 57 rows); the payroll integration suite observed the
+partial unique `payroll_report_org_period_key` (`WHERE status <> 'superseded'`)
+allowing a superseded report and its replacement to coexist while a second live
+report for the same `(organization_id, period_start)` is rejected with `23505`,
+the `payroll_report_export_file_org_guard` message
+(`payroll_report.export_file_id … belongs to organization …`) raising `23514`
+and a null `export_file_id` accepted (the guard skips it), and the
+`payroll_report_status_check`/`payroll_report_period_check` CHECK violations
+(`23514`). The 0055/0056 down/re-apply rehearsal was run on 2026-09-22: starting
+from 87 public base tables, 1 payroll-report guard trigger present and 57 ledger
+rows, `0056_payroll_report_org_guard_down.sql` dropped the guard trigger and its
+function with no table change (87 tables, 0 guards) and
+`0055_payroll_report_down.sql` dropped the `payroll_report` table (86 tables,
+0 guards); deleting the two ledger rows
+(`created_at IN (1790069367957, 1790069368959)`) deleted 2 rows, and
+`npm run db:migrate` re-applied 0055/0056 — final 87 public base tables, 1 guard
+trigger present, 57 ledger rows, with a further `npm run db:migrate` a no-op.
 A **full 0011 down** drops the tables the three 0012 constraints live on, so its
 replay must clear **both** ledger rows, not just 0011's:
 `DELETE FROM drizzle.__drizzle_migrations WHERE created_at IN (1789862475550, 1789862630158);`
@@ -2106,6 +2166,8 @@ session will not serialise against each other.
 | 0048 | `0048_staff_documents.sql` | Generated (`DEC-088`, `DOC-001`…`DOC-004`): the three staff document library tables, additive like `0037`/`0040`/`0042`/`0044`/`0046` — `document` (`organization_id`, `title`, `category` (`document_category_check`), `audience` (`document_audience_check`), `status` (`document_status_check`, default `draft`), the plain-uuid `owner_id` and the audit columns, with the organization FK and the `document_org_status_idx` / `document_org_audience_idx` org-first indexes), `document_version` (`organization_id`, `document_id`, `version_no` (`document_version_version_no_check`, `> 0`), the nullable `file_object_id`, the nullable `notes`/`published_at`/`published_by` with the all-or-nothing `document_version_published_check`, the audit columns, the FKs to organization/document/file-object, the `document_version_document_version_key` unique on `(document_id, version_no)` and the `document_version_org_document_idx` index) and `document_acknowledgement` (`organization_id`, `document_version_id`, `acknowledged_by`, `acknowledged_at` with **no** audit columns — the `import_disposition` fact-table precedent — the FKs to organization/document-version, the `document_acknowledgement_version_user_key` unique on `(document_version_id, acknowledged_by)` and the `document_acknowledgement_org_version_idx` / `_org_user_idx` indexes). No hand-written statement. Journal `when` `1790054700573`, sha256 `a3583018395213ae882880c3bbb773fc74fa8a70c6b80aa36ca54a4b3fe091e5`. Down companion: `0048_staff_documents_down.sql` (drops the three tables, FK-safe order: `document_acknowledgement` then `document_version` then `document` — destructive) |
 | 0049 | `0049_staff_documents_org_guard.sql` | Hand-written (`DEC-079`'s guard shape applied to the `DEC-088` staff-document FKs, mirroring `0047`): three functions and three `BEFORE INSERT OR UPDATE FOR EACH ROW` triggers — `document_version_document_org_guard` on `document_version` (rejects a `document_id` whose `document` belongs to another organization), `document_version_file_object_org_guard` on `document_version` (rejects a non-null `file_object_id` whose `file_object` belongs to another organization) and `document_acknowledgement_document_version_org_guard` on `document_acknowledgement` (rejects a `document_version_id` whose `document_version` belongs to another organization). No table and no TypeScript schema change. Journal `when` `1790054714766`, sha256 `91dd4a2c63e0f3201f9c4626ee80b644358bc75d92353ecb8510d6bc323408da`. Down companion: `0049_staff_documents_org_guard_down.sql` (drops the three triggers and their functions — no row is touched) |
 | 0050 | `0050_workflow_platform.sql` | Generated (`DEC-094`, schema-only workflow platform): the two tables, additive like `0037`/`0040`/`0042`/`0044`/`0046`/`0048` — `task` (`organization_id`, the free-text `type`, the nullable polymorphic `linked_entity_type`/`linked_entity_id` pair, the plain-uuid `owner_id`, the nullable `due_date`, the free-text `priority`, `status` defaulting to `open`, the nullable `resolution` and plain-uuid `created_from_event_id`, the audit columns, the organization FK, the `task_status_check` / `task_linked_entity_check` checks and the `task_org_status_idx` / `task_org_owner_due_idx` / `task_org_linked_idx` org-first indexes) and `approval` (`organization_id`, the polymorphic `entity_type`/`entity_id`, the nullable `entity_version`, the required `requested_by`/`requested_at`, the nullable `decided_by`/`decided_at`/`decision`/`comment`, the audit columns, the organization FK, the `approval_decision_check` / `approval_decided_check` checks and the `approval_org_entity_idx` / `approval_org_decision_idx` indexes). The `job` table, the worker/scheduler and the outbox layer are deliberately not built (`ADR-0004` gated). No hand-written statement and no companion org-guard migration (only the `organization_id` FK). Journal `when` `1790061475649`, sha256 `19438c2f5ead0664a2ed74b19395d833555e999826b8c6787b6ed88aa44ebdc9`. Down companion: `0050_workflow_platform_down.sql` (drops `approval` then `task` — destructive) |
+| 0055 | `0055_payroll_report.sql` | Generated (`DEC-037`, `WF-005`): the monthly payroll-**input** report table, additive like `0037`/`0040`/`0042`/`0044`/`0046`/`0048`/`0050`/`0051`/`0053` — `organization_id`, `period_start`/`period_end` `date`, `generated_at` `timestamptz` default `now()`, the nullable plain-uuid `generated_by` (the `app_user` FK is deferred), `status` default `draft`, the `snapshot` jsonb default `'{}'::jsonb` (the frozen, reproducible lines), the nullable `export_file_id` **real** FK → `file_object(id)` (`DEC-085`; the storage bytes/signed-URL export stays deferred) and the audit columns, with the organization FK, the `payroll_report_status_check` (`PAYROLL_REPORT_STATUS`) and `payroll_report_period_check` (`period_end > period_start`) checks, the **partial** unique index `payroll_report_org_period_key` on `(organization_id, period_start)` `WHERE status <> 'superseded'` (the `DEC-104` provisional supersede key — a plain unique would keep the superseded row occupying the key and make "supersede then insert" impossible), and the `payroll_report_org_status_idx` / `payroll_report_org_period_idx` org-first indexes. The report is generated on demand; the "~3 days before month-end" trigger is `ADR-0004`-gated and not built. The `export_file_id` FK is emitted inline by drizzle-kit (a new empty table, so the `NOT VALID` → `VALIDATE CONSTRAINT` dance is unnecessary). No hand-written statement. Journal `when` `1790069367957`, sha256 `18b9789e64c5fb462828402036ec0a9d87c9090d43034a71fd1de9932c7ae87d`. Down companion: `0055_payroll_report_down.sql` (drops the table — destructive) |
+| 0056 | `0056_payroll_report_org_guard.sql` | Hand-written (`DEC-079`'s guard shape applied to the `DEC-037`/`DEC-085` `payroll_report.export_file_id` FK, mirroring `0045`): one function and one `BEFORE INSERT OR UPDATE FOR EACH ROW` trigger — `payroll_report_export_file_org_guard` on `payroll_report` (rejects a non-null `export_file_id` whose `file_object` belongs to another organization, and skips a null reference). No table and no TypeScript schema change. Journal `when` `1790069368959`, sha256 `4aa9675bcd8156f4882aade667c9dc3ecab3e4f69e5ac2ded508c0dccff63631`. Down companion: `0056_payroll_report_org_guard_down.sql` (drops the trigger and its function — no row is touched) |
 
 Order matters: extensions before DDL that calls `gen_random_uuid()`, and before
 the exclusion constraints. Verify with:
@@ -2217,10 +2279,11 @@ after `0020`, 55 after `0021`, 58 after `0022`, 62 after `0023`, 63 after
 `0033`, still 67 after `0034`, 68 after `0035`, still 68 after `0036`, 70 after
 `0037`, still 70 after `0038`, still 70 after `0039`, 72 after `0040`, still 72
 after `0041`, 74 after `0042`, 76 after `0044`, 78 after `0046`, 81 after
-`0048`, 83 after `0050`, 85 after `0051` and 86 after `0053`);
+`0048`, 83 after `0050`, 85 after `0051`, 86 after `0053` and 87 after
+`0055`);
 `0025`, `0026`,
 `0028`, `0032`, `0034`, `0036`, `0038`, `0039`, `0041`, `0043`, `0045`,
-`0047`, `0049`, `0052` and `0054` are table-neutral.
+`0047`, `0049`, `0052`, `0054` and `0056` are table-neutral.
 `0014`–`0038`'s
 apply/re-run/down/re-apply was rehearsed on the local dev database 2026-09-20
 (0030 and 0031 on 2026-09-21; 0032 on 2026-09-21; 0033 on 2026-09-21 — its
