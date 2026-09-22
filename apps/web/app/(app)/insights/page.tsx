@@ -41,6 +41,15 @@ export default function InsightsPage() {
         scope="Aquarela Business Control"
         description="Compare forecast with actual, review suggestions and overrides, and track competitor pricing."
       />
+      <SectionCard title="Sales & margin report" meta="RPT-001 · live data">
+        <p style={{ margin: 0, color: color.text.secondary, fontSize: typography.fontSize.md }}>
+          <a href="/insights/reports" style={backLink}>
+            Open reports
+          </a>{" "}
+          — sales, ingredient cost and contribution before labour/fees by location, channel,
+          category, product or period, with a drill-down to the underlying sales lines.
+        </p>
+      </SectionCard>
       <SectionCard title="Planned screens" meta="08_UI_UX.md §8.3">
         <ul style={checklist}>
           {plannedScreens.map((screen) => (
