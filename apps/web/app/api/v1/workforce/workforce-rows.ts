@@ -1,6 +1,7 @@
 import {
   DEFAULT_EMPLOYEE_DOCUMENT_LIMIT,
   DEFAULT_EMPLOYEE_LIMIT,
+  DEFAULT_SHIFT_ADJUSTMENT_LIMIT,
   DEFAULT_SHIFT_ASSIGNMENT_LIMIT,
   DEFAULT_SHIFT_LIMIT,
   EMPLOYEE_DOCUMENT_KINDS,
@@ -8,6 +9,7 @@ import {
   SHIFT_STATES,
   type EmployeeDocumentRecord,
   type EmployeeRecord,
+  type ShiftAdjustmentRecord,
   type ShiftAssignmentRecord,
   type ShiftRecord,
 } from "@aquarela/application";
@@ -40,10 +42,13 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const ISO_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
 /** A plain non-negative decimal at most four places (`numeric(19,4)` money). */
 const MONEY = /^\d+(?:\.\d{1,4})?$/;
+/** A plain non-negative decimal at most two places (`numeric(_,2)` hours). */
+const ADJUSTED_HOURS = /^\d+(?:\.\d{1,2})?$/;
 const MAX_LIMIT = 200;
 const MAX_TEXT = 200;
 const MAX_VOCAB = 32;
 const MAX_MONEY = 64;
+const MAX_ADJUSTED_HOURS = 32;
 const MAX_INSTANT = 64;
 
 function readPositiveInteger(raw: string | null): number | undefined | "invalid" {
@@ -924,6 +929,97 @@ export function parseCreateShiftAssignmentBody(
   return { ok: true, input: { employeeId } };
 }
 
+export interface CreateShiftAdjustmentBody {
+  readonly adjustedHours: string;
+  readonly reason: string;
+}
+
+export type ParsedCreateShiftAdjustment =
+  { readonly ok: true; readonly input: CreateShiftAdjustmentBody } | { readonly ok: false };
+
+/**
+ * `POST /shift-assignments/[id]/adjustments` body; the assignment link is the
+ * path id. `adjustedHours` must be a non-negative decimal **string** of at most
+ * two places (`numeric(_,2)` shaped) — a JSON number/float is rejected here so a
+ * binary float never reaches the store — and `reason` non-blank text.
+ */
+export function parseCreateShiftAdjustmentBody(
+  body: Record<string, unknown> | undefined,
+): ParsedCreateShiftAdjustment {
+  if (body === undefined) {
+    return { ok: false };
+  }
+  const adjustedHours = readText(body, "adjustedHours", MAX_ADJUSTED_HOURS);
+  const reason = readText(body, "reason");
+  if (adjustedHours === null || !ADJUSTED_HOURS.test(adjustedHours) || reason === null) {
+    return { ok: false };
+  }
+  return { ok: true, input: { adjustedHours, reason } };
+}
+
+export interface ShiftAdjustmentListQuery {
+  readonly limit: number;
+  readonly offset: number;
+}
+
+export type ParsedShiftAdjustmentListQuery =
+  { readonly ok: true; readonly query: ShiftAdjustmentListQuery } | { readonly ok: false };
+
+/** Parses the `limit`/`offset` paging of one assignment's adjustment page. */
+export function parseShiftAdjustmentListQuery(
+  searchParams: URLSearchParams,
+): ParsedShiftAdjustmentListQuery {
+  const paging = readPaging(searchParams, DEFAULT_SHIFT_ADJUSTMENT_LIMIT);
+  if (!paging.ok) {
+    return { ok: false };
+  }
+  return { ok: true, query: { limit: paging.limit, offset: paging.offset } };
+}
+
+export interface WorkedHoursQuery {
+  readonly from: string;
+  readonly to: string;
+  readonly locationId?: string;
+  readonly employeeId?: string;
+}
+
+export type ParsedWorkedHoursQuery =
+  { readonly ok: true; readonly query: WorkedHoursQuery } | { readonly ok: false };
+
+/**
+ * Parses the worked-hours report query (`WF-004`): required `from`/`to` ISO
+ * instants with seconds forming a half-open window (`from < to`; an equal or
+ * inverted pair is a 400), plus optional `locationId`/`employeeId` UUID filters.
+ * The window is checked here only for shape and order; the command re-validates.
+ */
+export function parseWorkedHoursQuery(searchParams: URLSearchParams): ParsedWorkedHoursQuery {
+  const from = readInstantFilter(searchParams, "from");
+  const to = readInstantFilter(searchParams, "to");
+  if (from === "invalid" || to === "invalid" || from === undefined || to === undefined) {
+    return { ok: false };
+  }
+  if (Date.parse(from) >= Date.parse(to)) {
+    return { ok: false };
+  }
+  const locationId = readUuidFilter(searchParams, "locationId");
+  if (locationId === "invalid") {
+    return { ok: false };
+  }
+  const employeeId = readUuidFilter(searchParams, "employeeId");
+  if (employeeId === "invalid") {
+    return { ok: false };
+  }
+  return {
+    ok: true,
+    query: {
+      from,
+      to,
+      ...(locationId === undefined ? {} : { locationId }),
+      ...(employeeId === undefined ? {} : { employeeId }),
+    },
+  };
+}
+
 export interface ShiftRow {
   readonly id: string;
   readonly locationId: string;
@@ -1014,6 +1110,50 @@ export function toShiftAssignmentRows(
   const rows: ShiftAssignmentRow[] = [];
   for (const assignment of assignments) {
     const row = toShiftAssignmentRow(organizationId, assignment);
+    if (row !== undefined) {
+      rows.push(row);
+    }
+  }
+  return rows;
+}
+
+export interface ShiftAdjustmentRow {
+  readonly id: string;
+  readonly shiftAssignmentId: string;
+  readonly adjustedHours: string;
+  readonly reason: string;
+  readonly approvedBy: string | null;
+  readonly approvedAt: string | null;
+  readonly createdAt: string;
+}
+
+/** Maps one shift adjustment to an HTTP row; `undefined` for a foreign-organization row. */
+export function toShiftAdjustmentRow(
+  organizationId: string,
+  adjustment: ShiftAdjustmentRecord,
+): ShiftAdjustmentRow | undefined {
+  if (adjustment.organizationId !== organizationId) {
+    return undefined;
+  }
+  return {
+    id: adjustment.id,
+    shiftAssignmentId: adjustment.shiftAssignmentId,
+    adjustedHours: adjustment.adjustedHours,
+    reason: adjustment.reason,
+    approvedBy: adjustment.approvedBy,
+    approvedAt: adjustment.approvedAt,
+    createdAt: adjustment.createdAt,
+  };
+}
+
+/** Maps adjustment records to HTTP rows, dropping any foreign-organization adjustment. */
+export function toShiftAdjustmentRows(
+  organizationId: string,
+  adjustments: readonly ShiftAdjustmentRecord[],
+): readonly ShiftAdjustmentRow[] {
+  const rows: ShiftAdjustmentRow[] = [];
+  for (const adjustment of adjustments) {
+    const row = toShiftAdjustmentRow(organizationId, adjustment);
     if (row !== undefined) {
       rows.push(row);
     }

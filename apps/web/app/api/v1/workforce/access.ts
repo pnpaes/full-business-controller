@@ -85,6 +85,22 @@ export const SHIFT_READ_ROLES = [
  */
 export const SHIFT_WRITE_ROLES = ["owner", "general_manager", "location_manager", "admin"] as const;
 
+/**
+ * The derived worked-hours report (`WF-004`) is payroll-input data and is
+ * restricted by `07_SECURITY_AND_NFR.md` §7.1 to owner, general_manager,
+ * location_manager (location-scoped), finance and admin. This is deliberately
+ * narrower than `SHIFT_READ_ROLES`: `kitchen`, `front_of_house`, `purchasing`
+ * and `analyst` may see the rota or cost data elsewhere but must not read the
+ * hours that feed payroll. `admin` is an explicit grant (no implicit bypass).
+ */
+export const WORKED_HOURS_READ_ROLES = [
+  "owner",
+  "general_manager",
+  "location_manager",
+  "finance",
+  "admin",
+] as const;
+
 /** Loads the caller's roles and location scope live from server data (ADR-0003). */
 export async function loadWorkforceAccess(userId: string): Promise<UserAccess> {
   return loadUserAccess(getAuthStore(), userId);
