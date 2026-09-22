@@ -277,7 +277,7 @@ export function seedSchedulingFixture(): SchedulingFixture {
 
 /**
  * Registers one employee in the fake store's lookup with the primary location
- * the provisional assignment rule matches against (`WF-003`).
+ * and role the assignment rules match against (`WF-003`).
  */
 export function seedSchedulingEmployee(
   store: FakeSchedulingStore,
@@ -285,11 +285,13 @@ export function seedSchedulingEmployee(
     readonly id: string;
     readonly organizationId: string;
     readonly primaryLocationId: string | null;
+    readonly roleCode: string;
   },
 ): void {
   store.employees.set(employee.id, {
     id: employee.id,
     organizationId: employee.organizationId,
     primaryLocationId: employee.primaryLocationId,
+    roleCode: employee.roleCode,
   });
 }

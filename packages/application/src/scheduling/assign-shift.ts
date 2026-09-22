@@ -19,10 +19,12 @@ export interface AssignShiftInput {
  *
  * - only an `open` or `published` shift may take an assignment;
  * - the employee is resolved organization-scoped (missing → `NotFoundError`);
- * - **provisional rule** — the employee's `primaryLocationId` must equal the
+ * - **location rule** — the employee's `primaryLocationId` must equal the
  *   shift's location, and a null primary location is rejected (fail-closed, the
- *   `DEC-099` precedent). This is the MVP stand-in for `WF-003`'s
- *   role/location self-assignment rules and the open `role_code` matching;
+ *   `DEC-099` precedent);
+ * - **role rule** (`WF-003`) — a shift planned for a role (`roleCode` set) only
+ *   accepts an employee whose `roleCode` matches; a null shift role accepts any
+ *   employee role;
  * - an existing assignment for the same `(shift, employee)` is rejected, so a
  *   retry cannot manufacture a duplicate fact.
  *
@@ -62,6 +64,9 @@ export async function assignShift(
     }
     if (employee.primaryLocationId === null || employee.primaryLocationId !== shift.locationId) {
       throw new DomainError("employee must have a primary location matching the shift location");
+    }
+    if (shift.roleCode !== null && employee.roleCode !== shift.roleCode) {
+      throw new DomainError("the employee's role does not match the shift's role");
     }
 
     const existing = await tx.findShiftAssignmentByShiftEmployee({

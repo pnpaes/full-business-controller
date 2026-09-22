@@ -66,7 +66,7 @@ function toShiftAssignment(row: repo.ShiftAssignment): ShiftAssignmentRecord {
  * the `timestamptz` columns become ISO strings on read and `Date`s on write, and
  * every read/write passes the organization through so the adapter cannot escape
  * the `DEC-061` row scope. `findEmployee` is projected to the fields the
- * assignment rule reads (`primaryLocationId`).
+ * assignment rules read (`primaryLocationId`, `roleCode`).
  */
 export function createPostgresSchedulingStore(db: Database): SchedulingStore {
   return {
@@ -189,6 +189,7 @@ export function createPostgresSchedulingStore(db: Database): SchedulingStore {
             id: row.id,
             organizationId: row.organizationId,
             primaryLocationId: row.primaryLocationId,
+            roleCode: row.roleCode,
           };
     },
   };

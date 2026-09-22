@@ -17,10 +17,15 @@ export interface WithdrawShiftAssignmentInput {
  * is a typed `NotFoundError`), then only an `approved` assignment may be
  * withdrawn (any other state is a `DomainError`).
  *
- * The shift is locked and moved back to `published` when it had been published
- * (`publishedAt` set) and to `open` otherwise — the withdrawal returns the shift
- * to the state it was in before it was assigned. The assignment update, the
- * shift update and the audit fact commit or roll back together.
+ * The shift is locked and must be `assigned` — an `approved` assignment can
+ * legitimately outlive its shift (e.g. on a `completed`/`cancelled` shift), so
+ * withdrawing one there would execute an illegal `completed → published`
+ * transition and is rejected. The assignment is re-read under the shift lock and
+ * must still be `approved`, so a concurrent double-withdraw cannot write a
+ * duplicate fact. The withdrawal then returns the shift to the state it was in
+ * before it was assigned: `published` when it had been published (`publishedAt`
+ * set) and `open` otherwise. The assignment update, the shift update and the
+ * audit fact commit or roll back together.
  */
 export async function withdrawShiftAssignment(
   store: SchedulingStore,
@@ -48,6 +53,22 @@ export async function withdrawShiftAssignment(
     });
     if (shift === undefined) {
       throw new NotFoundError("shift not found in organization");
+    }
+    if (shift.state !== "assigned") {
+      throw new DomainError("the shift is not in an assigned state");
+    }
+
+    // Re-read under the shift lock: a second concurrent withdrawal must see the
+    // first one's `withdrawn` state, not write a duplicate fact or double-revert.
+    const current = await tx.findShiftAssignment({
+      organizationId: input.organizationId,
+      shiftAssignmentId: assignment.id,
+    });
+    if (current === undefined) {
+      throw new NotFoundError("shift assignment not found in organization");
+    }
+    if (current.state !== "approved") {
+      throw new DomainError(`shift assignment in state ${current.state} cannot be withdrawn`);
     }
 
     const updated = await tx.updateShiftAssignment({
@@ -77,7 +98,7 @@ export async function withdrawShiftAssignment(
       action: SCHEDULING_AUDIT_ACTIONS.shiftAssignmentWithdrawn,
       entityType: "shift_assignment",
       entityId: updated.id,
-      before: { state: assignment.state, shift_state: shift.state },
+      before: { state: current.state, shift_state: shift.state },
       after: { state: updated.state, shift_state: updatedShift.state },
     });
 

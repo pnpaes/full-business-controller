@@ -16,9 +16,10 @@ export interface CancelShiftInput {
  * (`lockShift`) and loaded organization-scoped (`DEC-061`; a missing or
  * cross-organization id is a typed `NotFoundError`), then the transition is
  * checked: `completed` and `cancelled` are terminal, so cancelling either is a
- * `DomainError` rather than a silent no-op. Any live state (`open`, `published`,
- * `assigned`) may be cancelled. The transition and its audit fact commit or roll
- * back together.
+ * `DomainError` rather than a silent no-op. An `assigned` shift is also rejected
+ * (its live approved assignment must be withdrawn first), so `open` and
+ * `published` are the only states that may be cancelled. The transition and its
+ * audit fact commit or roll back together.
  */
 export async function cancelShift(
   store: SchedulingStore,
@@ -38,6 +39,9 @@ export async function cancelShift(
     }
     if (shift.state === "completed" || shift.state === "cancelled") {
       throw new DomainError(`shift in state ${shift.state} cannot be cancelled`);
+    }
+    if (shift.state === "assigned") {
+      throw new DomainError("withdraw the assignment before cancelling the shift");
     }
 
     const updated = await tx.updateShift({

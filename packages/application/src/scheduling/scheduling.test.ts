@@ -32,11 +32,13 @@ function setup(): { store: FakeSchedulingStore; fixture: SchedulingFixture } {
     id: fixture.employeeId,
     organizationId: fixture.organizationId,
     primaryLocationId: fixture.locationId,
+    roleCode: "barista",
   });
   seedSchedulingEmployee(store, {
     id: fixture.otherEmployeeId,
     organizationId: fixture.otherOrganizationId,
     primaryLocationId: fixture.otherLocationId,
+    roleCode: "barista",
   });
   return { store, fixture };
 }
@@ -299,6 +301,23 @@ describe("updateShift", () => {
       ).rejects.toThrow(/cannot be updated/);
     }
   });
+
+  it("locks the shift before checking its state", async () => {
+    const { store, fixture } = setup();
+    const shift = await plan(store, fixture);
+    const lock = vi.spyOn(store, "lockShift");
+
+    await updateShift(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      shiftId: shift.id,
+      breakMinutes: 5,
+    });
+
+    expect(lock).toHaveBeenCalledWith(
+      expect.objectContaining({ organizationId: fixture.organizationId, shiftId: shift.id }),
+    );
+  });
 });
 
 describe("publishShift", () => {
@@ -389,6 +408,37 @@ describe("cancelShift", () => {
         shiftId: "nope",
       }),
     ).rejects.toThrow(NotFoundError);
+  });
+
+  it("refuses to cancel an assigned shift until the assignment is withdrawn", async () => {
+    const { store, fixture } = setup();
+    const shift = await plan(store, fixture);
+    const assignment = await assign(store, fixture, shift.id);
+
+    await expect(
+      cancelShift(store, {
+        organizationId: fixture.organizationId,
+        actorId: fixture.actorId,
+        shiftId: shift.id,
+      }),
+    ).rejects.toThrow(new DomainError("withdraw the assignment before cancelling the shift"));
+    expect(
+      await findShift(store, { organizationId: fixture.organizationId, shiftId: shift.id }),
+    ).toMatchObject({ state: "assigned" });
+
+    await withdrawShiftAssignment(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      shiftAssignmentId: assignment.id,
+    });
+
+    await expect(
+      cancelShift(store, {
+        organizationId: fixture.organizationId,
+        actorId: fixture.actorId,
+        shiftId: shift.id,
+      }),
+    ).resolves.toMatchObject({ state: "cancelled" });
   });
 });
 
@@ -505,6 +555,7 @@ describe("assignShift", () => {
       id: "employee-no-location",
       organizationId: fixture.organizationId,
       primaryLocationId: null,
+      roleCode: "barista",
     });
     const shift = await plan(store, fixture);
 
@@ -521,12 +572,40 @@ describe("assignShift", () => {
       id: "employee-elsewhere",
       organizationId: fixture.organizationId,
       primaryLocationId: fixture.otherLocationId,
+      roleCode: "barista",
     });
     const shift = await plan(store, fixture);
 
     await expect(
       assign(store, fixture, shift.id, { employeeId: "employee-elsewhere" }),
     ).rejects.toThrow(/primary location matching the shift location/);
+  });
+
+  it("accepts any employee role when the shift declares no role", async () => {
+    const { store, fixture } = setup();
+    const shift = await plan(store, fixture);
+
+    expect(shift.roleCode).toBeNull();
+    await expect(assign(store, fixture, shift.id)).resolves.toMatchObject({ state: "approved" });
+  });
+
+  it("rejects an employee whose role differs from the shift's", async () => {
+    const { store, fixture } = setup();
+    const shift = await plan(store, fixture, { roleCode: "cook" });
+
+    await expect(assign(store, fixture, shift.id)).rejects.toThrow(
+      new DomainError("the employee's role does not match the shift's role"),
+    );
+    expect(
+      await findShift(store, { organizationId: fixture.organizationId, shiftId: shift.id }),
+    ).toMatchObject({ state: "open" });
+  });
+
+  it("assigns an employee whose role matches the shift's", async () => {
+    const { store, fixture } = setup();
+    const shift = await plan(store, fixture, { roleCode: "barista" });
+
+    await expect(assign(store, fixture, shift.id)).resolves.toMatchObject({ state: "approved" });
   });
 
   it("is a typed not-found for a missing or cross-organization employee", async () => {
@@ -642,6 +721,95 @@ describe("withdrawShiftAssignment", () => {
     await withdraw();
 
     await expect(withdraw()).rejects.toThrow(/cannot be withdrawn/);
+  });
+
+  it("refuses to withdraw an approved assignment once the shift is completed", async () => {
+    const { store, fixture } = setup();
+    const shift = await plan(store, fixture);
+    const assignment = await assign(store, fixture, shift.id);
+    await completeShift(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      shiftId: shift.id,
+    });
+
+    await expect(
+      withdrawShiftAssignment(store, {
+        organizationId: fixture.organizationId,
+        actorId: fixture.actorId,
+        shiftAssignmentId: assignment.id,
+      }),
+    ).rejects.toThrow(new DomainError("the shift is not in an assigned state"));
+
+    expect(
+      await findShift(store, { organizationId: fixture.organizationId, shiftId: shift.id }),
+    ).toMatchObject({ state: "completed" });
+    expect(
+      await findShiftAssignment(store, {
+        organizationId: fixture.organizationId,
+        shiftAssignmentId: assignment.id,
+      }),
+    ).toMatchObject({ state: "approved" });
+  });
+
+  it("refuses to withdraw an approved assignment once the shift is cancelled", async () => {
+    const { store, fixture } = setup();
+    const shift = await plan(store, fixture);
+    const assignment = await assign(store, fixture, shift.id);
+    // `cancelShift` now refuses an assigned shift, but an approved assignment can
+    // still outlive its shift (legacy data or another writer), so force the
+    // precondition directly to exercise the withdrawal guard in isolation.
+    await store.updateShift({
+      organizationId: fixture.organizationId,
+      shiftId: shift.id,
+      state: "cancelled",
+    });
+
+    await expect(
+      withdrawShiftAssignment(store, {
+        organizationId: fixture.organizationId,
+        actorId: fixture.actorId,
+        shiftAssignmentId: assignment.id,
+      }),
+    ).rejects.toThrow(new DomainError("the shift is not in an assigned state"));
+
+    expect(
+      await findShift(store, { organizationId: fixture.organizationId, shiftId: shift.id }),
+    ).toMatchObject({ state: "cancelled" });
+    expect(
+      await findShiftAssignment(store, {
+        organizationId: fixture.organizationId,
+        shiftAssignmentId: assignment.id,
+      }),
+    ).toMatchObject({ state: "approved" });
+  });
+
+  it("re-reads the assignment under the lock so a double withdrawal cannot double-revert", async () => {
+    const { store, fixture } = setup();
+    const shift = await plan(store, fixture);
+    const assignment = await assign(store, fixture, shift.id);
+
+    const realFind = store.findShiftAssignment.bind(store);
+    let calls = 0;
+    vi.spyOn(store, "findShiftAssignment").mockImplementation(async (query) => {
+      calls += 1;
+      const found = await realFind(query);
+      // Mimic a concurrent withdrawal committing between the first load and the
+      // re-read taken under the shift lock.
+      return calls === 1 || found === undefined ? found : { ...found, state: "withdrawn" };
+    });
+
+    await expect(
+      withdrawShiftAssignment(store, {
+        organizationId: fixture.organizationId,
+        actorId: fixture.actorId,
+        shiftAssignmentId: assignment.id,
+      }),
+    ).rejects.toThrow(/cannot be withdrawn/);
+
+    expect(calls).toBe(2);
+    expect(store.shifts.get(shift.id)?.state).toBe("assigned");
+    expect(store.shiftAssignments.get(assignment.id)?.state).toBe("approved");
   });
 
   it("is a typed not-found for a missing or cross-organization assignment", async () => {

@@ -162,12 +162,14 @@ export interface ShiftAssignmentListQuery {
 
 /**
  * The only `employee` fields the scheduling slice reads: the `primaryLocationId`
- * the provisional same-location assignment rule matches against (`WF-003`).
+ * the provisional same-location assignment rule matches against and the
+ * `roleCode` the `WF-003` role-match rule compares with the shift's role.
  */
 export interface SchedulingEmployeeRecord {
   readonly id: string;
   readonly organizationId: string;
   readonly primaryLocationId: string | null;
+  readonly roleCode: string;
 }
 
 /**

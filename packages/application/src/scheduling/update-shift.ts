@@ -30,10 +30,11 @@ const AUDIT_FIELDS = {
 
 /**
  * Amends one planned shift's time window, break or role (`WF-002`, `DEC-037`).
- * The row is loaded organization-scoped first (`DEC-061`; a missing or
- * cross-organization id is a typed `NotFoundError`), then the patch is
- * validated and the resulting window recomputed from the untouched fields, so
- * a partial patch still yields `endsAt > startsAt`.
+ * The row is locked (`lockShift`) and loaded organization-scoped (`DEC-061`; a
+ * missing or cross-organization id is a typed `NotFoundError`), then the patch
+ * is validated and the resulting window recomputed from the untouched fields, so
+ * a partial patch still yields `endsAt > startsAt`. Locking first means the
+ * terminal-state check cannot race a concurrent complete/cancel.
  *
  * The `state` is **not** patchable here: publishing, cancelling and completing
  * are lifecycle commands. A shift already `completed` or `cancelled` is
@@ -49,7 +50,7 @@ export async function updateShift(
   }
 
   return store.withTransaction(async (tx) => {
-    const shift = await tx.findShift({
+    const shift = await tx.lockShift({
       organizationId: input.organizationId,
       shiftId: input.shiftId.trim(),
     });
