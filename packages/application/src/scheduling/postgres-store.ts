@@ -1,0 +1,195 @@
+import * as repo from "@aquarela/persistence";
+import type { Database, NodeDatabase } from "@aquarela/persistence";
+
+import type {
+  NewShiftAssignmentRecord,
+  NewShiftRecord,
+  SchedulingEmployeeRecord,
+  SchedulingStore,
+  ShiftAssignmentListQuery,
+  ShiftAssignmentRecord,
+  ShiftListQuery,
+  ShiftRecord,
+  UpdateShiftAssignmentRecord,
+  UpdateShiftRecord,
+} from "./types";
+
+/** A transaction handle has no `transaction` method of its own. */
+function isNodeDatabase(db: Database): db is NodeDatabase {
+  return typeof (db as NodeDatabase).transaction === "function";
+}
+
+/** `timestamptz`, ISO, or `null` — the adapter's read-side convention. */
+function toIso(value: Date | null): string | null {
+  return value === null ? null : value.toISOString();
+}
+
+/** The write-side twin of `toIso`: an ISO string or `null` becomes a `Date` or `null`. */
+function toDate(value: string | null): Date | null {
+  return value === null ? null : new Date(value);
+}
+
+function toShift(row: repo.Shift): ShiftRecord {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    locationId: row.locationId,
+    roleCode: row.roleCode,
+    startsAt: row.startsAt.toISOString(),
+    endsAt: row.endsAt.toISOString(),
+    breakMinutes: row.breakMinutes,
+    state: row.state,
+    publishedAt: toIso(row.publishedAt),
+    actualStart: toIso(row.actualStart),
+    actualEnd: toIso(row.actualEnd),
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: toIso(row.updatedAt),
+  };
+}
+
+function toShiftAssignment(row: repo.ShiftAssignment): ShiftAssignmentRecord {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    shiftId: row.shiftId,
+    employeeId: row.employeeId,
+    state: row.state,
+    assignedBy: row.assignedBy,
+    assignedAt: row.assignedAt.toISOString(),
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: toIso(row.updatedAt),
+  };
+}
+
+/**
+ * Adapts the persistence scheduling repository to the `SchedulingStore` port:
+ * the `timestamptz` columns become ISO strings on read and `Date`s on write, and
+ * every read/write passes the organization through so the adapter cannot escape
+ * the `DEC-061` row scope. `findEmployee` is projected to the fields the
+ * assignment rule reads (`primaryLocationId`).
+ */
+export function createPostgresSchedulingStore(db: Database): SchedulingStore {
+  return {
+    withTransaction: async (fn) => {
+      if (!isNodeDatabase(db)) {
+        return fn(createPostgresSchedulingStore(db));
+      }
+      return db.transaction((tx) => fn(createPostgresSchedulingStore(tx)));
+    },
+    writeAudit: async (input) => {
+      await repo.writeAuditEvent(db, input);
+    },
+    createShift: async (input: NewShiftRecord) =>
+      toShift(
+        await repo.createShift(db, {
+          organizationId: input.organizationId,
+          locationId: input.locationId,
+          roleCode: input.roleCode,
+          startsAt: new Date(input.startsAt),
+          endsAt: new Date(input.endsAt),
+          breakMinutes: input.breakMinutes,
+          createdBy: input.createdBy,
+        }),
+      ),
+    findShift: async (query) => {
+      const row = await repo.findShift(db, {
+        organizationId: query.organizationId,
+        shiftId: query.shiftId,
+      });
+      return row === undefined ? undefined : toShift(row);
+    },
+    lockShift: async (query) => {
+      const row = await repo.lockShift(db, {
+        organizationId: query.organizationId,
+        shiftId: query.shiftId,
+      });
+      return row === undefined ? undefined : toShift(row);
+    },
+    updateShift: async (input: UpdateShiftRecord) => {
+      const row = await repo.updateShift(db, {
+        organizationId: input.organizationId,
+        shiftId: input.shiftId,
+        ...(input.startsAt === undefined ? {} : { startsAt: new Date(input.startsAt) }),
+        ...(input.endsAt === undefined ? {} : { endsAt: new Date(input.endsAt) }),
+        ...(input.breakMinutes === undefined ? {} : { breakMinutes: input.breakMinutes }),
+        ...(input.roleCode === undefined ? {} : { roleCode: input.roleCode }),
+        ...(input.state === undefined ? {} : { state: input.state }),
+        ...(input.publishedAt === undefined ? {} : { publishedAt: toDate(input.publishedAt) }),
+        ...(input.actorId === undefined ? {} : { actorId: input.actorId }),
+      });
+      return row === undefined ? undefined : toShift(row);
+    },
+    listShifts: async (query: ShiftListQuery) => {
+      const rows = await repo.listShifts(db, {
+        organizationId: query.organizationId,
+        ...(query.locationId === undefined ? {} : { locationId: query.locationId }),
+        ...(query.state === undefined ? {} : { state: query.state }),
+        ...(query.from === undefined ? {} : { from: new Date(query.from) }),
+        ...(query.to === undefined ? {} : { to: new Date(query.to) }),
+        ...(query.limit === undefined ? {} : { limit: query.limit }),
+        ...(query.offset === undefined ? {} : { offset: query.offset }),
+      });
+      return rows.map(toShift);
+    },
+    createShiftAssignment: async (input: NewShiftAssignmentRecord) =>
+      toShiftAssignment(
+        await repo.createShiftAssignment(db, {
+          organizationId: input.organizationId,
+          shiftId: input.shiftId,
+          employeeId: input.employeeId,
+          state: input.state,
+          assignedBy: input.assignedBy,
+          assignedAt: new Date(input.assignedAt),
+          createdBy: input.createdBy,
+        }),
+      ),
+    findShiftAssignment: async (query) => {
+      const row = await repo.findShiftAssignment(db, {
+        organizationId: query.organizationId,
+        shiftAssignmentId: query.shiftAssignmentId,
+      });
+      return row === undefined ? undefined : toShiftAssignment(row);
+    },
+    findShiftAssignmentByShiftEmployee: async (query) => {
+      const row = await repo.findShiftAssignmentByShiftEmployee(db, {
+        organizationId: query.organizationId,
+        shiftId: query.shiftId,
+        employeeId: query.employeeId,
+      });
+      return row === undefined ? undefined : toShiftAssignment(row);
+    },
+    updateShiftAssignment: async (input: UpdateShiftAssignmentRecord) => {
+      const row = await repo.updateShiftAssignment(db, {
+        organizationId: input.organizationId,
+        shiftAssignmentId: input.shiftAssignmentId,
+        ...(input.state === undefined ? {} : { state: input.state }),
+        ...(input.actorId === undefined ? {} : { actorId: input.actorId }),
+      });
+      return row === undefined ? undefined : toShiftAssignment(row);
+    },
+    listShiftAssignments: async (query: ShiftAssignmentListQuery) => {
+      const rows = await repo.listShiftAssignments(db, {
+        organizationId: query.organizationId,
+        ...(query.shiftId === undefined ? {} : { shiftId: query.shiftId }),
+        ...(query.employeeId === undefined ? {} : { employeeId: query.employeeId }),
+        ...(query.state === undefined ? {} : { state: query.state }),
+        ...(query.limit === undefined ? {} : { limit: query.limit }),
+        ...(query.offset === undefined ? {} : { offset: query.offset }),
+      });
+      return rows.map(toShiftAssignment);
+    },
+    findEmployee: async (query): Promise<SchedulingEmployeeRecord | undefined> => {
+      const row = await repo.findEmployee(db, {
+        organizationId: query.organizationId,
+        employeeId: query.employeeId,
+      });
+      return row === undefined
+        ? undefined
+        : {
+            id: row.id,
+            organizationId: row.organizationId,
+            primaryLocationId: row.primaryLocationId,
+          };
+    },
+  };
+}

@@ -1,0 +1,874 @@
+import { DomainError, NotFoundError } from "@aquarela/domain";
+import { describe, expect, it, vi } from "vitest";
+
+import { assignShift } from "./assign-shift";
+import type { AssignShiftInput } from "./assign-shift";
+import { cancelShift } from "./cancel-shift";
+import { completeShift } from "./complete-shift";
+import { createShift } from "./create-shift";
+import type { CreateShiftInput } from "./create-shift";
+import { findShift } from "./find-shift";
+import { findShiftAssignment } from "./find-shift-assignment";
+import { DEFAULT_SHIFT_ASSIGNMENT_LIMIT, listShiftAssignments } from "./list-shift-assignments";
+import { DEFAULT_SHIFT_LIMIT, listShifts } from "./list-shifts";
+import { publishShift } from "./publish-shift";
+import {
+  FakeSchedulingStore,
+  seedSchedulingEmployee,
+  seedSchedulingFixture,
+  type SchedulingFixture,
+} from "./test-support";
+import { SHIFT_ASSIGNMENT_STATES, SHIFT_STATES } from "./types";
+import { updateShift } from "./update-shift";
+import { withdrawShiftAssignment } from "./withdraw-shift-assignment";
+
+const STARTS = "2026-07-01T08:00:00.000Z";
+const ENDS = "2026-07-01T16:00:00.000Z";
+
+function setup(): { store: FakeSchedulingStore; fixture: SchedulingFixture } {
+  const store = new FakeSchedulingStore();
+  const fixture = seedSchedulingFixture();
+  seedSchedulingEmployee(store, {
+    id: fixture.employeeId,
+    organizationId: fixture.organizationId,
+    primaryLocationId: fixture.locationId,
+  });
+  seedSchedulingEmployee(store, {
+    id: fixture.otherEmployeeId,
+    organizationId: fixture.otherOrganizationId,
+    primaryLocationId: fixture.otherLocationId,
+  });
+  return { store, fixture };
+}
+
+function plan(
+  store: FakeSchedulingStore,
+  fixture: SchedulingFixture,
+  overrides: Partial<CreateShiftInput> = {},
+) {
+  return createShift(store, {
+    organizationId: fixture.organizationId,
+    actorId: fixture.actorId,
+    locationId: fixture.locationId,
+    startsAt: STARTS,
+    endsAt: ENDS,
+    ...overrides,
+  });
+}
+
+function assign(
+  store: FakeSchedulingStore,
+  fixture: SchedulingFixture,
+  shiftId: string,
+  overrides: Partial<AssignShiftInput> = {},
+) {
+  return assignShift(store, {
+    organizationId: fixture.organizationId,
+    actorId: fixture.actorId,
+    shiftId,
+    employeeId: fixture.employeeId,
+    ...overrides,
+  });
+}
+
+describe("scheduling vocabularies", () => {
+  it("mirrors the persistence state enums", () => {
+    expect(SHIFT_STATES).toEqual(["open", "published", "assigned", "cancelled", "completed"]);
+    expect(SHIFT_ASSIGNMENT_STATES).toEqual([
+      "self_assigned",
+      "pending_approval",
+      "approved",
+      "withdrawn",
+      "rejected",
+    ]);
+  });
+});
+
+describe("createShift", () => {
+  it("plans an open shift with its audit fact", async () => {
+    const { store, fixture } = setup();
+
+    const shift = await plan(store, fixture, { roleCode: "  barista  ", breakMinutes: 30 });
+
+    expect(shift).toMatchObject({
+      organizationId: fixture.organizationId,
+      locationId: fixture.locationId,
+      roleCode: "barista",
+      startsAt: STARTS,
+      endsAt: ENDS,
+      breakMinutes: 30,
+      state: "open",
+      publishedAt: null,
+      actualStart: null,
+      actualEnd: null,
+      updatedAt: null,
+    });
+    expect(store.shifts.size).toBe(1);
+
+    const audit = store.audits.find((row) => row.action === "workforce.shift.created");
+    expect(audit).toMatchObject({
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      entityType: "shift",
+      entityId: shift.id,
+      after: {
+        location_id: fixture.locationId,
+        role_code: "barista",
+        starts_at: STARTS,
+        ends_at: ENDS,
+        break_minutes: 30,
+        state: "open",
+      },
+    });
+  });
+
+  it("defaults the break to 0 and a blank role to null", async () => {
+    const { store, fixture } = setup();
+
+    const shift = await plan(store, fixture, { roleCode: "   " });
+
+    expect(shift.breakMinutes).toBe(0);
+    expect(shift.roleCode).toBeNull();
+  });
+
+  it("rejects a missing location", async () => {
+    const { store, fixture } = setup();
+
+    await expect(plan(store, fixture, { locationId: "  " })).rejects.toThrow(
+      new DomainError("locationId is required"),
+    );
+  });
+
+  it("rejects an instant without seconds", async () => {
+    const { store, fixture } = setup();
+
+    await expect(plan(store, fixture, { startsAt: "2026-07-01T08:00Z" })).rejects.toThrow(
+      /startsAt must be an ISO-8601 instant/,
+    );
+    await expect(plan(store, fixture, { endsAt: "2026-07-01" })).rejects.toThrow(
+      /endsAt must be an ISO-8601 instant/,
+    );
+  });
+
+  it("rejects a window that does not advance", async () => {
+    const { store, fixture } = setup();
+
+    await expect(plan(store, fixture, { endsAt: STARTS })).rejects.toThrow(
+      new DomainError("endsAt must be after startsAt"),
+    );
+  });
+
+  it("rejects a negative, fractional or non-numeric break", async () => {
+    const { store, fixture } = setup();
+
+    await expect(plan(store, fixture, { breakMinutes: -1 })).rejects.toThrow(
+      /breakMinutes must be a non-negative integer/,
+    );
+    await expect(plan(store, fixture, { breakMinutes: 1.5 })).rejects.toThrow(
+      /breakMinutes must be a non-negative integer/,
+    );
+    await expect(plan(store, fixture, { breakMinutes: "30" as unknown as number })).rejects.toThrow(
+      /breakMinutes must be a non-negative integer/,
+    );
+  });
+
+  it("rolls the shift back when its audit fact cannot be written", async () => {
+    const { store, fixture } = setup();
+    vi.spyOn(store, "writeAudit").mockRejectedValueOnce(new Error("audit down"));
+
+    await expect(plan(store, fixture)).rejects.toThrow("audit down");
+
+    expect(store.shifts.size).toBe(0);
+    expect(store.audits).toHaveLength(0);
+  });
+});
+
+describe("updateShift", () => {
+  it("amends the window, break and role with a before/after audit fact", async () => {
+    const { store, fixture } = setup();
+    const shift = await plan(store, fixture, { breakMinutes: 0 });
+
+    const updated = await updateShift(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      shiftId: shift.id,
+      endsAt: "2026-07-01T17:00:00.000Z",
+      breakMinutes: 45,
+      roleCode: "cook",
+    });
+
+    expect(updated).toMatchObject({
+      startsAt: STARTS,
+      endsAt: "2026-07-01T17:00:00.000Z",
+      breakMinutes: 45,
+      roleCode: "cook",
+    });
+    expect(updated.updatedAt).not.toBeNull();
+
+    const audit = store.audits.find((row) => row.action === "workforce.shift.updated");
+    expect(audit?.before).toEqual({ ends_at: ENDS, break_minutes: 0, role_code: null });
+    expect(audit?.after).toEqual({
+      ends_at: "2026-07-01T17:00:00.000Z",
+      break_minutes: 45,
+      role_code: "cook",
+    });
+  });
+
+  it("clears the role with a blank value", async () => {
+    const { store, fixture } = setup();
+    const shift = await plan(store, fixture, { roleCode: "barista" });
+
+    const updated = await updateShift(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      shiftId: shift.id,
+      roleCode: "  ",
+    });
+
+    expect(updated.roleCode).toBeNull();
+  });
+
+  it("rejects an empty patch", async () => {
+    const { store, fixture } = setup();
+    const shift = await plan(store, fixture);
+
+    await expect(
+      updateShift(store, {
+        organizationId: fixture.organizationId,
+        actorId: fixture.actorId,
+        shiftId: shift.id,
+      }),
+    ).rejects.toThrow(new DomainError("no updatable fields provided"));
+  });
+
+  it("rejects a partial patch that inverts the window", async () => {
+    const { store, fixture } = setup();
+    const shift = await plan(store, fixture);
+
+    await expect(
+      updateShift(store, {
+        organizationId: fixture.organizationId,
+        actorId: fixture.actorId,
+        shiftId: shift.id,
+        startsAt: "2026-07-01T18:00:00.000Z",
+      }),
+    ).rejects.toThrow(new DomainError("endsAt must be after startsAt"));
+  });
+
+  it("is a typed not-found for an unknown or cross-organization shift", async () => {
+    const { store, fixture } = setup();
+
+    await expect(
+      updateShift(store, {
+        organizationId: fixture.organizationId,
+        actorId: fixture.actorId,
+        shiftId: "nope",
+        breakMinutes: 5,
+      }),
+    ).rejects.toThrow(NotFoundError);
+  });
+
+  it("rejects amending a terminal (completed or cancelled) shift", async () => {
+    const { store, fixture } = setup();
+    const completed = await plan(store, fixture);
+    await publishShift(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      shiftId: completed.id,
+    });
+    await completeShift(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      shiftId: completed.id,
+    });
+    const cancelled = await plan(store, fixture);
+    await cancelShift(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      shiftId: cancelled.id,
+    });
+
+    for (const shiftId of [completed.id, cancelled.id]) {
+      await expect(
+        updateShift(store, {
+          organizationId: fixture.organizationId,
+          actorId: fixture.actorId,
+          shiftId,
+          breakMinutes: 10,
+        }),
+      ).rejects.toThrow(/cannot be updated/);
+    }
+  });
+});
+
+describe("publishShift", () => {
+  it("moves an open shift to published and stamps the instant", async () => {
+    const { store, fixture } = setup();
+    const shift = await plan(store, fixture);
+
+    const published = await publishShift(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      shiftId: shift.id,
+    });
+
+    expect(published.state).toBe("published");
+    expect(published.publishedAt).not.toBeNull();
+
+    const audit = store.audits.find((row) => row.action === "workforce.shift.published");
+    expect(audit?.before).toEqual({ state: "open", published_at: null });
+    expect(audit?.after).toMatchObject({ state: "published" });
+  });
+
+  it("rejects publishing anything other than an open shift", async () => {
+    const { store, fixture } = setup();
+    const shift = await plan(store, fixture);
+    const publish = () =>
+      publishShift(store, {
+        organizationId: fixture.organizationId,
+        actorId: fixture.actorId,
+        shiftId: shift.id,
+      });
+    await publish();
+
+    await expect(publish()).rejects.toThrow(/cannot be published/);
+  });
+
+  it("is a typed not-found for a missing or cross-organization shift", async () => {
+    const { store, fixture } = setup();
+    const shift = await plan(store, fixture);
+
+    await expect(
+      publishShift(store, {
+        organizationId: fixture.otherOrganizationId,
+        actorId: fixture.actorId,
+        shiftId: shift.id,
+      }),
+    ).rejects.toThrow(NotFoundError);
+  });
+});
+
+describe("cancelShift", () => {
+  it("cancels a live shift with its audit fact", async () => {
+    const { store, fixture } = setup();
+    const shift = await plan(store, fixture);
+
+    const cancelled = await cancelShift(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      shiftId: shift.id,
+    });
+
+    expect(cancelled.state).toBe("cancelled");
+    expect(store.audits.find((row) => row.action === "workforce.shift.cancelled")?.after).toEqual({
+      state: "cancelled",
+    });
+  });
+
+  it("rejects cancelling a terminal shift", async () => {
+    const { store, fixture } = setup();
+    const shift = await plan(store, fixture);
+    const cancel = () =>
+      cancelShift(store, {
+        organizationId: fixture.organizationId,
+        actorId: fixture.actorId,
+        shiftId: shift.id,
+      });
+    await cancel();
+
+    await expect(cancel()).rejects.toThrow(/cannot be cancelled/);
+  });
+
+  it("is a typed not-found for a missing shift", async () => {
+    const { store, fixture } = setup();
+
+    await expect(
+      cancelShift(store, {
+        organizationId: fixture.organizationId,
+        actorId: fixture.actorId,
+        shiftId: "nope",
+      }),
+    ).rejects.toThrow(NotFoundError);
+  });
+});
+
+describe("completeShift", () => {
+  it("completes a published and an assigned shift", async () => {
+    const { store, fixture } = setup();
+    const published = await plan(store, fixture);
+    await publishShift(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      shiftId: published.id,
+    });
+    const assigned = await plan(store, fixture);
+    await assign(store, fixture, assigned.id);
+
+    await expect(
+      completeShift(store, {
+        organizationId: fixture.organizationId,
+        actorId: fixture.actorId,
+        shiftId: published.id,
+      }),
+    ).resolves.toMatchObject({ state: "completed" });
+    await expect(
+      completeShift(store, {
+        organizationId: fixture.organizationId,
+        actorId: fixture.actorId,
+        shiftId: assigned.id,
+      }),
+    ).resolves.toMatchObject({ state: "completed" });
+  });
+
+  it("rejects completing an open or cancelled shift", async () => {
+    const { store, fixture } = setup();
+    const open = await plan(store, fixture);
+    const cancelled = await plan(store, fixture);
+    await cancelShift(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      shiftId: cancelled.id,
+    });
+
+    await expect(
+      completeShift(store, {
+        organizationId: fixture.organizationId,
+        actorId: fixture.actorId,
+        shiftId: open.id,
+      }),
+    ).rejects.toThrow(/cannot be completed/);
+    await expect(
+      completeShift(store, {
+        organizationId: fixture.organizationId,
+        actorId: fixture.actorId,
+        shiftId: cancelled.id,
+      }),
+    ).rejects.toThrow(/cannot be completed/);
+  });
+});
+
+describe("assignShift", () => {
+  it("assigns an employee to an open shift and moves the shift to assigned", async () => {
+    const { store, fixture } = setup();
+    const shift = await plan(store, fixture);
+
+    const assignment = await assign(store, fixture, shift.id);
+
+    expect(assignment).toMatchObject({
+      organizationId: fixture.organizationId,
+      shiftId: shift.id,
+      employeeId: fixture.employeeId,
+      state: "approved",
+      assignedBy: fixture.actorId,
+    });
+    expect(assignment.assignedAt).toEqual(expect.any(String));
+    expect(
+      await findShift(store, { organizationId: fixture.organizationId, shiftId: shift.id }),
+    ).toMatchObject({ state: "assigned" });
+
+    const audit = store.audits.find((row) => row.action === "workforce.shift_assignment.created");
+    expect(audit).toMatchObject({
+      entityType: "shift_assignment",
+      entityId: assignment.id,
+      before: { shift_state: "open" },
+      after: {
+        shift_id: shift.id,
+        employee_id: fixture.employeeId,
+        state: "approved",
+        assigned_by: fixture.actorId,
+        assigned_at: assignment.assignedAt,
+        shift_state: "assigned",
+      },
+    });
+  });
+
+  it("assigns to a published shift", async () => {
+    const { store, fixture } = setup();
+    const shift = await plan(store, fixture);
+    await publishShift(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      shiftId: shift.id,
+    });
+
+    const assignment = await assign(store, fixture, shift.id);
+
+    expect(assignment.state).toBe("approved");
+    expect(
+      store.audits.find((row) => row.action === "workforce.shift_assignment.created")?.before,
+    ).toEqual({ shift_state: "published" });
+  });
+
+  it("fails closed when the employee has no primary location", async () => {
+    const { store, fixture } = setup();
+    seedSchedulingEmployee(store, {
+      id: "employee-no-location",
+      organizationId: fixture.organizationId,
+      primaryLocationId: null,
+    });
+    const shift = await plan(store, fixture);
+
+    await expect(
+      assign(store, fixture, shift.id, { employeeId: "employee-no-location" }),
+    ).rejects.toThrow(
+      new DomainError("employee must have a primary location matching the shift location"),
+    );
+  });
+
+  it("rejects an employee whose primary location differs from the shift's", async () => {
+    const { store, fixture } = setup();
+    seedSchedulingEmployee(store, {
+      id: "employee-elsewhere",
+      organizationId: fixture.organizationId,
+      primaryLocationId: fixture.otherLocationId,
+    });
+    const shift = await plan(store, fixture);
+
+    await expect(
+      assign(store, fixture, shift.id, { employeeId: "employee-elsewhere" }),
+    ).rejects.toThrow(/primary location matching the shift location/);
+  });
+
+  it("is a typed not-found for a missing or cross-organization employee", async () => {
+    const { store, fixture } = setup();
+    const shift = await plan(store, fixture);
+
+    await expect(assign(store, fixture, shift.id, { employeeId: "nope" })).rejects.toThrow(
+      NotFoundError,
+    );
+    await expect(
+      assign(store, fixture, shift.id, { employeeId: fixture.otherEmployeeId }),
+    ).rejects.toThrow(NotFoundError);
+  });
+
+  it("rejects a duplicate assignment for the same shift and employee", async () => {
+    const { store, fixture } = setup();
+    const shift = await plan(store, fixture);
+    const assignment = await assign(store, fixture, shift.id);
+    // Withdrawing returns the shift to `open` while the assignment fact remains,
+    // so the duplicate rejection is what fires, not the state guard.
+    await withdrawShiftAssignment(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      shiftAssignmentId: assignment.id,
+    });
+
+    await expect(assign(store, fixture, shift.id)).rejects.toThrow(
+      new DomainError("employee is already assigned to this shift"),
+    );
+  });
+
+  it("rejects assigning to a shift that is not open or published", async () => {
+    const { store, fixture } = setup();
+    const shift = await plan(store, fixture);
+    await assign(store, fixture, shift.id);
+
+    await expect(
+      assign(store, fixture, shift.id, { employeeId: fixture.employeeId }),
+    ).rejects.toThrow(/cannot take an assignment/);
+  });
+
+  it("is a typed not-found for a missing shift", async () => {
+    const { store, fixture } = setup();
+
+    await expect(assign(store, fixture, "nope")).rejects.toThrow(NotFoundError);
+  });
+
+  it("rolls the assignment and the shift back when the audit fact cannot be written", async () => {
+    const { store, fixture } = setup();
+    const shift = await plan(store, fixture);
+    vi.spyOn(store, "writeAudit").mockRejectedValueOnce(new Error("audit down"));
+
+    await expect(assign(store, fixture, shift.id)).rejects.toThrow("audit down");
+
+    expect(store.shiftAssignments.size).toBe(0);
+    expect(store.shifts.get(shift.id)?.state).toBe("open");
+  });
+});
+
+describe("withdrawShiftAssignment", () => {
+  it("withdraws the assignment and returns a published shift to published", async () => {
+    const { store, fixture } = setup();
+    const shift = await plan(store, fixture);
+    await publishShift(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      shiftId: shift.id,
+    });
+    const assignment = await assign(store, fixture, shift.id);
+
+    const withdrawn = await withdrawShiftAssignment(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      shiftAssignmentId: assignment.id,
+    });
+
+    expect(withdrawn.state).toBe("withdrawn");
+    expect(
+      await findShift(store, { organizationId: fixture.organizationId, shiftId: shift.id }),
+    ).toMatchObject({ state: "published" });
+
+    const audit = store.audits.find((row) => row.action === "workforce.shift_assignment.withdrawn");
+    expect(audit?.before).toEqual({ state: "approved", shift_state: "assigned" });
+    expect(audit?.after).toEqual({ state: "withdrawn", shift_state: "published" });
+  });
+
+  it("returns a never-published shift to open", async () => {
+    const { store, fixture } = setup();
+    const shift = await plan(store, fixture);
+    const assignment = await assign(store, fixture, shift.id);
+
+    await withdrawShiftAssignment(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      shiftAssignmentId: assignment.id,
+    });
+
+    expect(
+      await findShift(store, { organizationId: fixture.organizationId, shiftId: shift.id }),
+    ).toMatchObject({ state: "open" });
+  });
+
+  it("rejects withdrawing an assignment that is not approved", async () => {
+    const { store, fixture } = setup();
+    const shift = await plan(store, fixture);
+    const assignment = await assign(store, fixture, shift.id);
+    const withdraw = () =>
+      withdrawShiftAssignment(store, {
+        organizationId: fixture.organizationId,
+        actorId: fixture.actorId,
+        shiftAssignmentId: assignment.id,
+      });
+    await withdraw();
+
+    await expect(withdraw()).rejects.toThrow(/cannot be withdrawn/);
+  });
+
+  it("is a typed not-found for a missing or cross-organization assignment", async () => {
+    const { store, fixture } = setup();
+    const shift = await plan(store, fixture);
+    const assignment = await assign(store, fixture, shift.id);
+
+    await expect(
+      withdrawShiftAssignment(store, {
+        organizationId: fixture.otherOrganizationId,
+        actorId: fixture.actorId,
+        shiftAssignmentId: assignment.id,
+      }),
+    ).rejects.toThrow(NotFoundError);
+    await expect(
+      withdrawShiftAssignment(store, {
+        organizationId: fixture.organizationId,
+        actorId: fixture.actorId,
+        shiftAssignmentId: "nope",
+      }),
+    ).rejects.toThrow(NotFoundError);
+  });
+});
+
+describe("findShift", () => {
+  it("is organization-scoped", async () => {
+    const { store, fixture } = setup();
+    const shift = await plan(store, fixture);
+
+    await expect(
+      findShift(store, { organizationId: fixture.organizationId, shiftId: shift.id }),
+    ).resolves.toMatchObject({ id: shift.id });
+    await expect(
+      findShift(store, { organizationId: fixture.otherOrganizationId, shiftId: shift.id }),
+    ).resolves.toBeUndefined();
+  });
+});
+
+describe("findShiftAssignment", () => {
+  it("is organization-scoped", async () => {
+    const { store, fixture } = setup();
+    const shift = await plan(store, fixture);
+    const assignment = await assign(store, fixture, shift.id);
+
+    await expect(
+      findShiftAssignment(store, {
+        organizationId: fixture.organizationId,
+        shiftAssignmentId: assignment.id,
+      }),
+    ).resolves.toMatchObject({ id: assignment.id });
+    await expect(
+      findShiftAssignment(store, {
+        organizationId: fixture.otherOrganizationId,
+        shiftAssignmentId: assignment.id,
+      }),
+    ).resolves.toBeUndefined();
+  });
+});
+
+describe("listShifts", () => {
+  it("defaults the page limit and never returns an unbounded rota", async () => {
+    const { store, fixture } = setup();
+    const spy = vi.spyOn(store, "listShifts");
+
+    await listShifts(store, { organizationId: fixture.organizationId });
+
+    expect(spy).toHaveBeenCalledWith(expect.objectContaining({ limit: DEFAULT_SHIFT_LIMIT }));
+  });
+
+  it("rejects an unknown state filter", async () => {
+    const { store, fixture } = setup();
+
+    await expect(
+      listShifts(store, { organizationId: fixture.organizationId, state: "nonsense" }),
+    ).rejects.toThrow(/state must be one of/);
+  });
+
+  it("filters by location, state and an inclusive starts-at window", async () => {
+    const { store, fixture } = setup();
+    const early = await plan(store, fixture, {
+      startsAt: "2026-07-01T08:00:00.000Z",
+      endsAt: "2026-07-01T12:00:00.000Z",
+    });
+    const late = await plan(store, fixture, {
+      locationId: fixture.otherLocationId,
+      startsAt: "2026-08-01T08:00:00.000Z",
+      endsAt: "2026-08-01T12:00:00.000Z",
+    });
+    await publishShift(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      shiftId: early.id,
+    });
+
+    const inWindow = await listShifts(store, {
+      organizationId: fixture.organizationId,
+      from: "2026-07-01T00:00:00.000Z",
+      to: "2026-07-31T23:59:59.000Z",
+    });
+    expect(inWindow.map((row) => row.id)).toEqual([early.id]);
+
+    const byLocation = await listShifts(store, {
+      organizationId: fixture.organizationId,
+      locationId: fixture.otherLocationId,
+    });
+    expect(byLocation.map((row) => row.id)).toEqual([late.id]);
+
+    const published = await listShifts(store, {
+      organizationId: fixture.organizationId,
+      state: "published",
+    });
+    expect(published.map((row) => row.id)).toEqual([early.id]);
+  });
+
+  it("orders by starts-at then id and is organization-scoped", async () => {
+    const { store, fixture } = setup();
+    const first = await plan(store, fixture, {
+      startsAt: "2026-07-02T08:00:00.000Z",
+      endsAt: "2026-07-02T12:00:00.000Z",
+    });
+    const second = await plan(store, fixture, {
+      startsAt: "2026-07-01T08:00:00.000Z",
+      endsAt: "2026-07-01T12:00:00.000Z",
+    });
+    const otherOrgShift = await createShift(store, {
+      organizationId: fixture.otherOrganizationId,
+      actorId: fixture.actorId,
+      locationId: fixture.otherLocationId,
+      startsAt: "2026-06-01T08:00:00.000Z",
+      endsAt: "2026-06-01T12:00:00.000Z",
+    });
+
+    const rows = await listShifts(store, { organizationId: fixture.organizationId });
+
+    expect(rows.map((row) => row.id)).toEqual([second.id, first.id]);
+    expect(rows.map((row) => row.id)).not.toContain(otherOrgShift.id);
+  });
+
+  it("pages with limit and offset", async () => {
+    const { store, fixture } = setup();
+    await plan(store, fixture, {
+      startsAt: "2026-07-01T08:00:00.000Z",
+      endsAt: "2026-07-01T12:00:00.000Z",
+    });
+    const second = await plan(store, fixture, {
+      startsAt: "2026-07-02T08:00:00.000Z",
+      endsAt: "2026-07-02T12:00:00.000Z",
+    });
+
+    const page = await listShifts(store, {
+      organizationId: fixture.organizationId,
+      limit: 1,
+      offset: 1,
+    });
+
+    expect(page.map((row) => row.id)).toEqual([second.id]);
+  });
+});
+
+describe("listShiftAssignments", () => {
+  it("defaults the page limit", async () => {
+    const { store, fixture } = setup();
+    const spy = vi.spyOn(store, "listShiftAssignments");
+
+    await listShiftAssignments(store, { organizationId: fixture.organizationId });
+
+    expect(spy).toHaveBeenCalledWith(
+      expect.objectContaining({ limit: DEFAULT_SHIFT_ASSIGNMENT_LIMIT }),
+    );
+  });
+
+  it("rejects an unknown state filter", async () => {
+    const { store, fixture } = setup();
+
+    await expect(
+      listShiftAssignments(store, { organizationId: fixture.organizationId, state: "nonsense" }),
+    ).rejects.toThrow(/state must be one of/);
+  });
+
+  it("filters by shift, employee and state and is organization-scoped", async () => {
+    const { store, fixture } = setup();
+    const shift = await plan(store, fixture);
+    const assignment = await assign(store, fixture, shift.id);
+    const otherOrgShift = await createShift(store, {
+      organizationId: fixture.otherOrganizationId,
+      actorId: fixture.actorId,
+      locationId: fixture.otherLocationId,
+      startsAt: STARTS,
+      endsAt: ENDS,
+    });
+    await assignShift(store, {
+      organizationId: fixture.otherOrganizationId,
+      actorId: fixture.actorId,
+      shiftId: otherOrgShift.id,
+      employeeId: fixture.otherEmployeeId,
+    });
+
+    const rows = await listShiftAssignments(store, {
+      organizationId: fixture.organizationId,
+      shiftId: shift.id,
+      employeeId: fixture.employeeId,
+      state: "approved",
+    });
+
+    expect(rows.map((row) => row.id)).toEqual([assignment.id]);
+  });
+
+  it("filters withdrawn assignments out of the approved page", async () => {
+    const { store, fixture } = setup();
+    const shift = await plan(store, fixture);
+    const assignment = await assign(store, fixture, shift.id);
+    await withdrawShiftAssignment(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      shiftAssignmentId: assignment.id,
+    });
+
+    const approved = await listShiftAssignments(store, {
+      organizationId: fixture.organizationId,
+      state: "approved",
+    });
+    const withdrawn = await listShiftAssignments(store, {
+      organizationId: fixture.organizationId,
+      state: "withdrawn",
+    });
+
+    expect(approved).toHaveLength(0);
+    expect(withdrawn.map((row) => row.id)).toEqual([assignment.id]);
+  });
+});
