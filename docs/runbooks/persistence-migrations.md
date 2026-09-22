@@ -170,11 +170,24 @@ because its target table varies by `source_type`.
 ## Pre-apply preflight for validating constraints and indexes
 Migrations 0014, 0016, 0017, 0018, 0019, 0020, 0021, 0022, 0023, 0024, 0025,
 0026, 0027, 0028, 0029, 0030, 0031, 0032, 0033, 0035, 0037, 0040, 0041, 0042,
-0043, 0044, 0045, 0046 and 0047 add objects that validate or build, so a failure
+0043, 0044, 0045, 0046, 0047, 0048 and 0049 add objects that validate or build, so a failure
 aborts the whole transactional migration (drizzle-kit runs each file in one
 transaction). Run the matching preflight against the target database **before**
 applying and reconcile any hits; drizzle-kit cannot detect them because these
   files diff against existing data.
+
+- **`0048_staff_documents.sql`** — three new, empty tables (`document`,
+  `document_version`, `document_acknowledgement`) with their checks, uniques,
+  FKs and org-first indexes. All are cheap at first apply because the tables
+  start empty: the `document_category_check` / `document_audience_check` /
+  `document_status_check` / `document_version_version_no_check` /
+  `document_version_published_check` checks validate nothing existing, the
+  `document_version_document_version_key` and
+  `document_acknowledgement_version_user_key` uniques build empty tables and the
+  organization/document/file-object FKs validate empty child tables. The
+  migration adds no hand-written statement and no backfill is needed.
+  `0049_staff_documents_org_guard.sql` (below) adds triggers only, so it scans
+  no existing row either. No separate preflight query is needed.
 
 - **`0046_workforce.sql`** — two new, empty tables (`employee`,
   `employee_document`) with their checks, FKs and the org-first indexes. All are
@@ -1379,6 +1392,58 @@ only, so the down file is an explicit operator action, not an automatic one.
   fail on data; while dropped, the references' organization coherence is
   validated only by the application. Apply it manually with
   `psql "$DATABASE_URL" -f packages/persistence/drizzle/0047_workforce_org_guard_down.sql`.
+- **0048 adds the `DEC-088` (`DOC-001`…`DOC-004`) staff document library tables
+  and follows the down convention:** `0048_staff_documents.sql` is generated DDL
+  for the three tables (see the ledger row below): `document` (`organization_id`,
+  `title`, `category` with the `document_category_check`, `audience` with the
+  `document_audience_check`, `status` with the `document_status_check` and default
+  `draft`, the plain-uuid `owner_id`, the audit columns, the organization FK and
+  the `document_org_status_idx` / `document_org_audience_idx` indexes),
+  `document_version` (`organization_id`, `document_id`, `version_no` with the
+  `document_version_version_no_check` (`> 0`), the nullable `file_object_id`, the
+  nullable `notes`/`published_at`/`published_by` with the all-or-nothing
+  `document_version_published_check`, the audit columns, the FKs to
+  organization/document/file-object, the `document_version_document_version_key`
+  unique on `(document_id, version_no)` and the
+  `document_version_org_document_idx` index) and `document_acknowledgement`
+  (`organization_id`, `document_version_id`, `acknowledged_by`,
+  `acknowledged_at`, **no** audit columns — the `import_disposition` fact-table
+  precedent, the FKs to organization/document-version, the
+  `document_acknowledgement_version_user_key` unique on
+  `(document_version_id, acknowledged_by)` and the
+  `document_acknowledgement_org_version_idx` / `_org_user_idx` indexes). It adds
+  three tables and no hand-written statement.
+  `0048_staff_documents_down.sql` drops the three tables in FK-safe order
+  (`document_acknowledgement` first — it references `document_version` — then
+  `document_version`, then `document`) inside one `BEGIN;`/`COMMIT;`, with
+  `DROP TABLE IF EXISTS` so a half-applied manual run cannot wedge. It is
+  **destructive** — every document, version and acknowledgement row is lost — so
+  run it only while those rows need not be preserved (AGENTS.md Rule 2). Apply
+  `0049`'s down **before** `0048`'s down. Apply it manually with
+  `psql "$DATABASE_URL" -f packages/persistence/drizzle/0048_staff_documents_down.sql`.
+- **0049 adds the `DEC-088` staff-document cross-organization coherence guards
+  and follows the down convention:** `0049_staff_documents_org_guard.sql` is
+  hand-written (`DEC-079`'s `BEFORE INSERT OR UPDATE` guard shape, mirroring
+  `0047`). Three functions and three triggers:
+  `document_version_document_org_guard` on `document_version` rejects a
+  `document_id` whose `document` belongs to another organization than the
+  version, `document_version_file_object_org_guard` on `document_version`
+  rejects a non-null `file_object_id` whose `file_object` belongs to another
+  organization than the version, and
+  `document_acknowledgement_document_version_org_guard` on
+  `document_acknowledgement` rejects a `document_version_id` whose
+  `document_version` belongs to another organization than the acknowledgement.
+  Each resolves the referenced row's organization through the existing FK path
+  (a null `file_object_id` returns untouched; a missing row falls through to the
+  FK error) and raises `ERRCODE = '23514'`, naming the offending column. It is
+  **trigger-only and table-neutral**: it adds no table and no constraint that
+  validates an existing row, so it scans no row and needs no preflight query.
+  `0049_staff_documents_org_guard_down.sql` drops the three triggers and their
+  functions inside one `BEGIN;`/`COMMIT;` (with `DROP ... IF EXISTS` so a
+  half-applied manual run cannot wedge). No table and no row is touched, so the
+  down cannot fail on data; while dropped, the references' organization
+  coherence is validated only by the application. Apply it manually with
+  `psql "$DATABASE_URL" -f packages/persistence/drizzle/0049_staff_documents_org_guard_down.sql`.
 
 **Re-applying after a manual down:** drizzle-kit tracks applied migrations in
 `drizzle.__drizzle_migrations`, not by comparing the schema, so a plain
@@ -1417,8 +1482,10 @@ for 0003, `… = 1789850858806` for 0004, `… = 1789851925634` for 0005,
 `… = 1790027669000` for 0043,
 `… = 1790030048087` for 0044,
 `… = 1790030073708` for 0045,
-`… = 1790035770192` for 0046 and
-`… = 1790035771192` for 0047, then
+`… = 1790035770192` for 0046,
+`… = 1790035771192` for 0047,
+`… = 1790054700573` for 0048 and
+`… = 1790054714766` for 0049, then
 `npm run db:migrate` (0003 verified 2026-09-19; 0005 rehearsed in the slice-3
 review follow-up; 0006 rehearsed with the slice-4 receiving work; 0007 and
 0008 rehearsed with the slice-4 review follow-up; 0009 rehearsed with the
@@ -1523,6 +1590,27 @@ four CHECK violations (`employee_employment_type_check`,
 `employee_document.employee_id …`, `employee_document.file_object_id …`) all
 raising `23514`, a NULL `primary_location_id` and a NULL `file_object_id`
 accepted (the guards skip them) and nullable `issued_at`/`expires_at` accepted.
+0048 on 2026-09-22 added the three `DEC-088` staff document library tables
+(`document`, `document_version`, `document_acknowledgement`) with their checks,
+uniques, FKs and indexes and 0049 the three guards, taking the database to 81
+tables (the ledger holds 50 rows); the document integration suite observed the
+five CHECK violations (`document_category_check`, `document_audience_check`,
+`document_status_check`, `document_version_version_no_check`,
+`document_version_published_check`), the `document_version_document_version_key`
+and `document_acknowledgement_version_user_key` uniques raising `23505`, the
+`document_version_document_id_…` FK raising `23503`, the three guard messages
+(`document_version.document_id …`, `document_version.file_object_id …`,
+`document_acknowledgement.document_version_id …`) raising `23514`, and a NULL
+`file_object_id` accepted (the guard skips it). The 0048/0049 down/re-apply
+rehearsal was run on 2026-09-22: starting from 81 public base tables, 3 guard
+triggers present and 50 ledger rows, `0049_staff_documents_org_guard_down.sql`
+dropped the three guard triggers and their functions with no table change (81
+tables, 0 guards) and `0048_staff_documents_down.sql` dropped the three staff
+document library tables (78 tables, 0 guards); deleting the two ledger rows
+(`created_at IN (1790054700573, 1790054714766)`) deleted 2 rows, and
+`npm run db:migrate` re-applied 0048/0049 — final 81 public base tables, 3
+guard triggers present, 50 ledger rows, with a further `npm run db:migrate` a
+no-op.
 A **full 0011 down** drops the tables the three 0012 constraints live on, so its
 replay must clear **both** ledger rows, not just 0011's:
 `DELETE FROM drizzle.__drizzle_migrations WHERE created_at IN (1789862475550, 1789862630158);`
@@ -1817,6 +1905,8 @@ session will not serialise against each other.
 | 0045 | `0045_equipment_org_guard.sql` | Hand-written (`DEC-079`'s guard shape applied to the equipment/maintenance FKs, mirroring `0043`): three functions and three `BEFORE INSERT OR UPDATE FOR EACH ROW` triggers — `equipment_location_org_guard` on `equipment` (rejects a `location_id` whose `location` belongs to another organization), `maintenance_log_equipment_org_guard` on `maintenance_log` (rejects an `equipment_id` whose `equipment` belongs to another organization) and `maintenance_log_file_object_org_guard` on `maintenance_log` (rejects a non-null `file_object_id` whose `file_object` belongs to another organization). No table and no TypeScript schema change. Down companion: `0045_equipment_org_guard_down.sql` (drops the three triggers and their functions — no row is touched) |
 | 0046 | `0046_workforce.sql` | Generated (`DEC-087`, `WF-007`/`DOC-001`…`DOC-004`): the two workforce personnel tables, additive like `0037`/`0040`/`0042`/`0044` — `employee` (the FKs to `organization`, `app_user` and the nullable `location`, the `employee_employment_type_check` vocabulary check, the `employee_base_hourly_rate_check` (`base_hourly_rate >= 0`) and the `employee_active_range_check` (`active_to is null or active_to > active_from`) checks and the `employee_org_active_idx` / `employee_org_primary_location_idx` org-first indexes) and `employee_document` (the FKs to `organization`, `employee` and the nullable `file_object`, the `employee_document_kind_check` vocabulary check and the `employee_document_org_employee_idx` / `employee_document_org_kind_idx` / `employee_document_org_expires_idx` org-first indexes). No hand-written statement. Down companion: `0046_workforce_down.sql` (drops the two tables, FK-safe order: `employee_document` then `employee` — destructive) |
 | 0047 | `0047_workforce_org_guard.sql` | Hand-written (`DEC-079`'s guard shape applied to the workforce FKs, mirroring `0045`): four functions and four `BEFORE INSERT OR UPDATE FOR EACH ROW` triggers — `employee_primary_location_org_guard` on `employee` (rejects a non-null `primary_location_id` whose `location` belongs to another organization), `employee_user_org_guard` on `employee` (rejects a non-null `user_id` whose `app_user` belongs to another organization), `employee_document_employee_org_guard` on `employee_document` (rejects an `employee_id` whose `employee` belongs to another organization) and `employee_document_file_object_org_guard` on `employee_document` (rejects a non-null `file_object_id` whose `file_object` belongs to another organization). No table and no TypeScript schema change. Down companion: `0047_workforce_org_guard_down.sql` (drops the four triggers and their functions — no row is touched) |
+| 0048 | `0048_staff_documents.sql` | Generated (`DEC-088`, `DOC-001`…`DOC-004`): the three staff document library tables, additive like `0037`/`0040`/`0042`/`0044`/`0046` — `document` (`organization_id`, `title`, `category` (`document_category_check`), `audience` (`document_audience_check`), `status` (`document_status_check`, default `draft`), the plain-uuid `owner_id` and the audit columns, with the organization FK and the `document_org_status_idx` / `document_org_audience_idx` org-first indexes), `document_version` (`organization_id`, `document_id`, `version_no` (`document_version_version_no_check`, `> 0`), the nullable `file_object_id`, the nullable `notes`/`published_at`/`published_by` with the all-or-nothing `document_version_published_check`, the audit columns, the FKs to organization/document/file-object, the `document_version_document_version_key` unique on `(document_id, version_no)` and the `document_version_org_document_idx` index) and `document_acknowledgement` (`organization_id`, `document_version_id`, `acknowledged_by`, `acknowledged_at` with **no** audit columns — the `import_disposition` fact-table precedent — the FKs to organization/document-version, the `document_acknowledgement_version_user_key` unique on `(document_version_id, acknowledged_by)` and the `document_acknowledgement_org_version_idx` / `_org_user_idx` indexes). No hand-written statement. Journal `when` `1790054700573`, sha256 `a3583018395213ae882880c3bbb773fc74fa8a70c6b80aa36ca54a4b3fe091e5`. Down companion: `0048_staff_documents_down.sql` (drops the three tables, FK-safe order: `document_acknowledgement` then `document_version` then `document` — destructive) |
+| 0049 | `0049_staff_documents_org_guard.sql` | Hand-written (`DEC-079`'s guard shape applied to the `DEC-088` staff-document FKs, mirroring `0047`): three functions and three `BEFORE INSERT OR UPDATE FOR EACH ROW` triggers — `document_version_document_org_guard` on `document_version` (rejects a `document_id` whose `document` belongs to another organization), `document_version_file_object_org_guard` on `document_version` (rejects a non-null `file_object_id` whose `file_object` belongs to another organization) and `document_acknowledgement_document_version_org_guard` on `document_acknowledgement` (rejects a `document_version_id` whose `document_version` belongs to another organization). No table and no TypeScript schema change. Journal `when` `1790054714766`, sha256 `91dd4a2c63e0f3201f9c4626ee80b644358bc75d92353ecb8510d6bc323408da`. Down companion: `0049_staff_documents_org_guard_down.sql` (drops the three triggers and their functions — no row is touched) |
 
 Order matters: extensions before DDL that calls `gen_random_uuid()`, and before
 the exclusion constraints. Verify with:
@@ -1846,7 +1936,7 @@ DATABASE_URL=postgres://aquarela:aquarela@localhost:5432/aquarela npm run db:mig
 `public` alone leaves the ledger intact, so `db:migrate` reports success while
 restoring nothing. `DROP SCHEMA drizzle CASCADE` clears the ledger so all
 migrations replay from 0000. Verified: after this sequence `db:migrate`
-  re-applies 0000–0047 and the database has all 78 tables plus both extensions
+  re-applies 0000–0049 and the database has all 81 tables plus both extensions
 (0004 adds the four slice-3 master-data tables; 0006 adds the two slice-4
 receiving tables; 0007 adds the `goods_receipt_line` guard trigger — no table;
 0008 relaxes the `supplier_price` range check — no table; 0009 adds the two
@@ -1908,21 +1998,27 @@ cross-organization coherence guards on `equipment` and `maintenance_log` — no
 table, table-neutral; 0046 adds the two workforce personnel tables (`employee`
 and `employee_document`) with their checks, FKs and org-first indexes — two
 tables; 0047 adds the four workforce cross-organization coherence guards on
-`employee` and `employee_document` — no table, table-neutral).
+`employee` and `employee_document` — no table, table-neutral; 0048 adds the
+three `DEC-088` staff document library tables (`document`, `document_version`,
+`document_acknowledgement`) with their checks, uniques, FKs and org-first
+indexes — three tables; 0049 adds the three staff-document cross-organization
+coherence guards on `document_version` and `document_acknowledgement` — no
+table, table-neutral).
 0013–0019 were added after this replay was verified; all are additive and
 table-count-neutral. `0020`, `0021`, `0022`, `0023`, `0024`, `0027`, `0030`,
-`0031`, `0033`, `0035`, `0037`, `0040`, `0042`, `0044` and `0046`
+`0031`, `0033`, `0035`, `0037`, `0040`, `0042`, `0044`, `0046` and `0048`
 are the only migrations after the replay was written to add tables (four, four,
-three, four, one, one, one, one, one, one, two, two, two, two and two
-respectively), so the 78-table figure above is the expected post-`0047` count (51
+three, four, one, one, one, one, one, one, two, two, two, two, two and three
+respectively), so the 81-table figure above is the expected post-`0049` count (51
 after `0020`, 55 after `0021`, 58 after `0022`, 62 after `0023`, 63 after
 `0024`, 64 after `0029`, 65 after `0030`, 66 after `0031` and `0032`, 67 after
 `0033`, still 67 after `0034`, 68 after `0035`, still 68 after `0036`, 70 after
 `0037`, still 70 after `0038`, still 70 after `0039`, 72 after `0040`, still 72
-after `0041`, 74 after `0042`, 76 after `0044` and 78 after `0046`);
+after `0041`, 74 after `0042`, 76 after `0044`, 78 after `0046` and 81 after
+`0048`);
 `0025`, `0026`,
-`0028`, `0032`, `0034`, `0036`, `0038`, `0039`, `0041`, `0043`, `0045` and
-`0047` are table-neutral.
+`0028`, `0032`, `0034`, `0036`, `0038`, `0039`, `0041`, `0043`, `0045`,
+`0047` and `0049` are table-neutral.
 `0014`–`0038`'s
 apply/re-run/down/re-apply was rehearsed on the local dev database 2026-09-20
 (0030 and 0031 on 2026-09-21; 0032 on 2026-09-21; 0033 on 2026-09-21 — its
@@ -1959,7 +2055,11 @@ three guards — still 76 tables; 0046 on 2026-09-22 — its down dropped
 the tables, their checks, FKs and indexes — 78 tables, with a further
 `db:migrate` run a no-op; 0047 on 2026-09-22 — its down dropped the four guard
 triggers and their functions with no table change and the re-apply restored all
-four guards — still 78 tables).
+four guards — still 78 tables; 0048 on 2026-09-22 added the three `DEC-088`
+staff document library tables and 0049 the three guards — 81 tables; the
+0048/0049 down/re-apply rehearsal ran 2026-09-22 (downs 81 → 78 tables with 0
+guards, the two ledger rows deleted and re-created, final 81 tables, 3 guards,
+50 ledger rows, a further `db:migrate` a no-op as recorded above).
 
 Once real data exists, this path is no longer acceptable: use small atomic
 commits, expand → migrate → contract for schema changes, and a tested
