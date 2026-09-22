@@ -163,6 +163,59 @@ describe.skipIf(!databaseUrl)("incidents repository", () => {
     });
   });
 
+  it("filters incidents by an inclusive occurred_at window", async () => {
+    await inRollback(client.db, async (tx) => {
+      const incident = (occurredAt: string) =>
+        createTestHmsIncident(tx, orgId, locationId, { occurredAt: at(occurredAt) });
+      const before = await incident("2026-01-31T23:59:59.999Z");
+      const lower = await incident("2026-02-01T00:00:00.000Z");
+      const inside = await incident("2026-02-15T12:00:00.000Z");
+      const upper = await incident("2026-03-01T00:00:00.000Z");
+      const after = await incident("2026-03-01T00:00:00.001Z");
+
+      // Both bounds inclusive, newest first; the rows just outside are excluded.
+      const windowed = await listIncidents(tx, {
+        organizationId: orgId,
+        from: at("2026-02-01T00:00:00.000Z"),
+        to: at("2026-03-01T00:00:00.000Z"),
+      });
+      expect(windowed.map((row) => row.id)).toEqual([upper.id, inside.id, lower.id]);
+
+      // An absent bound is open-ended: `from` alone leaves the upper end open...
+      const fromOnly = await listIncidents(tx, {
+        organizationId: orgId,
+        from: at("2026-02-01T00:00:00.000Z"),
+      });
+      expect(fromOnly.map((row) => row.id)).toEqual([after.id, upper.id, inside.id, lower.id]);
+
+      // ...and `to` alone leaves the lower end open.
+      const toOnly = await listIncidents(tx, {
+        organizationId: orgId,
+        to: at("2026-03-01T00:00:00.000Z"),
+      });
+      expect(toOnly.map((row) => row.id)).toEqual([upper.id, inside.id, lower.id, before.id]);
+
+      // The window composes with the location filter and paging.
+      const here = await listIncidents(tx, {
+        organizationId: orgId,
+        locationId,
+        from: at("2026-02-01T00:00:00.000Z"),
+        to: at("2026-03-01T00:00:00.000Z"),
+        limit: 1,
+        offset: 1,
+      });
+      expect(here.map((row) => row.id)).toEqual([inside.id]);
+
+      // A second organization's in-window incident never appears.
+      const otherOrgId = await createTestOrganization(tx, uniqueSuffix());
+      const otherLocationId = (await createTestLocation(tx, otherOrgId)).id;
+      const other = await createTestHmsIncident(tx, otherOrgId, otherLocationId, {
+        occurredAt: at("2026-02-10T08:00:00.000Z"),
+      });
+      expect(windowed.map((row) => row.id)).not.toContain(other.id);
+    });
+  });
+
   it("updates an incident's mutable fields and records the actor", async () => {
     await inRollback(client.db, async (tx) => {
       const incident = await createTestHmsIncident(tx, orgId, locationId, { status: "open" });
@@ -353,6 +406,61 @@ describe.skipIf(!databaseUrl)("incidents repository", () => {
       expect(
         (await listCorrectiveActions(tx, { organizationId: orgId })).map((row) => row.id),
       ).not.toContain(other.id);
+    });
+  });
+
+  it("filters corrective actions by an inclusive due_date window", async () => {
+    await inRollback(client.db, async (tx) => {
+      const action = (dueDate: string) =>
+        createTestCorrectiveAction(tx, orgId, { dueDate, status: "open" });
+      const before = await action("2026-01-31");
+      const lower = await action("2026-02-01");
+      const inside = await action("2026-02-15");
+      const upper = await action("2026-03-01");
+      const after = await action("2026-03-02");
+      const noDue = await createTestCorrectiveAction(tx, orgId, { status: "open" });
+
+      // `due_date` is a `date` column compared as a calendar day: the exact end
+      // days are included, the days either side excluded, earliest first.
+      const windowed = await listCorrectiveActions(tx, {
+        organizationId: orgId,
+        from: "2026-02-01",
+        to: "2026-03-01",
+      });
+      expect(windowed.map((row) => row.id)).toEqual([lower.id, inside.id, upper.id]);
+      // A null due date cannot satisfy a bounded window.
+      expect(windowed.map((row) => row.id)).not.toContain(noDue.id);
+
+      // An absent bound is open-ended on that side.
+      const fromOnly = await listCorrectiveActions(tx, {
+        organizationId: orgId,
+        from: "2026-02-15",
+      });
+      expect(fromOnly.map((row) => row.id)).toEqual([inside.id, upper.id, after.id]);
+
+      const toOnly = await listCorrectiveActions(tx, {
+        organizationId: orgId,
+        to: "2026-02-01",
+      });
+      expect(toOnly.map((row) => row.id)).toEqual([before.id, lower.id]);
+
+      // The window composes with the status filter and paging.
+      const paged = await listCorrectiveActions(tx, {
+        organizationId: orgId,
+        status: "open",
+        from: "2026-02-01",
+        to: "2026-03-01",
+        limit: 1,
+        offset: 1,
+      });
+      expect(paged.map((row) => row.id)).toEqual([inside.id]);
+
+      // A second organization's in-window action never appears.
+      const otherOrgId = await createTestOrganization(tx, uniqueSuffix());
+      const other = await createTestCorrectiveAction(tx, otherOrgId, {
+        dueDate: "2026-02-10",
+      });
+      expect(windowed.map((row) => row.id)).not.toContain(other.id);
     });
   });
 

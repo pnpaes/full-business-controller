@@ -376,6 +376,61 @@ describe.skipIf(!databaseUrl)("equipment repository", () => {
     });
   });
 
+  it("filters maintenance logs by an inclusive performed_at window", async () => {
+    await inRollback(client.db, async (tx) => {
+      const machine = await createTestEquipment(tx, orgId, locationId, { code: "WIN-1" });
+      const log = (performedAt: string) =>
+        createTestMaintenanceLog(tx, orgId, machine.id, { performedAt: at(performedAt) });
+      const before = await log("2026-01-31T23:59:59.999Z");
+      const lower = await log("2026-02-01T00:00:00.000Z");
+      const inside = await log("2026-02-15T12:00:00.000Z");
+      const upper = await log("2026-03-01T00:00:00.000Z");
+      const after = await log("2026-03-01T00:00:00.001Z");
+
+      // Both bounds inclusive, newest first; the rows just outside are excluded.
+      const windowed = await listMaintenanceLogs(tx, {
+        organizationId: orgId,
+        from: at("2026-02-01T00:00:00.000Z"),
+        to: at("2026-03-01T00:00:00.000Z"),
+      });
+      expect(windowed.map((row) => row.id)).toEqual([upper.id, inside.id, lower.id]);
+
+      // An absent bound is open-ended: `from` alone leaves the upper end open...
+      const fromOnly = await listMaintenanceLogs(tx, {
+        organizationId: orgId,
+        from: at("2026-02-01T00:00:00.000Z"),
+      });
+      expect(fromOnly.map((row) => row.id)).toEqual([after.id, upper.id, inside.id, lower.id]);
+
+      // ...and `to` alone leaves the lower end open.
+      const toOnly = await listMaintenanceLogs(tx, {
+        organizationId: orgId,
+        to: at("2026-03-01T00:00:00.000Z"),
+      });
+      expect(toOnly.map((row) => row.id)).toEqual([upper.id, inside.id, lower.id, before.id]);
+
+      // The window composes with the equipment filter and paging.
+      const here = await listMaintenanceLogs(tx, {
+        organizationId: orgId,
+        equipmentId: machine.id,
+        from: at("2026-02-01T00:00:00.000Z"),
+        to: at("2026-03-01T00:00:00.000Z"),
+        limit: 1,
+        offset: 1,
+      });
+      expect(here.map((row) => row.id)).toEqual([inside.id]);
+
+      // A second organization's in-window log never appears.
+      const otherOrgId = await createTestOrganization(tx, uniqueSuffix());
+      const otherLocationId = (await createTestLocation(tx, otherOrgId)).id;
+      const otherMachine = await createTestEquipment(tx, otherOrgId, otherLocationId);
+      const other = await createTestMaintenanceLog(tx, otherOrgId, otherMachine.id, {
+        performedAt: at("2026-02-10T08:00:00.000Z"),
+      });
+      expect(windowed.map((row) => row.id)).not.toContain(other.id);
+    });
+  });
+
   it("rejects a maintenance kind outside the vocabulary", async () => {
     await inRollback(client.db, async (tx) => {
       const machine = await createTestEquipment(tx, orgId, locationId);

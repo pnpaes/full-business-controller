@@ -1,4 +1,4 @@
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, gte, lte } from "drizzle-orm";
 
 import type { Database } from "../client";
 import { monitoringPoint, monitoringReading } from "../schema";
@@ -165,13 +165,18 @@ export async function recordMonitoringReading(
 export interface ListMonitoringReadingsQuery {
   readonly organizationId: string;
   readonly monitoringPointId?: string;
+  /** Inclusive lower bound on `measured_at`. */
+  readonly from?: Date;
+  /** Inclusive upper bound on `measured_at`. */
+  readonly to?: Date;
   readonly limit?: number;
   readonly offset?: number;
 }
 
 /**
  * Monitoring readings for one organization, newest `measured_at` first (then
- * `id`), with an optional point filter. The organization filter is never
+ * `id`), with an optional point filter and an inclusive `measured_at` window
+ * (`from`/`to`; either bound may be omitted). The organization filter is never
  * optional (`DEC-061`). Paging is applied after the ordering.
  */
 export async function listMonitoringReadings(
@@ -187,6 +192,8 @@ export async function listMonitoringReadings(
         query.monitoringPointId === undefined
           ? undefined
           : eq(monitoringReading.monitoringPointId, query.monitoringPointId),
+        query.from === undefined ? undefined : gte(monitoringReading.measuredAt, query.from),
+        query.to === undefined ? undefined : lte(monitoringReading.measuredAt, query.to),
       ),
     )
     .orderBy(desc(monitoringReading.measuredAt), desc(monitoringReading.id))

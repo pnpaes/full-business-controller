@@ -1,4 +1,4 @@
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, gte, lte } from "drizzle-orm";
 
 import type { Database } from "../client";
 import { equipment, maintenanceLog } from "../schema";
@@ -235,13 +235,18 @@ export interface ListMaintenanceLogsQuery {
   readonly organizationId: string;
   readonly equipmentId?: string;
   readonly kind?: string;
+  /** Inclusive lower bound on `performed_at`. */
+  readonly from?: Date;
+  /** Inclusive upper bound on `performed_at`. */
+  readonly to?: Date;
   readonly limit?: number;
   readonly offset?: number;
 }
 
 /**
  * Maintenance logs for one organization, newest `performed_at` first (then
- * `id`), with optional equipment and kind filters. The organization filter is
+ * `id`), with optional equipment and kind filters and an inclusive `performed_at`
+ * window (`from`/`to`; either bound may be omitted). The organization filter is
  * never optional (`DEC-061`). Paging is applied after the ordering.
  */
 export async function listMaintenanceLogs(
@@ -258,6 +263,8 @@ export async function listMaintenanceLogs(
           ? undefined
           : eq(maintenanceLog.equipmentId, query.equipmentId),
         query.kind === undefined ? undefined : eq(maintenanceLog.kind, query.kind),
+        query.from === undefined ? undefined : gte(maintenanceLog.performedAt, query.from),
+        query.to === undefined ? undefined : lte(maintenanceLog.performedAt, query.to),
       ),
     )
     .orderBy(desc(maintenanceLog.performedAt), desc(maintenanceLog.id))

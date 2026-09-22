@@ -1,4 +1,4 @@
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, gte, lte } from "drizzle-orm";
 
 import type { Database } from "../client";
 import { checklistRun, checklistTemplate } from "../schema";
@@ -270,13 +270,18 @@ export interface ListChecklistRunsQuery {
   readonly templateId?: string;
   readonly locationId?: string;
   readonly status?: string;
+  /** Inclusive lower bound on `run_at`. */
+  readonly from?: Date;
+  /** Inclusive upper bound on `run_at`. */
+  readonly to?: Date;
   readonly limit?: number;
   readonly offset?: number;
 }
 
 /**
  * Checklist runs for one organization, newest `run_at` first (then `id`), with
- * optional template/location/status filters. The organization filter is never
+ * optional template/location/status filters and an inclusive `run_at` window
+ * (`from`/`to`; either bound may be omitted). The organization filter is never
  * optional (`DEC-061`). Paging is applied after the ordering.
  */
 export async function listChecklistRuns(
@@ -292,6 +297,8 @@ export async function listChecklistRuns(
         query.templateId === undefined ? undefined : eq(checklistRun.templateId, query.templateId),
         query.locationId === undefined ? undefined : eq(checklistRun.locationId, query.locationId),
         query.status === undefined ? undefined : eq(checklistRun.status, query.status),
+        query.from === undefined ? undefined : gte(checklistRun.runAt, query.from),
+        query.to === undefined ? undefined : lte(checklistRun.runAt, query.to),
       ),
     )
     .orderBy(desc(checklistRun.runAt), desc(checklistRun.id))

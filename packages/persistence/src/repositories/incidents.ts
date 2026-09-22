@@ -1,4 +1,4 @@
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, gte, lte } from "drizzle-orm";
 
 import type { Database } from "../client";
 import { correctiveAction, hmsIncident } from "../schema";
@@ -145,13 +145,18 @@ export interface ListIncidentsQuery {
   readonly organizationId: string;
   readonly status?: string;
   readonly locationId?: string;
+  /** Inclusive lower bound on `occurred_at`. */
+  readonly from?: Date;
+  /** Inclusive upper bound on `occurred_at`. */
+  readonly to?: Date;
   readonly limit?: number;
   readonly offset?: number;
 }
 
 /**
  * Incidents for one organization, newest `occurred_at` first (then `id`), with
- * optional status and location filters. The organization filter is never
+ * optional status and location filters and an inclusive `occurred_at` window
+ * (`from`/`to`; either bound may be omitted). The organization filter is never
  * optional (`DEC-061`), so the caller never sees another tenant's rows. Paging
  * is applied after the ordering.
  */
@@ -167,6 +172,8 @@ export async function listIncidents(
         eq(hmsIncident.organizationId, query.organizationId),
         query.status === undefined ? undefined : eq(hmsIncident.status, query.status),
         query.locationId === undefined ? undefined : eq(hmsIncident.locationId, query.locationId),
+        query.from === undefined ? undefined : gte(hmsIncident.occurredAt, query.from),
+        query.to === undefined ? undefined : lte(hmsIncident.occurredAt, query.to),
       ),
     )
     .orderBy(desc(hmsIncident.occurredAt), desc(hmsIncident.id))
@@ -294,15 +301,20 @@ export interface ListCorrectiveActionsQuery {
   readonly incidentId?: string;
   readonly status?: string;
   readonly ownerId?: string;
+  /** Inclusive lower bound on `due_date`; a `YYYY-MM-DD` string. */
+  readonly from?: string;
+  /** Inclusive upper bound on `due_date`; a `YYYY-MM-DD` string. */
+  readonly to?: string;
   readonly limit?: number;
   readonly offset?: number;
 }
 
 /**
  * Corrective actions for one organization, earliest `due_date` first (then
- * `id`; a null due date sorts last), with optional incident/status/owner
- * filters. The organization filter is never optional (`DEC-061`). Paging is
- * applied after the ordering.
+ * `id`; a null due date sorts last), with optional incident/status/owner filters
+ * and an inclusive `due_date` window (`from`/`to`, each a `YYYY-MM-DD` string,
+ * compared as a calendar date; either bound may be omitted). The organization
+ * filter is never optional (`DEC-061`). Paging is applied after the ordering.
  */
 export async function listCorrectiveActions(
   db: Database,
@@ -319,6 +331,8 @@ export async function listCorrectiveActions(
           : eq(correctiveAction.incidentId, query.incidentId),
         query.status === undefined ? undefined : eq(correctiveAction.status, query.status),
         query.ownerId === undefined ? undefined : eq(correctiveAction.ownerId, query.ownerId),
+        query.from === undefined ? undefined : gte(correctiveAction.dueDate, query.from),
+        query.to === undefined ? undefined : lte(correctiveAction.dueDate, query.to),
       ),
     )
     .orderBy(asc(correctiveAction.dueDate), asc(correctiveAction.id))

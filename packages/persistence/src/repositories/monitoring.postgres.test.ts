@@ -251,6 +251,76 @@ describe.skipIf(!databaseUrl)("monitoring repository", () => {
     });
   });
 
+  it("filters readings by an inclusive measured_at window", async () => {
+    await inRollback(client.db, async (tx) => {
+      const point = await createTestMonitoringPoint(tx, orgId, locationId);
+      const reading = (measuredAt: string) =>
+        recordMonitoringReading(tx, {
+          organizationId: orgId,
+          monitoringPointId: point.id,
+          value: "2",
+          unit: "celsius",
+          measuredAt: at(measuredAt),
+          recordedBy: null,
+          inRange: true,
+        });
+      const before = await reading("2026-01-31T23:59:59.999Z");
+      const lower = await reading("2026-02-01T00:00:00.000Z");
+      const inside = await reading("2026-02-15T12:00:00.000Z");
+      const upper = await reading("2026-03-01T00:00:00.000Z");
+      const after = await reading("2026-03-01T00:00:00.001Z");
+
+      // Both bounds inclusive: the exact-boundary rows are returned, the rows
+      // just outside either bound are not (newest first).
+      const windowed = await listMonitoringReadings(tx, {
+        organizationId: orgId,
+        from: at("2026-02-01T00:00:00.000Z"),
+        to: at("2026-03-01T00:00:00.000Z"),
+      });
+      expect(windowed.map((row) => row.id)).toEqual([upper.id, inside.id, lower.id]);
+
+      // An absent bound is open-ended: `from` alone leaves the upper end open...
+      const fromOnly = await listMonitoringReadings(tx, {
+        organizationId: orgId,
+        from: at("2026-02-01T00:00:00.000Z"),
+      });
+      expect(fromOnly.map((row) => row.id)).toEqual([after.id, upper.id, inside.id, lower.id]);
+
+      // ...and `to` alone leaves the lower end open.
+      const toOnly = await listMonitoringReadings(tx, {
+        organizationId: orgId,
+        to: at("2026-03-01T00:00:00.000Z"),
+      });
+      expect(toOnly.map((row) => row.id)).toEqual([upper.id, inside.id, lower.id, before.id]);
+
+      // The window composes with the existing paging (applied after ordering).
+      const paged = await listMonitoringReadings(tx, {
+        organizationId: orgId,
+        from: at("2026-02-01T00:00:00.000Z"),
+        to: at("2026-03-01T00:00:00.000Z"),
+        limit: 1,
+        offset: 1,
+      });
+      expect(paged.map((row) => row.id)).toEqual([inside.id]);
+
+      // ...and with the organization scope: a second org's in-window reading
+      // never appears.
+      const otherOrgId = await createTestOrganization(tx, uniqueSuffix());
+      const otherLocationId = (await createTestLocation(tx, otherOrgId)).id;
+      const otherPoint = await createTestMonitoringPoint(tx, otherOrgId, otherLocationId);
+      const other = await recordMonitoringReading(tx, {
+        organizationId: otherOrgId,
+        monitoringPointId: otherPoint.id,
+        value: "1",
+        unit: "celsius",
+        measuredAt: at("2026-02-10T08:00:00.000Z"),
+        recordedBy: null,
+        inRange: true,
+      });
+      expect(windowed.map((row) => row.id)).not.toContain(other.id);
+    });
+  });
+
   it("rejects updating an immutable reading field (append-only)", async () => {
     await inRollback(client.db, async (tx) => {
       const point = await createTestMonitoringPoint(tx, orgId, locationId);
