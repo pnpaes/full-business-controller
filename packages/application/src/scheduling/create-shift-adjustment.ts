@@ -6,11 +6,19 @@ import { SCHEDULING_AUDIT_ACTIONS } from "./actions";
 import type { SchedulingStore, ShiftAdjustmentRecord } from "./types";
 
 /**
+ * The largest whole-hour magnitude `numeric(9,2)` can hold is `9999999.99`
+ * (seven integer digits); anything `>= 10^7` overflows the column (PG `22003`),
+ * so it is rejected here rather than at the write.
+ */
+const MAX_ADJUSTED_HOURS = 10_000_000n;
+
+/**
  * Validates a `numeric(9,2)` hours string (`WF-004`, `DEC-038`): a plain decimal
- * string (a JS number — a float — is rejected), non-negative and at most two
- * decimal places. The shape and decimal-place rules come from the domain
- * `parseDecimal` at `WORKED_HOURS_SCALE`; the non-negative rule is the
- * `shift_adjustment_adjusted_hours_check` counterpart applied here so the
+ * string (a JS number — a float — is rejected), non-negative, at most two
+ * decimal places and within the `numeric(9,2)` range (`< 10^7`). The shape and
+ * decimal-place rules come from the domain `parseDecimal` at `WORKED_HOURS_SCALE`;
+ * the non-negative rule is the `shift_adjustment_adjusted_hours_check` counterpart
+ * and the range cap guards the column precision, both applied here so the
  * fake-store suite and the API see one `DomainError`. The trimmed string is
  * returned, and decimals are never coerced to a number.
  */
@@ -22,6 +30,9 @@ export function assertAdjustedHours(value: unknown): string {
   const scaled = parseDecimal(trimmed, WORKED_HOURS_SCALE);
   if (scaled < 0n) {
     throw new DomainError("adjustedHours must not be negative");
+  }
+  if (scaled >= MAX_ADJUSTED_HOURS * 10n ** BigInt(WORKED_HOURS_SCALE)) {
+    throw new DomainError("adjustedHours is out of range");
   }
   return trimmed;
 }

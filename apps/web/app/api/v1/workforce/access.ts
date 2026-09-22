@@ -101,6 +101,21 @@ export const WORKED_HOURS_READ_ROLES = [
   "admin",
 ] as const;
 
+/**
+ * Recording an hours correction is a payroll-input action, so its write set
+ * mirrors the read set: owner, general_manager, location_manager
+ * (location-scoped), finance and admin. The operational roles (`kitchen`,
+ * `front_of_house`, `purchasing`) and `analyst` may not record one. `admin` is
+ * an explicit grant (no implicit bypass).
+ */
+export const WORKED_HOURS_WRITE_ROLES = [
+  "owner",
+  "general_manager",
+  "location_manager",
+  "finance",
+  "admin",
+] as const;
+
 /** Loads the caller's roles and location scope live from server data (ADR-0003). */
 export async function loadWorkforceAccess(userId: string): Promise<UserAccess> {
   return loadUserAccess(getAuthStore(), userId);

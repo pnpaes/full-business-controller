@@ -193,24 +193,19 @@ describe("GET /api/v1/workforce/shift-assignments/[id]/adjustments", () => {
     );
   });
 
-  it.each([
-    "owner",
-    "general_manager",
-    "location_manager",
-    "kitchen",
-    "front_of_house",
-    "finance",
-    "admin",
-  ])("allows %s to read the adjustments", async (role) => {
-    vi.mocked(application.loadUserAccess).mockResolvedValue(access([role]));
+  it.each(["owner", "general_manager", "location_manager", "finance", "admin"])(
+    "allows %s to read the adjustments",
+    async (role) => {
+      vi.mocked(application.loadUserAccess).mockResolvedValue(access([role]));
 
-    const response = await GET(getRequest(), context());
+      const response = await GET(getRequest(), context());
 
-    expect(response.status).toBe(200);
-  });
+      expect(response.status).toBe(200);
+    },
+  );
 
-  it.each(["analyst", "purchasing"])(
-    "returns 403 for %s, which has no shift access",
+  it.each(["kitchen", "front_of_house", "purchasing", "analyst"])(
+    "returns 403 for %s, which may not read payroll-input hours",
     async (role) => {
       vi.mocked(application.loadUserAccess).mockResolvedValue(access([role]));
 
@@ -299,7 +294,7 @@ describe("POST /api/v1/workforce/shift-assignments/[id]/adjustments", () => {
     });
   });
 
-  it.each(["owner", "general_manager", "location_manager", "admin"])(
+  it.each(["owner", "general_manager", "location_manager", "finance", "admin"])(
     "allows %s to record an adjustment",
     async (role) => {
       vi.mocked(application.loadUserAccess).mockResolvedValue(access([role]));
@@ -314,7 +309,7 @@ describe("POST /api/v1/workforce/shift-assignments/[id]/adjustments", () => {
     },
   );
 
-  it.each(["kitchen", "front_of_house", "finance", "analyst", "purchasing"])(
+  it.each(["kitchen", "front_of_house", "purchasing", "analyst"])(
     "returns 403 for %s, which may not record an adjustment",
     async (role) => {
       vi.mocked(application.loadUserAccess).mockResolvedValue(access([role]));
@@ -376,6 +371,7 @@ describe("POST /api/v1/workforce/shift-assignments/[id]/adjustments", () => {
     { adjustedHours: 8.5, reason: "correction" },
     { adjustedHours: "-1", reason: "correction" },
     { adjustedHours: "8.555", reason: "correction" },
+    { adjustedHours: "10000000", reason: "correction" },
     { adjustedHours: "8", reason: 42 },
   ])("returns 400 for the malformed body %j", async (body) => {
     const response = await POST(postRequest(body), context());
@@ -443,8 +439,26 @@ describe("parseCreateShiftAdjustmentBody", () => {
     expect(parsed.ok).toBe(true);
   });
 
+  it("accepts the exact numeric(9,2) upper bound", () => {
+    const parsed = parseCreateShiftAdjustmentBody({
+      adjustedHours: "9999999.99",
+      reason: "correction",
+    });
+
+    expect(parsed.ok).toBe(true);
+  });
+
   it.each([8, 8.5, -1, "8.555", "-0.5", ".5", "1e3", "abc", ""])(
     "rejects the adjustedHours value %j",
+    (adjustedHours) => {
+      const parsed = parseCreateShiftAdjustmentBody({ adjustedHours, reason: "correction" });
+
+      expect(parsed.ok).toBe(false);
+    },
+  );
+
+  it.each(["10000000", "10000000.00", "99999999.99"])(
+    "rejects the out-of-range adjustedHours value %j",
     (adjustedHours) => {
       const parsed = parseCreateShiftAdjustmentBody({ adjustedHours, reason: "correction" });
 

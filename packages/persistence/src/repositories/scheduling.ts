@@ -444,6 +444,7 @@ export async function listShiftAdjustments(
           : eq(shiftAdjustment.shiftAssignmentId, query.shiftAssignmentId),
       ),
     )
+    // Equal `created_at` → lowest id wins; the same rule the report subquery uses.
     .orderBy(desc(shiftAdjustment.createdAt), asc(shiftAdjustment.id))
     .$dynamic();
   if (query.limit !== undefined) {
@@ -486,9 +487,11 @@ export interface ListWorkedHoursAssignmentsQuery {
  * The approved assignments on assigned/completed shifts whose shift starts in
  * `[from, to)`, joined to their shift and employee (`WF-004`, `DEC-038`). The
  * `adjustedHours` field is the **latest** `shift_adjustment.adjusted_hours` for
- * the assignment (`created_at desc, id desc`; null when there is none), resolved
- * with one correlated subquery so there is no N+1. Order is `starts_at`, then
- * assignment id.
+ * the assignment (`created_at desc, id asc` — for equal `created_at` the lowest
+ * id wins, matching `listShiftAdjustments`; null when there is none), resolved
+ * with one correlated subquery so there is no N+1. The join is explicitly
+ * organization-scoped on both sides (`DEC-061`) so the query stays org-safe even
+ * without the `0052` guards. Order is `starts_at`, then assignment id.
  */
 export async function listWorkedHoursAssignments(
   db: Database,
@@ -499,7 +502,7 @@ export async function listWorkedHoursAssignments(
     from "shift_adjustment" sa
     where sa."shift_assignment_id" = ${shiftAssignment.id}
       and sa."organization_id" = ${shiftAssignment.organizationId}
-    order by sa."created_at" desc, sa."id" desc
+    order by sa."created_at" desc, sa."id" asc
     limit 1
   )`;
   return db
@@ -522,6 +525,8 @@ export async function listWorkedHoursAssignments(
     .where(
       and(
         eq(shiftAssignment.organizationId, query.organizationId),
+        eq(shift.organizationId, query.organizationId),
+        eq(employee.organizationId, query.organizationId),
         eq(shiftAssignment.state, "approved"),
         inArray(shift.state, ["assigned", "completed"]),
         gte(shift.startsAt, query.from),

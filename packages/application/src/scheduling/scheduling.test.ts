@@ -1146,6 +1146,21 @@ describe("createShiftAdjustment", () => {
     expect(store.shiftAdjustments.size).toBe(0);
   });
 
+  it("rejects a correction above the numeric(9,2) ceiling but accepts the exact bound", async () => {
+    const { store, fixture } = setup();
+    const shift = await plan(store, fixture);
+    const assignment = await assign(store, fixture, shift.id);
+
+    await expect(
+      adjust(store, fixture, assignment.id, { adjustedHours: "10000000" }),
+    ).rejects.toThrow(new DomainError("adjustedHours is out of range"));
+    expect(store.shiftAdjustments.size).toBe(0);
+
+    await expect(
+      adjust(store, fixture, assignment.id, { adjustedHours: "9999999.99" }),
+    ).resolves.toMatchObject({ adjustedHours: "9999999.99" });
+  });
+
   it("is a typed not-found for a missing or cross-organization assignment", async () => {
     const { store, fixture } = setup();
 

@@ -44,6 +44,8 @@ const ISO_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2
 const MONEY = /^\d+(?:\.\d{1,4})?$/;
 /** A plain non-negative decimal at most two places (`numeric(_,2)` hours). */
 const ADJUSTED_HOURS = /^\d+(?:\.\d{1,2})?$/;
+/** `numeric(9,2)` holds at most `9999999.99`; `>= 10^7` would overflow the column. */
+const MAX_ADJUSTED_HOURS_VALUE = 10_000_000n;
 const MAX_LIMIT = 200;
 const MAX_TEXT = 200;
 const MAX_VOCAB = 32;
@@ -940,8 +942,10 @@ export type ParsedCreateShiftAdjustment =
 /**
  * `POST /shift-assignments/[id]/adjustments` body; the assignment link is the
  * path id. `adjustedHours` must be a non-negative decimal **string** of at most
- * two places (`numeric(_,2)` shaped) — a JSON number/float is rejected here so a
- * binary float never reaches the store — and `reason` non-blank text.
+ * two places and within the `numeric(9,2)` range (`< 10^7`) — a JSON
+ * number/float is rejected here so a binary float never reaches the store, and
+ * an over-range value is a 400 rather than a database `22003` — and `reason`
+ * non-blank text.
  */
 export function parseCreateShiftAdjustmentBody(
   body: Record<string, unknown> | undefined,
@@ -952,6 +956,10 @@ export function parseCreateShiftAdjustmentBody(
   const adjustedHours = readText(body, "adjustedHours", MAX_ADJUSTED_HOURS);
   const reason = readText(body, "reason");
   if (adjustedHours === null || !ADJUSTED_HOURS.test(adjustedHours) || reason === null) {
+    return { ok: false };
+  }
+  const [whole = "0"] = adjustedHours.split(".");
+  if (BigInt(whole) >= MAX_ADJUSTED_HOURS_VALUE) {
     return { ok: false };
   }
   return { ok: true, input: { adjustedHours, reason } };
