@@ -1,0 +1,390 @@
+# Reversibility log
+
+- **2026-09-22 row-14b-2 payroll-report slice (`WF-005`/`DEC-104`; 7 commits
+  incl. this docs commit; nothing pushed)**: 1. `f17fb29`
+  `feat(persistence)`; 2. `87e92f5` `feat(domain)`; 3. `321d6e5`
+  `feat(application)`; 4. `2285e2e` `feat(web)`; 5. `40595a9`
+  `fix(scheduling)` — the review fixes; 6. `2690959` `docs(decisions)` —
+  `DEC-104`; 7. the roadmap update; 8. this `docs(context)` update —
+  each independently revertible with `git revert <sha>`. Migration
+  **`0055_payroll_report` adds one table** (additive; down drops
+  `payroll_report`, 87 → 86); **`0056_payroll_report_org_guard` is
+  trigger-only** (down 87 → 87); the rehearsed down order is **`0056` →
+  `0055`**. If the DB is rolled back, delete the two ledger rows
+  (`created_at` `1790069367957` / `1790069368959`) and re-migrate; 87
+  tables after re-apply (rehearsed 2026-09-22 — see the work log). Nothing
+  pushed; nothing applied to DigitalOcean.
+- **2026-09-22 row-14b-1 worked-hours slice (`WF-004`/`DEC-103`; 7 commits
+  incl. this docs commit; nothing pushed)**: 1. `a67fe49`
+  `feat(persistence)`; 2. `826800e` `feat(domain)`; 3. `74d9210`
+  `feat(application)`; 4. `9b8e8fc` `feat(web)`; 5. `dce1a15`
+  `fix(workforce)` — the review fixes; 6. `5c1dd73` `docs(decisions)` —
+  `DEC-103`; 7. `f49490a` `docs(roadmap)`; 8. this `docs(context)` update —
+  each independently revertible with `git revert <sha>`. Migration
+  **`0053_shift_adjustment` adds one table** (additive; down drops
+  `shift_adjustment`, 86 → 85); **`0054_shift_adjustment_org_guard` is
+  trigger-only** (down 86 → 86); the rehearsed down order is **`0054` →
+  `0053`**. If the DB is rolled back, delete the two ledger rows
+  (`created_at` `1790067016722` / `1790067030453`) and re-migrate; 86
+  tables after re-apply (rehearsed 2026-09-22 — see the work log). Nothing
+  pushed; nothing applied to DigitalOcean.
+- **2026-09-22 staff document library slice (`DEC-088`/`DEC-100`; 6 commits
+  incl. this docs commit; nothing pushed)**: 1. `2784f18` `docs(decisions)` —
+  `DEC-100`; 2. `ee47947` `feat(persistence)`; 3. `2aabd1b`
+  `feat(application)`; 4. `3fe7d4a` `feat(web)`; 5. `838d11a` `docs(runbook)`
+  — the migration-ledger/rehearsal + roadmap entries; 6. this
+  `docs(context)` update — each independently revertible with
+  `git revert <sha>`. Migration **`0048_staff_documents` adds three tables**
+  (additive; down drops `document_acknowledgement` → `document_version` →
+  `document`, 81 → 78); **`0049_staff_documents_org_guard` is trigger-only**
+  (down 81 → 81); the rehearsed down order is **`0049` → `0048`**. If the DB
+  is rolled back, delete the two ledger rows (`created_at`
+  `1790054700573` / `1790054714766`) and re-migrate; 81 tables after
+  re-apply (rehearsed 2026-09-22 — see the work log). Nothing pushed;
+  nothing applied to DigitalOcean.
+- **2026-09-22 `employee` + personnel-documents slice (`DEC-087`/`DEC-099`;
+  5 commits incl. this docs commit; nothing pushed)**: 1. `246c735`
+  `docs(decisions)` — `DEC-099`; 2. `59ad19e` `feat(persistence)` — the
+  `employee` + `employee_document` tables (migrations `0046`/`0047`), the
+  `employee_document_kind` vocabulary, the schema/repository + tests; 3.
+  `4faa6aa` `feat(application)` — the workforce commands/queries + store port
+  - adapter + fake + tests; 4. `603054f` `feat(web)` — the
+    `/api/v1/workforce/**` routes with role + location scope; 5. `5b932a8`
+    `docs(runbook)` — the migration-ledger/rehearsal entries; 6. this
+    `docs(context)` update — each independently revertible with
+    `git revert <sha>`. Migration **`0046` adds two tables** (additive; down
+    drops `employee_document` then `employee`, 78 → 76); **`0047` is
+    trigger-only** (down 78 → 78); the rehearsed down order is **`0047` →
+    `0046`**. If the DB is rolled back, delete the two ledger rows (`when`
+    `1790035770192` / `1790035771192`) and re-migrate; 78 tables after re-apply.
+    `0047` was amended **before commit** to add the `employee_user_org_guard`
+    (the uncommitted ledger hash was updated and the rehearsal re-run). Nothing
+    pushed; nothing applied to DigitalOcean.
+- **2026-09-22 HMS compliance / evidence export slice (`DEC-093`/`DEC-098`;
+  5 commits incl. this docs commit; nothing pushed)**: 1. `05caf1b`
+  `docs(decisions)` — `DEC-098`; 2. `7cb4f68` `feat(persistence)` — the
+  optional `from`/`to` period filter on the five HMS list queries +
+  repository tests; 3. `275c3d5` `feat(application)` — the compliance
+  evidence export bundle (`build-compliance-export.ts`) + store port +
+  adapter + fake + tests; 4. `00508a3` `feat(web)` — the
+  `GET /api/v1/hms/compliance-export` route with fail-closed per-source scope
+  - the query/parser + route test; 5. this `docs(context)` commit — each
+    independently revertible with `git revert <sha>`. **No migration** was
+    needed (migrations stay through `0045`; **76 tables** unchanged), so there
+    is **no schema-rollback concern** and no ledger row to delete; nothing
+    pushed; nothing applied to DigitalOcean.
+- **2026-09-21 HMS equipment / maintenance slice (`DEC-092`/`DEC-097`; 6
+  commits incl. this docs commit; nothing pushed)**: 1. `35561da`
+  `docs(decisions)` — `DEC-097`; 2. `d5b7001` `feat(persistence)` — the
+  equipment/maintenance tables (migrations `0044`/`0045`) + the repository +
+  tests; 3. `da53faa` `feat(application)` — the commands/queries + adapter +
+  fake; 4. `37c3a74` `feat(web)` — the equipment/maintenance routes; 5. `23e175f` `docs(runbook)` — the migration-ledger/rehearsal entries; 6. this `docs(context)` commit — each independently revertible with
+  `git revert <sha>`. Migration **`0044` adds two tables** (additive; down
+  drops `maintenance_log` then `equipment`, 76 → 74); **`0045` is
+  trigger-only** (down 76 → 76); the rehearsed down order is
+  **`0045`→`0044`**. If the DB is rolled back, delete the two ledger rows
+  (`created_at` `1790030048087` / `1790030073708`) and re-migrate; 76 tables
+  after re-apply. Nothing pushed; nothing applied to DigitalOcean.
+
+- **2026-09-21 HMS checklists slice (`DEC-091`/`DEC-096`; 6 commits incl.
+  this docs commit; nothing pushed)**: 1. `bd27b18` `docs(decisions)` —
+  `DEC-096`; 2. `60a4c51` `feat(persistence)` — the checklist tables
+  (migration `0042`) + the repository + tests; 3. `d5994fd`
+  `feat(application)` — the commands/queries + adapter + fake; 4. `ff6c8d0`
+  `feat(web)` — the checklist routes; 5. `c66ad68` `docs(runbook)` — the
+  migration-ledger/rehearsal entries; 6. this `docs(context)` commit — each
+  independently revertible with `git revert <sha>`. Migration **`0042` adds
+  two tables** (additive; down drops `checklist_run` then
+  `checklist_template`, 74 → 72); **`0043` is trigger-only** (down 74 → 74);
+  the rehearsed down order is **`0043`→`0042`**. If the DB is rolled back,
+  delete the two ledger rows (`created_at` `1790027667971` / `1790027669000`)
+  and re-migrate; 74 tables after re-apply. Nothing pushed; nothing applied
+  to DigitalOcean.
+
+- **2026-09-21 HMS incidents + corrective-actions slice (`DEC-090`/
+  `DEC-095`; up to 6 commits incl. this docs commit; nothing pushed)**:
+  1. `docs(decisions)` — `DEC-095`; 2. `feat(persistence)` — the incident +
+     corrective-action tables (migration `0040`) + the repository + tests;
+  2. `feat(application)` — the commands/queries + adapter + fake; 4.
+     `feat(web)` — the incident/corrective-action routes; 5. `docs(runbook)`
+     — the migration-ledger/rehearsal entries; 6. this `docs(context)`
+     commit — each independently revertible with `git revert <sha>`.
+     Migration **`0040` adds two tables** (additive; down drops
+     `corrective_action` then `hms_incident`, 72 → 70); **`0041` is
+     trigger-only** (down 72 → 72); the rehearsed down order is
+     **`0041`→`0040`**. If the DB is rolled back, delete the two ledger rows
+     (`created_at` `1790024758839` / `1790024895228`) and re-migrate; 72
+     tables after re-apply. Nothing pushed; nothing applied to DigitalOcean.
+
+- **2026-09-21 HMS monitoring slice (`DEC-089`; 5 commits incl. this docs
+  commit; nothing pushed)**: 1. `feat(persistence)` — `monitoring_point` +
+  `monitoring_reading` (migration `0037`), the append-only triggers incl. a
+  TRUNCATE guard (`0038`), the org-coherence guards (`0039`), the vocabulary
+  keys, the repository + tests; 2. `feat(domain)` — `isReadingInRange`; 3. `feat(application)` — the HMS store port + commands/queries + adapter +
+  fake + tests; 4. `feat(web)` — the `/api/v1/hms/monitoring-points` routes
+  with role + location-scope enforcement; 5. `docs(runbook)` + this docs
+  commit — each independently revertible with `git revert <sha>`. Migration
+  **`0037` adds two tables** (additive); **`0038`/`0039` are trigger-only**;
+  the rehearsed down order is **`0039`→`0038`→`0037`** → 68 tables. If the DB
+  is rolled back, delete the three ledger rows (`created_at` `1789995070090`
+  / `1789995080123` / `1789996231921`) and re-migrate; 70 tables after
+  re-apply. Nothing pushed; nothing applied to DigitalOcean.
+- **2026-09-21 Phase A + small-TECH session (3 code commits + this docs
+  commit; nothing pushed)**: `bda0b6b` `fix(domain)` — the `numeric(19,
+scale)` cap in `parseDecimal` + `packages/domain/src/decimal.test.ts`;
+  `8b22468` `chore(vocabularies)` — the `import_disposition` yaml key, the
+  exemption removed; `02f7c33` `test(counts)` — `FakeCountStore` rollback
+  fidelity; plus this docs commit carrying **Phase A** (`DEC-086`…`DEC-094`
+  and the spec amendments) — each independently revertible with
+  `git revert <sha>`. **No schema change** — migrations stay through
+  `0036`, **68 tables** (unchanged); no data migration; Phase A itself is
+  docs-only. Nothing pushed; nothing applied to DigitalOcean.
+- **2026-09-21 small-TECH-open-points session (2 code commits + this docs
+  commit; nothing pushed)**: `bda0b6b` `fix(domain)` — the
+  `numeric(19, scale)` storage-precision cap in `parseDecimal` +
+  `packages/domain/src/decimal.test.ts`; `8b22468` `chore(vocabularies)` —
+  the canonical `import_disposition` key in `schemas/domain-enums.yaml`, the
+  now-empty `YAML_ABSENT_VOCABULARIES` exemption removed, the
+  provisional-mirror comments corrected; and this context docs update — each
+  independently revertible with `git revert <sha>`. **No schema change** —
+  migrations stay through `0036`, **68 tables** (unchanged); no data
+  migration; nothing rewrites existing schema objects. Nothing pushed;
+  nothing applied to DigitalOcean.
+- **`DEC-085` `file_object` slice (committed as five commits since the
+  `2d4b98b` baseline; nothing pushed)**: `b3a3e02` `feat(persistence)` — the
+  `file_object` table (migration `0035`) + the `import_run.file_object_id`
+  FK + the `file_object_org_guard` trigger (migration `0036`) +
+  repository/tests; `1fd8e4e` `docs(comments)`; `818b63c` `docs(runbook)`;
+  `ebd6ed3` `docs(decisions)` —
+  `ADR-0006` accepted + `DEC-085`; and this context docs update — each
+  independently revertible with `git revert <sha>`; revert the docs commits
+  before persistence if reverting a cohort. Migration `0035` adds one table
+  (additive, with the deferred FK `NOT VALID` → `VALIDATE`); `0036` adds a
+  trigger; both have rehearsed unjournaled down paths — the down order is
+  **`0036` then `0035`** (the runbook documents it). If the DB is rolled
+  back, delete the `0035`/`0036` ledger rows (`created_at` `1789990745770` /
+  `1789990766802`) and re-migrate; 68 tables after re-apply. Nothing pushed;
+  nothing applied to DigitalOcean.
+- **2026-09-21 `ADR-0006` acceptance + gate resolution (docs-only)** — edits
+  only to `docs/adr/0006-file-storage-and-retention.md`,
+  `docs/BUILD_ROADMAP.md` and `CONTEXT.md`; trivially `git revert <sha>`-able
+  as a single docs commit. No code, migration, data or decision entry
+  changed; nothing pushed; nothing applied to DigitalOcean.
+- **`DEC-083` contract-step slice (committed as four commits since the
+  `3abe72f` baseline; nothing pushed)**: `4326dec` (feat(persistence) —
+  migration `0034_import_disposition_contract` + structural guards),
+  `66b0d51` (fix(tooling) — `db:generate` forwards extra args), `2d4b98b`
+  (docs(runbook) — document `0034`) and this context docs update — each
+  independently revertible with `git revert <sha>`. The `0034` down
+  rebuilds `diagnostics.dispositions` from `import_disposition` (value-identical,
+  drops nothing); if the DB is rolled back past the migration, delete the
+  `0034` ledger row (`created_at` `1789989056234`) and re-migrate. **No
+  schema change** (67 tables, data-only). Nothing pushed; nothing applied to
+  DigitalOcean.
+- **2026-09-21 ADR-gate pause (docs-only, commit `3abe72f`)** — edits only to
+  `CONTEXT.md` and `docs/BUILD_ROADMAP.md` (gate list, gated `file_object`
+  annotations, pause record, work-log entry); trivially
+  `git revert <sha>`-able as a single docs commit. No code, migration, data
+  or decision entry changed; nothing pushed; nothing applied to
+  DigitalOcean.
+- **`DEC-084` PROD-003 variance-producer slice (committed as five commits since
+  the `1f06d34` baseline; nothing pushed)**: `accb44c` (`refactor(application)`
+  the shared `data-quality` module + the `transfers` refactor), `a819925`
+  (`feat(counts)` the `count_variance` producer in `approveStockCount`),
+  `875b0ba` (`feat(production)` the `yield_variance` producer in
+  `completeProductionBatch` + the web/runbook docs), `46d6ad7`
+  (`docs(decisions)` `DEC-084` + roadmap + persistence comments) and this
+  context docs update — each independently revertible with `git revert <sha>`;
+  revert in reverse order — production/counts before the `data-quality`
+  refactor — if reverting a cohort. **No schema change:** migrations stay
+  through `0033` (67 tables), no data migration, nothing rewrites existing
+  schema objects. Nothing pushed; nothing applied to DigitalOcean.
+- **`DEC-083` import-disposition-table slice (committed as seven commits since
+  the `36f3c30` baseline; nothing pushed)**: `4587564` (the `DEC-083` decision
+  entry), `dbb7d97` (persistence — the `import_disposition` table, migration
+  `0033`, + jsonb backfill), `64a7cfc` (imports — read and write dispositions
+  via the table), `0f8b7b1` (web), `b2dc8ac` (runbook docs), `7b86165`
+  (roadmap docs) and this context docs update — each is independently
+  revertible with `git revert <sha>`; revert
+  the web/application commits before persistence if reverting a cohort.
+  Migration `0033` is **additive** (a new table + journalled jsonb backfill)
+  with a **lossless** unjournaled down path — it rebuilds
+  `diagnostics.dispositions` from the table (one record per row ordered by
+  `source_row_no`, so value-identical but not order-identical to the original
+  append order), drops the table and deletes the ledger row; rehearsed via
+  down/re-apply. The jsonb keys were retained **frozen**
+  (expand → migrate → contract; the contract step was delivered 2026-09-21
+  by migration `0034`). Nothing
+  pushed; nothing applied to DigitalOcean.
+- **`DEC-082` posting-policy-enforcement slice (committed as four commits since
+  the `ad2cf5c` baseline; nothing pushed)**: `12f0377` (the `DEC-082` decision
+  entry), `22b67c1` (sales — enforce the run's recorded
+  `diagnostics.posting_policy` in `postImportRun`), `36094c6` (docs(context)
+  handoff) and `36f3c30` (the review fix — reject a corrupt non-string policy
+  snapshot instead of coercing it) — each is independently revertible with
+  `git revert <sha>`; `git revert 22b67c1` restores the previous
+  posting behaviour and `git revert 36f3c30` restores the pre-review snapshot
+  handling; neither touches a migration or generated file, so there is
+  no data-recovery concern. Nothing pushed; nothing applied to DigitalOcean.
+- **`DEC-081` import-profile slice (committed as five commits since
+  the `b57fc3d` baseline; nothing pushed)**: `2997587` (the `DEC-081` decision
+  entry), `f4a8110` (persistence — the `import_profile` table, migration
+  `0031`, and the `import_run_profile_org_guard` trigger, migration `0032`),
+  `e9ec176` (imports — resolve a run's import profile by source), `1914795`
+  (web — profile-aware import creation and seed) and `cb3aff5` (runbook docs
+  for `0031`/`0032`) — each is independently revertible with `git revert <sha>`;
+  because the web/application commits consume the persistence types, revert the
+  web/application commits before persistence if reverting a cohort. Migrations
+  `0031`/`0032` are **additive** with rehearsed unjournaled down paths
+  (`0031` down drops `import_run.import_profile_id` first then `import_profile`;
+  `0032` down drops the trigger and function), no data migration, nothing
+  rewrites existing schema objects. Nothing pushed; nothing applied to
+  DigitalOcean.
+- **`DEC-080` data-quality-exception slice (committed as three commits since
+  the `9d0e055` baseline; nothing pushed)**: `40b5d7e` (the `DEC-080`
+  decision entry), `d1d0fad` (persistence migration `0030` — the
+  `data_quality_exception` table + repository) and `ddc9e06` (the
+  `transfer_discrepancy` producer in `receiveStockTransfer`) — each is
+  independently revertible with `git revert <sha>`. Migration `0030` is
+  **additive** (a new table, no data migration, nothing rewrites existing
+  schema objects) with a rehearsed unjournaled down path (drop the table,
+  delete the ledger row, re-migrate). Nothing pushed; nothing applied to
+  DigitalOcean.
+- **`DEC-079` cross-organization coherence guards (committed as two commits
+  since the `a5c3db2` baseline; nothing pushed)**: `8376209` (the `DEC-079`
+  decision entry) and `9d0e055` (persistence migration `0029` — the
+  `BEFORE INSERT OR UPDATE` coherence guard triggers on `recipe_allergen`,
+  `recipe_line` and `goods_receipt_line` + the deferred single-column FK on
+  `goods_receipt_line.supplier_item_id`) — each is independently revertible
+  with `git revert <sha>`. Migration `0029` is hand-written/journaled,
+  forward-only, with a rehearsed **unjournaled** down path (drop the
+  triggers/functions and the FK, delete the ledger row, re-migrate); no data
+  migration. Nothing pushed; nothing applied to DigitalOcean.
+- **`DEC-078` vocabulary/`lotTracked` slice (committed as four commits since
+  the `80bbe1c` baseline; nothing pushed)**: `3673633` (the `DEC-078` decision
+  entry), `ed93288` (persistence migration `0028` — the
+  `settlement_status_check`/`reconciliation_scope_type_check` constraints +
+  the vocabulary schema), `39d3364` (the `lotTracked` null-`lotId` guard in
+  `postStockMovementInternal`) and `a5c3db2` (`scope_type` validation via
+  `assertReconciliationScopeType`, incl. the review-strengthened
+  message-assertion tests) — each is independently revertible with
+  `git revert <sha>`. Migration `0028` is **additive** (two CHECK
+  constraints + the new vocabulary type) with a rehearsed unjournaled down
+  path (drop the checks/column default, restore the enum, delete the ledger
+  row, re-migrate); no data migration. The docs commits are trivial reverts.
+  Nothing pushed; nothing applied to DigitalOcean.
+- Revert any commit with `git revert <sha>`; no destructive git operations.
+- **Everything through `aa4ab29` is committed** (slices 4–7 and their review fixes
+  included, with migrations `0006`–`0016` and additive down paths); `git revert`
+  any commit.
+- **Slice 7 (`400c95b`)**: `git revert 400c95b` removes the domain
+  (`pricing.ts`/`cost-card.ts`), application (`CostCardStore`/`PriceScenarioStore`),
+  migrations `0014`–`0016` and the `DEC-058`–`DEC-060` entries together;
+  migrations `0014`–`0016` are additive with unjournaled `_down.sql` companions —
+  the `0015`/`0016` down paths were rehearsed (drop the indexes/invariant, delete
+  the ledger rows, re-migrate).
+- **Slice-7 review fixes (`c82a30f`, `083106a`)**: each is an independent commit —
+  `git revert c82a30f` removes the cross-organization reference guards on
+  `calculateCostCard`/`calculatePriceScenario` plus the `0015`/`0016` runbook
+  entries; `git revert 083106a` removes the pricing-primitive wiring into the
+  scenario outcome, the two dead read-API removals, the contribution-boundary
+  de-duplication and the `0014`/`0016` pre-apply preflight notes. Neither touched
+  a migration or a generated file, so neither has a data-recovery concern.
+- **Slice 8 + slice-9 persistence + web layers (committed as five layer commits;
+  nothing pushed; HEAD `6c69f7f`)**: each is independently revertible with
+  `git revert <sha>` — `583da3f` (infra deploy env vars), `b525f30` (stock ledger +
+  stock-ops persistence, repositories, migrations `0017`–`0020`),
+  `40e736b` (stock-valuation domain + client-safe subpath exports), `c91e512`
+  (application slices), `6c69f7f` (design system, app shell, screens). Because they
+  are layer commits over shared files, reverting the earliest layer (`b525f30`)
+  alone may leave later layers referencing missing exports — revert the cohort
+  together (or in reverse order) if reverting more than the topmost commit.
+  Migrations `0017` (deferred FK + `goods_receipt` source guard), `0018` (per-org
+  idempotency key), `0019` (`stock_movement_org_occurred_idx`) and `0020`
+  (slice-9 `stock_count`/`stock_count_line`/`stock_transfer` tables +
+  `stock_movement.transfer_id` + the extended source guard) are additive with
+  rehearsed down paths (drop the added objects/tables/columns, delete the ledger
+  row, re-migrate).
+- **Rows 11 + 12 + ADR acceptance + the error-fix (all committed; nothing
+  pushed)**: the row-11 import slice (migration `0022`), the row-12 sales +
+  settlements + reconciliation slice (migration `0023`, vocabularies
+  `RECONCILIATION_STATUS`/`OPTION_KIND`, domain `sales-consumption.ts`,
+  application `sales/**` and `reconciliation/**`, web `/api/v1/sales/**` +
+  `/api/v1/reconciliations/**` + `(app)/sales/**` + seed), the cross-cutting
+  `jsonError`/`mapErrors` error-handling fix and the `ADR-0007`/`ADR-0008`
+  acceptances landed on `main` (HEAD `77d913e`); each commit is revertible with
+  `git revert <sha>`. Migrations `0022`/`0023` are additive with rehearsed down
+  paths (drop the added objects/tables, delete the ledger row, re-migrate); the
+  error fix touched no migration or generated file. Slices 9–12 shared barrel
+  files, so reverting across a boundary may require reverting the cohort.
+- **DEC-072–076 decisions + low-risk implementations (committed as seven
+  commits since `bcb625a`; nothing pushed)**: six landed (`aaec400` the five
+  decision entries; `dcec861` the eslint ignore for Agent Manager worktrees
+  under `.kilo/`; `44eb93a` domain typed `NotFoundError` + `toleranceAmount`;
+  `6ff5881` persistence migrations `0024`–`0026`; `301c381` application
+  tolerance resolution + mapping conflict + `reverseSalesLine` + typed recipe
+  404s; `c0b0d77` web recipe 404s + `conflict` label) plus this handoff/docs
+  commit — each is independently revertible with `git revert <sha>`.
+  Migrations `0024`–`0026` are additive with rehearsed unjournaled down paths:
+  `0024` down drops the `reconciliation_tolerance` table + EXCLUDE constraint;
+  `0025` down restores the four-value `MAPPING_STATE` checks (it fails if
+  `conflict` rows exist — the preflight is documented); `0026` down drops the
+  `sales_line_reversal_of_id_key` partial unique index. The eslint-ignore
+  change and the docs commits are trivial reverts. No data migration; nothing
+  pushed; nothing applied to DigitalOcean.
+- **Price-version slice (`DEC-064`/`DEC-077`, committed as five commits since
+  the `c0b0d77` baseline; nothing pushed)**: `4e755a0` (the `DEC-077` decision
+  entry), `e94dfe1` (domain effective-window helpers), `414832b`
+  (persistence `price_version` + repository + migration `0027`),
+  `e2bd2b1` (application approval + reads, incl. the CAS
+  `approvePriceScenarioIfApprovable`) and `80bbe1c` (web approve route +
+  price-versions API + screens) — each is independently revertible with
+  `git revert <sha>`. Migration `0027` is additive (a new table + its EXCLUDE
+  constraint) with a rehearsed unjournaled down path (drop the constraint and
+  the table, delete the ledger row, re-migrate); no data migration.
+  The `4e755a0` docs commit and the handoff/docs commit are trivial reverts.
+  Nothing pushed; nothing applied to DigitalOcean.
+- **Slice 9 + slice-10 backend (committed as layer commits between `2a5799e`
+  and `7f6aa78`)**: the counts/transfers/waste and production work (migration
+  `0021`, domain `production.ts`, application `production/**`, the production
+  web layer) is committed on `main`; each commit is revertible with
+  `git revert <sha>`. Migrations `0020` (slice-9 stock-ops tables, committed in
+  `b525f30`) and `0021` (slice-10 production tables) are **additive with
+  rehearsed down paths** (drop the added tables/columns/FKs, delete the ledger
+  row, re-migrate). Note: slices 9 and 10 shared barrel files
+  (`packages/application/src/index.ts`, `packages/domain/src/index.ts`,
+  `packages/persistence/src/index.ts`, `schema/index.ts`, `vocabularies.ts`,
+  `_journal.json`), so their commits were able to be split only along those
+  shared-file boundaries.
+- **Deployment env vars (`583da3f`)**: the `ORGANIZATION_ID` /
+  `TOTP_SECRET_ENCRYPTION_KEY` wiring in `infra/` is additive and conditional
+  (unset adds no env var) — it changes no plan count (still **16 to add / 0
+  change / 0 destroy** per env offline); `git revert 583da3f` undoes it. **No
+  cloud resource was created and nothing has been applied to DigitalOcean.**
+- **Decisions + fixture trail (`aa4ab29`)**: documentation only — the five
+  `DEC-061`–`DEC-065` entries, the `ADR-0005` acceptance and the additive golden
+  fixture trail/test (`tests/fixtures/`,
+  `packages/domain/src/golden-fixtures.test.ts`). No migration or production
+  code; `git revert aa4ab29` restores the prior state.
+- The `infra/` scaffold, runtime stubs and persistence core are committed; revert
+  them with `git revert` if needed. **No cloud resource was created — only offline
+  `fmt`/`validate`/`plan` ran, never `apply`; no Terraform state exists, and
+  nothing has been applied to DigitalOcean.**
+- Migrations 0000–0050 are additive with tested down paths (`0011` down drops the
+  four slice-6 tables; `0012` down drops the three EXCLUDE constraints; `0015`/
+  `0016` down drop their indexes/invariant — rehearsed; `0017`–`0050` down are
+  rehearsed — see the slice-8 bullet, the slice-9/10, row-11, row-12,
+  DEC-072–076, price-version, `DEC-078`, `DEC-079`, `DEC-080`, `DEC-081`,
+  `DEC-083`, `DEC-085` `file_object`, `DEC-089` HMS monitoring,
+  `DEC-090` HMS incidents, `DEC-091` HMS checklists, `DEC-092` HMS
+  equipment, `DEC-087` `employee`/personnel-documents, `DEC-088`
+  staff-document and `DEC-094` workflow-platform bullets
+  above; the `DEC-093` HMS compliance / evidence export slice added **no
+  migration**). While the
+  database is
+  empty the tested recovery is `DROP SCHEMA public CASCADE; DROP SCHEMA drizzle
+CASCADE; CREATE SCHEMA public; npm run db:migrate` (see the runbook). Once data
+  exists, migrations must be additive (expand → migrate → contract) with a tested
+  data-preserving down path (see `AGENTS.md` Rule 2).
+- External writes require a documented rollback and per-source approval
+  (`DEC-015`).
