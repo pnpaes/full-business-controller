@@ -30,6 +30,8 @@ export type {
 } from "./labour";
 export { MONEY_SCALE, Money } from "./money";
 export { isReadingInRange } from "./monitoring";
+export { PAYROLL_SNAPSHOT_VERSION, buildPayrollSnapshot, isPayrollReportStatus } from "./payroll";
+export type { BuildPayrollSnapshotInput, PayrollSnapshot, PayrollSnapshotLine } from "./payroll";
 export {
   PRESENTED_MONEY_SCALE,
   TAX_BASES,
