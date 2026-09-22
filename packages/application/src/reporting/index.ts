@@ -17,6 +17,22 @@ export {
   SALES_REPORT_DRILLDOWN_NOTE,
   listSalesReportRecords,
 } from "./list-sales-report-records";
+export {
+  MENU_ENGINEERING_CATEGORY_THRESHOLD_NOTE,
+  MENU_ENGINEERING_MAX_ROWS,
+  MENU_ENGINEERING_TRUNCATED_NOTE,
+  MENU_ENGINEERING_UNMAPPED_NOTE,
+  buildMenuEngineeringReport,
+} from "./menu-engineering";
+export type {
+  BuildMenuEngineeringReportInput,
+  MenuEngineeringReport,
+  MenuEngineeringRow,
+  MenuEngineeringScope,
+  MenuEngineeringThreshold,
+  MenuEngineeringUnmapped,
+  MenuEngineeringWaste,
+} from "./menu-engineering";
 export type {
   ListSalesReportRecordsInput,
   SalesReportLineRecord,
@@ -44,4 +60,6 @@ export type {
   SalesReportGroupBy,
   SalesSummary,
   SalesSummaryQuery,
+  WasteByProductVariantQuery,
+  WasteByProductVariantRow,
 } from "./types";

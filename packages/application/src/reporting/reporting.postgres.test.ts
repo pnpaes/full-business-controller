@@ -323,8 +323,21 @@ describe.skipIf(!databaseUrl)("reporting against PostgreSQL", () => {
 
       const mapped = rows.find((row) => row.productVariantId === refs.productVariantId);
       const unmapped = rows.find((row) => row.productVariantId === null);
-      expect(mapped).toMatchObject({ label: "Flat white", netSales: "100.0000" });
-      expect(unmapped).toMatchObject({ key: "unmapped", label: "Unmapped", netSales: "45.0000" });
+      expect(mapped).toMatchObject({
+        label: "Flat white",
+        netSales: "100.0000",
+        category: "coffee",
+        productKind: "base",
+        optionKinds: ["standalone"],
+      });
+      expect(unmapped).toMatchObject({
+        key: "unmapped",
+        label: "Unmapped",
+        netSales: "45.0000",
+        category: null,
+        productKind: null,
+        optionKinds: ["standalone"],
+      });
     });
   });
 
@@ -516,8 +529,21 @@ describe.skipIf(!databaseUrl)("reporting against PostgreSQL", () => {
       });
       const mapped = productGroups.find((row) => row.productVariantId === refs.productVariantId);
       const unmapped = productGroups.find((row) => row.productVariantId === null);
-      expect(mapped).toMatchObject({ label: "Flat white", netSales: "100.0000" });
-      expect(unmapped).toMatchObject({ key: "unmapped", label: "Unmapped", netSales: "45.0000" });
+      expect(mapped).toMatchObject({
+        label: "Flat white",
+        netSales: "100.0000",
+        category: "coffee",
+        productKind: "base",
+        optionKinds: ["standalone"],
+      });
+      expect(unmapped).toMatchObject({
+        key: "unmapped",
+        label: "Unmapped",
+        netSales: "45.0000",
+        category: null,
+        productKind: null,
+        optionKinds: ["standalone"],
+      });
 
       const { rows: categoryGroups } = await store.summarizeSales({
         organizationId: orgId,
@@ -573,6 +599,9 @@ describe.skipIf(!databaseUrl)("reporting against PostgreSQL", () => {
         productVariantId: refs.otherProductVariantId,
         label: "Cinnamon bun",
         netSales: "45.0000",
+        category: "food",
+        productKind: "base",
+        optionKinds: ["standalone"],
       });
     });
   });

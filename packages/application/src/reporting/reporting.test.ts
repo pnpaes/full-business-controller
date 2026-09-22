@@ -27,6 +27,8 @@ function group(overrides: Partial<SalesGroupRow> = {}): SalesGroupRow {
     channelId: null,
     category: null,
     productVariantId: null,
+    productKind: null,
+    optionKinds: [],
     periodBucket: "2026-09",
     transactions: 2,
     units: "3.000000",

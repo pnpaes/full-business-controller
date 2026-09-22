@@ -9,6 +9,8 @@ import type {
   SalesReportLineRow,
   SalesReportLineRowPage,
   SalesSummaryQuery,
+  WasteByProductVariantQuery,
+  WasteByProductVariantRow,
 } from "./types";
 import { SALES_REPORT_UNMAPPED_KEY, SALES_REPORT_UNMAPPED_LABEL } from "./types";
 
@@ -75,6 +77,8 @@ function toGroupRow(
         channelId: null,
         category: null,
         productVariantId: null,
+        productKind: null,
+        optionKinds: [],
       };
     case "channel":
       return {
@@ -86,6 +90,8 @@ function toGroupRow(
         channelId: row.channelId,
         category: null,
         productVariantId: null,
+        productKind: null,
+        optionKinds: [],
       };
     case "category":
       return {
@@ -96,6 +102,8 @@ function toGroupRow(
         channelId: null,
         category: row.category,
         productVariantId: null,
+        productKind: null,
+        optionKinds: [],
       };
     case "product":
       return {
@@ -107,8 +115,17 @@ function toGroupRow(
             : (row.productName ?? row.productVariantId),
         locationId: null,
         channelId: null,
-        category: null,
+        // category/productKind/optionKinds carry the resolved product's values
+        // (DEC-109 item 5), so menu engineering needs no second read. The other
+        // dimensions leave them empty.
+        category: row.category,
         productVariantId: row.productVariantId,
+        productKind: row.productKind,
+        // `optionKinds` is present for every product group: the GROUP BY
+        // guarantees at least one line, so `array_agg` is never null here. The
+        // `?? []` is only the type-level guard for the shared nullable column
+        // (unreachable in practice).
+        optionKinds: row.optionKinds ?? [],
       };
     case "period":
       return {
@@ -119,6 +136,8 @@ function toGroupRow(
         channelId: null,
         category: null,
         productVariantId: null,
+        productKind: null,
+        optionKinds: [],
       };
     default:
       throw new Error(`unknown sales report groupBy "${String(groupBy)}"`);
@@ -207,6 +226,21 @@ export function createPostgresReportingStore(db: Database): ReportingStore {
           : { productVariantId: query.productVariantId }),
       });
       return { rows: page.rows.map(toLineRecord), truncated: page.truncated };
+    },
+    sumWasteByProductVariant: async (
+      query: WasteByProductVariantQuery,
+    ): Promise<readonly WasteByProductVariantRow[]> => {
+      const rows = await repo.sumWasteByProductVariant(db, {
+        organizationId: query.organizationId,
+        from: query.from,
+        to: query.to,
+        ...(query.locationIds === undefined ? {} : { locationIds: query.locationIds }),
+      });
+      return rows.map((row) => ({
+        productVariantId: row.productVariantId,
+        quantity: quantity(row.quantity),
+        value: row.value === null ? null : money(row.value),
+      }));
     },
   };
 }

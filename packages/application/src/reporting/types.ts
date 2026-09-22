@@ -65,6 +65,19 @@ export interface SalesGroupRow extends SalesMeasures {
   readonly channelId: string | null;
   readonly category: string | null;
   readonly productVariantId: string | null;
+  /**
+   * The product's `product.product_kind`; populated for a `product` group only
+   * (null otherwise). Attached so menu engineering can annotate a product row
+   * (`DEC-109` item 5) without a second read.
+   */
+  readonly productKind: string | null;
+  /**
+   * The distinct `sales_line.option_kind` values on the group's lines; populated
+   * for a `product` group only (empty otherwise). `included` lines are already
+   * excluded (`SALE-011`), so a product sold both standalone and as an attached
+   * add-on carries both here (`DEC-109` item 3/5).
+   */
+  readonly optionKinds: readonly string[];
   readonly periodBucket: string;
 }
 
@@ -142,6 +155,30 @@ export interface SalesReportLineRowPage {
 }
 
 /**
+ * A waste read for menu engineering (`RPT-005`, `DEC-109` item 5). Waste is
+ * joined only where `waste_event.product_variant_id` is set — no item→product
+ * attribution rule exists — so this read is per product variant and org-scoped.
+ */
+export interface WasteByProductVariantQuery {
+  readonly organizationId: string;
+  /** Inclusive lower bound on `waste_event.occurred_at`; an ISO instant. */
+  readonly from: string;
+  /** Inclusive upper bound on `waste_event.occurred_at`; an ISO instant. */
+  readonly to: string;
+  /** Empty/undefined = organization-wide (the repo convention). */
+  readonly locationIds?: readonly string[] | undefined;
+}
+
+/** One variant's summed waste over the window. */
+export interface WasteByProductVariantRow {
+  readonly productVariantId: string;
+  /** `numeric(19,6)` quantity string, summed unit-blind (a recorded ceiling). */
+  readonly quantity: string;
+  /** `numeric(19,4)` money string summed over valued events; null when none. */
+  readonly value: string | null;
+}
+
+/**
  * The persistence port for the reporting read model. Read-only: there is no
  * `writeAudit` because the slice writes no fact (`ADR-0007`: a read). There is
  * no `withTransaction` seam either: no caller needs to bind a multi-read report
@@ -152,4 +189,8 @@ export interface ReportingStore {
   summarizeSales(query: SalesSummaryQuery): Promise<SalesSummary>;
   /** The drill-down page for the window (`RPT-002`). */
   listSalesLineRecords(query: SalesLineQuery): Promise<SalesReportLineRowPage>;
+  /** The window's waste by product variant (`RPT-005`, `DEC-109` item 5). */
+  sumWasteByProductVariant(
+    query: WasteByProductVariantQuery,
+  ): Promise<readonly WasteByProductVariantRow[]>;
 }
