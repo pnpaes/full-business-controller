@@ -9,137 +9,155 @@ duplicate their content.
 
 **Say "resume the work" and start here.** A fresh session must be able to
 continue from this section alone. (This section was rewritten by the
-2026-09-21 HMS equipment/maintenance handoff session.)
+2026-09-22 HMS compliance/evidence-export handoff session.)
 
-**State:** `main`; HEAD before this slice's commits was **`346847b`**
-(`docs(context)` — the HMS checklists-slice handoff, `DEC-091`/`DEC-096`);
+**State:** `main`; HEAD before this slice's commits was **`d8bd98d`**
+(`docs(context)` — the HMS equipment-slice handoff, `DEC-092`/`DEC-097`);
 the branch was clean before these handoff edits; nothing pushed; nothing
-applied to DigitalOcean. Lineage: `346847b` → **the HMS equipment /
-maintenance slice, 6 commits** (the orchestrator commits them as the slice
-closes; if `git log --oneline` shows their hashes, use the real ones —
-otherwise refer to them as "the equipment slice, 6 commits"). The real hashes
-are `35561da` … `23e175f`:
+applied to DigitalOcean. Lineage: `d8bd98d` → **the HMS compliance / evidence
+export slice, 5 commits** (the orchestrator commits them as the slice closes;
+the real hashes are `05caf1b` … `00508a3`):
 
-1. `35561da` `docs(decisions)` — `DEC-097`; 2. `d5b7001` `feat(persistence)`
-   — the equipment/maintenance tables, migrations `0044`/`0045` and the
-   repository; 3. `da53faa` `feat(application)` — the commands/queries +
-   adapter + fake; 4. `37c3a74` `feat(web)` — the equipment/maintenance
-   routes; 5. `23e175f` `docs(runbook)` — the migration-ledger/rehearsal
-   entries; 6. `docs(context)` — this handoff.
+1. `05caf1b` `docs(decisions)` — `DEC-098`; 2. `7cb4f68` `feat(persistence)`
+   — the optional `from`/`to` period filter on the five HMS list queries; 3. `275c3d5` `feat(application)` — the compliance evidence export bundle; 4. `00508a3` `feat(web)` — the export route with fail-closed scope; 5. `docs(context)` — this handoff. **No migration was needed** (migrations
+   stay through `0045`; **76 tables**).
 
-**Delivered (programme step 19d — `DEC-092`, requirement `HMS-006`):**
-`equipment` (location FK, `code`, `name`, `kind` — **free text, no
-vocabulary**, per `DEC-092`; `serial_no`, `installed_at` and
-`warranty_until` as calendar dates, `active`; `UNIQUE (organization_id,
-code)`) and `maintenance_log` (equipment FK **NOT NULL**, `kind ∈ {service,
-repair, inspection}` from the new `maintenance_kind` vocabulary,
-`performed_at` timestamptz, `performed_by`, `notes`, and a **real nullable FK**
-`file_object_id → file_object.id` — deliberately unlike the incident slice's
-polymorphic evidence link). `maintenance_log` is a **fact log: create + read
-only** (no update/delete command, and no DB immutability trigger — not
-authorised by `DEC-092`). Org-scoped (`DEC-061`); cross-org coherence guards
-on `equipment.location_id`, `maintenance_log.equipment_id` and
-`maintenance_log.file_object_id` (skipping NULL) raising `23514`; role +
-location-scope enforcement on every route (equipment is location-scoped;
-`maintenance_log` has **no `location_id`**, so a scoped caller must supply
-`equipmentId` on the flat list and the equipment is resolved org-scoped for
-every caller — the same ceiling recorded for `corrective_action`).
-`equipment` is a **new HMS entity, not the separately-deferred finance
-`asset` register** — do not conflate them.
+**Delivered (programme step 19e — `DEC-093`, requirement `HMS-007`,
+provisional `DEC-098`):** a **synchronous, storage-free JSON evidence bundle**
+at `GET /api/v1/hms/compliance-export`. It gathers **five** sources
+org-scoped and period-filtered — monitoring readings, incidents, corrective
+actions, checklist runs and **maintenance logs** (maintenance is included
+because `HMS-007` is a _Must_ and the UI agrees; `DEC-098` item 1 resolved the
+`DEC-093` omission) — and returns `{ generatedAt, organizationId, period,
+counts, truncated, personalDataFields, monitoringReadings[], incidents[],
+correctiveActions[], checklistRuns[], maintenanceLogs[] }` with provenance
+carried by the ids already on each record. **No file artifact, no storage
+client, no signed URL, no persisted bundle** (deferred by
+`DEC-085`/`ADR-0006`). Authorization is per-source and **fail-closed**:
+`owner`, `general_manager`, `location_manager`, `admin` only — `analyst` is
+denied (it has no incident/corrective-action read) and a partial bundle is
+explicitly **not** implemented; `kitchen`/`front_of_house`/`purchasing`/
+`finance` are denied. A location-scoped caller is bounded to their locations
+(`corrective_action` and `maintenance_log` are scoped through their parents —
+the recorded ceiling); an unscoped caller gets the organization-wide bundle,
+and an **empty** location scope now means organization-wide at both the route
+and the query. Generating the bundle writes exactly **one** `audit_event`
+(`hms.compliance_export.generated`) carrying the actor, scope, period, sources
+and counts. Period semantics: optional inclusive `from`/`to`, one date column
+per source (`measured_at`, `occurred_at`, `due_date`, `run_at`,
+`performed_at`).
 
-**Schema:** migrations through **`0045`**; **76 tables** (was 74). Next free
-decision id **`DEC-098`**.
+**Also delivered:** the optional `from`/`to` period filter on the five HMS
+list queries at every layer (persistence repository → application query →
+store port → adapter → fake → web parsers) — additive, **no migration**.
+
+**Schema:** unchanged — migrations through **`0045`**; **76 tables**. Next
+free decision id **`DEC-099`**.
 
 **Verification (exact):** `typecheck`, `lint`, `format:check`, `build` clean;
-**1816/1816 tests with `DATABASE_URL`** (159 files); `npm audit --omit=dev`
-= 0; `db:migrate` through `0045` is a no-op on re-run; **76** public base
-tables; the three equipment guard triggers present
-(`equipment_location_org_guard`, `maintenance_log_equipment_org_guard`,
-`maintenance_log_file_object_org_guard`).
+**1861/1861 tests with `DATABASE_URL`** (160 files); `npm audit --omit=dev`
+= 0; `db:migrate` through `0045` a no-op on re-run; **76** public base tables.
+**No new migration was needed for this slice** (so no runbook entry).
 
-**Migrations (ledger-pinned):** `0044_equipment` (journal `idx` 44, `when`
-`1790030048087`); `0045_equipment_org_guard` (journal `idx` 45, `when`
-`1790030073708`). Down companions (unjournalled):
-`0044_equipment_down.sql` (drops `maintenance_log` then `equipment`; 76 → 74)
-and `0045_equipment_org_guard_down.sql` (trigger-only; 76 → 76). Rehearsed:
-apply → 76; duplicate `code` `23505`, the `maintenance_kind` and non-empty
-CHECKs `23514`, the three guards `23514`, a NULL `file_object_id` accepted;
-down `0045` → `0044` → 74; ledger rows deleted + re-apply → 76; third run a
-no-op (46 ledger rows). Snapshot chain `0042` → `0045` verified contiguous;
-`db:generate` reports no schema changes.
+**Reviews and reconciliation (recorded honestly):** `reviewer-qwen` and
+`reviewer-glm` each found **the same blocker**: the route forwarded
+`access.locationIds` (an **empty array** for owner/GM/admin) and the query
+treated `locationIds !== undefined` as scoped, so the primary use case — an
+owner exporting the whole organization — returned an **empty bundle** and
+audited an empty scope; the route test even asserted the buggy forwarding.
+**Accepted + fixed at both layers** (the route forwards `undefined` for an
+empty scope; the query treats `[]` as organization-wide) and the test was
+corrected. `reviewer-qwen` blocker 2: `truncated` was dishonest for a scoped
+caller — the per-source cap was applied before the in-memory scope filter, so
+a scoped caller could receive fewer than all in-scope rows while the bundle
+attested `truncated: false` — **accepted + fixed**: `truncated` is now
+conservative ("in-scope rows may be missing") — set when a source's own raw
+window filled **or** when a parent list feeding its scoping filled its window
+— and the child id sets are built from the **filtered** parents, not the
+capped output; the **DB-side location push-down remains the recorded upgrade
+path**. `reviewer-qwen` major: `DEC-098` item 5 asserted that `07.4`'s
+personal-data minimization applies, but nothing implements it — **accepted +
+fixed**: `DEC-098` was amended to state explicitly that **no minimization is
+applied in this increment** and that redaction is an open point pending the
+privacy review, and the bundle now declares a `personalDataFields` list
+naming the personal-data fields so a later pass has a contract to shrink.
+`reviewer-glm` major: the parent id sets were built from the capped window,
+silently dropping in-scope children — **accepted + fixed** (same fix as
+blocker 2). Minors **accepted + fixed**: the `due_date` calendar-day
+extraction from a non-UTC offset bound is now documented and tested; a
+scoped-window-filled `truncated: true` test was added; empty-roles and
+unknown-role 403 tests were added; the "allows admin" test now asserts the
+forwarded query; an O(n) `includes` became a `Set`. Minor **declined**: the
+audit write is best-effort outside a transaction — the export is a read and a
+failed audit surfaces as a 500 to the caller; this stays a recorded systemic
+open point alongside the driver-error→500 point. **Coverage gap:**
+`reviewer-glm`'s step-capped pass did **not** read part of the export-period
+test body in `hms.postgres.test.ts` or the persistence `*.postgres.test.ts`
+diffs — recorded, not resolved.
 
-**Reviews and reconciliation:** `reviewer-qwen` (adversarial) — **no
-blockers, no majors**; two minors, both **declined and recorded as open
-points**: (1) a client-supplied nonexistent `fileObjectId` (or any bad FK id)
-surfaces as a **500** rather than a 400/404 — this is **systemic** (the same
-holds for `equipment.location_id`, `checklist_run.template_id` and the
-incident/checklist slices), so the root-cause fix is one shared mapping in
-`apps/web/lib/http.ts`'s `mapErrors` for driver FK/check violations —
-deliberately **not** patched per-route; (2) `maintenance_log` carries
-`updated_at`/`updated_by`/`version` from the uniform `auditColumns()` that the
-create+read-only log never sets — **declined as intentional** (uniform
-convention; `checklist_run` has the same shape). `reviewer-glm` (code-level)
-— **no blockers**; one major, **accepted + fixed**: the flat and nested
-maintenance-log list paths disagreed on an unknown/cross-org `equipmentId`
-(unscoped 200-empty vs scoped 404) — the equipment is now resolved org-scoped
-for **every** caller (404 when missing/cross-org, 403 when resolved but out
-of location scope). Four minors: command-level length ceilings for
-`code`/`name`/`kind`/`serialNo` were missing (**accepted + fixed** — a new
-`equipment-limits.ts` now holds the constants and the **web parser imports
-them**, so the numbers are not duplicated); `recordMaintenanceLog` did not
-trim `kind` before the vocabulary check (**accepted + fixed**); ISO instants
-require seconds (stricter than RFC 3339) (**declined** — consistent with the
-repo's `assertIsoInstant`); a dead `NotFoundError` branch in the equipment
-POST route and missing command-level `limit`/`offset` range checks
-(**declined** — both match the existing routes' shape). **Coverage gap:**
-`reviewer-glm`'s step-capped pass did **not** read
-`equipment/[id]/maintenance-logs/route.test.ts`, `0044_equipment.sql`/its
-down, the snapshots beyond `0045`, the seed-helper bodies, and the
-pre-existing `hms.test.ts` sections — recorded, not resolved.
+**Next task:** the **`employee` entity + personnel documents** slice
+(`DEC-087`; requirements `WF-007` and `DOC-001`…`DOC-004`) — programme step
+20a, the **first slice of the workforce-documents half** of the programme and
+the first that is **not** HMS. It needs its own reconnaissance: the `employee`
+entity, personnel documents — contracts and certificates — with versioning,
+and the access rule that employee contracts are visible to **owner +
+general_manager + admin with finance excluded**. It should follow the same
+pattern (a provisional clarification decision if the decision text leaves
+gaps — next free id **`DEC-099`**), and it must not resolve the recorded
+privacy-review retention periods silently. The programme's HMS half is now
+**complete** (all of `HMS-001`…`HMS-007` delivered across steps 19a–19e).
+Programme build order after it: the staff document library (`DEC-088`), then
+the `task`/`approval` platform tables (`DEC-094`; the `job`/worker/outbox
+layer stays gated on `ADR-0004` acceptance, which is still `Proposed`).
 
-**Next task:** the **compliance / evidence export** slice (`DEC-093`,
-requirement `HMS-007`) — programme step 19e, and the **last HMS slice**. It
-must cover readings, incidents, corrective actions, checklist runs **and
-maintenance** (resolving the `HMS-007`-vs-`DEC-093` conflict), within
-authorized scope and audited as a sensitive export; check whether it is
-blocked on the unbuilt `task`/`approval` tables or on `ADR-0004` before
-starting. Programme build order after it: the `employee` entity + personnel
-documents (`DEC-087`), the staff document library (`DEC-088`), and the
-`task`/`approval` platform tables (`DEC-094`; the `job`/worker/outbox layer
-stays gated on `ADR-0004`).
+**Scope (do):** implement the `employee` entity + personnel documents slice
+(`DEC-087`, requirements `WF-007` and `DOC-001`…`DOC-004`) — programme step
+20a: additive migrations (the `employee` entity, plus personnel documents —
+contracts and certificates — with versioning), plus the domain/application/web
+layer per the existing package boundaries, keeping every change
+organization-scoped (`DEC-061`) and reusing the established role +
+location-scope enforcement pattern (the `/api/v1/hms/*` routes are the
+reference); enforce the access rule that employee contracts are visible to
+**owner + general_manager + admin with finance excluded**; do the
+reconnaissance first and add a provisional clarification decision only if the
+decision text leaves gaps (`DEC-099`); do not resolve the privacy-review
+retention periods silently; rehearse the down path, add a `.test.ts` for new
+non-trivial logic, make small atomic commits with the rollback approach in the
+body (per `AGENTS.md` Rule 2), and update `CONTEXT.md` at the end. Then
+continue down the programme build order above.
 
-**Scope (do):** implement the compliance / evidence export slice (`DEC-093`,
-requirement `HMS-007`) — programme step 19e, the last HMS slice: additive
-migrations if the export needs any, plus the domain/application/web layer per
-the existing package boundaries, keeping every change organization-scoped
-(`DEC-061`) and reusing the HMS role + location-scope enforcement pattern
-(the `/api/v1/hms/*` routes are the reference); the export must cover
-readings, incidents, corrective actions, checklist runs **and maintenance**,
-resolving the `HMS-007`-vs-`DEC-093` conflict explicitly (a `DEC-098`
-provisional clarification if a decision is needed); it is audited as a
-sensitive export; rehearsed down path, a `.test.ts` for new non-trivial logic,
-small atomic commits with the rollback approach in the body (per `AGENTS.md`
-Rule 2), and `CONTEXT.md` updated at the end. Then continue down the programme
-build order above.
-
-**Scope (do not):** do not build the `job`/worker/outbox layer (`ADR-0004`
-gate — only `task`/`approval` build under `DEC-094`); do not touch the
-storage integration (deferred) or resolve the `file_object`
+**Scope (do not):** do not build the staff document library (`DEC-088` — the
+next slice after this one) or the `task`/`approval` platform tables
+(`DEC-094`); do not build the `job`/worker/outbox layer (`ADR-0004` gate,
+still `Proposed` — only `task`/`approval` build under `DEC-094`); do not touch
+the storage integration (deferred) or resolve the `file_object`
 immutability/soft-delete posture or the five deferred file FKs silently; do
-not resolve the recorded open inputs silently — the new equipment-slice open
-points (the **systemic driver-error mapping** — bad FK/check ids → 500 instead
-of 400/404, proposed single fix in `mapErrors`; the **unused audit columns on
-fact logs**; ISO instants requiring seconds; command-level `limit`/`offset`
-range checks; the `reviewer-glm` coverage gap; `maintenance_log` has no
-`location_id` — the `corrective_action` ceiling again; `equipment.kind` is
-free text pending an owner/OPS vocabulary; `maintenance_log` has **no DB
-immutability trigger** — create+read-only is enforced only in the repository;
-the `DEC-097` provisional items), the two requirement-vs-decision conflicts
-(`HMS-007`/the UI require the compliance export to cover **maintenance** while
-`DEC-093`'s text enumerates only readings, checklist runs, incidents and
-corrective actions; `HMS-001` implies a `task`/`approval` link that
-`DEC-092`/`DEC-094` never define), the checklist-slice open points (template
-versioning has no completeness rule, no per-item evidence, no failed-item →
+not resolve the recorded open inputs silently — the new export-slice open
+points (the export's **DB-side location push-down** — today the per-source cap
+is applied org-wide then filtered in memory, so a scoped caller can still
+receive an incomplete bundle, now honestly flagged via `truncated` rather than
+silently; **no personal-data minimization/redaction** — a privacy-review
+input, the bundle declares a `personalDataFields` list as the contract to
+shrink; the bundle is **not persisted**, so no retention class applies to it
+yet — a persisted export artifact's class and period remain open (`DEC-093`,
+`ADR-0006:47`); a **partial bundle for `analyst`** is not implemented
+(fail-closed); a **regulator-final format** (CSV/ZIP, per-regulator shapes) is
+a later slice; evidence **file bytes / signed URLs** stay deferred
+(`DEC-085`/`ADR-0006`); the **period column choices remain provisional** (the
+owner may prefer `completed_at`/`verified_at` for corrective actions); the
+`DEC-098` provisional items still need owner/OPS confirmation; the
+`reviewer-glm` step-capped export-period coverage gap), the equipment-slice
+open points (the **systemic driver-error mapping** — bad FK/check ids → 500
+instead of 400/404, proposed single fix in `mapErrors`; the **unused audit
+columns on fact logs**; ISO instants requiring seconds; command-level
+`limit`/`offset` range checks; the `reviewer-glm` coverage gap;
+`maintenance_log` has no `location_id` — the `corrective_action` ceiling
+again; `equipment.kind` is free text pending an owner/OPS vocabulary;
+`maintenance_log` has **no DB immutability trigger** — create+read-only is
+enforced only in the repository; the `DEC-097` provisional items), the
+`HMS-001` `task`/`approval`-link conflict (the `HMS-007` conflict is now
+resolved by `DEC-098`), the checklist-slice open points (template versioning
+has no completeness rule, no per-item evidence, no failed-item →
 `corrective_action` link, the provisional jsonb 500-element ceiling,
 unvalidated list filters, route tests not exercising `withMutationGuards`, the
 short-page multi-location filter, no scheduling), the systemic location-scope
@@ -156,23 +174,24 @@ externally (per `DEC-015`); do not rewrite the specification inputs
 the already-amended programme scope.
 
 **Files/paths:** new additive migrations under
-`packages/persistence/drizzle/` (only if the export needs them) + the Drizzle
-schema (`packages/persistence/src/schema/`) + repository +
-domain/application packages + `apps/web` export slice +
-`docs/runbooks/persistence-migrations.md`; `12_OPEN_DECISIONS.md` for any
-`DEC-098` provisional clarification; update `CONTEXT.md` at the end.
+`packages/persistence/drizzle/` (the `employee` entity + personnel documents)
 
-**Authoritative docs to read first:** the programme requirements
-(`HMS-001…HMS-007` and the phase map in `11_REQUIREMENTS_CATALOG.md`, the
-scope amendment in `01_PRODUCT_SCOPE.md`, the access-matrix rows in
-`07_SECURITY_AND_NFR.md`, the screens in `08_UI_UX.md`); `DEC-086`…`DEC-097`
-in `12_OPEN_DECISIONS.md` (next free id **`DEC-098`**);
-`docs/BUILD_ROADMAP.md` §1 and §4 (row 19e); this file's "Open decisions /
+- the Drizzle schema (`packages/persistence/src/schema/`) + repository +
+  domain/application packages + `apps/web` workforce slice +
+  `docs/runbooks/persistence-migrations.md`; `12_OPEN_DECISIONS.md` for any
+  `DEC-099` provisional clarification; update `CONTEXT.md` at the end.
+
+**Authoritative docs to read first:** the programme requirements (`WF-007`,
+`DOC-001…DOC-004` and the phase map in `11_REQUIREMENTS_CATALOG.md`, the scope
+amendment in `01_PRODUCT_SCOPE.md`, the access-matrix rows + retention notes
+in `07_SECURITY_AND_NFR.md`, the screens in `08_UI_UX.md`); `DEC-086`…`DEC-098`
+in `12_OPEN_DECISIONS.md` (next free id **`DEC-099`**);
+`docs/BUILD_ROADMAP.md` §1 and §4 (rows 19/20); this file's "Open decisions /
 inputs"; `AGENTS.md` Rules 1–3.
 
 **Acceptance / verification:** `export NVM_DIR="$HOME/.nvm"; . "$NVM_DIR/nvm.sh";
 nvm use 22`, then `npm run typecheck` before the change, `npm run lint`,
-`npm run test` (with `DATABASE_URL` — current baseline: **1816/1816**, 159
+`npm run test` (with `DATABASE_URL` — current baseline: **1861/1861**, 160
 files), `npm run build`, `npm run format:check`, `npm audit --omit=dev` = 0;
 `db:migrate` applies any new migration, is a no-op on re-run, and its down
 path is rehearsed; after each commit re-run the suite at the clean tree and
@@ -184,67 +203,71 @@ and next steps → commit → next task. Global ruleset
 (`~/.config/kilo/AGENTS.md`): compact context at 25 %; pausing is permitted
 above USD 20 at a clean point (committed, verified, documented).
 
-**Open inputs (recorded, do not decide):** from this slice — the **systemic
-driver-error mapping** (a client-supplied nonexistent `fileObjectId` or any
-bad FK/check id surfaces as a **500** rather than a 400/404; the same holds
-for `equipment.location_id`, `checklist_run.template_id` and the
-incident/checklist slices, so the proposed root-cause fix is one shared
-mapping in `apps/web/lib/http.ts`'s `mapErrors` for driver FK/check
-violations); the **unused audit columns on fact logs** (`maintenance_log`
-carries `updated_at`/`updated_by`/`version` from the uniform `auditColumns()`
-that a create+read-only log never sets — uniform convention, `checklist_run`
-has the same shape); ISO instants require seconds (stricter than RFC 3339,
-consistent with the repo's `assertIsoInstant`); command-level `limit`/`offset`
-range checks are absent (matches the existing routes' shape); the
-`reviewer-glm` coverage gap (its step-capped pass did not read
-`equipment/[id]/maintenance-logs/route.test.ts`, `0044_equipment.sql`/its
-down, the snapshots beyond `0045`, the seed-helper bodies, or the pre-existing
-`hms.test.ts` sections); `maintenance_log` has **no `location_id`** (a scoped
-caller must supply `equipmentId` on the flat list — the `corrective_action`
-ceiling again); `equipment.kind` is **free text** pending an owner/OPS
-vocabulary; `maintenance_log` has **no DB immutability trigger** —
-create+read-only is enforced only in the repository; the `DEC-097`
-provisional items still need owner/OPS confirmation; plus two
-requirement-vs-decision conflicts still open — `HMS-007`/the UI require the
-compliance export to cover **maintenance** while `DEC-093`'s text enumerates
-only readings, checklist runs, incidents and corrective actions, and `HMS-001`
-implies a `task`/`approval` link that `DEC-092`/`DEC-094` never define; plus
-the standing incident-slice residuals (corrective-action location-scope
-ceiling, inert `involves_personal_data`, the step-capped `reviewer-glm`
-coverage gap) and the checklists-slice open points (template versioning has no
-completeness rule, no per-item evidence, no failed-item → `corrective_action`
-link, the provisional jsonb 500-element ceiling, unvalidated list filters,
-route tests not exercising `withMutationGuards`, the short-page multi-location
-filter, no scheduling, the `DEC-096` provisional items). Standing ones: the
-**systemic location-scope gap** (HMS is the first route to enforce location
-scope; the other routes do not pass `locationId` to `isAuthorizedFor`); the
-**audit-write transaction binding** (the adapters' `writeAudit` closes over
-the parent `db`, so the audit fact is not strictly inside
-`withTransaction` — systemic, a separate cross-cutting slice); the
+**Open inputs (recorded, do not decide):** from this slice — the export's
+**DB-side location push-down** (today the per-source cap is applied org-wide
+then filtered in memory, so a scoped caller can still receive an incomplete
+bundle — now honestly flagged via `truncated` rather than silently, with the
+push-down the recorded upgrade path); **no personal-data
+minimization/redaction** (a privacy-review input; the bundle declares a
+`personalDataFields` list as the contract to shrink); the bundle is **not
+persisted**, so **no retention class applies to it yet** — a persisted export
+artifact's class and period remain open (`DEC-093`, `ADR-0006:47`); a
+**partial bundle for `analyst`** is not implemented (fail-closed); a
+**regulator-final format** (CSV/ZIP, per-regulator shapes) is a later slice;
+evidence **file bytes / signed URLs** stay deferred (`DEC-085`/`ADR-0006`);
+the **period column choices remain provisional** (the owner may prefer
+`completed_at`/`verified_at` for corrective actions); the **`DEC-098`
+provisional items** still need owner/OPS confirmation; the `reviewer-glm`
+step-capped export-period coverage gap (it did not read part of the
+export-period test body in `hms.postgres.test.ts` or the persistence
+`*.postgres.test.ts` diffs); plus the equipment-slice residuals (the
+**systemic driver-error mapping** — a bad FK/check id surfaces as a **500**
+rather than a 400/404; the proposed root-cause fix is one shared mapping in
+`apps/web/lib/http.ts`'s `mapErrors`; the **unused audit columns on fact
+logs**; ISO instants require seconds; command-level `limit`/`offset` range
+checks are absent; the `reviewer-glm` equipment coverage gap;
+`maintenance_log` has no `location_id`; `equipment.kind` is free text;
+`maintenance_log` has no DB immutability trigger; the `DEC-097` provisional
+items) and the `HMS-001` conflict (it implies a `task`/`approval` link that
+`DEC-092`/`DEC-094` never define — the `HMS-007` conflict is now resolved by
+`DEC-098`); plus the standing incident-slice residuals (corrective-action
+location-scope ceiling, inert `involves_personal_data`, the step-capped
+`reviewer-glm` coverage gap) and the checklists-slice open points (template
+versioning has no completeness rule, no per-item evidence, no failed-item →
+`corrective_action` link, the provisional jsonb 500-element ceiling,
+unvalidated list filters, route tests not exercising `withMutationGuards`,
+the short-page multi-location filter, no scheduling, the `DEC-096` provisional
+items). Standing ones: the **systemic location-scope gap** (HMS is the first
+route to enforce location scope; the other routes do not pass `locationId` to
+`isAuthorizedFor`); the **audit-write transaction binding** (the adapters'
+`writeAudit` closes over the parent `db`, so the audit fact is not strictly
+inside `withTransaction` — systemic, a separate cross-cutting slice); the
 **`notes`-amendment audit trail** (no before/after history yet); duplicate
-readings at the same instant are **intentional** (no dedupe); the
-**`ADR-0004` gate** (accepting it — the named decider — is required before
-the `job`/worker/outbox layer of `DEC-094`); the **WF-003 self-assignment
+readings at the same instant are **intentional** (no dedupe); the **`ADR-0004`
+gate** (accepting it — the named decider — is required before the
+`job`/worker/outbox layer of `DEC-094`); the **WF-003 self-assignment
 login model** (must a self-assigning employee hold an `app_user` login?);
 the **privacy-review retention periods per file class** (personnel
-documents, incident register, acknowledgements); the `file_object`
+documents, incident register, acknowledgements — note the export bundle itself
+carries no retention class because it is not persisted); the `file_object`
 immutability/soft-delete posture, the five deferred file FKs, the storage
 integration, the FIN variance-tolerance thresholds, consumption grain A1
 (`DEC-009`), the price-version scope-resolution fallback, the OPS receipt
 destination `storage_area_id` policy, receipts not wired to the ledger, the
 unsigned golden fixtures, the remaining `DEC-083`-review points, the
 owner/deployment inputs. Full list under "Open decisions / inputs"; next
-free decision id **`DEC-098`**.
+free decision id **`DEC-099`**.
 
 **Parallel owner action — golden-fixture sign-off:** the six golden fixtures are
 prepared as machine-readable JSON under `tests/fixtures/` (`DEC-065`) with the
 sign-off trail ready; finance + product owner sign. Until signed, no cost is
 "verified"; `I8`/`I9` still gate the real rates behind the fixtures.
 
-**Step after this one:** the `employee` entity + personnel documents
-(`DEC-087`), then the staff document library (`DEC-088`) and the
+**Step after this one:** the staff document library (`DEC-088`), then the
 `task`/`approval` platform tables (`DEC-094`; the `job`/worker/outbox
-layer gated on `ADR-0004`); the receipt→ledger wiring if the OPS destination
+layer gated on `ADR-0004`, still `Proposed`); row 14 workforce/scheduling
+becomes buildable once `employee` lands, subject to the WF-003 self-assignment
+login input; the receipt→ledger wiring if the OPS destination
 `storage_area_id` policy lands; row 13 when history/grain quality (I11) is
 confirmed; the deployment rehearsal once the owner inputs arrive (see
 "Next up").
@@ -278,10 +301,12 @@ with the `import_run.file_object_id` FK and the `file_object_org_guard`
 trigger `0036` — row 11 complete), with the design
 system/app shell/screens and migrations `0017`–`0045`; the
 `DEC-089` HMS monitoring-points + readings slice, the `DEC-090`
-incidents + corrective-actions slice, the `DEC-091` checklists slice and the
-`DEC-092` equipment/maintenance slice —
-the first four build slices of the `DEC-086`–`DEC-094` programme
-(migrations `0037`–`0045`) — are committed; the
+incidents + corrective-actions slice, the `DEC-091` checklists slice, the
+`DEC-092` equipment/maintenance slice and the `DEC-093` compliance /
+evidence export slice —
+the first five build slices of the `DEC-086`–`DEC-094` programme
+(migrations `0037`–`0045`; the HMS half of the programme is now complete) —
+are committed; the
 `DEC-072`–`DEC-085` low-risk implementations (effective-dated reconciliation
 tolerance, sales-line reversal, `MAPPING_STATE` `conflict`, typed recipe 404s,
 the `price_version` slice, the `settlement.status`/`reconciliation.scope_type`
@@ -293,8 +318,8 @@ import posting-policy enforcement).
 
 - `00_README.md` … `13_AGENT_BUILD_BRIEF.md` — the specification package
   (inputs, rarely edited). Start with `00_README.md`.
-- `12_OPEN_DECISIONS.md` — the accepted decisions (DEC-001…DEC-097); the
-  authority. New decisions are appended here (next free id `DEC-098`).
+- `12_OPEN_DECISIONS.md` — the accepted decisions (DEC-001…DEC-098); the
+  authority. New decisions are appended here (next free id `DEC-099`).
 - `docs/phase0/` — close-out plan, calculation contract, data dictionary, golden
   fixtures, source-data request, notes. See `docs/phase0/PHASE0_CLOSEOUT_PLAN.md`
   and `docs/phase0/CALCULATION_CONTRACT.md`.
@@ -313,67 +338,71 @@ import posting-policy enforcement).
 
 ## Current status
 
-- **As of:** 2026-09-21 — branch `main`; HEAD before this slice's commits was
-  `346847b` (the HMS checklists-slice handoff, `DEC-091`/`DEC-096`); the
-  equipment slice is 5 commits (`35561da` `docs(decisions)` `DEC-097`,
-  `d5b7001` `feat(persistence)`, `da53faa` `feat(application)`, `37c3a74`
-  `feat(web)`, `23e175f` `docs(runbook)`) plus this docs commit; the branch
-  was clean before these handoff edits. Lineage:
+- **As of:** 2026-09-22 — branch `main`; HEAD before this slice's commits was
+  `d8bd98d` (the HMS equipment-slice handoff, `DEC-092`/`DEC-097`); the
+  compliance / evidence export slice is 4 commits (`05caf1b` `docs(decisions)`
+  `DEC-098`, `7cb4f68` `feat(persistence)`, `275c3d5` `feat(application)`,
+  `00508a3` `feat(web)`) plus this docs commit; the branch was clean before
+  these handoff edits. Lineage:
   `02f7c33` (the Phase A / small-TECH handoff) → the HMS monitoring slice,
   5 commits → the HMS incidents + corrective-actions slice, 6 commits → the
-  HMS checklists slice, 6 commits → **the HMS equipment / maintenance slice,
-  6 commits** — **all committed** once the orchestrator's commits land (see
-  "Work log" and "Reversibility").
-  **Delivered (programme step 19d — `DEC-092`, requirement `HMS-006`):**
-  `equipment` (location FK, `code`, `name`, `kind` — free text, no vocabulary,
-  per `DEC-092`; `serial_no`, `installed_at`/`warranty_until` as calendar
-  dates, `active`; `UNIQUE (organization_id, code)`) and `maintenance_log`
-  (equipment FK NOT NULL, `kind ∈ {service, repair, inspection}` from the new
-  `maintenance_kind` vocabulary, `performed_at` timestamptz, `performed_by`,
-  `notes`, and a real nullable FK `file_object_id → file_object.id`), a
-  **fact log: create + read only** (no update/delete command, no DB
-  immutability trigger — not authorised by `DEC-092`), org-scoped (`DEC-061`)
-  with cross-org coherence guards (`23514`) and role + location-scope
-  enforcement on every route (equipment location-scoped; `maintenance_log`
-  has no `location_id`, so a scoped caller must supply `equipmentId` on the
-  flat list — the `corrective_action` ceiling). `equipment` is a **new HMS
-  entity, not the deferred finance `asset` register**. **Nothing applied to
+  HMS checklists slice, 6 commits → the HMS equipment / maintenance slice,
+  6 commits → **the HMS compliance / evidence export slice, 5 commits** — **all
+  committed** (see "Work log" and "Reversibility").
+  **Delivered (programme step 19e — `DEC-093`, requirement `HMS-007`,
+  provisional `DEC-098`):** a synchronous, storage-free JSON evidence bundle at
+  `GET /api/v1/hms/compliance-export` gathering five org-scoped,
+  period-filtered sources (monitoring readings, incidents, corrective actions,
+  checklist runs and maintenance logs — maintenance included per
+  `HMS-007`/`DEC-098`) returning `{ generatedAt, organizationId, period,
+counts, truncated, personalDataFields, monitoringReadings[], incidents[],
+correctiveActions[], checklistRuns[], maintenanceLogs[] }`; no file artifact,
+  storage client, signed URL or persisted bundle (`DEC-085`/`ADR-0006`);
+  per-source, fail-closed authorization (`owner`/`general_manager`/
+  `location_manager`/`admin` only — `analyst` and the operator/finance roles
+  denied; no partial bundle); a location-scoped caller is bounded to their
+  locations (`corrective_action`/`maintenance_log` scoped through their
+  parents — the recorded ceiling), an empty scope means organization-wide; one
+  `hms.compliance_export.generated` audit event per generation. **Also
+  delivered:** the optional `from`/`to` period filter on the five HMS list
+  queries at every layer — additive, **no migration**. **Nothing applied to
   DigitalOcean.**
-  **Schema:** migrations through **`0045`**; **76 tables** (was 74). Next
-  free decision id **`DEC-098`**.
-  **Rehearsal evidence (local dev DB):** `0044`/`0045` apply → 76 tables;
-  duplicate `code` `23505`, the `maintenance_kind` and non-empty CHECKs
-  `23514`, the three guards `23514`, a NULL `file_object_id` accepted; down
-  `0045` → `0044` → 74; ledger rows deleted + re-apply → 76; third run a
-  no-op (46 ledger rows). Snapshot chain `0042` → `0045` verified contiguous;
-  `db:generate` reports no schema changes.
-  **Reviews and reconciliation.** `reviewer-qwen` — no blockers, no majors;
-  two minors declined and recorded as open points (a bad FK id → 500 instead
-  of 400/404 — systemic, proposed single fix in `mapErrors`; the unused audit
-  columns on a create+read-only log — intentional, uniform convention).
-  `reviewer-glm` — no blockers; one major accepted and fixed (the flat and
-  nested maintenance-log lists disagreed on an unknown/cross-org
-  `equipmentId` — the equipment is now resolved org-scoped for every caller);
-  three accepted fixes (command-level length ceilings in a new
-  `equipment-limits.ts` imported by the web parser; `recordMaintenanceLog`
-  trims `kind`; the org-scoped resolution); three declined minors (ISO
-  instants requiring seconds — consistent with `assertIsoInstant`; the dead
-  `NotFoundError` branch and the missing command-level `limit`/`offset`
-  checks — both match the existing routes). Its step-capped pass left a
-  **coverage gap** (five files/sections) recorded as an open point.
+  **Schema:** unchanged — migrations through **`0045`**; **76 tables**. Next
+  free decision id **`DEC-099`**.
+  **Reviews and reconciliation.** `reviewer-qwen` and `reviewer-glm` each found
+  the **same blocker** (the route forwarded an empty `locationIds` array and the
+  query read that as scoped, so an owner's whole-organization export returned an
+  empty bundle and audited an empty scope) — **accepted + fixed at both layers**
+  (route forwards `undefined`; query treats `[]` as organization-wide) and the
+  test corrected; `reviewer-qwen` blocker 2 (a dishonest `truncated` for a
+  scoped caller — the cap was applied before the in-memory scope filter) and
+  `reviewer-glm`'s major (parent id sets built from the capped window) —
+  **accepted + fixed** (`truncated` now conservative; child id sets built from
+  the filtered parents); `reviewer-qwen` major on `DEC-098` item 5
+  (personal-data minimization asserted but unimplemented) — **accepted + fixed**
+  (`DEC-098` amended to state no minimization this increment; a
+  `personalDataFields` list now declares the contract); minors **accepted +
+  fixed** (documented/tested `due_date` calendar-day extraction, a
+  `truncated: true` test, empty-roles and unknown-role 403 tests, the admin test
+  asserting the forwarded query, an `includes` → `Set`); one minor **declined**
+  (the audit write is best-effort outside a transaction — a read; a failed audit
+  is a 500; recorded as a systemic open point). `reviewer-glm`'s step-capped
+  pass left a **coverage gap** (part of the export-period test body in
+  `hms.postgres.test.ts` and the persistence `*.postgres.test.ts` diffs)
+  recorded as an open point.
   **Verification:** `typecheck`, `lint`, `format:check`, `build` clean;
-  **1816/1816 tests with `DATABASE_URL`** (159 files); `npm audit --omit=dev`
-  = 0; `db:migrate` through `0045` is a no-op on re-run; **76 tables**; the
-  three equipment guard triggers present; organization-scoped everywhere
-  (`DEC-061`).
-  **Also delivered earlier this day (the `DEC-089` HMS monitoring slice, the
-  `DEC-090` incidents slice and the `DEC-091` checklists slice — full detail
-  in "Reversibility" and the work log):** the fridge/freezer monitoring
-  register + append-only reading logs (migrations `0037`–`0039`), the
-  incident register + corrective actions (migrations `0040`/`0041`) and the
-  checklist templates + runs (migrations `0042`/`0043`); `ADR-0006` accepted
-  2026-09-21; the storage integration (Spaces client / signed URLs /
-  retention enforcement) stays deferred.
+  **1861/1861 tests with `DATABASE_URL`** (160 files); `npm audit --omit=dev`
+  = 0; `db:migrate` through `0045` is a no-op on re-run; **76 tables**;
+  organization-scoped everywhere (`DEC-061`). **No new migration was needed.**
+  **Also delivered earlier (the `DEC-089` HMS monitoring slice, the `DEC-090`
+  incidents slice, the `DEC-091` checklists slice and the `DEC-092`
+  equipment/maintenance slice — full detail in "Reversibility" and the work
+  log):** the fridge/freezer monitoring register + append-only reading logs
+  (migrations `0037`–`0039`), the incident register + corrective actions
+  (migrations `0040`/`0041`), the checklist templates + runs (migrations
+  `0042`/`0043`) and the equipment register + maintenance log (migrations
+  `0044`/`0045`); `ADR-0006` accepted 2026-09-21; the storage integration
+  (Spaces client / signed URLs / retention enforcement) stays deferred.
   **Dev server (session-scoped):** the previous session ran http://localhost:3000
   with `DATABASE_URL=postgres://aquarela:aquarela@localhost:5432/aquarela`,
   `ORGANIZATION_ID=1448a476-32f2-426f-b153-11a851011e48`; sign in `owner` /
@@ -382,13 +411,14 @@ import posting-policy enforcement).
   (`profile_version` `i19-v1`, `posting_policy` `allow_partial`); a fresh
   session must restart the server.
   Remaining roadmap: the HMS/personnel-documents programme (Phase 6 + Epics
-  20/21 — `DEC-086`…`DEC-094`) is approved; rows 19a (monitoring `DEC-089`),
-  19b (incidents + corrective actions, `DEC-090`/`DEC-095`), 19c
-  (checklists/cleaning, `DEC-091`/`DEC-096`) and 19d (equipment/maintenance,
-  `DEC-092`/`DEC-097`) are **delivered**: next build slice 19e the compliance
-  export (`DEC-093`), then `employee` + personnel documents (`DEC-087`), the
-  staff document library (`DEC-088`) and the `task`/`approval` tables
-  (`DEC-094`; the `job`/worker/outbox layer gated on `ADR-0004`).
+  20/21 — `DEC-086`…`DEC-094`) is approved; the **HMS half is complete** —
+  rows 19a (monitoring `DEC-089`), 19b (incidents + corrective actions,
+  `DEC-090`/`DEC-095`), 19c (checklists/cleaning, `DEC-091`/`DEC-096`), 19d
+  (equipment/maintenance, `DEC-092`/`DEC-097`) and 19e (compliance export,
+  `DEC-093`/`DEC-098`) are all **delivered**: the next build slice is 20a, the
+  `employee` entity + personnel documents (`DEC-087`), then the staff document
+  library (`DEC-088`) and the `task`/`approval` tables (`DEC-094`; the
+  `job`/worker/outbox layer gated on `ADR-0004`).
   Beyond the programme: the receipt→ledger wiring needs the OPS destination
   `storage_area_id` policy; row 13 is data-gated
   on history/grain quality (I11); rows 15–18 blocked (data /
@@ -436,8 +466,8 @@ import posting-policy enforcement).
 - **DEC-049 closed:** drizzle-orm 0.45.2 / drizzle-kit 0.31.10 upgrade (`cc86f13`);
   `npm audit --omit=dev` = 0.
 - **Tests:** without `DATABASE_URL` the integration tests skip; with it
-  **1816/1816 passed** (159 files) — recorded 2026-09-21 at the
-  equipment-slice tree (all checks pass; `db:migrate` through `0045` is a
+  **1861/1861 passed** (160 files) — recorded 2026-09-22 at the
+  compliance-export-slice tree (all checks pass; `db:migrate` through `0045` is a
   no-op). Re-verify with `npm run test` and update if they differ.
   Open verification debt: the per-process rate limiter needs a shared
   store before multi-instance deployment; the reset-token delivery is a no-op stub
@@ -548,32 +578,47 @@ variance-producer slice and the `DEC-085` `file_object` slice —
 **row 11 is complete**; the `DEC-072`–`DEC-095`
 decisions + low-risk implementations are done,
 committed `aaec400`–`8b22468` plus the slice commits; the new programme
-(Phase 6 + Epics 20/21, `DEC-086`…`DEC-094`) is approved and its first four
+(Phase 6 + Epics 20/21, `DEC-086`…`DEC-094`) is approved and its first five
 build slices — HMS monitoring points + readings (`DEC-089`), HMS
-incidents + corrective actions (`DEC-090`), HMS checklists (`DEC-091`) and
-HMS equipment/maintenance (`DEC-092`) —
-are **delivered**;
+incidents + corrective actions (`DEC-090`), HMS checklists (`DEC-091`),
+HMS equipment/maintenance (`DEC-092`) and HMS compliance / evidence export
+(`DEC-093`) —
+are **delivered** (the HMS half of the programme is now complete);
 further original rows are
 gated — row 13 on data (I11),
 rows 15–18 on data/ADRs; row 14 becomes buildable once `employee` lands).
 The list below is the short narrative form.
 
-1. **Compliance / evidence export (`DEC-093`, requirement `HMS-007`) — the
-   lead item:** programme step 19e, the **last HMS slice**; it must cover
-   readings, incidents, corrective actions, checklist runs **and maintenance**
-   (resolving the `HMS-007`-vs-`DEC-093` conflict), within authorized scope
-   and audited as a sensitive export; check whether it is blocked on the
-   unbuilt `task`/`approval` tables or on `ADR-0004` before starting.
-2. **Programme build order after the compliance export (`DEC-086`…`DEC-094`):**
-   the `employee` entity + personnel documents (`DEC-087`), then the staff
-   document library (`DEC-088`), and the `task`/`approval` platform tables
+1. **`employee` entity + personnel documents (`DEC-087`; `WF-007`,
+   `DOC-001`…`DOC-004`) — the lead item:** programme step 20a, the **first
+   slice of the workforce-documents half** and the first that is not HMS; it
+   needs its own reconnaissance (the `employee` entity; personnel documents —
+   contracts and certificates — with versioning; the access rule that employee
+   contracts are visible to owner + general_manager + admin with finance
+   excluded) and a provisional clarification decision if the text leaves gaps
+   (next free id **`DEC-099`**); it must not resolve the privacy-review
+   retention periods silently.
+2. **Programme build order after `employee` (`DEC-086`…`DEC-094`):** the staff
+   document library (`DEC-088`), then the `task`/`approval` platform tables
    (`DEC-094` — the `job`/worker/outbox layer stays gated on **`ADR-0004`
-   acceptance**). Scheduling/shifts (row 14) becomes buildable once `employee`
-   lands, subject to the **WF-003 self-assignment login input** (must a
-   self-assigning employee hold an `app_user` login?) and the privacy-review
-   retention periods per file class.
-3. **New open points from the equipment, checklists and incidents slices
-   (recorded, do not resolve silently):** from the equipment slice — the
+   acceptance**, still `Proposed`). Scheduling/shifts (row 14) becomes
+   buildable once `employee` lands, subject to the **WF-003 self-assignment
+   login input** (must a self-assigning employee hold an `app_user` login?) and
+   the privacy-review retention periods per file class.
+3. **New open points from the export, equipment, checklists and incidents
+   slices (recorded, do not resolve silently):** from the export slice — the
+   export's **DB-side location push-down** (the per-source cap is applied
+   org-wide then filtered in memory, so a scoped caller can still get an
+   incomplete bundle — now honestly flagged via `truncated`); **no
+   personal-data minimization/redaction** (privacy review; a
+   `personalDataFields` list is the declared contract); the bundle is **not
+   persisted**, so no retention class applies yet (a persisted artifact's
+   class/period stay open — `DEC-093`, `ADR-0006:47`); a **partial bundle for
+   `analyst`** is not implemented (fail-closed); a **regulator-final format**
+   (CSV/ZIP, per-regulator shapes) is a later slice; evidence **file bytes /
+   signed URLs** stay deferred (`DEC-085`/`ADR-0006`); the **period column
+   choices remain provisional**; the `DEC-098` provisional items; the
+   `reviewer-glm` export-period coverage gap. From the equipment slice — the
    **systemic driver-error mapping** (a bad FK/check id → 500 instead of
    400/404; the proposed single root-cause fix is in `mapErrors`); the
    **unused audit columns on fact logs** (`maintenance_log` carries
@@ -663,6 +708,29 @@ The list below is the short narrative form.
 
 ## Open decisions / inputs (do not block development)
 
+- **Recorded this session (2026-09-22, from the `DEC-093` HMS
+  compliance/evidence-export-slice reviews and reconciliation; recorded, not
+  decided — do not resolve silently):** the export's **DB-side location
+  push-down** — today the per-source cap is applied org-wide and then filtered
+  in memory, so a scoped caller can still receive an incomplete bundle (now
+  honestly flagged via a conservative `truncated`, rather than silently);
+  **no personal-data minimization/redaction** is applied in this increment — a
+  privacy-review input; the bundle declares a `personalDataFields` list as the
+  contract to shrink (`DEC-098` item 5 amended); the bundle is **not
+  persisted**, so **no retention class applies to it yet** — a persisted
+  export artifact's class and period remain open (`DEC-093`, `ADR-0006:47`); a
+  **partial bundle for `analyst`** is not implemented (fail-closed); a
+  **regulator-final format** (CSV/ZIP, per-regulator shapes) is a later slice;
+  evidence **file bytes / signed URLs** stay deferred (`DEC-085`/`ADR-0006`);
+  the **period column choices remain provisional** (one date column per source;
+  the owner may prefer `completed_at`/`verified_at` for corrective actions);
+  the `DEC-098` provisional items still need owner/OPS confirmation; the
+  `reviewer-glm` step-capped coverage gap (it did not read part of the
+  export-period test body in `hms.postgres.test.ts` or the persistence
+  `*.postgres.test.ts` diffs). **The HMS compliance / evidence export slice is
+  delivered** (programme step 19e; `DEC-093`/`DEC-098`; **no migration** — 76
+  tables; the **HMS half of the programme is complete**). Next free decision id
+  **`DEC-099`**.
 - **Recorded this session (2026-09-21, from the `DEC-092` HMS
   equipment/maintenance-slice reviews and reconciliation; recorded, not
   decided — do not resolve silently):** the **systemic driver-error
@@ -1280,6 +1348,19 @@ and Spaces credentials via `-backend-config` / `AWS_ACCESS_KEY_ID` +
 
 ## Reversibility
 
+- **2026-09-22 HMS compliance / evidence export slice (`DEC-093`/`DEC-098`;
+  5 commits incl. this docs commit; nothing pushed)**: 1. `05caf1b`
+  `docs(decisions)` — `DEC-098`; 2. `7cb4f68` `feat(persistence)` — the
+  optional `from`/`to` period filter on the five HMS list queries +
+  repository tests; 3. `275c3d5` `feat(application)` — the compliance
+  evidence export bundle (`build-compliance-export.ts`) + store port +
+  adapter + fake + tests; 4. `00508a3` `feat(web)` — the
+  `GET /api/v1/hms/compliance-export` route with fail-closed per-source scope
+  - the query/parser + route test; 5. this `docs(context)` commit — each
+    independently revertible with `git revert <sha>`. **No migration** was
+    needed (migrations stay through `0045`; **76 tables** unchanged), so there
+    is **no schema-rollback concern** and no ledger row to delete; nothing
+    pushed; nothing applied to DigitalOcean.
 - **2026-09-21 HMS equipment / maintenance slice (`DEC-092`/`DEC-097`; 6
   commits incl. this docs commit; nothing pushed)**: 1. `35561da`
   `docs(decisions)` — `DEC-097`; 2. `d5b7001` `feat(persistence)` — the
@@ -1586,7 +1667,8 @@ scale)` cap in `parseDecimal` + `packages/domain/src/decimal.test.ts`;
   `DEC-090` HMS incidents, `DEC-091` HMS checklists and `DEC-092` HMS
   equipment
   bullets
-  above). While the
+  above; the `DEC-093` HMS compliance / evidence export slice added **no
+  migration**). While the
   database is
   empty the tested recovery is `DROP SCHEMA public CASCADE; DROP SCHEMA drizzle
 CASCADE; CREATE SCHEMA public; npm run db:migrate` (see the runbook). Once data
@@ -1596,6 +1678,99 @@ CASCADE; CREATE SCHEMA public; npm run db:migrate` (see the runbook). Once data
   (`DEC-015`).
 
 ## Work log (append-only, newest first)
+
+### 2026-09-22 — HMS compliance / evidence export delivered (DEC-093/DEC-098, no migration); the fifth and last IK-mat build slice; HMS half complete; handoff updated
+
+`main`; HEAD before the slice was `d8bd98d` (the HMS equipment-slice handoff);
+the slice lands as 5 commits, of which this context docs update is the last
+(nothing pushed; nothing applied to DigitalOcean). **5 commits** in order:
+`05caf1b` `docs(decisions)` — `DEC-098`; `7cb4f68` `feat(persistence)` — the
+optional `from`/`to` period filter on the five HMS list queries + repository
+tests; `275c3d5` `feat(application)` — the compliance evidence export bundle;
+`00508a3` `feat(web)` — the `GET /api/v1/hms/compliance-export` route with
+fail-closed per-source scope; this `docs(context)` update.
+
+- **Delivered (`DEC-093`, requirement `HMS-007`, provisional `DEC-098` — the
+  fifth and last build slice of the HMS/IK-mat programme, step 19e):** a
+  **synchronous, storage-free JSON evidence bundle** at
+  `GET /api/v1/hms/compliance-export` gathering **five** org-scoped,
+  period-filtered sources — monitoring readings, incidents, corrective
+  actions, checklist runs and **maintenance logs** (included because `HMS-007`
+  is a _Must_ and the UI agrees; `DEC-098` item 1 resolved the `DEC-093`
+  omission) — returning `{ generatedAt, organizationId, period, counts,
+truncated, personalDataFields, monitoringReadings[], incidents[],
+correctiveActions[], checklistRuns[], maintenanceLogs[] }` with provenance
+  carried by the ids already on each record. **No file artifact, no storage
+  client, no signed URL, no persisted bundle** (deferred by
+  `DEC-085`/`ADR-0006`). Authorization is per-source and **fail-closed**:
+  `owner`, `general_manager`, `location_manager`, `admin` only — `analyst` is
+  denied (no incident/corrective-action read) and a partial bundle is
+  explicitly **not** implemented; `kitchen`/`front_of_house`/`purchasing`/
+  `finance` are denied. A location-scoped caller is bounded to their locations
+  (`corrective_action` and `maintenance_log` scoped through their parents —
+  the recorded ceiling); an unscoped caller gets the organization-wide bundle,
+  and an **empty** location scope now means organization-wide at both the
+  route and the query. Generating the bundle writes exactly **one**
+  `audit_event` (`hms.compliance_export.generated`). Period semantics:
+  optional inclusive `from`/`to`, one date column per source (`measured_at`,
+  `occurred_at`, `due_date`, `run_at`, `performed_at`). **Also delivered:** the
+  optional `from`/`to` period filter on the five HMS list queries at every
+  layer — additive, **no migration**. **Schema:** unchanged — migrations
+  through `0045`; **76 tables**. Next free decision id **`DEC-099`**.
+- **Reviews and reconciliation.** `reviewer-qwen` and `reviewer-glm` each
+  found **the same blocker**: the route forwarded `access.locationIds` (an
+  empty array for owner/GM/admin) and the query treated
+  `locationIds !== undefined` as scoped, so an owner's whole-organization
+  export returned an **empty bundle** and audited an empty scope (the route
+  test even asserted the buggy forwarding) — **accepted + fixed at both
+  layers** and the test corrected. `reviewer-qwen` blocker 2: `truncated` was
+  dishonest for a scoped caller (the cap was applied before the in-memory
+  scope filter, so a scoped caller could get fewer than all in-scope rows
+  while the bundle attested `truncated: false`) — **accepted + fixed**
+  (`truncated` now conservative; child id sets built from the filtered
+  parents, not the capped output); the **DB-side push-down remains the
+  recorded upgrade path**. `reviewer-qwen` major: `DEC-098` item 5 asserted
+  `07.4`'s personal-data minimization applies but nothing implements it —
+  **accepted + fixed** (`DEC-098` amended to state no minimization this
+  increment; the bundle declares a `personalDataFields` list). `reviewer-glm`
+  major: the parent id sets were built from the capped window, silently
+  dropping in-scope children — **accepted + fixed** (same fix). Minors
+  **accepted + fixed**: the `due_date` calendar-day extraction from a non-UTC
+  offset bound documented/tested; a scoped-window-filled `truncated: true`
+  test; empty-roles and unknown-role 403 tests; the "allows admin" test now
+  asserts the forwarded query; an `includes` became a `Set`. Minor
+  **declined**: the audit write is best-effort outside a transaction (a read;
+  a failed audit is a 500) — stays a recorded systemic open point alongside
+  the driver-error→500 point. `reviewer-glm`'s step-capped pass left a
+  **coverage gap** (part of the export-period test body in
+  `hms.postgres.test.ts` and the persistence `*.postgres.test.ts` diffs) —
+  recorded, not resolved.
+- **New open points (recorded, do not decide):** the export's DB-side location
+  push-down; no personal-data minimization/redaction; the bundle is not
+  persisted (no retention class yet — `DEC-093`, `ADR-0006:47`); a partial
+  bundle for `analyst` is not implemented; a regulator-final format is a later
+  slice; evidence file bytes / signed URLs stay deferred; the period column
+  choices remain provisional; the `DEC-098` provisional items; the
+  `reviewer-glm` export-period coverage gap. See the first bullet under "Open
+  decisions / inputs".
+- **Verification (exact):** `typecheck`, `lint`, `format:check`, `build`
+  clean; **1861/1861 tests with `DATABASE_URL`** (160 files);
+  `npm audit --omit=dev` = 0; `db:migrate` through `0045` is a no-op on
+  re-run; **76** public base tables. **No new migration was needed for this
+  slice** (so no runbook entry).
+- **Next step:** the **`employee` entity + personnel documents** slice
+  (`DEC-087`; requirements `WF-007` and `DOC-001`…`DOC-004`) — programme step
+  20a, the first slice of the workforce-documents half and the first that is
+  not HMS; then the staff document library (`DEC-088`) and the
+  `task`/`approval` platform tables (`DEC-094` with the `job`/worker/outbox
+  layer gated on `ADR-0004`). The programme's HMS half is now **complete**.
+  Next free decision id **`DEC-099`**.
+
+Rollback: each of the slice's 5 commits is independently `git revert`-able
+(`05caf1b`, `7cb4f68`, `275c3d5`, `00508a3` and this context docs update);
+**no migration** was added (migrations stay through `0045`; 76 tables), so
+there is no schema-rollback concern and no ledger row to delete; nothing
+pushed; nothing applied to DigitalOcean.
 
 ### 2026-09-21 — HMS equipment / maintenance delivered (DEC-092/DEC-097, migrations 0044–0045); the fourth IK-mat build slice; handoff updated
 

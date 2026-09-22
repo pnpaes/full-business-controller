@@ -13,11 +13,11 @@ This file is **updated at the end of every slice** — statuses and the "current
 line move with the work; `CONTEXT.md` keeps the narrative handoff and the immediate
 `Resume here` section.
 
-**Current position:** HEAD on `main` = `346847b` + **the HMS equipment /
-maintenance slice, 5 commits** (`35561da` `docs(decisions)` `DEC-097`,
-`d5b7001` `feat(persistence)`, `da53faa` `feat(application)`, `37c3a74`
-`feat(web)`, `23e175f` `docs(runbook)`) plus the `docs(context)` handoff
-(nothing pushed; nothing applied to DigitalOcean). Slice 0, auth
+**Current position:** HEAD on `main` = `d8bd98d` + **the HMS compliance /
+evidence export slice, 4 commits** (`05caf1b` `docs(decisions)` `DEC-098`,
+`7cb4f68` `feat(persistence)`, `275c3d5` `feat(application)`, `00508a3`
+`feat(web)`) plus the `docs(context)` handoff (nothing pushed; nothing applied
+to DigitalOcean). Slice 0, auth
 slices 1a–1e, slices 2–10, row 11
 (import framework + external mappings — **complete**: the `DEC-085`
 `file_object` platform table was delivered 2026-09-21 with migrations
@@ -38,32 +38,55 @@ migrations `0037`–`0039`), the **`DEC-090` HMS incidents +
 corrective-actions slice** (programme row 19b; migrations
 `0040`–`0041`; decision entries `DEC-090`/`DEC-095`), the **`DEC-091`
 HMS checklists slice** (programme row 19c; migrations `0042`–`0043`;
-decision entry `DEC-091`/`DEC-096`) and the **`DEC-092` HMS equipment /
+decision entry `DEC-091`/`DEC-096`), the **`DEC-092` HMS equipment /
 maintenance slice** (programme row 19d; migrations `0044`–`0045`;
-decision entry `DEC-092`/`DEC-097`) are
-`done` and committed; `ADR-0006` was accepted 2026-09-21 and `ADR-0007` and
+decision entry `DEC-092`/`DEC-097`) and the **`DEC-093` HMS compliance /
+evidence export slice** (programme row 19e; **no migration** — migrations stay
+through `0045`; decision entry `DEC-093`/`DEC-098`) are
+`done` and committed (the **HMS half of the programme is complete**); `ADR-0006` was accepted 2026-09-21 and `ADR-0007` and
 `ADR-0008` accepted 2026-09-20 (owner-delegated, revertible).
 **Programme approved (Phase A, 2026-09-21):** the owner approved an
 HMS & food-safety (IK-mat) module, employee personnel documents (contracts)
 and a staff document library — recorded as `DEC-086`…`DEC-094`, requirement
 ids `WF-007`, `DOC-001…DOC-004`, `HMS-001…HMS-007`, delivery **Phase 6 +
-Epics 20/21** (§4 rows 19/20); rows 19a, 19b, 19c and 19d are delivered.
-Verification at the equipment-slice tree:
-`typecheck`/`lint`/`build`/`format:check` clean; **1816/1816 tests with
+Epics 20/21** (§4 rows 19/20); rows 19a–19e are delivered (the **HMS half of
+the programme is complete**).
+Verification at the compliance-export-slice tree:
+`typecheck`/`lint`/`build`/`format:check` clean; **1861/1861 tests with
 `DATABASE_URL`**
-(159 files); `npm audit --omit=dev` 0; `db:migrate` through `0045` is a no-op
-on re-run; 76 tables.
+(160 files); `npm audit --omit=dev` 0; `db:migrate` through `0045` is a no-op
+on re-run; 76 tables (no migration was needed for the export slice).
 Programme
 direction: proceed autonomously, per task — parallel background agents →
 adversarial review + fixes → document status and next steps → commit → next
-task. **Next task — buildable now:** **compliance / evidence export**
-(`DEC-093`, requirement `HMS-007`) — programme row 19e, the last HMS slice;
-it must cover readings, incidents, corrective actions, checklist runs **and
-maintenance** (resolving the `HMS-007`-vs-`DEC-093` conflict), within
-authorized scope and audited as a sensitive export; check whether it is
-blocked on the unbuilt `task`/`approval` tables or on `ADR-0004`; then the
+task. **Next task — buildable now:** the **`employee` entity + personnel
+documents** (`DEC-087`; requirements `WF-007` and `DOC-001`…`DOC-004`) —
+programme row 20a, the first slice of the workforce-documents half and the
+first that is not HMS; it needs its own reconnaissance (the `employee` entity;
+personnel documents — contracts and certificates — with versioning; the access
+rule that employee contracts are visible to owner + general_manager + admin
+with finance excluded) and a provisional clarification decision if the text
+leaves gaps (next free id `DEC-099`); it must not resolve the privacy-review
+retention periods silently. Then the
 programme
-build order (§4 rows 19–20). **New open points from the equipment-slice
+build order (§4 rows 19–20). **New open points from the export-slice
+reviews (recorded, do not resolve silently):** the export's **DB-side location
+push-down** (the per-source cap is applied org-wide then filtered in memory,
+so a scoped caller can still get an incomplete bundle — now honestly flagged
+via a conservative `truncated`); **no personal-data minimization/redaction**
+(a privacy-review input; the bundle declares a `personalDataFields` list as
+the contract to shrink — `DEC-098` item 5 amended); the bundle is **not
+persisted**, so **no retention class applies to it yet** — a persisted export
+artifact's class and period remain open (`DEC-093`, `ADR-0006:47`); a
+**partial bundle for `analyst`** is not implemented (fail-closed); a
+**regulator-final format** (CSV/ZIP, per-regulator shapes) is a later slice;
+evidence **file bytes / signed URLs** stay deferred (`DEC-085`/`ADR-0006`);
+the **period column choices remain provisional** (one date column per source;
+the owner may prefer `completed_at`/`verified_at` for corrective actions); the
+`DEC-098` provisional items still need owner/OPS confirmation; the
+`reviewer-glm` step-capped coverage gap (it did not read part of the
+export-period test body in `hms.postgres.test.ts` or the persistence
+`*.postgres.test.ts` diffs). **New open points from the equipment-slice
 reviews (recorded, do not resolve silently):** the systemic driver-error
 mapping (bad FK/check ids → 500 instead of 400/404; proposed single fix in
 `apps/web/lib/http.ts`'s `mapErrors`); the unused audit columns on fact logs;
@@ -71,9 +94,9 @@ ISO instants requiring seconds; command-level `limit`/`offset` range checks;
 the `reviewer-glm` coverage gap (five files/sections); `maintenance_log` has
 no `location_id`; `equipment.kind` is free text pending an owner/OPS
 vocabulary; `maintenance_log` has no DB immutability trigger; the `DEC-097`
-provisional items; and the two requirement-vs-decision conflicts
-(`HMS-007`/`DEC-093` maintenance coverage; `HMS-001`'s `task`/`approval`
-link). **New open points from the checklists-slice
+provisional items; and the `HMS-001` `task`/`approval`-link conflict
+(`HMS-007`/`DEC-093` maintenance coverage is resolved by `DEC-098`). **New
+open points from the checklists-slice
 reviews (recorded, do not resolve silently):** template versioning has **no
 completeness rule** (a `completed` run may omit an item's result); **no
 per-item evidence**; **no link from a failed item to a `corrective_action`**
@@ -115,7 +138,7 @@ inputs; the receipt→ledger wiring needs the OPS destination
 history/grain quality (I11); rows 15–18 remain blocked (data /
 `ADR-0009`–`0011`); the deployment rehearsal is parked on the owner inputs;
 the golden fixtures are unsigned.
-Next free decision id `DEC-098`.
+Next free decision id `DEC-099`.
 
 ## 2. The execution loop (per slice)
 
@@ -230,8 +253,16 @@ delivered 2026-09-21 (migrations `0044`–`0045`, 76 tables; `equipment` with a 
 org-scoped with cross-org coherence guards and role + location-scope enforcement on every route;
 `equipment` is a new HMS entity, not the deferred finance `asset` register; the draft table was
 renamed asset→equipment, no decision-history rewrite; verified 1816/1816 with `DATABASE_URL`).
-Next: 19e the compliance export (`DEC-093`, requirement `HMS-007`; the last HMS slice — must cover
-readings, incidents, corrective actions, checklist runs **and maintenance**) |
+**19e: done** — HMS compliance / evidence export (`DEC-093`/`DEC-098`, requirement `HMS-007`)
+delivered 2026-09-22 (**no migration** — migrations stay through `0045`, 76 tables; a synchronous,
+storage-free JSON evidence bundle at `GET /api/v1/hms/compliance-export` gathering five
+org-scoped, period-filtered sources — monitoring readings, incidents, corrective actions,
+checklist runs and **maintenance logs** — with per-source, fail-closed role authorization
+(`owner`/`general_manager`/`location_manager`/`admin`; `analyst` and the operator/finance roles
+denied; no partial bundle) and exactly one `hms.compliance_export.generated` audit event per
+generation; no persisted artifact, storage client or signed URL; verified 1861/1861 with
+`DATABASE_URL`). **The HMS epic is complete** — all of `HMS-001`…`HMS-007` are delivered across
+19a–19e; the **next row is 20a**, the `employee` entity + personnel documents (`DEC-087`). |
 | 20 | Task/approval platform + programme candidate gater (contracts, staff document library, personnel documents) | P6 / epics 21 | `WF-007`, `DOC-001`–`004`; `DEC-087`–`DEC-094`; `ADR-0004` (**Proposed** — job/worker/outbox layer only) | 19a; row 14 for `employee` | `task`/`approval` build now (`DEC-094`); the `job`/worker/outbox layer is **gated on `ADR-0004` acceptance** by the named decider | todo — build order: 20a `employee` + personnel documents (`DEC-087`; contracts visible only to owner + general_manager + admin, finance excluded), 20b the staff document library (`DEC-088`; all-staff read published `all_staff` docs, managers publish, versioned, optional acknowledgement, append-only), then the `task`/`approval` platform tables (`DEC-094`) |
 
 Convention: `blocked (owner)` means an owner/tech acceptance or approval named in the gate
@@ -246,6 +277,29 @@ arrives.
 Outstanding owner decisions/inputs that gate slices (no new decisions invented here; no
 dates assigned):
 
+- **HMS compliance/evidence-export-slice open points (2026-09-22, from the
+  `DEC-093` reviews and reconciliation; recorded not decided — do not resolve
+  silently):** the export's **DB-side location push-down** — today the
+  per-source cap is applied org-wide and then filtered in memory, so a scoped
+  caller can still receive an incomplete bundle (now honestly flagged via a
+  conservative `truncated` rather than silently); the **upgrade path** is a
+  DB-side location push-down. owner/TECH. **No personal-data
+  minimization/redaction** is applied in this increment — a privacy-review
+  input; the bundle declares a `personalDataFields` list as the contract to
+  shrink (`DEC-098` item 5 amended). owner/OPS. The bundle is **not
+  persisted**, so **no retention class applies to it yet** — a persisted
+  export artifact's class and period remain open (`DEC-093`, `ADR-0006:47`).
+  owner/OPS. A **partial bundle for `analyst`** is not implemented
+  (fail-closed — `analyst` has no incident/corrective-action read); a
+  **regulator-final format** (CSV/ZIP, per-regulator shapes) is a later slice;
+  evidence **file bytes / signed URLs** stay deferred (`DEC-085`/`ADR-0006`);
+  the **period column choices remain provisional** (one date column per source;
+  the owner may prefer `completed_at`/`verified_at` for corrective actions).
+  owner/OPS. The **`DEC-098` provisional items** need owner/OPS confirmation.
+  The **`reviewer-glm` step-capped coverage gap** — it did not read part of the
+  export-period test body in `hms.postgres.test.ts` or the persistence
+  `*.postgres.test.ts` diffs. The `DEC-093` slice itself is done (row 19e; **no
+  migration** — 76 tables); the **HMS half of the programme is complete**.
 - **`ADR-0003` accepted (2026-09-19)** — `docs/adr/0003-identity-and-role-model.md`;
   slices 1a–1e are done. Its open items (final access matrix / shared-device login,
   Argon2id parameters against the ~250 ms target, admin-assisted password reset) are still
