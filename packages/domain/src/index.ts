@@ -28,6 +28,15 @@ export type {
   LabourCostViewsInput,
   LoadedRateComponents,
 } from "./labour";
+export {
+  MENU_ENGINEERING_CONTRIBUTION_NOTE,
+  MENU_ENGINEERING_THRESHOLD_CATEGORY_MEDIAN,
+  MENU_ENGINEERING_THRESHOLD_MEDIAN,
+  MENU_ENGINEERING_THRESHOLD_NOTE,
+  isHighAgainst,
+  medianDecimal,
+} from "./menu-engineering";
+export type { MenuEngineeringThresholdStatistic } from "./menu-engineering";
 export { MONEY_SCALE, Money } from "./money";
 export { isReadingInRange } from "./monitoring";
 export { PAYROLL_SNAPSHOT_VERSION, buildPayrollSnapshot, isPayrollReportStatus } from "./payroll";
