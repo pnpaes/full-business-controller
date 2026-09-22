@@ -190,6 +190,23 @@ export const HMS_MAINTENANCE_RECORD_ROLES = [
   "admin",
 ] as const;
 
+/**
+ * Role set for the compliance/evidence export (`DEC-093`, clarified by
+ * `DEC-098`): owner / general_manager / location_manager / admin. The bundle is
+ * fail-closed — it requires read on **every** source it includes, so `analyst`
+ * is denied (it has no incident/corrective-action read, `DEC-095`), as are
+ * `kitchen`/`front_of_house` (a bulk sensitive export is a management action
+ * even though they hold operational read) and `purchasing`/`finance`. There is
+ * no implicit admin bypass (`isAuthorizedFor`), so `admin` is listed explicitly
+ * per `DEC-098`.
+ */
+export const HMS_COMPLIANCE_EXPORT_ROLES = [
+  "owner",
+  "general_manager",
+  "location_manager",
+  "admin",
+] as const;
+
 /** Loads the caller's roles and location scope live from server data (ADR-0003). */
 export async function loadHmsAccess(userId: string): Promise<UserAccess> {
   return loadUserAccess(getAuthStore(), userId);
