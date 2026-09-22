@@ -1,5 +1,15 @@
 import { sql } from "drizzle-orm";
-import { check, date, index, integer, pgTable, text, unique, uuid } from "drizzle-orm/pg-core";
+import {
+  check,
+  date,
+  index,
+  integer,
+  numeric,
+  pgTable,
+  text,
+  unique,
+  uuid,
+} from "drizzle-orm/pg-core";
 
 import { auditColumns, enumCheck, money, orgId, rangeCheck, tstz, uuidPk } from "./columns";
 import { appUser } from "./identity";
@@ -128,8 +138,8 @@ export const employeeDocument = pgTable(
  * repo-wide, like `employee.created_by`) and `created_at`/`updated_at` are the
  * standard audit instants.
  *
- * Worked hours (`shift_adjustment`) and `payroll_report` are the **next**
- * scheduling slice (`WF-004`/`WF-005`); this file does not model them.
+ * Worked hours (`shift_adjustment`, `WF-004`) are modelled below; `payroll_report`
+ * (`WF-005`) is the **next** scheduling slice and is not modelled here.
  */
 export const shift = pgTable(
   "shift",
@@ -198,5 +208,45 @@ export const shiftAssignment = pgTable(
     unique("shift_assignment_shift_employee_key").on(t.shiftId, t.employeeId),
     index("shift_assignment_org_shift_idx").on(t.organizationId, t.shiftId),
     index("shift_assignment_org_employee_idx").on(t.organizationId, t.employeeId),
+  ],
+);
+
+/*
+ * `DEC-038` (`WF-004`): a manual correction to one shift assignment's derived
+ * worked hours. Worked hours are derived from the registered shift; a correction
+ * is recorded as a `shift_adjustment` row and **never** by editing the shift
+ * (`DATA_DICTIONARY` §4A, `DEC-038`). The row is organization-scoped per
+ * `DEC-061`; `shift_assignment_id` is a NOT NULL FK guarded same-organization by
+ * `0054`. `adjusted_hours` is `numeric(9,2)` (hours, decimal-only — never
+ * floats) and must be non-negative (`shift_adjustment_adjusted_hours_check`).
+ *
+ * `approved_by`/`approved_at` are a nullable plain-uuid/instant pair: the
+ * `app_user` FK is deferred repo-wide, so no FK is declared, and the
+ * `shift_adjustment_approved_check` enforces the all-or-nothing manager approval
+ * (both set or both null). `reason` is required free text. The spec's
+ * `created_at` is the `auditColumns()` one; the audit columns also supply
+ * `created_by`/`updated_*`/`version`.
+ */
+export const shiftAdjustment = pgTable(
+  "shift_adjustment",
+  {
+    id: uuidPk(),
+    organizationId: orgId().references(() => organization.id),
+    shiftAssignmentId: uuid("shift_assignment_id")
+      .notNull()
+      .references(() => shiftAssignment.id),
+    adjustedHours: numeric("adjusted_hours", { precision: 9, scale: 2 }).notNull(),
+    reason: text("reason").notNull(),
+    approvedBy: uuid("approved_by"),
+    approvedAt: tstz("approved_at"),
+    ...auditColumns(),
+  },
+  (t) => [
+    check("shift_adjustment_adjusted_hours_check", sql`${t.adjustedHours} >= 0`),
+    check(
+      "shift_adjustment_approved_check",
+      sql`(${t.approvedBy} is null and ${t.approvedAt} is null) or (${t.approvedBy} is not null and ${t.approvedAt} is not null)`,
+    ),
+    index("shift_adjustment_org_assignment_idx").on(t.organizationId, t.shiftAssignmentId),
   ],
 );

@@ -170,7 +170,7 @@ because its target table varies by `source_type`.
 ## Pre-apply preflight for validating constraints and indexes
 Migrations 0014, 0016, 0017, 0018, 0019, 0020, 0021, 0022, 0023, 0024, 0025,
 0026, 0027, 0028, 0029, 0030, 0031, 0032, 0033, 0035, 0037, 0040, 0041, 0042,
-0043, 0044, 0045, 0046, 0047, 0048, 0049 and 0051 add objects that validate or build, so a failure
+0043, 0044, 0045, 0046, 0047, 0048, 0049, 0051 and 0053 add objects that validate or build, so a failure
 aborts the whole transactional migration (drizzle-kit runs each file in one
 transaction). Run the matching preflight against the target database **before**
 applying and reconcile any hits; drizzle-kit cannot detect them because these
@@ -187,6 +187,16 @@ applying and reconcile any hits; drizzle-kit cannot detect them because these
   no backfill is needed. `0052_shift_scheduling_org_guard.sql` (below) adds
   triggers only, so it scans no existing row either. No separate preflight query
   is needed.
+
+- **`0053_shift_adjustment.sql`** — one new, empty table (`shift_adjustment`) with
+  its two checks (`shift_adjustment_adjusted_hours_check`,
+  `shift_adjustment_approved_check`), the organization FK, the `shift_assignment`
+  FK and the `shift_adjustment_org_assignment_idx` org-first index. All are cheap
+  at first apply because the table starts empty: the checks validate nothing
+  existing, the FKs validate an empty child table and the index builds an empty
+  table. The migration adds no hand-written statement and no backfill is needed.
+  `0054_shift_adjustment_org_guard.sql` (below) adds triggers only, so it scans no
+  existing row either. No separate preflight query is needed.
 
 - **`0050_workflow_platform.sql`** — two new, empty tables (`task`, `approval`)
   with their checks, FKs and org-first indexes. All are cheap at first apply
@@ -1544,6 +1554,47 @@ only, so the down file is an explicit operator action, not an automatic one.
   `psql "$DATABASE_URL" -f packages/persistence/drizzle/0052_shift_scheduling_org_guard_down.sql`.
   Apply `0052`'s down **before** `0051`'s down if the tables go too: its
   triggers live on `shift`/`shift_assignment`, which `0051`'s down drops.
+- **0053 adds the `DEC-038` (`WF-004`) worked-hours correction table and follows
+  the down convention** (see the ledger row below): `0053_shift_adjustment.sql` is
+  generated DDL for one table, additive like `0037`/`0040`/`0042`/`0044`/`0046`/
+  `0048`/`0050`/`0051` — `shift_adjustment` (`organization_id`, the NOT NULL
+  `shift_assignment_id` FK, the `adjusted_hours` numeric(9,2) with the
+  `shift_adjustment_adjusted_hours_check` (`>= 0`), the required `reason`, the
+  nullable plain-uuid `approved_by` and nullable `approved_at` with the
+  all-or-nothing `shift_adjustment_approved_check`, the audit columns, the
+  organization FK and the `shift_adjustment_org_assignment_idx` org-first index).
+  The spec's `created_at` is the `auditColumns()` one — no duplicate business
+  column. A correction is an append-only fact: worked hours are derived from the
+  shift, never edited on it, and the latest correction wins at read time
+  (`DEC-038`, `DATA_DICTIONARY` §4A). It adds one table and no hand-written
+  statement.
+  `0053_shift_adjustment_down.sql` drops the table inside one `BEGIN;`/`COMMIT;`
+  (with `DROP TABLE IF EXISTS` so a half-applied manual run cannot wedge); the
+  checks, FKs and index drop with the table. It is **destructive** — every
+  recorded hours correction is lost — so run it only while those corrections need
+  not be preserved (AGENTS.md Rule 2). Apply `0054`'s down **before** `0053`'s
+  down. Apply it manually with
+  `psql "$DATABASE_URL" -f packages/persistence/drizzle/0053_shift_adjustment_down.sql`.
+- **0054 adds the `DEC-038` worked-hours cross-organization coherence guard and
+  follows the down convention:** `0054_shift_adjustment_org_guard.sql` is
+  hand-written (`DEC-079`'s `BEFORE INSERT OR UPDATE` guard shape, mirroring
+  `0052`). One function and one trigger: `shift_adjustment_shift_assignment_org_guard`
+  on `shift_adjustment` rejects a `shift_assignment_id` whose `shift_assignment`
+  belongs to another organization than the adjustment. It resolves the referenced
+  row's organization through the existing FK path (a missing row falls through to
+  the FK error) and raises `ERRCODE = '23514'`, naming the offending column. The
+  column is NOT NULL, so the guard is unconditional (no null-reference skip,
+  unlike `0049`). It is **trigger-only and table-neutral**: it adds no table and
+  no constraint that validates an existing row, so it scans no row and needs no
+  preflight query.
+  `0054_shift_adjustment_org_guard_down.sql` drops the trigger and its function
+  inside one `BEGIN;`/`COMMIT;` (with `DROP ... IF EXISTS` so a half-applied
+  manual run cannot wedge). No table and no row is touched, so the down cannot
+  fail on data; while dropped, the reference's organization coherence is validated
+  only by the application. Apply it manually with
+  `psql "$DATABASE_URL" -f packages/persistence/drizzle/0054_shift_adjustment_org_guard_down.sql`.
+  Apply `0054`'s down **before** `0053`'s down if the table goes too: its trigger
+  lives on `shift_adjustment`, which `0053`'s down drops.
 
 **Re-applying after a manual down:** drizzle-kit tracks applied migrations in
 `drizzle.__drizzle_migrations`, not by comparing the schema, so a plain
@@ -1587,8 +1638,10 @@ for 0003, `… = 1789850858806` for 0004, `… = 1789851925634` for 0005,
 `… = 1790054700573` for 0048,
 `… = 1790054714766` for 0049,
 `… = 1790061475649` for 0050,
-`… = 1790063480942` for 0051 and
-`… = 1790063500924` for 0052, then
+`… = 1790063480942` for 0051,
+`… = 1790063500924` for 0052,
+`… = 1790067016722` for 0053 and
+`… = 1790067030453` for 0054, then
 `npm run db:migrate` (0003 verified 2026-09-19; 0005 rehearsed in the slice-3
 review follow-up; 0006 rehearsed with the slice-4 receiving work; 0007 and
 0008 rehearsed with the slice-4 review follow-up; 0009 rehearsed with the
@@ -1734,6 +1787,24 @@ tables, 0 guards); deleting the two ledger rows
 (`created_at IN (1790063480942, 1790063500924)`) deleted 2 rows, and
 `npm run db:migrate` re-applied 0051/0052 — final 85 public base tables, 3 guard
 triggers present, 53 ledger rows, with a further `npm run db:migrate` a no-op.
+0053 on 2026-09-22 added the `DEC-038` (`WF-004`) worked-hours correction table
+(`shift_adjustment`) and 0054 its cross-organization guard, taking the database to
+86 tables (the ledger holds 55 rows); the worked-hours integration suite observed
+the two CHECK violations (`shift_adjustment_adjusted_hours_check` on a negative
+`adjusted_hours`, `shift_adjustment_approved_check` on a half-set approval pair),
+the `shift_adjustment` org-coherence guard message
+(`shift_adjustment.shift_assignment_id … belongs to organization …`) raising
+`23514`, both a fully-set and a fully-null `approved_by`/`approved_at` pair
+accepted, and the latest-adjustment resolution picking the newest correction
+(and null when none). The 0053/0054 down/re-apply rehearsal was run on
+2026-09-22: starting from 86 public base tables, 1 worked-hours guard trigger
+present and 55 ledger rows, `0054_shift_adjustment_org_guard_down.sql` dropped the
+guard trigger and its function with no table change (86 tables, 0 guards) and
+`0053_shift_adjustment_down.sql` dropped the `shift_adjustment` table (85 tables,
+0 guards); deleting the two ledger rows
+(`created_at IN (1790067016722, 1790067030453)`) deleted 2 rows, and
+`npm run db:migrate` re-applied 0053/0054 — final 86 public base tables, 1 guard
+trigger present, 55 ledger rows, with a further `npm run db:migrate` a no-op.
 A **full 0011 down** drops the tables the three 0012 constraints live on, so its
 replay must clear **both** ledger rows, not just 0011's:
 `DELETE FROM drizzle.__drizzle_migrations WHERE created_at IN (1789862475550, 1789862630158);`
@@ -2020,8 +2091,10 @@ session will not serialise against each other.
 | 0037 | `0037_hms_monitoring.sql` | Generated (`DEC-089`/`HMS-002`): the two HMS monitoring tables — `monitoring_point` (`organization_id`, `location_id`, the nullable `storage_area_id`, `code`, `name`, `kind` (`monitoring_point_kind_check`), `unit`, `target_min`/`target_max` numeric(19,6) (`monitoring_point_target_range_check`, `target_min <= target_max`), `check_frequency` (`monitoring_point_check_frequency_check`), `active` default `true` and the audit columns, with the `monitoring_point_organization_id_code_key` unique on `(organization_id, code)` and the organization/location/storage-area FKs) and `monitoring_reading` (`organization_id`, `monitoring_point_id`, `value` numeric(19,6), `unit`, `measured_at`, the nullable `recorded_by`, `in_range`, the nullable `notes` and the audit columns, with the organization and point FKs and the `monitoring_reading_org_point_measured_idx` index on `(organization_id, monitoring_point_id, measured_at)`). No hand-written statement. Down companion: `0037_hms_monitoring_down.sql` (drops the index, then `monitoring_reading`, then `monitoring_point`, FK-safe order — destructive) |
 | 0038 | `0038_hms_monitoring_append_only.sql` | Hand-written (`DEC-089`/`HMS-002`): the `monitoring_reading` append-only guard — one function (`monitoring_reading_append_only()`) and three triggers: two `BEFORE FOR EACH ROW` triggers (`monitoring_reading_immutable` on UPDATE, `monitoring_reading_no_delete` on DELETE) and one `BEFORE TRUNCATE FOR EACH STATEMENT` trigger (`monitoring_reading_no_truncate`) that reject a DELETE, a TRUNCATE and an UPDATE of `value`/`unit`/`measured_at`/`monitoring_point_id`/`organization_id`, so only `notes` may be amended. No table and no TypeScript schema change. Down companion: `0038_hms_monitoring_append_only_down.sql` (drops the three triggers and their function — no row is touched) |
 | 0039 | `0039_hms_monitoring_org_guard.sql` | Hand-written (`DEC-079`'s guard shape applied to `DEC-089`'s HMS monitoring FKs, mirroring `0036`): two functions and two `BEFORE INSERT OR UPDATE FOR EACH ROW` triggers — `monitoring_point_org_guard` on `monitoring_point` (rejects a `location_id` or a non-null `storage_area_id` whose `location`/`storage_area` belongs to another organization) and `monitoring_reading_org_guard` on `monitoring_reading` (rejects a `monitoring_point_id` whose `monitoring_point` belongs to another organization). No table and no TypeScript schema change. Down companion: `0039_hms_monitoring_org_guard_down.sql` (drops the two triggers and their functions — no row is touched) |
-| 0051 | `0051_shift_scheduling.sql` | Generated (`DEC-037`/`DEC-038`, `WF-002`/`WF-003`): the two shift-scheduling tables, additive like `0037`/`0040`/`0042`/`0044` — `shift` (`organization_id`, the NOT NULL `location_id`, the nullable free-text `role_code` (null = any role), `starts_at`/`ends_at`, `break_minutes` default `0`, `state` default `open`, the nullable `published_at` and the reserved `actual_start`/`actual_end`, the audit columns, the organization/location FKs, the `shift_state_check` / `shift_time_range_check` / `shift_break_minutes_check` / `shift_actual_range_check` checks and the `shift_org_location_starts_idx` / `shift_org_state_idx` org-first indexes) and `shift_assignment` (`organization_id`, the NOT NULL `shift_id`/`employee_id`, `state`, the nullable plain-uuid `assigned_by`, `assigned_at`, the audit columns, the organization/shift/employee FKs, the `shift_assignment_state_check` check, the `shift_assignment_shift_employee_key` unique on `(shift_id, employee_id)` and the `shift_assignment_org_shift_idx` / `shift_assignment_org_employee_idx` org-first indexes). The spec's `created_by`/`created_at` are the `auditColumns()` ones (no duplicate business column). Worked hours (`shift_adjustment`) and `payroll_report` are the next slice. No hand-written statement. Journal `when` `1790063480942`, sha256 `157cadb1d6be16d6ccdee59ee1d2fbfdff205e212881367c6b6b00bed69d5e36`. Down companion: `0051_shift_scheduling_down.sql` (drops `shift_assignment` then `shift` — destructive) |
+| 0051 | `0051_shift_scheduling.sql` | Generated (`DEC-037`/`DEC-038`, `WF-002`/`WF-003`): the two shift-scheduling tables, additive like `0037`/`0040`/`0042`/`0044` — `shift` (`organization_id`, the NOT NULL `location_id`, the nullable free-text `role_code` (null = any role), `starts_at`/`ends_at`, `break_minutes` default `0`, `state` default `open`, the nullable `published_at` and the reserved `actual_start`/`actual_end`, the audit columns, the organization/location FKs, the `shift_state_check` / `shift_time_range_check` / `shift_break_minutes_check` / `shift_actual_range_check` checks and the `shift_org_location_starts_idx` / `shift_org_state_idx` org-first indexes) and `shift_assignment` (`organization_id`, the NOT NULL `shift_id`/`employee_id`, `state`, the nullable plain-uuid `assigned_by`, `assigned_at`, the audit columns, the organization/shift/employee FKs, the `shift_assignment_state_check` check, the `shift_assignment_shift_employee_key` unique on `(shift_id, employee_id)` and the `shift_assignment_org_shift_idx` / `shift_assignment_org_employee_idx` org-first indexes). The spec's `created_by`/`created_at` are the `auditColumns()` ones (no duplicate business column). Worked hours (`shift_adjustment`) follow in `0053`; `payroll_report` remains the next slice. No hand-written statement. Journal `when` `1790063480942`, sha256 `157cadb1d6be16d6ccdee59ee1d2fbfdff205e212881367c6b6b00bed69d5e36`. Down companion: `0051_shift_scheduling_down.sql` (drops `shift_assignment` then `shift` — destructive) |
 | 0052 | `0052_shift_scheduling_org_guard.sql` | Hand-written (`DEC-079`'s guard shape applied to the `DEC-037`/`DEC-038` shift-scheduling FKs, mirroring `0049`): three functions and three `BEFORE INSERT OR UPDATE FOR EACH ROW` triggers — `shift_location_org_guard` on `shift` (rejects a `location_id` whose `location` belongs to another organization), `shift_assignment_shift_org_guard` on `shift_assignment` (rejects a `shift_id` whose `shift` belongs to another organization) and `shift_assignment_employee_org_guard` on `shift_assignment` (rejects an `employee_id` whose `employee` belongs to another organization). All three columns are NOT NULL, so the guards are unconditional. No table and no TypeScript schema change. Journal `when` `1790063500924`, sha256 `f168c524b62e78f2c41a59eb1f044e7a0d2d81cec9a6abf847533f8c6c2bf5bd`. Down companion: `0052_shift_scheduling_org_guard_down.sql` (drops the three triggers and their functions — no row is touched) |
+| 0053 | `0053_shift_adjustment.sql` | Generated (`DEC-038`, `WF-004`): the `shift_adjustment` worked-hours correction table, additive like `0037`/`0040`/`0042`/`0044`/`0046`/`0048`/`0050`/`0051` — `organization_id`, the NOT NULL `shift_assignment_id` FK, the `adjusted_hours` numeric(9,2) with the `shift_adjustment_adjusted_hours_check` (`>= 0`), the required `reason`, the nullable plain-uuid `approved_by` and nullable `approved_at` with the all-or-nothing `shift_adjustment_approved_check` (`(approved_by is null and approved_at is null) or (approved_by is not null and approved_at is not null)`), the audit columns, the organization FK and the `shift_adjustment_org_assignment_idx` org-first index. The spec's `created_at` is the `auditColumns()` one (no duplicate business column). A correction is an append-only fact: worked hours are derived from the shift and the latest correction wins at read time (`DEC-038`, `DATA_DICTIONARY` §4A). No hand-written statement. Journal `when` `1790067016722`, sha256 `cc589075fe649e35d2eb1fd57129b2b339dacce22dc7ac2e8daee7a7afe0c5e3`. Down companion: `0053_shift_adjustment_down.sql` (drops the table — destructive) |
+| 0054 | `0054_shift_adjustment_org_guard.sql` | Hand-written (`DEC-079`'s guard shape applied to the `DEC-038` `shift_adjustment.shift_assignment_id` FK, mirroring `0052`): one function and one `BEFORE INSERT OR UPDATE FOR EACH ROW` trigger — `shift_adjustment_shift_assignment_org_guard` on `shift_adjustment` (rejects a `shift_assignment_id` whose `shift_assignment` belongs to another organization). The column is NOT NULL, so the guard is unconditional (no null-reference skip). No table and no TypeScript schema change. Journal `when` `1790067030453`, sha256 `202aeaad413ae3dbf6be2e24dd28d56363dd0203b62163492e54b0d86a3f0585`. Down companion: `0054_shift_adjustment_org_guard_down.sql` (drops the trigger and its function — no row is touched) |
 | 0040 | `0040_hms_incidents.sql` | Generated (HMS incidents): the two tables, additive like `0037` — `hms_incident` (`hms_incident_category_check` / `hms_incident_severity_check` / `hms_incident_status_check` vocabulary checks, the organization/location FKs and org-first indexes) and `corrective_action` (`corrective_action_status_check` and the FKs to `organization`, `location`, `hms_incident` and `monitoring_reading`). No hand-written statement. Down companion: `0040_hms_incidents_down.sql` (drops the two tables, FK-safe order — destructive) |
 | 0041 | `0041_hms_incidents_org_guard.sql` | Hand-written (`DEC-079`'s guard shape applied to the HMS incidents FKs, mirroring `0039`): two functions and two `BEFORE INSERT OR UPDATE FOR EACH ROW` triggers — `hms_incident_org_guard` on `hms_incident` (rejects a `location_id` whose `location` belongs to another organization) and `corrective_action_org_guard` on `corrective_action` (rejects an `incident_id` or a `monitoring_reading_id` whose `hms_incident`/`monitoring_reading` belongs to another organization). No table and no TypeScript schema change. Down companion: `0041_hms_incidents_org_guard_down.sql` (drops the two triggers and their functions — no row is touched) |
 | 0042 | `0042_checklists.sql` | Generated: the two checklist tables, additive like `0037`/`0040` — `checklist_template` (the nullable `supersedes_id` self-FK, the `checklist_template_category_check` / `checklist_template_frequency_check` vocabulary checks, the `checklist_template_items_array_check` jsonb-array check and the `checklist_template_supersedes_self_check` no-self-supersede check) and `checklist_run` (the FKs to `checklist_template` and `location`, the `checklist_run_status_check` vocabulary and `checklist_run_results_array_check` jsonb-array checks, and org-first indexes). No hand-written statement. Down companion: `0042_checklists_down.sql` (drops the two tables, FK-safe order: `checklist_run` then `checklist_template` — destructive) |
@@ -2134,19 +2207,20 @@ table, table-neutral; 0050 adds the two `DEC-094` workflow platform tables
 tables).
 0013–0019 were added after this replay was verified; all are additive and
 table-count-neutral. `0020`, `0021`, `0022`, `0023`, `0024`, `0027`, `0030`,
-`0031`, `0033`, `0035`, `0037`, `0040`, `0042`, `0044`, `0046`, `0048` and `0050`
-are the only migrations after the replay was written to add tables (four, four,
-three, four, one, one, one, one, one, one, two, two, two, two, two, three and two
-respectively), so the 83-table figure above is the expected post-`0050` count (51
+`0031`, `0033`, `0035`, `0037`, `0040`, `0042`, `0044`, `0046`, `0048`, `0050`,
+`0051` and `0053` are the only migrations after the replay was written to add
+tables (four, four, three, four, one, one, one, one, one, one, two, two, two,
+two, two, three, two, two and one respectively), so the 83-table figure above is
+the expected post-`0050` count (51
 after `0020`, 55 after `0021`, 58 after `0022`, 62 after `0023`, 63 after
 `0024`, 64 after `0029`, 65 after `0030`, 66 after `0031` and `0032`, 67 after
 `0033`, still 67 after `0034`, 68 after `0035`, still 68 after `0036`, 70 after
 `0037`, still 70 after `0038`, still 70 after `0039`, 72 after `0040`, still 72
 after `0041`, 74 after `0042`, 76 after `0044`, 78 after `0046`, 81 after
-`0048` and 83 after `0050`);
+`0048`, 83 after `0050`, 85 after `0051` and 86 after `0053`);
 `0025`, `0026`,
 `0028`, `0032`, `0034`, `0036`, `0038`, `0039`, `0041`, `0043`, `0045`,
-`0047` and `0049` are table-neutral.
+`0047`, `0049`, `0052` and `0054` are table-neutral.
 `0014`–`0038`'s
 apply/re-run/down/re-apply was rehearsed on the local dev database 2026-09-20
 (0030 and 0031 on 2026-09-21; 0032 on 2026-09-21; 0033 on 2026-09-21 — its

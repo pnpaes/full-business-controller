@@ -5,12 +5,16 @@ import { createDb, type DbClient } from "../client";
 import { location, organization, shift, shiftAssignment } from "../schema";
 import {
   createShift,
+  createShiftAdjustment,
   createShiftAssignment,
   findShift,
+  findShiftAdjustment,
   findShiftAssignment,
   findShiftAssignmentByShiftEmployee,
+  listShiftAdjustments,
   listShiftAssignments,
   listShifts,
+  listWorkedHoursAssignments,
   lockShift,
   updateShift,
   updateShiftAssignment,
@@ -20,6 +24,7 @@ import {
   createTestLocation,
   createTestOrganization,
   createTestShift,
+  createTestShiftAdjustment,
   createTestShiftAssignment,
   inRollback,
   rejectionCause,
@@ -592,6 +597,315 @@ describe.skipIf(!databaseUrl)("scheduling repository", () => {
       await tx.update(shift).set({ state: "completed" }).where(eq(shift.id, createdShift.id));
       await tx.delete(shiftAssignment).where(eq(shiftAssignment.id, assignment.id));
       await tx.delete(shift).where(eq(shift.id, createdShift.id));
+    });
+  });
+
+  it("creates a shift adjustment and finds it organization-scoped, listing newest-first with paging", async () => {
+    await inRollback(client.db, async (tx) => {
+      const createdShift = await createTestShift(tx, orgId, locationId);
+      const person = await createTestEmployee(tx, orgId);
+      const assignment = await createTestShiftAssignment(
+        tx,
+        orgId,
+        { shiftId: createdShift.id, employeeId: person.id },
+        { state: "approved" },
+      );
+
+      const approvedAt = at("2026-02-25T09:00:00.000Z");
+      const created = await createShiftAdjustment(tx, {
+        organizationId: orgId,
+        shiftAssignmentId: assignment.id,
+        adjustedHours: "7.5",
+        reason: "late clock-in",
+        approvedBy: "00000000-0000-0000-0000-0000000000a1",
+        approvedAt,
+        createdBy: "00000000-0000-0000-0000-0000000000a2",
+      });
+      expect(created.shiftAssignmentId).toBe(assignment.id);
+      expect(created.adjustedHours).toBe("7.50");
+      expect(created.reason).toBe("late clock-in");
+      expect(created.approvedBy).toBe("00000000-0000-0000-0000-0000000000a1");
+      expect(created.approvedAt?.toISOString()).toBe(approvedAt.toISOString());
+      expect(created.createdBy).toBe("00000000-0000-0000-0000-0000000000a2");
+
+      expect(
+        (await findShiftAdjustment(tx, { organizationId: orgId, shiftAdjustmentId: created.id }))
+          ?.id,
+      ).toBe(created.id);
+
+      // A second organization's scope cannot see the row.
+      const otherOrgId = await createTestOrganization(tx, uniqueSuffix());
+      expect(
+        await findShiftAdjustment(tx, {
+          organizationId: otherOrgId,
+          shiftAdjustmentId: created.id,
+        }),
+      ).toBeUndefined();
+      expect(await listShiftAdjustments(tx, { organizationId: otherOrgId })).toEqual([]);
+
+      // Ordering `created_at desc, id asc` and paging. Rows created in one
+      // transaction share `now()`, so pin `created_at` explicitly.
+      const early = await createTestShiftAdjustment(
+        tx,
+        orgId,
+        { shiftAssignmentId: assignment.id },
+        { adjustedHours: "1.00", createdAt: at("2026-03-01T00:00:00.000Z") },
+      );
+      const late = await createTestShiftAdjustment(
+        tx,
+        orgId,
+        { shiftAssignmentId: assignment.id },
+        { adjustedHours: "2.00", createdAt: at("2026-03-03T00:00:00.000Z") },
+      );
+      const middle = await createTestShiftAdjustment(
+        tx,
+        orgId,
+        { shiftAssignmentId: assignment.id },
+        { adjustedHours: "3.00", createdAt: at("2026-03-02T00:00:00.000Z") },
+      );
+
+      const found = await findShiftAdjustment(tx, {
+        organizationId: orgId,
+        shiftAdjustmentId: late.id,
+      });
+      expect(found?.adjustedHours).toBe("2.00");
+
+      // The repo-created row uses `now()` (far newer than the pinned rows), so
+      // it sorts first; the pinned rows follow newest-first.
+      const all = await listShiftAdjustments(tx, { organizationId: orgId });
+      expect(all.map((row) => row.id)).toEqual([created.id, late.id, middle.id, early.id]);
+      const forAssignment = await listShiftAdjustments(tx, {
+        organizationId: orgId,
+        shiftAssignmentId: assignment.id,
+      });
+      expect(forAssignment.map((row) => row.id)).toEqual([
+        created.id,
+        late.id,
+        middle.id,
+        early.id,
+      ]);
+      const pinned = await listShiftAdjustments(tx, {
+        organizationId: orgId,
+        limit: 2,
+        offset: 1,
+      });
+      expect(pinned.map((row) => row.id)).toEqual([late.id, middle.id]);
+    });
+  });
+
+  it("rejects a negative adjusted_hours (23514)", async () => {
+    await inRollback(client.db, async (tx) => {
+      const createdShift = await createTestShift(tx, orgId, locationId);
+      const person = await createTestEmployee(tx, orgId);
+      const assignment = await createTestShiftAssignment(tx, orgId, {
+        shiftId: createdShift.id,
+        employeeId: person.id,
+      });
+
+      const cause = await rejectionCause(
+        createTestShiftAdjustment(
+          tx,
+          orgId,
+          { shiftAssignmentId: assignment.id },
+          { adjustedHours: "-1" },
+        ),
+      );
+      expect(errorCode(cause)).toBe("23514");
+      expect(cause.message).toMatch(/shift_adjustment_adjusted_hours_check/);
+    });
+  });
+
+  it("rejects a half-set approval pair (23514)", async () => {
+    await inRollback(client.db, async (tx) => {
+      const createdShift = await createTestShift(tx, orgId, locationId);
+      const person = await createTestEmployee(tx, orgId);
+      const assignment = await createTestShiftAssignment(tx, orgId, {
+        shiftId: createdShift.id,
+        employeeId: person.id,
+      });
+
+      const cause = await rejectionCause(
+        createTestShiftAdjustment(
+          tx,
+          orgId,
+          { shiftAssignmentId: assignment.id },
+          { approvedBy: "00000000-0000-0000-0000-0000000000b1", approvedAt: null },
+        ),
+      );
+      expect(errorCode(cause)).toBe("23514");
+      expect(cause.message).toMatch(/shift_adjustment_approved_check/);
+    });
+  });
+
+  it("accepts both a fully-set and a fully-null approval pair", async () => {
+    await inRollback(client.db, async (tx) => {
+      const createdShift = await createTestShift(tx, orgId, locationId);
+      const person = await createTestEmployee(tx, orgId);
+      const assignment = await createTestShiftAssignment(tx, orgId, {
+        shiftId: createdShift.id,
+        employeeId: person.id,
+      });
+
+      const withApproval = await createTestShiftAdjustment(
+        tx,
+        orgId,
+        { shiftAssignmentId: assignment.id },
+        {
+          approvedBy: "00000000-0000-0000-0000-0000000000b2",
+          approvedAt: at("2026-03-01T09:00:00.000Z"),
+        },
+      );
+      expect(withApproval.approvedAt).not.toBeNull();
+      const withoutApproval = await createTestShiftAdjustment(tx, orgId, {
+        shiftAssignmentId: assignment.id,
+      });
+      expect(withoutApproval.approvedBy).toBeNull();
+      expect(withoutApproval.approvedAt).toBeNull();
+    });
+  });
+
+  it("rejects a shift adjustment whose assignment is in another organization (0054)", async () => {
+    await inRollback(client.db, async (tx) => {
+      const otherOrgId = await createTestOrganization(tx, uniqueSuffix());
+      const otherLocation = await createTestLocation(tx, otherOrgId);
+      const otherShift = await createTestShift(tx, otherOrgId, otherLocation.id);
+      const otherPerson = await createTestEmployee(tx, otherOrgId);
+      const otherAssignment = await createTestShiftAssignment(tx, otherOrgId, {
+        shiftId: otherShift.id,
+        employeeId: otherPerson.id,
+      });
+
+      // The id names a real `shift_assignment` row (so the FK passes), but the
+      // organization mismatch is what the guard sees.
+      const cause = await rejectionCause(
+        createTestShiftAdjustment(tx, orgId, { shiftAssignmentId: otherAssignment.id }),
+      );
+      expect(errorCode(cause)).toBe("23514");
+      expect(cause.message).toMatch(/shift_adjustment\.shift_assignment_id/);
+    });
+  });
+
+  it("lists worked-hours assignments by period, location and employee, resolving the latest adjustment", async () => {
+    await inRollback(client.db, async (tx) => {
+      const here = locationId;
+      const otherLocation = await createTestLocation(tx, orgId);
+      const nora = await createTestEmployee(tx, orgId, { name: "Nora Nordmann" });
+      const ola = await createTestEmployee(tx, orgId, { name: "Ola Olsen" });
+
+      const earlyShift = await createTestShift(tx, orgId, here, {
+        startsAt: at("2026-03-01T08:00:00.000Z"),
+        endsAt: at("2026-03-01T16:00:00.000Z"),
+        breakMinutes: 30,
+        state: "assigned",
+      });
+      const otherLocationShift = await createTestShift(tx, orgId, otherLocation.id, {
+        startsAt: at("2026-03-02T08:00:00.000Z"),
+        endsAt: at("2026-03-02T16:00:00.000Z"),
+        state: "completed",
+      });
+      const outsideShift = await createTestShift(tx, orgId, here, {
+        startsAt: at("2026-04-01T08:00:00.000Z"),
+        endsAt: at("2026-04-01T16:00:00.000Z"),
+        state: "assigned",
+      });
+      // An `open` shift is excluded even though it falls in the window.
+      const openShift = await createTestShift(tx, orgId, here, {
+        startsAt: at("2026-03-03T08:00:00.000Z"),
+        endsAt: at("2026-03-03T16:00:00.000Z"),
+        state: "open",
+      });
+
+      const noraAssignment = await createTestShiftAssignment(
+        tx,
+        orgId,
+        { shiftId: earlyShift.id, employeeId: nora.id },
+        { state: "approved" },
+      );
+      const olaAssignment = await createTestShiftAssignment(
+        tx,
+        orgId,
+        { shiftId: otherLocationShift.id, employeeId: ola.id },
+        { state: "approved" },
+      );
+      // An approved assignment outside the window, and an in-window assignment
+      // on an `open` shift (not yet assigned/completed): both are excluded.
+      await createTestShiftAssignment(
+        tx,
+        orgId,
+        { shiftId: outsideShift.id, employeeId: nora.id },
+        { state: "approved" },
+      );
+      await createTestShiftAssignment(
+        tx,
+        orgId,
+        { shiftId: openShift.id, employeeId: ola.id },
+        { state: "approved" },
+      );
+
+      // Two corrections on Nora's assignment; the newest (`created_at`, then
+      // `id`) wins. `created_at` is pinned so the resolution is deterministic.
+      await createTestShiftAdjustment(
+        tx,
+        orgId,
+        { shiftAssignmentId: noraAssignment.id },
+        { adjustedHours: "1.00", createdAt: at("2026-03-01T00:00:00.000Z") },
+      );
+      const latest = await createTestShiftAdjustment(
+        tx,
+        orgId,
+        { shiftAssignmentId: noraAssignment.id },
+        { adjustedHours: "6.25", createdAt: at("2026-03-05T00:00:00.000Z") },
+      );
+
+      const from = at("2026-03-01T00:00:00.000Z");
+      const to = at("2026-04-01T00:00:00.000Z");
+      const all = await listWorkedHoursAssignments(tx, { organizationId: orgId, from, to });
+      expect(all.map((row) => row.assignmentId)).toEqual([noraAssignment.id, olaAssignment.id]);
+      expect(all[0]).toMatchObject({
+        employeeId: nora.id,
+        employeeName: "Nora Nordmann",
+        roleCode: "kitchen",
+        baseHourlyRate: "200.0000",
+        shiftId: earlyShift.id,
+        locationId: here,
+        breakMinutes: 30,
+        adjustedHours: "6.25",
+      });
+      // Ola's assignment has no correction, so `adjustedHours` is null.
+      expect(all[1]?.adjustedHours).toBeNull();
+
+      const byLocation = await listWorkedHoursAssignments(tx, {
+        organizationId: orgId,
+        from,
+        to,
+        locationId: otherLocation.id,
+      });
+      expect(byLocation.map((row) => row.assignmentId)).toEqual([olaAssignment.id]);
+
+      const byEmployee = await listWorkedHoursAssignments(tx, {
+        organizationId: orgId,
+        from,
+        to,
+        employeeId: nora.id,
+      });
+      expect(byEmployee.map((row) => row.assignmentId)).toEqual([noraAssignment.id]);
+
+      // A narrower window drops the early-March shifts.
+      const narrow = await listWorkedHoursAssignments(tx, {
+        organizationId: orgId,
+        from: at("2026-03-02T00:00:00.000Z"),
+        to: at("2026-03-03T00:00:00.000Z"),
+      });
+      expect(narrow.map((row) => row.assignmentId)).toEqual([olaAssignment.id]);
+
+      // A second organization's rows never leak in.
+      const otherOrgId = await createTestOrganization(tx, uniqueSuffix());
+      expect(
+        await listWorkedHoursAssignments(tx, { organizationId: otherOrgId, from, to }),
+      ).toEqual([]);
+
+      // Sanity: the "latest" correction is the newest, not the first.
+      expect(latest.adjustedHours).toBe("6.25");
     });
   });
 });

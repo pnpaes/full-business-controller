@@ -1,10 +1,11 @@
-import { and, asc, eq, gte, lte } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, lt, lte, sql } from "drizzle-orm";
 
 import type { Database } from "../client";
-import { shift, shiftAssignment } from "../schema";
+import { employee, shift, shiftAdjustment, shiftAssignment } from "../schema";
 
 export type Shift = typeof shift.$inferSelect;
 export type ShiftAssignment = typeof shiftAssignment.$inferSelect;
+export type ShiftAdjustment = typeof shiftAdjustment.$inferSelect;
 
 /*
  * `DEC-037`/`DEC-038` (`WF-002`, `WF-003`): the shift-scheduling slice.
@@ -27,8 +28,9 @@ export type ShiftAssignment = typeof shiftAssignment.$inferSelect;
  * recorded as plain uuids (the `app_user` FK is deferred repo-wide).
  *
  * This layer exposes **no delete command** and writes **no** `audit_event`
- * (neither table is append-only). Worked hours (`shift_adjustment`) and
- * `payroll_report` are the next scheduling slice and are not modelled here.
+ * (neither table is append-only). Worked hours (`shift_adjustment`, `WF-004`) are
+ * modelled below as append-only correction facts; `payroll_report` (`WF-005`) is
+ * the next scheduling slice and is not modelled here.
  *
  * The vocabulary columns, the `ends_at > starts_at` / `break_minutes >= 0` /
  * actual-range checks, the `(shift_id, employee_id)` unique and the
@@ -351,4 +353,184 @@ export async function listShiftAssignments(
     statement.offset(query.offset);
   }
   return statement;
+}
+
+export interface CreateShiftAdjustmentInput {
+  readonly organizationId: string;
+  /** NOT NULL FK to `shift_assignment.id`; guarded same-organization by `0054`. */
+  readonly shiftAssignmentId: string;
+  /** Decimal string (`numeric(9,2)`, hours — never a float); must be `>= 0`. */
+  readonly adjustedHours: string;
+  readonly reason: string;
+  /** Plain uuid; the `app_user` FK is deferred. Nullable (unapproved correction). */
+  readonly approvedBy?: string | null;
+  readonly approvedAt?: Date | null;
+  /** Audit actor; recorded as `created_by` (the `app_user` FK is deferred). */
+  readonly createdBy?: string | null;
+}
+
+/**
+ * Creates one worked-hours correction row (`WF-004`, `DEC-038`).
+ * `organizationId` is supplied by the caller; the `shift_adjustment_approved_check`
+ * keeps `approvedBy`/`approvedAt` all-or-nothing and
+ * `shift_adjustment_adjusted_hours_check` keeps the hours non-negative.
+ */
+export async function createShiftAdjustment(
+  db: Database,
+  input: CreateShiftAdjustmentInput,
+): Promise<ShiftAdjustment> {
+  const rows = await db
+    .insert(shiftAdjustment)
+    .values({
+      organizationId: input.organizationId,
+      shiftAssignmentId: input.shiftAssignmentId,
+      adjustedHours: input.adjustedHours,
+      reason: input.reason,
+      approvedBy: input.approvedBy ?? null,
+      approvedAt: input.approvedAt ?? null,
+      createdBy: input.createdBy ?? null,
+    })
+    .returning();
+  return rows[0]!;
+}
+
+export interface FindShiftAdjustmentQuery {
+  readonly organizationId: string;
+  readonly shiftAdjustmentId: string;
+}
+
+/** One shift adjustment by id, organization-scoped (`DEC-061`), or `undefined`. */
+export async function findShiftAdjustment(
+  db: Database,
+  query: FindShiftAdjustmentQuery,
+): Promise<ShiftAdjustment | undefined> {
+  const rows = await db
+    .select()
+    .from(shiftAdjustment)
+    .where(
+      and(
+        eq(shiftAdjustment.id, query.shiftAdjustmentId),
+        eq(shiftAdjustment.organizationId, query.organizationId),
+      ),
+    )
+    .limit(1);
+  return rows[0];
+}
+
+export interface ListShiftAdjustmentsQuery {
+  readonly organizationId: string;
+  readonly shiftAssignmentId?: string;
+  readonly limit?: number;
+  readonly offset?: number;
+}
+
+/**
+ * Shift adjustments for one organization, newest first (`createdAt desc`, then
+ * `id asc`), with an optional assignment filter. The organization filter is
+ * never optional (`DEC-061`); paging is applied after the ordering.
+ */
+export async function listShiftAdjustments(
+  db: Database,
+  query: ListShiftAdjustmentsQuery,
+): Promise<readonly ShiftAdjustment[]> {
+  const statement = db
+    .select()
+    .from(shiftAdjustment)
+    .where(
+      and(
+        eq(shiftAdjustment.organizationId, query.organizationId),
+        query.shiftAssignmentId === undefined
+          ? undefined
+          : eq(shiftAdjustment.shiftAssignmentId, query.shiftAssignmentId),
+      ),
+    )
+    .orderBy(desc(shiftAdjustment.createdAt), asc(shiftAdjustment.id))
+    .$dynamic();
+  if (query.limit !== undefined) {
+    statement.limit(query.limit);
+  }
+  if (query.offset !== undefined) {
+    statement.offset(query.offset);
+  }
+  return statement;
+}
+
+/** One approved assignment on an assigned/completed shift, joined to its shift and employee. */
+export interface WorkedHoursAssignmentRow {
+  readonly assignmentId: string;
+  readonly employeeId: string;
+  readonly employeeName: string;
+  readonly roleCode: string;
+  /** Decimal string (`numeric(19,4)`, money — never a float). */
+  readonly baseHourlyRate: string;
+  readonly shiftId: string;
+  readonly locationId: string;
+  readonly startsAt: Date;
+  readonly endsAt: Date;
+  readonly breakMinutes: number;
+  /** The latest correction's `adjusted_hours` (`numeric(9,2)`), or null. */
+  readonly adjustedHours: string | null;
+}
+
+export interface ListWorkedHoursAssignmentsQuery {
+  readonly organizationId: string;
+  /** Inclusive lower bound on `shift.starts_at` (`>= from`). */
+  readonly from: Date;
+  /** Exclusive upper bound on `shift.starts_at` (`< to`). */
+  readonly to: Date;
+  readonly locationId?: string;
+  readonly employeeId?: string;
+}
+
+/**
+ * The approved assignments on assigned/completed shifts whose shift starts in
+ * `[from, to)`, joined to their shift and employee (`WF-004`, `DEC-038`). The
+ * `adjustedHours` field is the **latest** `shift_adjustment.adjusted_hours` for
+ * the assignment (`created_at desc, id desc`; null when there is none), resolved
+ * with one correlated subquery so there is no N+1. Order is `starts_at`, then
+ * assignment id.
+ */
+export async function listWorkedHoursAssignments(
+  db: Database,
+  query: ListWorkedHoursAssignmentsQuery,
+): Promise<readonly WorkedHoursAssignmentRow[]> {
+  const latestAdjustedHours = sql<string | null>`(
+    select sa."adjusted_hours"::text
+    from "shift_adjustment" sa
+    where sa."shift_assignment_id" = ${shiftAssignment.id}
+      and sa."organization_id" = ${shiftAssignment.organizationId}
+    order by sa."created_at" desc, sa."id" desc
+    limit 1
+  )`;
+  return db
+    .select({
+      assignmentId: shiftAssignment.id,
+      employeeId: employee.id,
+      employeeName: employee.name,
+      roleCode: employee.roleCode,
+      baseHourlyRate: employee.baseHourlyRate,
+      shiftId: shift.id,
+      locationId: shift.locationId,
+      startsAt: shift.startsAt,
+      endsAt: shift.endsAt,
+      breakMinutes: shift.breakMinutes,
+      adjustedHours: latestAdjustedHours,
+    })
+    .from(shiftAssignment)
+    .innerJoin(shift, eq(shiftAssignment.shiftId, shift.id))
+    .innerJoin(employee, eq(shiftAssignment.employeeId, employee.id))
+    .where(
+      and(
+        eq(shiftAssignment.organizationId, query.organizationId),
+        eq(shiftAssignment.state, "approved"),
+        inArray(shift.state, ["assigned", "completed"]),
+        gte(shift.startsAt, query.from),
+        lt(shift.startsAt, query.to),
+        query.locationId === undefined ? undefined : eq(shift.locationId, query.locationId),
+        query.employeeId === undefined
+          ? undefined
+          : eq(shiftAssignment.employeeId, query.employeeId),
+      ),
+    )
+    .orderBy(asc(shift.startsAt), asc(shiftAssignment.id));
 }

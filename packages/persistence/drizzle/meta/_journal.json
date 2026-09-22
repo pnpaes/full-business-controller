@@ -372,6 +372,20 @@
       "when": 1790063500924,
       "tag": "0052_shift_scheduling_org_guard",
       "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1790067016722,
+      "tag": "0053_shift_adjustment",
+      "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1790067030453,
+      "tag": "0054_shift_adjustment_org_guard",
+      "breakpoints": true
     }
   ]
 }

@@ -43,6 +43,7 @@ import {
   salesTransaction,
   settlement,
   shift,
+  shiftAdjustment,
   shiftAssignment,
   stockCount,
   stockCountLine,
@@ -1080,6 +1081,31 @@ export async function createTestShiftAssignment(
       employeeId: refs.employeeId,
       state: "self_assigned",
       assignedAt: new Date("2026-03-01T08:00:00.000Z"),
+      ...overrides,
+    })
+    .returning();
+  return rows[0]!;
+}
+
+/**
+ * A `DEC-038`/`WF-004` worked-hours correction. `adjusted_hours` defaults to a
+ * valid non-negative value and `reason` to a fixed test string, so a test need
+ * only override the field under test. The approval pair stays null (both null
+ * passes the all-or-nothing `shift_adjustment_approved_check`).
+ */
+export async function createTestShiftAdjustment(
+  db: Database,
+  organizationId: string,
+  refs: { readonly shiftAssignmentId: string },
+  overrides: Partial<typeof shiftAdjustment.$inferInsert> = {},
+): Promise<typeof shiftAdjustment.$inferSelect> {
+  const rows = await db
+    .insert(shiftAdjustment)
+    .values({
+      organizationId,
+      shiftAssignmentId: refs.shiftAssignmentId,
+      adjustedHours: "8.00",
+      reason: "test correction",
       ...overrides,
     })
     .returning();
