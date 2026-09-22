@@ -13,8 +13,12 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { assignShift } from "./assign-shift";
 import { completeShift } from "./complete-shift";
+import { computeWorkedHours } from "./compute-worked-hours";
 import { createShift } from "./create-shift";
+import { createShiftAdjustment } from "./create-shift-adjustment";
 import { findShift } from "./find-shift";
+import { findShiftAdjustment } from "./find-shift-adjustment";
+import { listShiftAdjustments } from "./list-shift-adjustments";
 import { listShiftAssignments } from "./list-shift-assignments";
 import { listShifts } from "./list-shifts";
 import { createPostgresSchedulingStore } from "./postgres-store";
@@ -359,6 +363,151 @@ describe.skipIf(!databaseUrl)("scheduling against PostgreSQL", () => {
       await expect(
         updateShift(store, { organizationId: orgId, actorId, shiftId: shift.id, breakMinutes: 5 }),
       ).rejects.toThrow(/cannot be updated/);
+    });
+  });
+
+  it("records a worked-hours correction and computes hours per employee", async () => {
+    await inRollback(client.db, async (tx) => {
+      const locationId = await seedLocation(tx, orgId, `sch_f_${suffix}`);
+      const employeeId = await seedEmployee(tx, orgId, locationId);
+      const store = createPostgresSchedulingStore(tx);
+      const actorId = randomUUID();
+
+      const shift = await createShift(store, {
+        organizationId: orgId,
+        actorId,
+        locationId,
+        startsAt: STARTS,
+        endsAt: ENDS,
+        breakMinutes: 30,
+      });
+      await publishShift(store, { organizationId: orgId, actorId, shiftId: shift.id });
+      const assignment = await assignShift(store, {
+        organizationId: orgId,
+        actorId,
+        shiftId: shift.id,
+        employeeId,
+      });
+
+      const adjustment = await createShiftAdjustment(store, {
+        organizationId: orgId,
+        actorId,
+        shiftAssignmentId: assignment.id,
+        adjustedHours: "6.5",
+        reason: "early departure",
+      });
+      expect(adjustment).toMatchObject({
+        shiftAssignmentId: assignment.id,
+        adjustedHours: "6.50",
+        reason: "early departure",
+        approvedBy: actorId,
+      });
+      expect(adjustment.approvedAt).not.toBeNull();
+
+      expect(
+        await findShiftAdjustment(store, {
+          organizationId: orgId,
+          shiftAdjustmentId: adjustment.id,
+        }),
+      ).toMatchObject({ id: adjustment.id });
+      expect(
+        await findShiftAdjustment(store, {
+          organizationId: randomUUID(),
+          shiftAdjustmentId: adjustment.id,
+        }),
+      ).toBeUndefined();
+      expect(
+        (
+          await listShiftAdjustments(store, {
+            organizationId: orgId,
+            shiftAssignmentId: assignment.id,
+          })
+        ).map((row) => row.id),
+      ).toEqual([adjustment.id]);
+
+      const from = "2026-07-01T00:00:00.000Z";
+      const to = "2026-07-02T00:00:00.000Z";
+      const result = await computeWorkedHours(store, { organizationId: orgId, from, to });
+      expect(result.rows).toEqual([
+        { employeeId, employeeName: "Nora Nordmann", roleCode: "barista", hours: "6.50" },
+      ]);
+      expect(result.totalHours).toBe("6.50");
+
+      // A location filter that matches nothing yields an empty, zero-total result.
+      const elsewhere = await computeWorkedHours(store, {
+        organizationId: orgId,
+        from,
+        to,
+        locationId: randomUUID(),
+      });
+      expect(elsewhere.rows).toEqual([]);
+      expect(elsewhere.totalHours).toBe("0.00");
+      // Another organization sees nothing.
+      expect(
+        (await computeWorkedHours(store, { organizationId: randomUUID(), from, to })).rows,
+      ).toEqual([]);
+
+      const audit = (await listAuditEventsForEntity(tx, "shift_adjustment", adjustment.id)).map(
+        (row) => row.action,
+      );
+      expect(audit).toEqual(["workforce.shift_adjustment.created"]);
+    });
+  });
+
+  it("rejects a correction on a withdrawn assignment, a bad decimal and a missing assignment", async () => {
+    await inRollback(client.db, async (tx) => {
+      const locationId = await seedLocation(tx, orgId, `sch_g_${suffix}`);
+      const employeeId = await seedEmployee(tx, orgId, locationId);
+      const store = createPostgresSchedulingStore(tx);
+      const actorId = randomUUID();
+
+      const shift = await createShift(store, {
+        organizationId: orgId,
+        actorId,
+        locationId,
+        startsAt: STARTS,
+        endsAt: ENDS,
+      });
+      await publishShift(store, { organizationId: orgId, actorId, shiftId: shift.id });
+      const assignment = await assignShift(store, {
+        organizationId: orgId,
+        actorId,
+        shiftId: shift.id,
+        employeeId,
+      });
+      await withdrawShiftAssignment(store, {
+        organizationId: orgId,
+        actorId,
+        shiftAssignmentId: assignment.id,
+      });
+
+      await expect(
+        createShiftAdjustment(store, {
+          organizationId: orgId,
+          actorId,
+          shiftAssignmentId: assignment.id,
+          adjustedHours: "6",
+          reason: "x",
+        }),
+      ).rejects.toThrow(/cannot be adjusted/);
+      await expect(
+        createShiftAdjustment(store, {
+          organizationId: orgId,
+          actorId,
+          shiftAssignmentId: assignment.id,
+          adjustedHours: "6.123",
+          reason: "x",
+        }),
+      ).rejects.toThrow(/more than 2 decimal places/);
+      await expect(
+        createShiftAdjustment(store, {
+          organizationId: orgId,
+          actorId,
+          shiftAssignmentId: randomUUID(),
+          adjustedHours: "6",
+          reason: "x",
+        }),
+      ).rejects.toThrow(NotFoundError);
     });
   });
 });

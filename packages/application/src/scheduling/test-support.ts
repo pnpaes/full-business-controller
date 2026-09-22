@@ -1,18 +1,26 @@
+import { WORKED_HOURS_SCALE, formatDecimal, parseDecimal } from "@aquarela/domain";
+
 import type { AuditInput } from "../auth";
 
+import { DEFAULT_SHIFT_ADJUSTMENT_LIMIT } from "./list-shift-adjustments";
 import { DEFAULT_SHIFT_ASSIGNMENT_LIMIT } from "./list-shift-assignments";
 import { DEFAULT_SHIFT_LIMIT } from "./list-shifts";
 import type {
+  NewShiftAdjustmentRecord,
   NewShiftAssignmentRecord,
   NewShiftRecord,
   SchedulingEmployeeRecord,
   SchedulingStore,
+  ShiftAdjustmentListQuery,
+  ShiftAdjustmentRecord,
   ShiftAssignmentListQuery,
   ShiftAssignmentRecord,
   ShiftListQuery,
   ShiftRecord,
   UpdateShiftAssignmentRecord,
   UpdateShiftRecord,
+  WorkedHoursAssignmentRow,
+  WorkedHoursQuery,
 } from "./types";
 
 /**
@@ -22,6 +30,7 @@ import type {
 interface SchedulingSnapshot {
   readonly shifts: Map<string, ShiftRecord>;
   readonly shiftAssignments: Map<string, ShiftAssignmentRecord>;
+  readonly shiftAdjustments: Map<string, ShiftAdjustmentRecord>;
   readonly audits: AuditInput[];
 }
 
@@ -34,6 +43,7 @@ interface SchedulingSnapshot {
 export class FakeSchedulingStore implements SchedulingStore {
   readonly shifts = new Map<string, ShiftRecord>();
   readonly shiftAssignments = new Map<string, ShiftAssignmentRecord>();
+  readonly shiftAdjustments = new Map<string, ShiftAdjustmentRecord>();
   readonly employees = new Map<string, SchedulingEmployeeRecord>();
   readonly audits: AuditInput[] = [];
 
@@ -61,6 +71,7 @@ export class FakeSchedulingStore implements SchedulingStore {
     return {
       shifts: new Map(this.shifts),
       shiftAssignments: new Map(this.shiftAssignments),
+      shiftAdjustments: new Map(this.shiftAdjustments),
       audits: [...this.audits],
     };
   }
@@ -70,6 +81,8 @@ export class FakeSchedulingStore implements SchedulingStore {
     for (const [key, value] of snapshot.shifts) this.shifts.set(key, value);
     this.shiftAssignments.clear();
     for (const [key, value] of snapshot.shiftAssignments) this.shiftAssignments.set(key, value);
+    this.shiftAdjustments.clear();
+    for (const [key, value] of snapshot.shiftAdjustments) this.shiftAdjustments.set(key, value);
     this.audits.length = 0;
     this.audits.push(...snapshot.audits);
   }
@@ -237,6 +250,110 @@ export class FakeSchedulingStore implements SchedulingStore {
     return rows.slice(offset, offset + limit);
   }
 
+  async createShiftAdjustment(input: NewShiftAdjustmentRecord): Promise<ShiftAdjustmentRecord> {
+    const record: ShiftAdjustmentRecord = {
+      id: this.nextId("shift-adjustment"),
+      organizationId: input.organizationId,
+      shiftAssignmentId: input.shiftAssignmentId,
+      // Mirror the `numeric(9,2)` column: normalise to two decimal places.
+      adjustedHours: formatDecimal(
+        parseDecimal(input.adjustedHours, WORKED_HOURS_SCALE),
+        WORKED_HOURS_SCALE,
+      ),
+      reason: input.reason,
+      approvedBy: input.approvedBy,
+      approvedAt: input.approvedAt,
+      createdAt: new Date().toISOString(),
+    };
+    this.shiftAdjustments.set(record.id, record);
+    return record;
+  }
+
+  async findShiftAdjustment(query: {
+    readonly organizationId: string;
+    readonly shiftAdjustmentId: string;
+  }): Promise<ShiftAdjustmentRecord | undefined> {
+    const adjustment = this.shiftAdjustments.get(query.shiftAdjustmentId);
+    return adjustment !== undefined && adjustment.organizationId === query.organizationId
+      ? adjustment
+      : undefined;
+  }
+
+  async listShiftAdjustments(
+    query: ShiftAdjustmentListQuery,
+  ): Promise<readonly ShiftAdjustmentRecord[]> {
+    const rows = [...this.shiftAdjustments.values()]
+      .filter((adjustment) => adjustment.organizationId === query.organizationId)
+      .filter(
+        (adjustment) =>
+          query.shiftAssignmentId === undefined ||
+          adjustment.shiftAssignmentId === query.shiftAssignmentId,
+      )
+      .sort((a, b) => {
+        // Persistence order: `created_at desc, id asc`.
+        if (a.createdAt !== b.createdAt) return a.createdAt < b.createdAt ? 1 : -1;
+        if (a.id !== b.id) return a.id < b.id ? -1 : 1;
+        return 0;
+      });
+    const offset = query.offset ?? 0;
+    const limit = query.limit ?? DEFAULT_SHIFT_ADJUSTMENT_LIMIT;
+    return rows.slice(offset, offset + limit);
+  }
+
+  /**
+   * The latest correction for one assignment (`created_at desc, id desc`),
+   * mirroring the persistence correlated subquery; null when there is none.
+   */
+  private latestAdjustedHours(shiftAssignmentId: string): string | null {
+    const latest = [...this.shiftAdjustments.values()]
+      .filter((row) => row.shiftAssignmentId === shiftAssignmentId)
+      .sort((a, b) => {
+        if (a.createdAt !== b.createdAt) return a.createdAt < b.createdAt ? 1 : -1;
+        if (a.id !== b.id) return a.id < b.id ? 1 : -1;
+        return 0;
+      })[0];
+    return latest === undefined ? null : latest.adjustedHours;
+  }
+
+  async listWorkedHoursAssignments(
+    query: WorkedHoursQuery,
+  ): Promise<readonly WorkedHoursAssignmentRow[]> {
+    const from = Date.parse(query.from);
+    const to = Date.parse(query.to);
+    const rows: WorkedHoursAssignmentRow[] = [];
+    for (const assignment of this.shiftAssignments.values()) {
+      if (assignment.organizationId !== query.organizationId) continue;
+      if (assignment.state !== "approved") continue;
+      const shift = this.shifts.get(assignment.shiftId);
+      if (shift === undefined || shift.organizationId !== query.organizationId) continue;
+      if (shift.state !== "assigned" && shift.state !== "completed") continue;
+      const startsAt = Date.parse(shift.startsAt);
+      if (startsAt < from || startsAt >= to) continue;
+      if (query.locationId !== undefined && shift.locationId !== query.locationId) continue;
+      if (query.employeeId !== undefined && assignment.employeeId !== query.employeeId) continue;
+      const person = this.employees.get(assignment.employeeId);
+      if (person === undefined) continue;
+      rows.push({
+        assignmentId: assignment.id,
+        employeeId: person.id,
+        employeeName: person.name,
+        roleCode: person.roleCode,
+        baseHourlyRate: person.baseHourlyRate,
+        shiftId: shift.id,
+        locationId: shift.locationId,
+        startsAt: shift.startsAt,
+        endsAt: shift.endsAt,
+        breakMinutes: shift.breakMinutes,
+        adjustedHours: this.latestAdjustedHours(assignment.id),
+      });
+    }
+    return rows.sort((a, b) => {
+      if (a.startsAt !== b.startsAt) return a.startsAt < b.startsAt ? -1 : 1;
+      if (a.assignmentId !== b.assignmentId) return a.assignmentId < b.assignmentId ? -1 : 1;
+      return 0;
+    });
+  }
+
   async findEmployee(query: {
     readonly organizationId: string;
     readonly employeeId: string;
@@ -277,7 +394,9 @@ export function seedSchedulingFixture(): SchedulingFixture {
 
 /**
  * Registers one employee in the fake store's lookup with the primary location
- * and role the assignment rules match against (`WF-003`).
+ * and role the assignment rules match against (`WF-003`), plus the
+ * `name`/`baseHourlyRate` the worked-hours read projects (defaulted so the
+ * assignment-rule tests need not supply them).
  */
 export function seedSchedulingEmployee(
   store: FakeSchedulingStore,
@@ -286,6 +405,8 @@ export function seedSchedulingEmployee(
     readonly organizationId: string;
     readonly primaryLocationId: string | null;
     readonly roleCode: string;
+    readonly name?: string;
+    readonly baseHourlyRate?: string;
   },
 ): void {
   store.employees.set(employee.id, {
@@ -293,5 +414,7 @@ export function seedSchedulingEmployee(
     organizationId: employee.organizationId,
     primaryLocationId: employee.primaryLocationId,
     roleCode: employee.roleCode,
+    name: employee.name ?? employee.id,
+    baseHourlyRate: employee.baseHourlyRate ?? "0.0000",
   });
 }

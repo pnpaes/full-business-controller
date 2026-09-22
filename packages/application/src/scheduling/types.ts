@@ -15,7 +15,8 @@ import type { AuditInput } from "../auth";
  * This is a **different domain from the workforce personnel slice**, so it has
  * its own `SchedulingStore` port rather than extending `WorkforceStore`; the
  * only employee data it needs is the `primaryLocationId` the provisional
- * assignment rule matches against (`DEC-099` fail-closed precedent).
+ * assignment rule matches against (`DEC-099` fail-closed precedent), plus the
+ * `name`/`roleCode`/`baseHourlyRate` the worked-hours read projects.
  */
 
 /** The `shift_state` vocabulary a shift may hold (`SHIFT_STATE`). */
@@ -161,6 +162,80 @@ export interface ShiftAssignmentListQuery {
 }
 
 /**
+ * One `shift_adjustment` row (`WF-004`, `DEC-038`): a manual correction to one
+ * assignment's derived worked hours. `adjustedHours` is a `numeric(9,2)` decimal
+ * string; `approvedBy`/`approvedAt` are the manager-approval pair (both set or
+ * both null).
+ */
+export interface ShiftAdjustmentRecord {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly shiftAssignmentId: string;
+  /** `numeric(9,2)` hours — a decimal string, never a float. */
+  readonly adjustedHours: string;
+  readonly reason: string;
+  readonly approvedBy: string | null;
+  /** `timestamptz`, ISO; null when unapproved. */
+  readonly approvedAt: string | null;
+  /** `timestamptz`, ISO. */
+  readonly createdAt: string;
+}
+
+export interface NewShiftAdjustmentRecord {
+  readonly organizationId: string;
+  readonly shiftAssignmentId: string;
+  /** `numeric(9,2)` hours — a decimal string, never a float. */
+  readonly adjustedHours: string;
+  readonly reason: string;
+  readonly approvedBy: string | null;
+  /** `timestamptz`, ISO, or null. */
+  readonly approvedAt: string | null;
+  /** The acting actor; recorded as `created_by`. */
+  readonly createdBy: string | null;
+}
+
+/** Adjustment filters for the store read. */
+export interface ShiftAdjustmentListQuery {
+  readonly organizationId: string;
+  readonly shiftAssignmentId?: string;
+  readonly limit?: number;
+  readonly offset?: number;
+}
+
+/**
+ * One approved assignment inside a worked-hours window: the assignment joined to
+ * its shift and employee, with the latest correction's `adjustedHours` (or null).
+ */
+export interface WorkedHoursAssignmentRow {
+  readonly assignmentId: string;
+  readonly employeeId: string;
+  readonly employeeName: string;
+  readonly roleCode: string;
+  /** `numeric(19,4)` money — a decimal string, never a float. */
+  readonly baseHourlyRate: string;
+  readonly shiftId: string;
+  readonly locationId: string;
+  /** `timestamptz`, ISO. */
+  readonly startsAt: string;
+  /** `timestamptz`, ISO. */
+  readonly endsAt: string;
+  readonly breakMinutes: number;
+  /** The latest correction's `numeric(9,2)` hours, or null. */
+  readonly adjustedHours: string | null;
+}
+
+/** Worked-hours window filters for the store read (`from` inclusive, `to` exclusive). */
+export interface WorkedHoursQuery {
+  readonly organizationId: string;
+  /** `timestamptz`, ISO. */
+  readonly from: string;
+  /** `timestamptz`, ISO. */
+  readonly to: string;
+  readonly locationId?: string;
+  readonly employeeId?: string;
+}
+
+/**
  * The only `employee` fields the scheduling slice reads: the `primaryLocationId`
  * the provisional same-location assignment rule matches against and the
  * `roleCode` the `WF-003` role-match rule compares with the shift's role.
@@ -170,6 +245,9 @@ export interface SchedulingEmployeeRecord {
   readonly organizationId: string;
   readonly primaryLocationId: string | null;
   readonly roleCode: string;
+  readonly name: string;
+  /** `numeric(19,4)` money — a decimal string, never a float. */
+  readonly baseHourlyRate: string;
 }
 
 /**
@@ -231,6 +309,19 @@ export interface SchedulingStore {
     input: UpdateShiftAssignmentRecord,
   ): Promise<ShiftAssignmentRecord | undefined>;
   listShiftAssignments(query: ShiftAssignmentListQuery): Promise<readonly ShiftAssignmentRecord[]>;
+  /** Creates one worked-hours correction (`WF-004`, `DEC-038`). */
+  createShiftAdjustment(input: NewShiftAdjustmentRecord): Promise<ShiftAdjustmentRecord>;
+  /** One adjustment by id, organization-scoped (`DEC-061`), or `undefined`. */
+  findShiftAdjustment(query: {
+    readonly organizationId: string;
+    readonly shiftAdjustmentId: string;
+  }): Promise<ShiftAdjustmentRecord | undefined>;
+  listShiftAdjustments(query: ShiftAdjustmentListQuery): Promise<readonly ShiftAdjustmentRecord[]>;
+  /**
+   * Approved assignments on assigned/completed shifts whose shift starts in the
+   * window, joined to their shift and employee, with the latest correction.
+   */
+  listWorkedHoursAssignments(query: WorkedHoursQuery): Promise<readonly WorkedHoursAssignmentRow[]>;
   /**
    * One employee by id, organization-scoped (`DEC-061`), or `undefined`,
    * projected to the fields the assignment rule needs.

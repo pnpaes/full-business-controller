@@ -6,7 +6,8 @@
  * Shifts are mutated, not append-only, so the lifecycle transitions
  * (`published`, `cancelled`, `completed`) each record their own action rather
  * than overloading `updated`; an assignment is a separate fact with its own
- * `created`/`withdrawn` pair.
+ * `created`/`withdrawn` pair. A worked-hours correction (`WF-004`) is another
+ * append-only fact with its own `created` action.
  */
 export const SCHEDULING_AUDIT_ACTIONS = {
   shiftCreated: "workforce.shift.created",
@@ -16,4 +17,5 @@ export const SCHEDULING_AUDIT_ACTIONS = {
   shiftCompleted: "workforce.shift.completed",
   shiftAssignmentCreated: "workforce.shift_assignment.created",
   shiftAssignmentWithdrawn: "workforce.shift_assignment.withdrawn",
+  shiftAdjustmentCreated: "workforce.shift_adjustment.created",
 } as const;

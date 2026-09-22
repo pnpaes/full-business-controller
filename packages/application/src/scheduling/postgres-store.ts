@@ -2,16 +2,21 @@ import * as repo from "@aquarela/persistence";
 import type { Database, NodeDatabase } from "@aquarela/persistence";
 
 import type {
+  NewShiftAdjustmentRecord,
   NewShiftAssignmentRecord,
   NewShiftRecord,
   SchedulingEmployeeRecord,
   SchedulingStore,
+  ShiftAdjustmentListQuery,
+  ShiftAdjustmentRecord,
   ShiftAssignmentListQuery,
   ShiftAssignmentRecord,
   ShiftListQuery,
   ShiftRecord,
   UpdateShiftAssignmentRecord,
   UpdateShiftRecord,
+  WorkedHoursAssignmentRow,
+  WorkedHoursQuery,
 } from "./types";
 
 /** A transaction handle has no `transaction` method of its own. */
@@ -58,6 +63,19 @@ function toShiftAssignment(row: repo.ShiftAssignment): ShiftAssignmentRecord {
     assignedAt: row.assignedAt.toISOString(),
     createdAt: row.createdAt.toISOString(),
     updatedAt: toIso(row.updatedAt),
+  };
+}
+
+function toShiftAdjustment(row: repo.ShiftAdjustment): ShiftAdjustmentRecord {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    shiftAssignmentId: row.shiftAssignmentId,
+    adjustedHours: row.adjustedHours,
+    reason: row.reason,
+    approvedBy: row.approvedBy,
+    approvedAt: toIso(row.approvedAt),
+    createdAt: row.createdAt.toISOString(),
   };
 }
 
@@ -178,6 +196,60 @@ export function createPostgresSchedulingStore(db: Database): SchedulingStore {
       });
       return rows.map(toShiftAssignment);
     },
+    createShiftAdjustment: async (input: NewShiftAdjustmentRecord) =>
+      toShiftAdjustment(
+        await repo.createShiftAdjustment(db, {
+          organizationId: input.organizationId,
+          shiftAssignmentId: input.shiftAssignmentId,
+          adjustedHours: input.adjustedHours,
+          reason: input.reason,
+          approvedBy: input.approvedBy,
+          approvedAt: toDate(input.approvedAt),
+          createdBy: input.createdBy,
+        }),
+      ),
+    findShiftAdjustment: async (query) => {
+      const row = await repo.findShiftAdjustment(db, {
+        organizationId: query.organizationId,
+        shiftAdjustmentId: query.shiftAdjustmentId,
+      });
+      return row === undefined ? undefined : toShiftAdjustment(row);
+    },
+    listShiftAdjustments: async (query: ShiftAdjustmentListQuery) => {
+      const rows = await repo.listShiftAdjustments(db, {
+        organizationId: query.organizationId,
+        ...(query.shiftAssignmentId === undefined
+          ? {}
+          : { shiftAssignmentId: query.shiftAssignmentId }),
+        ...(query.limit === undefined ? {} : { limit: query.limit }),
+        ...(query.offset === undefined ? {} : { offset: query.offset }),
+      });
+      return rows.map(toShiftAdjustment);
+    },
+    listWorkedHoursAssignments: async (
+      query: WorkedHoursQuery,
+    ): Promise<readonly WorkedHoursAssignmentRow[]> => {
+      const rows = await repo.listWorkedHoursAssignments(db, {
+        organizationId: query.organizationId,
+        from: new Date(query.from),
+        to: new Date(query.to),
+        ...(query.locationId === undefined ? {} : { locationId: query.locationId }),
+        ...(query.employeeId === undefined ? {} : { employeeId: query.employeeId }),
+      });
+      return rows.map((row) => ({
+        assignmentId: row.assignmentId,
+        employeeId: row.employeeId,
+        employeeName: row.employeeName,
+        roleCode: row.roleCode,
+        baseHourlyRate: row.baseHourlyRate,
+        shiftId: row.shiftId,
+        locationId: row.locationId,
+        startsAt: row.startsAt.toISOString(),
+        endsAt: row.endsAt.toISOString(),
+        breakMinutes: row.breakMinutes,
+        adjustedHours: row.adjustedHours,
+      }));
+    },
     findEmployee: async (query): Promise<SchedulingEmployeeRecord | undefined> => {
       const row = await repo.findEmployee(db, {
         organizationId: query.organizationId,
@@ -190,6 +262,8 @@ export function createPostgresSchedulingStore(db: Database): SchedulingStore {
             organizationId: row.organizationId,
             primaryLocationId: row.primaryLocationId,
             roleCode: row.roleCode,
+            name: row.name,
+            baseHourlyRate: row.baseHourlyRate,
           };
     },
   };

@@ -5,10 +5,14 @@ import { assignShift } from "./assign-shift";
 import type { AssignShiftInput } from "./assign-shift";
 import { cancelShift } from "./cancel-shift";
 import { completeShift } from "./complete-shift";
+import { computeWorkedHours } from "./compute-worked-hours";
 import { createShift } from "./create-shift";
 import type { CreateShiftInput } from "./create-shift";
+import { createShiftAdjustment } from "./create-shift-adjustment";
 import { findShift } from "./find-shift";
+import { findShiftAdjustment } from "./find-shift-adjustment";
 import { findShiftAssignment } from "./find-shift-assignment";
+import { DEFAULT_SHIFT_ADJUSTMENT_LIMIT, listShiftAdjustments } from "./list-shift-adjustments";
 import { DEFAULT_SHIFT_ASSIGNMENT_LIMIT, listShiftAssignments } from "./list-shift-assignments";
 import { DEFAULT_SHIFT_LIMIT, listShifts } from "./list-shifts";
 import { publishShift } from "./publish-shift";
@@ -1038,5 +1042,320 @@ describe("listShiftAssignments", () => {
 
     expect(approved).toHaveLength(0);
     expect(withdrawn.map((row) => row.id)).toEqual([assignment.id]);
+  });
+});
+
+function adjust(
+  store: FakeSchedulingStore,
+  fixture: SchedulingFixture,
+  shiftAssignmentId: string,
+  overrides: Partial<{ adjustedHours: string; reason: string }> = {},
+) {
+  return createShiftAdjustment(store, {
+    organizationId: fixture.organizationId,
+    actorId: fixture.actorId,
+    shiftAssignmentId,
+    adjustedHours: "7.5",
+    reason: "late clock-in",
+    ...overrides,
+  });
+}
+
+describe("createShiftAdjustment", () => {
+  it("records an approved, actor-stamped correction with its audit fact", async () => {
+    const { store, fixture } = setup();
+    const shift = await plan(store, fixture);
+    const assignment = await assign(store, fixture, shift.id);
+
+    const adjustment = await adjust(store, fixture, assignment.id, {
+      adjustedHours: "6.25",
+      reason: "  early departure  ",
+    });
+
+    expect(adjustment).toMatchObject({
+      organizationId: fixture.organizationId,
+      shiftAssignmentId: assignment.id,
+      adjustedHours: "6.25",
+      reason: "early departure",
+      approvedBy: fixture.actorId,
+    });
+    expect(adjustment.approvedAt).toEqual(expect.any(String));
+
+    const audit = store.audits.find((row) => row.action === "workforce.shift_adjustment.created");
+    expect(audit).toMatchObject({
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      entityType: "shift_adjustment",
+      entityId: adjustment.id,
+      after: {
+        shift_assignment_id: assignment.id,
+        adjusted_hours: "6.25",
+        reason: "early departure",
+        approved_by: fixture.actorId,
+      },
+    });
+  });
+
+  it("normalises a whole-number correction to two decimal places", async () => {
+    const { store, fixture } = setup();
+    const shift = await plan(store, fixture);
+    const assignment = await assign(store, fixture, shift.id);
+
+    const adjustment = await adjust(store, fixture, assignment.id, { adjustedHours: "8" });
+
+    expect(adjustment.adjustedHours).toBe("8.00");
+  });
+
+  it("rejects a correction on a withdrawn assignment", async () => {
+    const { store, fixture } = setup();
+    const shift = await plan(store, fixture);
+    const assignment = await assign(store, fixture, shift.id);
+    await withdrawShiftAssignment(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      shiftAssignmentId: assignment.id,
+    });
+
+    await expect(adjust(store, fixture, assignment.id)).rejects.toThrow(/cannot be adjusted/);
+    expect(store.shiftAdjustments.size).toBe(0);
+  });
+
+  it("rejects a blank assignment id, a bad decimal and a blank reason", async () => {
+    const { store, fixture } = setup();
+    const shift = await plan(store, fixture);
+    const assignment = await assign(store, fixture, shift.id);
+
+    await expect(adjust(store, fixture, "   ")).rejects.toThrow(
+      new DomainError("shiftAssignmentId is required"),
+    );
+    await expect(adjust(store, fixture, assignment.id, { adjustedHours: "abc" })).rejects.toThrow(
+      /not a valid decimal string/,
+    );
+    await expect(adjust(store, fixture, assignment.id, { adjustedHours: "-1" })).rejects.toThrow(
+      /must not be negative/,
+    );
+    await expect(adjust(store, fixture, assignment.id, { adjustedHours: "7.505" })).rejects.toThrow(
+      /more than 2 decimal places/,
+    );
+    await expect(
+      adjust(store, fixture, assignment.id, { adjustedHours: 7.5 as unknown as string }),
+    ).rejects.toThrow(/must be a decimal string/);
+    await expect(adjust(store, fixture, assignment.id, { reason: "   " })).rejects.toThrow(
+      new DomainError("reason is required"),
+    );
+    expect(store.shiftAdjustments.size).toBe(0);
+  });
+
+  it("is a typed not-found for a missing or cross-organization assignment", async () => {
+    const { store, fixture } = setup();
+
+    await expect(adjust(store, fixture, "nope")).rejects.toThrow(NotFoundError);
+    await expect(
+      createShiftAdjustment(store, {
+        organizationId: fixture.otherOrganizationId,
+        actorId: fixture.actorId,
+        shiftAssignmentId: "nope",
+        adjustedHours: "7.5",
+        reason: "late clock-in",
+      }),
+    ).rejects.toThrow(NotFoundError);
+  });
+
+  it("rolls the correction back when its audit fact cannot be written", async () => {
+    const { store, fixture } = setup();
+    const shift = await plan(store, fixture);
+    const assignment = await assign(store, fixture, shift.id);
+    vi.spyOn(store, "writeAudit").mockRejectedValueOnce(new Error("audit down"));
+
+    await expect(adjust(store, fixture, assignment.id)).rejects.toThrow("audit down");
+    expect(store.shiftAdjustments.size).toBe(0);
+  });
+});
+
+describe("findShiftAdjustment", () => {
+  it("is organization-scoped", async () => {
+    const { store, fixture } = setup();
+    const shift = await plan(store, fixture);
+    const assignment = await assign(store, fixture, shift.id);
+    const adjustment = await adjust(store, fixture, assignment.id);
+
+    await expect(
+      findShiftAdjustment(store, {
+        organizationId: fixture.organizationId,
+        shiftAdjustmentId: adjustment.id,
+      }),
+    ).resolves.toMatchObject({ id: adjustment.id });
+    await expect(
+      findShiftAdjustment(store, {
+        organizationId: fixture.otherOrganizationId,
+        shiftAdjustmentId: adjustment.id,
+      }),
+    ).resolves.toBeUndefined();
+  });
+});
+
+describe("listShiftAdjustments", () => {
+  it("defaults the page limit", async () => {
+    const { store, fixture } = setup();
+    const spy = vi.spyOn(store, "listShiftAdjustments");
+
+    await listShiftAdjustments(store, { organizationId: fixture.organizationId });
+
+    expect(spy).toHaveBeenCalledWith(
+      expect.objectContaining({ limit: DEFAULT_SHIFT_ADJUSTMENT_LIMIT }),
+    );
+  });
+
+  it("filters by assignment and is organization-scoped", async () => {
+    const { store, fixture } = setup();
+    const shift = await plan(store, fixture);
+    const assignment = await assign(store, fixture, shift.id);
+    const first = await adjust(store, fixture, assignment.id);
+    const second = await adjust(store, fixture, assignment.id, { adjustedHours: "5" });
+
+    const rows = await listShiftAdjustments(store, {
+      organizationId: fixture.organizationId,
+      shiftAssignmentId: assignment.id,
+    });
+
+    expect(rows.map((row) => row.id).sort()).toEqual([first.id, second.id].sort());
+    expect(
+      await listShiftAdjustments(store, { organizationId: fixture.otherOrganizationId }),
+    ).toEqual([]);
+  });
+});
+
+describe("computeWorkedHours", () => {
+  it("sums per-employee hours, applying adjustments, ordered by name", async () => {
+    const { store, fixture } = setup();
+    seedSchedulingEmployee(store, {
+      id: fixture.employeeId,
+      organizationId: fixture.organizationId,
+      primaryLocationId: fixture.locationId,
+      roleCode: "barista",
+      name: "Nora Nordmann",
+      baseHourlyRate: "215.5000",
+    });
+    seedSchedulingEmployee(store, {
+      id: "employee-3",
+      organizationId: fixture.organizationId,
+      primaryLocationId: fixture.locationId,
+      roleCode: "barista",
+      name: "Ana Andersen",
+      baseHourlyRate: "200.0000",
+    });
+
+    const shiftA = await plan(store, fixture, {
+      startsAt: "2026-07-01T08:00:00.000Z",
+      endsAt: "2026-07-01T16:00:00.000Z",
+    });
+    const shiftB = await plan(store, fixture, {
+      startsAt: "2026-07-02T08:00:00.000Z",
+      endsAt: "2026-07-02T12:00:00.000Z",
+    });
+    const assignmentA = await assign(store, fixture, shiftA.id);
+    await assign(store, fixture, shiftB.id, { employeeId: "employee-3" });
+
+    // Nora's 8 h shift is corrected to 6.50 h; the adjustment wins.
+    await adjust(store, fixture, assignmentA.id, { adjustedHours: "6.5" });
+
+    const result = await computeWorkedHours(store, {
+      organizationId: fixture.organizationId,
+      from: "2026-07-01T00:00:00.000Z",
+      to: "2026-07-03T00:00:00.000Z",
+    });
+
+    expect(result).toEqual({
+      from: "2026-07-01T00:00:00.000Z",
+      to: "2026-07-03T00:00:00.000Z",
+      rows: [
+        {
+          employeeId: "employee-3",
+          employeeName: "Ana Andersen",
+          roleCode: "barista",
+          hours: "4.00",
+        },
+        {
+          employeeId: fixture.employeeId,
+          employeeName: "Nora Nordmann",
+          roleCode: "barista",
+          hours: "6.50",
+        },
+      ],
+      totalHours: "10.50",
+    });
+  });
+
+  it("narrows by employee, location and period", async () => {
+    const { store, fixture } = setup();
+    seedSchedulingEmployee(store, {
+      id: fixture.employeeId,
+      organizationId: fixture.organizationId,
+      primaryLocationId: fixture.locationId,
+      roleCode: "barista",
+      name: "Nora Nordmann",
+    });
+    seedSchedulingEmployee(store, {
+      id: "employee-3",
+      organizationId: fixture.organizationId,
+      primaryLocationId: fixture.locationId,
+      roleCode: "barista",
+      name: "Ana Andersen",
+    });
+    const shiftA = await plan(store, fixture, {
+      startsAt: "2026-07-01T08:00:00.000Z",
+      endsAt: "2026-07-01T16:00:00.000Z",
+    });
+    const shiftB = await plan(store, fixture, {
+      startsAt: "2026-07-02T08:00:00.000Z",
+      endsAt: "2026-07-02T12:00:00.000Z",
+    });
+    await assign(store, fixture, shiftA.id);
+    await assign(store, fixture, shiftB.id, { employeeId: "employee-3" });
+
+    const byEmployee = await computeWorkedHours(store, {
+      organizationId: fixture.organizationId,
+      from: "2026-07-01T00:00:00.000Z",
+      to: "2026-07-03T00:00:00.000Z",
+      employeeId: fixture.employeeId,
+    });
+    expect(byEmployee.rows.map((row) => row.employeeName)).toEqual(["Nora Nordmann"]);
+    expect(byEmployee.totalHours).toBe("8.00");
+
+    const byLocation = await computeWorkedHours(store, {
+      organizationId: fixture.organizationId,
+      from: "2026-07-01T00:00:00.000Z",
+      to: "2026-07-03T00:00:00.000Z",
+      locationId: fixture.otherLocationId,
+    });
+    expect(byLocation.rows).toEqual([]);
+    expect(byLocation.totalHours).toBe("0.00");
+
+    const windowed = await computeWorkedHours(store, {
+      organizationId: fixture.organizationId,
+      from: "2026-07-02T00:00:00.000Z",
+      to: "2026-07-03T00:00:00.000Z",
+    });
+    expect(windowed.rows.map((row) => row.employeeName)).toEqual(["Ana Andersen"]);
+    expect(windowed.totalHours).toBe("4.00");
+  });
+
+  it("rejects a non-advancing or malformed window", async () => {
+    const { store, fixture } = setup();
+
+    await expect(
+      computeWorkedHours(store, {
+        organizationId: fixture.organizationId,
+        from: "2026-07-02T00:00:00.000Z",
+        to: "2026-07-01T00:00:00.000Z",
+      }),
+    ).rejects.toThrow(new DomainError("from must be before to"));
+    await expect(
+      computeWorkedHours(store, {
+        organizationId: fixture.organizationId,
+        from: "2026-07-01",
+        to: "2026-07-03T00:00:00.000Z",
+      }),
+    ).rejects.toThrow(/from must be an ISO-8601 instant/);
   });
 });
