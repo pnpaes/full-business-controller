@@ -170,7 +170,7 @@ because its target table varies by `source_type`.
 ## Pre-apply preflight for validating constraints and indexes
 Migrations 0014, 0016, 0017, 0018, 0019, 0020, 0021, 0022, 0023, 0024, 0025,
 0026, 0027, 0028, 0029, 0030, 0031, 0032, 0033, 0035, 0037, 0040, 0041, 0042,
-0043, 0044, 0045, 0046, 0047, 0048, 0049, 0051, 0053 and 0057 add objects that validate or build, so a failure
+0043, 0044, 0045, 0046, 0047, 0048, 0049, 0051, 0053, 0057 and 0059 add objects that validate or build, so a failure
 aborts the whole transactional migration (drizzle-kit runs each file in one
 transaction). Run the matching preflight against the target database **before**
 applying and reconcile any hits; drizzle-kit cannot detect them because these
@@ -190,6 +190,19 @@ applying and reconcile any hits; drizzle-kit cannot detect them because these
   The migration adds no hand-written statement and no backfill is needed.
   `0058_period_close_org_guard.sql` (below) adds triggers only, so it scans no
   existing row either. No separate preflight query is needed.
+
+- **`0059_adjustment_period.sql`** — one new, empty table (`adjustment_period`)
+  with its three checks (`adjustment_period_status_check`,
+  `adjustment_period_range_check`, `adjustment_period_approved_check`), the
+  organization FK, the partial unique `adjustment_period_open_key` on
+  `(organization_id) WHERE status = 'open'` and the
+  `adjustment_period_org_status_idx` / `adjustment_period_org_opened_idx`
+  org-first indexes. All are cheap at first apply because the table starts empty:
+  the checks validate nothing existing, the unique and the indexes build an empty
+  table and the organization FK validates an empty child table. The migration adds
+  no hand-written statement and no backfill is needed. It has no companion
+  org-guard migration (the table carries no cross-organization reference and no
+  location scope). No separate preflight query is needed.
 
 - **`0051_shift_scheduling.sql`** — two new, empty tables (`shift`,
   `shift_assignment`) with their checks, the `shift_assignment_shift_employee_key`
@@ -1696,6 +1709,26 @@ only, so the down file is an explicit operator action, not an automatic one.
   `psql "$DATABASE_URL" -f packages/persistence/drizzle/0058_period_close_org_guard_down.sql`.
   Apply `0058`'s down **before** `0057`'s down if the table goes too: its triggers
   live on `period_close`, which `0057`'s down drops.
+- **0059 adds the `REC-006`/`DEC-027` (row 13b) adjustment-period table and
+  follows the down convention** (see the ledger row below):
+  `0059_adjustment_period.sql` is generated DDL for one table, additive like
+  `0037`/`0040`/`0042`/`0044`/`0046`/`0048`/`0050`/`0051`/`0053`/`0055`/`0057` —
+  `adjustment_period` (`organization_id`, the `opened_from`/`opened_to` `date`s,
+  the required `reason` text, the nullable plain-uuid `approved_by` with its
+  `timestamptz` `approved_at` (the `app_user` FK is deferred), `status` default
+  `open`, the audit columns, the organization FK, the three checks —
+  `adjustment_period_status_check`, `adjustment_period_range_check`,
+  `adjustment_period_approved_check` — the partial unique
+  `adjustment_period_open_key` on `(organization_id) WHERE status = 'open'` (at
+  most one open adjustment period per organization, the race-safe backstop for
+  `openAdjustmentPeriod`) and the `adjustment_period_org_status_idx` /
+  `adjustment_period_org_opened_idx` indexes).
+  `0059_adjustment_period_down.sql` drops the table inside one `BEGIN;`/`COMMIT;`
+  (with `DROP TABLE IF EXISTS` so a half-applied manual run cannot wedge); the
+  checks, unique, FK and indexes drop with the table. It is **destructive** —
+  every adjustment period and its approval is lost — so run it only while those
+  rows need not be preserved (AGENTS.md Rule 2). Apply it manually with
+  `psql "$DATABASE_URL" -f packages/persistence/drizzle/0059_adjustment_period_down.sql`.
 
 **Re-applying after a manual down:** drizzle-kit tracks applied migrations in
 `drizzle.__drizzle_migrations`, not by comparing the schema, so a plain
@@ -1743,8 +1776,9 @@ for 0003, `… = 1789850858806` for 0004, `… = 1789851925634` for 0005,
 `… = 1790063500924` for 0052,
 `… = 1790067016722` for 0053,
 `… = 1790067030453` for 0054,
-`… = 1790110579392` for 0057 and
-`… = 1790110580000` for 0058, then
+`… = 1790110579392` for 0057,
+`… = 1790110580000` for 0058 and
+`… = 1790113826232` for 0059, then
 `npm run db:migrate` (0003 verified 2026-09-19; 0005 rehearsed in the slice-3
 review follow-up; 0006 rehearsed with the slice-4 receiving work; 0007 and
 0008 rehearsed with the slice-4 review follow-up; 0009 rehearsed with the
@@ -1949,6 +1983,21 @@ also cover tenancy (`organization_id`) and the lock actor
 (`locked_by`/`locked_at`), and the 0058/0057 down/re-apply rehearsal was re-run on
 2026-09-22 with the same counts (88 tables, 3 triggers, 59 ledger rows; a further
 `db:migrate` a no-op); the `0058` sha256 above is the amended file.
+0059 on 2026-09-22 added the `REC-006`/`DEC-027` (row 13b) adjustment-period table
+(`adjustment_period`), taking the database to 89 tables (the ledger holds 60
+rows); the probe observed the partial unique `adjustment_period_open_key`
+rejecting a second `open` row for one organization with `23505` while a `closed`
+row coexists, and the three CHECK violations
+(`adjustment_period_range_check` on an inverted window,
+`adjustment_period_approved_check` on a half-set approval pair and
+`adjustment_period_status_check` on an out-of-vocabulary status) all raising
+`23514`. The 0059 down/re-apply rehearsal was run on 2026-09-22: starting from 89
+public base tables and 60 ledger rows, `0059_adjustment_period_down.sql` dropped
+the table (88 tables) with its checks, partial unique, FK and two indexes;
+deleting the ledger row (`created_at = 1790113826232`) deleted 1 row, and
+`npm run db:migrate` re-applied 0059 — final 89 public base tables, 60 ledger
+rows, with a further `npm run db:migrate` a no-op. The `0059` sha256 above is
+`51cd81f25b2551e1705028b9f04d242ee71f9387769db0328a6620bee632f1cf`.
 A **full 0011 down** drops the tables the three 0012 constraints live on, so its
 replay must clear **both** ledger rows, not just 0011's:
 `DELETE FROM drizzle.__drizzle_migrations WHERE created_at IN (1789862475550, 1789862630158);`

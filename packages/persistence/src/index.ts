@@ -4,6 +4,7 @@ export { createDb } from "./client";
 export type { Database, DatabaseTransaction, DbClient, NodeDatabase } from "./client";
 
 export * from "./repositories/access";
+export * from "./repositories/adjustment-period";
 export * from "./repositories/audit";
 export * from "./repositories/bootstrap";
 export * from "./repositories/checklists";

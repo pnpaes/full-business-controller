@@ -14,7 +14,7 @@ import * as schema from "./index";
 
 const tables = Object.values(schema).filter((value) => is(value, PgTable));
 
-/** The 88 in-scope Phase 1-2 tables: the 35 core tables, the slice-3
+/** The 89 in-scope Phase 1-2 tables: the 35 core tables, the slice-3
  * master-data additions (`unit_conversion`, `supplier`, `supplier_item`,
  * `cost_center`), the slice-4 receiving additions (`goods_receipt`,
  * `goods_receipt_line`), the slice-5 allergen additions (`allergen`,
@@ -42,10 +42,12 @@ const tables = Object.values(schema).filter((value) => is(value, PgTable));
  * (`shift`, `shift_assignment`) and the `DEC-038` worked-hours correction
  * (`shift_adjustment`), and the `DEC-037`/`WF-005` monthly payroll-input report
  * (`payroll_report`), and the `REC-003`/`REC-006`/`DEC-027` period close/lock
- * slice (`period_close`), from
+ * slice (`period_close`), and the `REC-006`/`DEC-027` adjustment-period slice
+ * (`adjustment_period`), from
  * `schemas/phase1_2_draft.sql` / `DATA_DICTIONARY`. */
 const EXPECTED_TABLES = [
   "addon_applicability",
+  "adjustment_period",
   "allergen",
   "allocation_rule",
   "app_user",

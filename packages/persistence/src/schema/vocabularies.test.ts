@@ -129,7 +129,6 @@ describe("vocabularies vs schemas/domain-enums.yaml", () => {
       "channel_code",
       "forecast_grain",
       "valuation_method",
-      "adjustment_period_status",
       "allowed_operation",
       "publish_status",
     ];

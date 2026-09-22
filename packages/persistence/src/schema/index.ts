@@ -1,6 +1,7 @@
 // Phase 1-2 core schema barrel: re-exports every in-scope table and the
 // controlled vocabularies that back their `check` constraints.
 export * from "./vocabularies";
+export * from "./adjustment-period";
 export * from "./organization";
 export * from "./identity";
 export * from "./catalog";

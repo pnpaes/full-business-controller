@@ -414,6 +414,13 @@
       "when": 1790110580000,
       "tag": "0058_period_close_org_guard",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1790113826232,
+      "tag": "0059_adjustment_period",
+      "breakpoints": true
     }
   ]
 }

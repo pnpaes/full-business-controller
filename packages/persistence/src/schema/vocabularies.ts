@@ -470,6 +470,16 @@ export const PERIOD_CLOSE_STATUS = ["open", "closing", "locked", "reopened"] as 
 
 export const PERIOD_CLOSE_SCOPE_TYPE = ["location", "company"] as const;
 
+// `REC-006`, `DEC-027` (row 13b): the `adjustment_period` correction window.
+// `adjustment_period_status` backs `adjustment_period_status_check`; the key was
+// present in `schemas/domain-enums.yaml` from the start but deliberately
+// unexported until the `adjustment_period` table needed it, so
+// `vocabularies.test.ts`'s `UNEXPORTED_YAML_KEYS` guard shrinks accordingly. The
+// lifecycle (`open` → `closed`) is the whole vocabulary, and both states are
+// reachable through the API. From `schemas/domain-enums.yaml`
+// (`adjustment_period_status`).
+export const ADJUSTMENT_PERIOD_STATUS = ["open", "closed"] as const;
+
 // `DEC-088` (`DOC-001`…`DOC-004`): the staff document library. `category` and
 // `audience` back `document_category_check` / `document_audience_check`, and
 // `status` backs `document_status_check` via the distinct
