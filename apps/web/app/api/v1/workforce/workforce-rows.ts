@@ -1,10 +1,15 @@
 import {
   DEFAULT_EMPLOYEE_DOCUMENT_LIMIT,
   DEFAULT_EMPLOYEE_LIMIT,
+  DEFAULT_SHIFT_ASSIGNMENT_LIMIT,
+  DEFAULT_SHIFT_LIMIT,
   EMPLOYEE_DOCUMENT_KINDS,
   EMPLOYMENT_TYPES,
+  SHIFT_STATES,
   type EmployeeDocumentRecord,
   type EmployeeRecord,
+  type ShiftAssignmentRecord,
+  type ShiftRecord,
 } from "@aquarela/application";
 
 import { isUuid } from "../hms/hms-rows";
@@ -31,12 +36,15 @@ export { isUuid };
  */
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
+/** A full ISO-8601 instant with seconds and a zone (`timestamptz` shaped). */
+const ISO_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
 /** A plain non-negative decimal at most four places (`numeric(19,4)` money). */
 const MONEY = /^\d+(?:\.\d{1,4})?$/;
 const MAX_LIMIT = 200;
 const MAX_TEXT = 200;
 const MAX_VOCAB = 32;
 const MAX_MONEY = 64;
+const MAX_INSTANT = 64;
 
 function readPositiveInteger(raw: string | null): number | undefined | "invalid" {
   if (raw === null) {
@@ -82,6 +90,40 @@ function readUuidFilter(
   }
   const value = raw.trim();
   return isUuid(value) ? value : "invalid";
+}
+
+/** An optional fixed-vocabulary filter: absent → `undefined`; a non-member → `"invalid"`. */
+function readVocabFilter(
+  searchParams: URLSearchParams,
+  key: string,
+  values: readonly string[],
+): string | undefined | "invalid" {
+  const raw = searchParams.get(key);
+  if (raw === null) {
+    return undefined;
+  }
+  const value = raw.trim();
+  return value.length > 0 && value.length <= MAX_VOCAB && values.includes(value)
+    ? value
+    : "invalid";
+}
+
+/** An optional ISO-instant filter: absent → `undefined`; malformed → `"invalid"`. */
+function readInstantFilter(
+  searchParams: URLSearchParams,
+  key: string,
+): string | undefined | "invalid" {
+  const raw = searchParams.get(key);
+  if (raw === null) {
+    return undefined;
+  }
+  const value = raw.trim();
+  return value.length > 0 && value.length <= MAX_INSTANT && isIsoInstant(value) ? value : "invalid";
+}
+
+/** True when `value` is a full ISO-8601 instant (`timestamptz` shaped, seconds required). */
+function isIsoInstant(value: string): boolean {
+  return ISO_INSTANT.test(value) && !Number.isNaN(Date.parse(value));
 }
 
 function readOptionalQueryBoolean(
@@ -233,6 +275,53 @@ function readOptionalDate(
     return { ok: true, present: true, value: null };
   }
   return isDate(trimmed) ? { ok: true, present: true, value: trimmed } : { ok: false };
+}
+
+/** Optional ISO instant: absent → not present; null/blank/malformed → invalid for a shift field. */
+function readOptionalInstant(body: Record<string, unknown>, key: string): OptionalField<string> {
+  const value = body[key];
+  if (value === undefined) {
+    return { ok: true, present: false, value: "" };
+  }
+  if (typeof value !== "string") {
+    return { ok: false };
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 && trimmed.length <= MAX_INSTANT && isIsoInstant(trimmed)
+    ? { ok: true, present: true, value: trimmed }
+    : { ok: false };
+}
+
+/** Optional free text: absent → not present; null/blank → `null`; wrong type/over-long → invalid. */
+function readOptionalNullableText(
+  body: Record<string, unknown>,
+  key: string,
+  max = MAX_TEXT,
+): OptionalField<string | null> {
+  const value = body[key];
+  if (value === undefined) {
+    return { ok: true, present: false, value: null };
+  }
+  if (value === null) {
+    return { ok: true, present: true, value: null };
+  }
+  if (typeof value !== "string" || value.length > max) {
+    return { ok: false };
+  }
+  const trimmed = value.trim();
+  return { ok: true, present: true, value: trimmed.length === 0 ? null : trimmed };
+}
+
+/** Optional `breakMinutes`: absent → not present; a non-integer/negative → invalid. */
+function readOptionalBreakMinutes(body: Record<string, unknown>): OptionalField<number> {
+  const value = body["breakMinutes"];
+  if (value === undefined) {
+    return { ok: true, present: false, value: 0 };
+  }
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
+    return { ok: false };
+  }
+  return { ok: true, present: true, value };
 }
 
 /* --------------------------------- queries -------------------------------- */
@@ -633,6 +722,298 @@ export function toEmployeeDocumentRows(
   const rows: EmployeeDocumentRow[] = [];
   for (const document of documents) {
     const row = toEmployeeDocumentRow(organizationId, document);
+    if (row !== undefined) {
+      rows.push(row);
+    }
+  }
+  return rows;
+}
+
+/* ------------------------------ shift scheduling -------------------------- */
+
+/**
+ * Shift-scheduling query/body parsing and row mapping (`WF-002`, `WF-003`,
+ * `DEC-037`, `DEC-038`), kept beside the personnel parsers so the slice has one
+ * wire-shape module.
+ *
+ * The parsers do shape checks only where the value would otherwise reach a
+ * Postgres column directly: `startsAt`/`endsAt`/`from`/`to` must be full
+ * ISO-8601 instants (seconds required — the same `timestamptz` shape the HMS
+ * instant parsers use), `breakMinutes` a non-negative integer (the command's
+ * `assertBreakMinutes` counterpart), and the `state` vocabulary is checked
+ * against the application `SHIFT_STATES` so `?state=bogus` is a 400 rather than
+ * a silently empty page. The `startsAt`/`endsAt` ordering stays the command's
+ * authority and surfaces as a `DomainError` (400). The row mappers drop a
+ * foreign-organization row defensively, like the other slices, even though the
+ * application reads are already organization-scoped (`DEC-061`).
+ */
+
+export interface ShiftListQuery {
+  readonly locationId?: string;
+  /** One of `SHIFT_STATES`, exact match. */
+  readonly state?: string;
+  /** Inclusive lower bound on `startsAt`; an ISO instant. */
+  readonly from?: string;
+  /** Inclusive upper bound on `startsAt`; an ISO instant. */
+  readonly to?: string;
+  readonly limit: number;
+  readonly offset: number;
+}
+
+export type ParsedShiftListQuery =
+  { readonly ok: true; readonly query: ShiftListQuery } | { readonly ok: false };
+
+/** Parses the optional `locationId`/`state`/`from`/`to` filters and `limit`/`offset` paging. */
+export function parseShiftListQuery(searchParams: URLSearchParams): ParsedShiftListQuery {
+  const locationId = readUuidFilter(searchParams, "locationId");
+  if (locationId === "invalid") {
+    return { ok: false };
+  }
+  const state = readVocabFilter(searchParams, "state", SHIFT_STATES);
+  if (state === "invalid") {
+    return { ok: false };
+  }
+  const from = readInstantFilter(searchParams, "from");
+  if (from === "invalid") {
+    return { ok: false };
+  }
+  const to = readInstantFilter(searchParams, "to");
+  if (to === "invalid") {
+    return { ok: false };
+  }
+  if (from !== undefined && to !== undefined && Date.parse(from) > Date.parse(to)) {
+    return { ok: false };
+  }
+  const paging = readPaging(searchParams, DEFAULT_SHIFT_LIMIT);
+  if (!paging.ok) {
+    return { ok: false };
+  }
+  return {
+    ok: true,
+    query: {
+      ...(locationId === undefined ? {} : { locationId }),
+      ...(state === undefined ? {} : { state }),
+      ...(from === undefined ? {} : { from }),
+      ...(to === undefined ? {} : { to }),
+      limit: paging.limit,
+      offset: paging.offset,
+    },
+  };
+}
+
+export interface ShiftAssignmentListQuery {
+  readonly limit: number;
+  readonly offset: number;
+}
+
+export type ParsedShiftAssignmentListQuery =
+  { readonly ok: true; readonly query: ShiftAssignmentListQuery } | { readonly ok: false };
+
+/** Parses the `limit`/`offset` paging of one shift's assignment page. */
+export function parseShiftAssignmentListQuery(
+  searchParams: URLSearchParams,
+): ParsedShiftAssignmentListQuery {
+  const paging = readPaging(searchParams, DEFAULT_SHIFT_ASSIGNMENT_LIMIT);
+  if (!paging.ok) {
+    return { ok: false };
+  }
+  return { ok: true, query: { limit: paging.limit, offset: paging.offset } };
+}
+
+export interface CreateShiftBody {
+  readonly locationId: string;
+  /** Free-text role; blank/omitted becomes `null`. */
+  readonly roleCode: string | null;
+  readonly startsAt: string;
+  readonly endsAt: string;
+  readonly breakMinutes?: number;
+}
+
+export type ParsedCreateShift =
+  | { readonly ok: true; readonly input: CreateShiftBody }
+  | {
+      readonly ok: false;
+    };
+
+/** `POST /shifts` body: the location, optional role, the window and the break. */
+export function parseCreateShiftBody(body: Record<string, unknown> | undefined): ParsedCreateShift {
+  if (body === undefined) {
+    return { ok: false };
+  }
+  const locationId = readText(body, "locationId");
+  if (locationId === null || !isUuid(locationId)) {
+    return { ok: false };
+  }
+  const startsAt = readOptionalInstant(body, "startsAt");
+  const endsAt = readOptionalInstant(body, "endsAt");
+  if (!startsAt.ok || !startsAt.present || !endsAt.ok || !endsAt.present) {
+    return { ok: false };
+  }
+  const roleCode = readOptionalNullableText(body, "roleCode");
+  const breakMinutes = readOptionalBreakMinutes(body);
+  if (!roleCode.ok || !breakMinutes.ok) {
+    return { ok: false };
+  }
+  return {
+    ok: true,
+    input: {
+      locationId,
+      roleCode: roleCode.value,
+      startsAt: startsAt.value,
+      endsAt: endsAt.value,
+      ...(breakMinutes.present ? { breakMinutes: breakMinutes.value } : {}),
+    },
+  };
+}
+
+export interface UpdateShiftBody {
+  readonly startsAt?: string;
+  readonly endsAt?: string;
+  readonly breakMinutes?: number;
+  /** Free text; blank/`null` clears it. */
+  readonly roleCode?: string | null;
+}
+
+export type ParsedUpdateShift =
+  | { readonly ok: true; readonly input: UpdateShiftBody }
+  | {
+      readonly ok: false;
+    };
+
+/** `PATCH /shifts/[id]` body: any subset of the mutable window/break/role fields. */
+export function parseUpdateShiftBody(body: Record<string, unknown> | undefined): ParsedUpdateShift {
+  if (body === undefined) {
+    return { ok: false };
+  }
+  const startsAt = readOptionalInstant(body, "startsAt");
+  const endsAt = readOptionalInstant(body, "endsAt");
+  const breakMinutes = readOptionalBreakMinutes(body);
+  const roleCode = readOptionalNullableText(body, "roleCode");
+  if (!startsAt.ok || !endsAt.ok || !breakMinutes.ok || !roleCode.ok) {
+    return { ok: false };
+  }
+  return {
+    ok: true,
+    input: {
+      ...(startsAt.present ? { startsAt: startsAt.value } : {}),
+      ...(endsAt.present ? { endsAt: endsAt.value } : {}),
+      ...(breakMinutes.present ? { breakMinutes: breakMinutes.value } : {}),
+      ...(roleCode.present ? { roleCode: roleCode.value } : {}),
+    },
+  };
+}
+
+export interface CreateShiftAssignmentBody {
+  readonly employeeId: string;
+}
+
+export type ParsedCreateShiftAssignment =
+  { readonly ok: true; readonly input: CreateShiftAssignmentBody } | { readonly ok: false };
+
+/** `POST /shifts/[id]/assignments` body; the shift link is the path id. */
+export function parseCreateShiftAssignmentBody(
+  body: Record<string, unknown> | undefined,
+): ParsedCreateShiftAssignment {
+  if (body === undefined) {
+    return { ok: false };
+  }
+  const employeeId = readText(body, "employeeId");
+  if (employeeId === null || !isUuid(employeeId)) {
+    return { ok: false };
+  }
+  return { ok: true, input: { employeeId } };
+}
+
+export interface ShiftRow {
+  readonly id: string;
+  readonly locationId: string;
+  readonly roleCode: string | null;
+  readonly startsAt: string;
+  readonly endsAt: string;
+  readonly breakMinutes: number;
+  readonly state: string;
+  readonly publishedAt: string | null;
+  readonly actualStart: string | null;
+  readonly actualEnd: string | null;
+  readonly createdAt: string;
+  readonly updatedAt: string | null;
+}
+
+/** Maps one shift to an HTTP row; `undefined` for a foreign-organization row. */
+export function toShiftRow(organizationId: string, shift: ShiftRecord): ShiftRow | undefined {
+  if (shift.organizationId !== organizationId) {
+    return undefined;
+  }
+  return {
+    id: shift.id,
+    locationId: shift.locationId,
+    roleCode: shift.roleCode,
+    startsAt: shift.startsAt,
+    endsAt: shift.endsAt,
+    breakMinutes: shift.breakMinutes,
+    state: shift.state,
+    publishedAt: shift.publishedAt,
+    actualStart: shift.actualStart,
+    actualEnd: shift.actualEnd,
+    createdAt: shift.createdAt,
+    updatedAt: shift.updatedAt,
+  };
+}
+
+/** Maps shift records to HTTP rows, dropping any foreign-organization shift. */
+export function toShiftRows(
+  organizationId: string,
+  shifts: readonly ShiftRecord[],
+): readonly ShiftRow[] {
+  const rows: ShiftRow[] = [];
+  for (const shift of shifts) {
+    const row = toShiftRow(organizationId, shift);
+    if (row !== undefined) {
+      rows.push(row);
+    }
+  }
+  return rows;
+}
+
+export interface ShiftAssignmentRow {
+  readonly id: string;
+  readonly shiftId: string;
+  readonly employeeId: string;
+  readonly state: string;
+  readonly assignedBy: string | null;
+  readonly assignedAt: string;
+  readonly createdAt: string;
+  readonly updatedAt: string | null;
+}
+
+/** Maps one assignment to an HTTP row; `undefined` for a foreign-organization row. */
+export function toShiftAssignmentRow(
+  organizationId: string,
+  assignment: ShiftAssignmentRecord,
+): ShiftAssignmentRow | undefined {
+  if (assignment.organizationId !== organizationId) {
+    return undefined;
+  }
+  return {
+    id: assignment.id,
+    shiftId: assignment.shiftId,
+    employeeId: assignment.employeeId,
+    state: assignment.state,
+    assignedBy: assignment.assignedBy,
+    assignedAt: assignment.assignedAt,
+    createdAt: assignment.createdAt,
+    updatedAt: assignment.updatedAt,
+  };
+}
+
+/** Maps assignment records to HTTP rows, dropping any foreign-organization assignment. */
+export function toShiftAssignmentRows(
+  organizationId: string,
+  assignments: readonly ShiftAssignmentRecord[],
+): readonly ShiftAssignmentRow[] {
+  const rows: ShiftAssignmentRow[] = [];
+  for (const assignment of assignments) {
+    const row = toShiftAssignmentRow(organizationId, assignment);
     if (row !== undefined) {
       rows.push(row);
     }

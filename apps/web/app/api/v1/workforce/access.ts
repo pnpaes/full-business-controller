@@ -60,6 +60,31 @@ export const WORKFORCE_EMPLOYEE_DOCUMENT_WRITE_ROLES = [
   "admin",
 ] as const;
 
+/**
+ * Shift planning and rota (`shift`/`shift_assignment`, `WF-002`/`WF-003`,
+ * `DEC-037`): the matrix row is readable by owner, general_manager,
+ * location_manager (location-scoped), kitchen, front_of_house, finance and
+ * admin. `analyst` and `purchasing` get nothing; `admin` is an explicit grant
+ * (there is no implicit admin bypass).
+ */
+export const SHIFT_READ_ROLES = [
+  "owner",
+  "general_manager",
+  "location_manager",
+  "kitchen",
+  "front_of_house",
+  "finance",
+  "admin",
+] as const;
+
+/**
+ * Writing a shift — create, update, publish, cancel, complete, assign and
+ * withdraw — is narrower than reading it: owner, general_manager,
+ * location_manager (location-scoped) and admin. `kitchen`/`front_of_house` may
+ * read the rota but not plan it, and `finance` may read but not write.
+ */
+export const SHIFT_WRITE_ROLES = ["owner", "general_manager", "location_manager", "admin"] as const;
+
 /** Loads the caller's roles and location scope live from server data (ADR-0003). */
 export async function loadWorkforceAccess(userId: string): Promise<UserAccess> {
   return loadUserAccess(getAuthStore(), userId);
