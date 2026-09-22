@@ -1,5 +1,22 @@
 # Reversibility log
 
+- **2026-09-22 row-13a period close/lock slice (`REC-003`/`REC-006`/`DEC-027`,
+  provisional `DEC-105`; 5 commits incl. this docs commit; nothing pushed)**:
+  1. `415297b` `feat(persistence)` (close schema + repository + `0057`/`0058`);
+  2. `0daecac` `feat(domain)`; 3. `0139ac1` `feat(application)`; 4. `c46e1a1`
+  `feat(web)`; 5. `7694050` `docs(decisions)` (`DEC-105`); 6. this
+  `docs(context)` update — each independently revertible with
+  `git revert <sha>`. Migration **`0057_period_close` adds one table** (additive;
+  down drops `period_close`, 88 → 87); **`0058_period_close_org_guard` is
+  trigger-only** (down 88 → 88); the rehearsed down order is **`0058` →
+  `0057`**. If the DB is rolled back, delete the two ledger rows (`created_at`
+  `1790110579392` / `1790110580000`) and re-migrate; 88 tables after re-apply
+  (rehearsed 2026-09-22 — see the work log). `0057` sha256
+  `b2cbad1af69cbfca470cd31dd7d84e2ed9154cc4c170666fa2bb3d11e90f3e31`; `0058`
+  (amended after the adversarial review — the locked-row immutability also covers
+  tenancy and the lock actor) sha256
+  `63bcd67b11649d84e4c97342e6b859baec6b95e97d20719bdc967756267d10b3`. Nothing
+  pushed; nothing applied to DigitalOcean.
 - **2026-09-22 row-14b-2 payroll-report slice (`WF-005`/`DEC-104`; 7 commits
   incl. this docs commit; nothing pushed)**: 1. `f17fb29`
   `feat(persistence)`; 2. `87e92f5` `feat(domain)`; 3. `321d6e5`
