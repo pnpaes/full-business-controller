@@ -133,7 +133,6 @@ describe("vocabularies vs schemas/domain-enums.yaml", () => {
       "valuation_method",
       "period_close_status",
       "adjustment_period_status",
-      "employment_type",
       "shift_state",
       "shift_assignment_state",
       "payroll_report_status",

@@ -8,6 +8,8 @@ import {
   costCenter,
   correctiveAction,
   dataQualityException,
+  employee,
+  employeeDocument,
   equipment,
   externalMapping,
   fileObject,
@@ -970,6 +972,55 @@ export async function createTestMaintenanceLog(
       kind: "service",
       performedAt: new Date("2026-01-01T08:00:00.000Z"),
       performedBy: randomUUID(),
+      ...overrides,
+    })
+    .returning();
+  return rows[0]!;
+}
+
+/**
+ * A `DEC-087`/`WF-007` employee. `name` gets a unique test value; the
+ * vocabulary, rate and active-range defaults are valid, so a test need only
+ * override the field under test. `user_id` and the nullable references stay null.
+ */
+export async function createTestEmployee(
+  db: Database,
+  organizationId: string,
+  overrides: Partial<typeof employee.$inferInsert> = {},
+): Promise<typeof employee.$inferSelect> {
+  const rows = await db
+    .insert(employee)
+    .values({
+      organizationId,
+      name: uniqueName("emp"),
+      roleCode: "kitchen",
+      employmentType: "full_time",
+      baseHourlyRate: "200.0000",
+      activeFrom: "2026-01-01",
+      ...overrides,
+    })
+    .returning();
+  return rows[0]!;
+}
+
+/**
+ * A `DEC-087`/`DOC-001` personnel document. `title` gets a unique test value;
+ * `kind` defaults to `contract` and the nullable fields stay null unless a test
+ * sets them.
+ */
+export async function createTestEmployeeDocument(
+  db: Database,
+  organizationId: string,
+  employeeId: string,
+  overrides: Partial<typeof employeeDocument.$inferInsert> = {},
+): Promise<typeof employeeDocument.$inferSelect> {
+  const rows = await db
+    .insert(employeeDocument)
+    .values({
+      organizationId,
+      employeeId,
+      kind: "contract",
+      title: uniqueName("doc"),
       ...overrides,
     })
     .returning();

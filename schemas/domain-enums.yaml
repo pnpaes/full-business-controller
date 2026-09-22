@@ -142,3 +142,9 @@ checklist_item_outcome: [pass, fail, not_applicable]
 # inspection), backing `maintenance_log_kind_check`. `equipment.kind` is
 # deliberately left as provisional free text — DEC-092 names no vocabulary.
 maintenance_kind: [service, repair, inspection]
+
+# DEC-087 (WF-007, DOC-001…DOC-004): the workforce personnel slice. The kind of
+# a personnel document on the employee profile, backing
+# `employee_document_kind_check`. `employee.employment_type` reuses the existing
+# `employment_type` vocabulary above.
+employee_document_kind: [contract, certificate, id_document, other]

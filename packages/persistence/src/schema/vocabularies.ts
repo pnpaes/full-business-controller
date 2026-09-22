@@ -410,3 +410,19 @@ export const CHECKLIST_ITEM_OUTCOME = ["pass", "fail", "not_applicable"] as cons
 // `equipment.kind`, which stays free text (no CHECK — the `DEC-071` precedent).
 // From `schemas/domain-enums.yaml` (`maintenance_kind`).
 export const MAINTENANCE_KIND = ["service", "repair", "inspection"] as const;
+
+// `DEC-087` (`WF-007`, `DOC-001`…`DOC-004`): the workforce personnel slice.
+// `employment_type` backs `employee_employment_type_check`; it was present in
+// the yaml from the start but deliberately unexported until the `employee` table
+// needed it, so `vocabularies.test.ts`'s `UNEXPORTED_YAML_KEYS` guard shrinks
+// accordingly. `employee_document_kind` backs `employee_document_kind_check`.
+// From `schemas/domain-enums.yaml` (`employment_type`, `employee_document_kind`).
+export const EMPLOYMENT_TYPE = [
+  "full_time",
+  "part_time",
+  "on_call",
+  "temporary",
+  "apprentice",
+] as const;
+
+export const EMPLOYEE_DOCUMENT_KIND = ["contract", "certificate", "id_document", "other"] as const;
