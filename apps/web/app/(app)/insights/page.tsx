@@ -50,6 +50,15 @@ export default function InsightsPage() {
           category, product or period, with a drill-down to the underlying sales lines.
         </p>
       </SectionCard>
+      <SectionCard title="Menu engineering" meta="RPT-005 · live data">
+        <p style={{ margin: 0, color: color.text.secondary, fontSize: typography.fontSize.md }}>
+          <a href="/insights/menu-engineering" style={backLink}>
+            Open matrix
+          </a>{" "}
+          — each product classified on popularity and on contribution before labour/fees against
+          computed median thresholds, with waste annotations and a drill-down to its sales lines.
+        </p>
+      </SectionCard>
       <SectionCard title="Planned screens" meta="08_UI_UX.md §8.3">
         <ul style={checklist}>
           {plannedScreens.map((screen) => (

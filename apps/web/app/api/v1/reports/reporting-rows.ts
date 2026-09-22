@@ -8,9 +8,9 @@ import { SALES_REPORT_GRAINS, type SalesReportGrain } from "@aquarela/domain";
 import { isUuid } from "../hms/hms-rows";
 
 /**
- * Pure query parsing for the sales & margin reporting routes (`RPT-001`–
- * `RPT-003`). Kept free of Next, DB and I/O imports so the routes do the reads
- * and hand the parsed query to the application.
+ * Pure query parsing for the reporting routes (`RPT-001`–`RPT-003`, `RPT-005`).
+ * Kept free of Next, DB and I/O imports so the routes do the reads and hand the
+ * parsed query to the application.
  *
  * Shape checks only, but they are the *same* vocabularies the application uses
  * (`SALES_REPORT_GRAINS` from the domain, `SALES_REPORT_GROUP_BYS` from the
@@ -248,6 +248,60 @@ export function parseSalesReportRecordsQuery(
       ...(productVariantId === undefined ? {} : { productVariantId }),
       limit: limit ?? DEFAULT_SALES_REPORT_RECORD_LIMIT,
       offset: offset ?? 0,
+    },
+  };
+}
+
+export interface MenuEngineeringQuery {
+  readonly from: string;
+  readonly to: string;
+  readonly grain: SalesReportGrain;
+  readonly locationId?: string;
+  readonly channelId?: string;
+}
+
+export type ParsedMenuEngineeringQuery =
+  { readonly ok: true; readonly query: MenuEngineeringQuery } | { readonly ok: false };
+
+/**
+ * Parses the menu-engineering query (`RPT-005`): the required inclusive
+ * `from`/`to` ISO instants, `grain` and the optional `locationId`/`channelId`
+ * filters. There is no `groupBy` (the report is always per product) and no
+ * `category`/`productVariantId` filter.
+ */
+export function parseMenuEngineeringQuery(
+  searchParams: URLSearchParams,
+): ParsedMenuEngineeringQuery {
+  const from = readOptionalText(searchParams, "from");
+  const to = readOptionalText(searchParams, "to");
+  if (
+    from === undefined ||
+    from === "invalid" ||
+    to === undefined ||
+    to === "invalid" ||
+    !isIsoInstant(from) ||
+    !isIsoInstant(to) ||
+    Date.parse(from) > Date.parse(to)
+  ) {
+    return { ok: false };
+  }
+  const grain = readOptionalVocab(searchParams, "grain", SALES_REPORT_GRAINS);
+  if (grain === undefined || grain === "invalid") {
+    return { ok: false };
+  }
+  const locationId = readOptionalUuid(searchParams, "locationId");
+  const channelId = readOptionalUuid(searchParams, "channelId");
+  if (locationId === "invalid" || channelId === "invalid") {
+    return { ok: false };
+  }
+  return {
+    ok: true,
+    query: {
+      from,
+      to,
+      grain: grain as SalesReportGrain,
+      ...(locationId === undefined ? {} : { locationId }),
+      ...(channelId === undefined ? {} : { channelId }),
     },
   };
 }
