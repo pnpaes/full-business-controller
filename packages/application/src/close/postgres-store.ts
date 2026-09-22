@@ -78,6 +78,32 @@ export function createPostgresPeriodCloseStore(db: Database): PeriodCloseStore {
           createdBy: input.createdBy,
         }),
       ),
+    listReconciliationsForPeriod: async (query) => {
+      const rows = await repo.listReconciliationsForPeriod(db, {
+        organizationId: query.organizationId,
+        from: query.from,
+        to: query.to,
+      });
+      return rows.map((row) => ({ status: row.status }));
+    },
+    listImportRunsForPeriod: async (query) => {
+      const rows = await repo.listImportRunsForPeriod(db, {
+        organizationId: query.organizationId,
+        from: query.from,
+        to: query.to,
+      });
+      return rows.map((row) => ({ status: row.status }));
+    },
+    countOpenDataQualityExceptions: async (query) =>
+      repo.countOpenDataQualityExceptions(db, { organizationId: query.organizationId }),
+    findReconciliationTolerance: async (query) => {
+      const row = await repo.findReconciliationTolerance(db, {
+        organizationId: query.organizationId,
+        kind: query.kind,
+        asOf: query.asOf,
+      });
+      return row === undefined ? undefined : { effectiveFrom: row.effectiveFrom };
+    },
     findPeriodClose: async (query) => {
       const row = await repo.findPeriodClose(db, {
         organizationId: query.organizationId,

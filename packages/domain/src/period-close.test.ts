@@ -2,18 +2,29 @@ import { describe, expect, it } from "vitest";
 
 import { DomainError } from "./errors";
 import {
+  CLOSE_IMPORT_STATUSES,
   PERIOD_CLOSE_SCOPE_TYPES,
   PERIOD_CLOSE_SNAPSHOT_VERSION,
   PERIOD_CLOSE_STATUSES,
   assertCloseChecklist,
+  buildClosePrerequisites,
   buildCloseSnapshot,
   resolveClosePeriod,
 } from "./period-close";
+import { IMPORT_RUN_STATUSES } from "./sales-mapping";
 
 describe("period-close vocabularies", () => {
   it("mirrors the period_close_scope_type and period_close_status arrays", () => {
     expect(PERIOD_CLOSE_SCOPE_TYPES).toEqual(["location", "company"]);
     expect(PERIOD_CLOSE_STATUSES).toEqual(["open", "closing", "locked", "reopened"]);
+  });
+
+  it("reuses the domain import-run status vocabulary (no second literal copy)", () => {
+    expect(CLOSE_IMPORT_STATUSES).toBe(IMPORT_RUN_STATUSES);
+  });
+
+  it("bumps the stored snapshot shape to version 2", () => {
+    expect(PERIOD_CLOSE_SNAPSHOT_VERSION).toBe(2);
   });
 });
 
@@ -100,8 +111,119 @@ describe("assertCloseChecklist", () => {
   });
 });
 
+describe("buildClosePrerequisites", () => {
+  function build(
+    overrides: Partial<Parameters<typeof buildClosePrerequisites>[0]> = {},
+  ): ReturnType<typeof buildClosePrerequisites> {
+    return buildClosePrerequisites({
+      reconciliationStatuses: [],
+      importRunStatuses: [],
+      openExceptions: 0,
+      tolerances: { sales_settlement: false, supplier_invoice: false },
+      scopeLimited: false,
+      ...overrides,
+    });
+  }
+
+  it("zero-fills the status histograms and passes the informational reads through", () => {
+    const prerequisites = build({
+      openExceptions: 3,
+      tolerances: { sales_settlement: true, supplier_invoice: false },
+      scopeLimited: true,
+    });
+
+    expect(prerequisites.reconciliations).toEqual({
+      total: 0,
+      byStatus: {
+        pending: 0,
+        within_tolerance: 0,
+        exception: 0,
+        resolved: 0,
+        approved: 0,
+      },
+      blocking: 0,
+    });
+    expect(prerequisites.importRuns).toEqual({
+      total: 0,
+      byStatus: {
+        uploaded: 0,
+        parsed: 0,
+        needs_review: 0,
+        validated: 0,
+        posted: 0,
+        partially_posted: 0,
+        failed: 0,
+        superseded: 0,
+      },
+      blocking: 0,
+    });
+    expect(prerequisites.exceptions).toEqual({ open: 3 });
+    expect(prerequisites.tolerances).toEqual({
+      sales_settlement: true,
+      supplier_invoice: false,
+    });
+    expect(prerequisites.scopeLimited).toBe(true);
+  });
+
+  it("counts pending and exception reconciliations as blocking only", () => {
+    const prerequisites = build({
+      reconciliationStatuses: [
+        "pending",
+        "pending",
+        "exception",
+        "within_tolerance",
+        "resolved",
+        "approved",
+      ],
+    });
+
+    expect(prerequisites.reconciliations.total).toBe(6);
+    expect(prerequisites.reconciliations.blocking).toBe(3);
+    expect(prerequisites.reconciliations.byStatus).toMatchObject({
+      pending: 2,
+      within_tolerance: 1,
+      exception: 1,
+      resolved: 1,
+      approved: 1,
+    });
+  });
+
+  it("blocks every import run not yet fully posted", () => {
+    const prerequisites = build({
+      importRunStatuses: [
+        "uploaded",
+        "parsed",
+        "needs_review",
+        "validated",
+        "partially_posted",
+        "posted",
+        "failed",
+        "superseded",
+      ],
+    });
+
+    expect(prerequisites.importRuns.total).toBe(8);
+    expect(prerequisites.importRuns.blocking).toBe(5);
+    expect(prerequisites.importRuns.byStatus).toMatchObject({
+      uploaded: 1,
+      parsed: 1,
+      needs_review: 1,
+      validated: 1,
+      partially_posted: 1,
+      posted: 1,
+      failed: 1,
+      superseded: 1,
+    });
+  });
+
+  it("rejects a status outside the mirrored vocabulary (fail-closed)", () => {
+    expect(() => build({ reconciliationStatuses: ["bogus"] })).toThrow(DomainError);
+    expect(() => build({ importRunStatuses: ["bogus"] })).toThrow(DomainError);
+  });
+});
+
 describe("buildCloseSnapshot", () => {
-  it("builds a versioned, float-free snapshot", () => {
+  it("builds a versioned, float-free snapshot with the prerequisite block", () => {
     const snapshot = buildCloseSnapshot({
       scopeType: "location",
       scopeId: "loc-1",
@@ -109,6 +231,13 @@ describe("buildCloseSnapshot", () => {
       periodEnd: "2026-03-05",
       capturedAt: "2026-03-05T22:00:00.000Z",
       checklist: [{ key: "cash_counted", label: "Count the till", done: false }],
+      prerequisites: buildClosePrerequisites({
+        reconciliationStatuses: ["approved"],
+        importRunStatuses: ["posted"],
+        openExceptions: 1,
+        tolerances: { sales_settlement: true, supplier_invoice: true },
+        scopeLimited: true,
+      }),
     });
 
     expect(snapshot).toEqual({
@@ -119,6 +248,36 @@ describe("buildCloseSnapshot", () => {
       periodEnd: "2026-03-05",
       capturedAt: "2026-03-05T22:00:00.000Z",
       checklist: [{ key: "cash_counted", label: "Count the till", done: false }],
+      prerequisites: {
+        reconciliations: {
+          total: 1,
+          byStatus: {
+            pending: 0,
+            within_tolerance: 0,
+            exception: 0,
+            resolved: 0,
+            approved: 1,
+          },
+          blocking: 0,
+        },
+        importRuns: {
+          total: 1,
+          byStatus: {
+            uploaded: 0,
+            parsed: 0,
+            needs_review: 0,
+            validated: 0,
+            posted: 1,
+            partially_posted: 0,
+            failed: 0,
+            superseded: 0,
+          },
+          blocking: 0,
+        },
+        exceptions: { open: 1 },
+        tolerances: { sales_settlement: true, supplier_invoice: true },
+        scopeLimited: true,
+      },
     });
   });
 });

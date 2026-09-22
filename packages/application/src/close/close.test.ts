@@ -1,4 +1,5 @@
 import { DomainError, NotFoundError } from "@aquarela/domain";
+import type { CloseSnapshot } from "@aquarela/domain";
 import { describe, expect, it } from "vitest";
 
 import { beginPeriodClose } from "./begin-period-close";
@@ -10,9 +11,11 @@ import { reopenPeriodClose } from "./reopen-period-close";
 import {
   FakePeriodCloseStore,
   seedPeriodCloseFixture,
+  type FakePeriodOverlapRow,
   type PeriodCloseFixture,
 } from "./test-support";
 import { PERIOD_CLOSE_SCOPE_TYPES, PERIOD_CLOSE_STATUSES } from "./types";
+import type { PeriodCloseRecord } from "./types";
 
 const CHECKLIST = [{ key: "cash_counted", label: "Count the till", done: true }];
 
@@ -64,7 +67,7 @@ describe("beginPeriodClose", () => {
       reopenReason: null,
       updatedAt: null,
     });
-    expect((close.snapshot as { schemaVersion: number }).schemaVersion).toBe(1);
+    expect((close.snapshot as { schemaVersion: number }).schemaVersion).toBe(2);
     expect(store.periodCloses.size).toBe(1);
 
     const audit = store.audits.find((row) => row.action === "close.period_close.started");
@@ -167,7 +170,7 @@ describe("beginPeriodClose", () => {
     expect(store.audits).toHaveLength(0);
   });
 
-  it("treats a create race for a new scope as an idempotent no-op (F2)", async () => {
+  it("recovers a create race from a fresh transaction outside the failed one (F1)", async () => {
     const { store, fixture } = setup();
     const seeded = await beginLocation(store, fixture);
     const auditsAfterSeed = store.audits.length;
@@ -176,6 +179,25 @@ describe("beginPeriodClose", () => {
     // winner's row was not visible yet), then the INSERT collides on the unique.
     const racing = Object.create(store) as FakePeriodCloseStore;
     racing.lockPeriodCloseForScope = async () => undefined;
+
+    // On Postgres the failed transaction is aborted, so the recovery re-read must
+    // run **outside** it. Track transaction depth and flag a read outside one.
+    let inTransaction = false;
+    let reReadOutsideTransaction = false;
+    const runTransaction = store.withTransaction.bind(racing);
+    racing.withTransaction = async (fn) => {
+      inTransaction = true;
+      try {
+        return await runTransaction(fn);
+      } finally {
+        inTransaction = false;
+      }
+    };
+    const findForScope = store.findPeriodCloseForScope.bind(racing);
+    racing.findPeriodCloseForScope = async (query) => {
+      if (!inTransaction) reReadOutsideTransaction = true;
+      return findForScope(query);
+    };
 
     const result = await beginPeriodClose(racing, {
       organizationId: fixture.organizationId,
@@ -187,7 +209,101 @@ describe("beginPeriodClose", () => {
     });
 
     expect(result.id).toBe(seeded.id);
+    expect(reReadOutsideTransaction).toBe(true);
     expect(store.audits).toHaveLength(auditsAfterSeed);
+  });
+
+  it("surfaces a locked create-race winner as the locked DomainError (F1)", async () => {
+    const { store, fixture } = setup();
+    const winner = await beginLocation(store, fixture);
+    await lockPeriodClose(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      periodCloseId: winner.id,
+    });
+
+    // The loser misses the lock read, so it reaches the INSERT; the fresh-
+    // transaction recovery then finds the winner and must honour its locked status.
+    const racing = Object.create(store) as FakePeriodCloseStore;
+    racing.lockPeriodCloseForScope = async () => undefined;
+
+    await expect(
+      beginPeriodClose(racing, {
+        organizationId: fixture.organizationId,
+        actorId: fixture.actorId,
+        scopeType: "location",
+        scopeId: fixture.locationId,
+        periodStart: fixture.day,
+        checklist: [],
+      }),
+    ).rejects.toThrow("period is locked; reopen it first");
+  });
+
+  it("rethrows the original error when the recovery re-read finds no row (F1)", async () => {
+    const { store, fixture } = setup();
+
+    const failing = Object.create(store) as FakePeriodCloseStore;
+    failing.createPeriodClose = async () => {
+      throw new DomainError("insert rejected by the database");
+    };
+
+    await expect(
+      beginPeriodClose(failing, {
+        organizationId: fixture.organizationId,
+        actorId: fixture.actorId,
+        scopeType: "location",
+        scopeId: fixture.locationId,
+        periodStart: fixture.day,
+        checklist: [],
+      }),
+    ).rejects.toThrow("insert rejected by the database");
+  });
+
+  it("does not attempt race recovery when the INSERT was never reached (F1)", async () => {
+    const { store, fixture } = setup();
+
+    const failing = Object.create(store) as FakePeriodCloseStore;
+    failing.lockPeriodCloseForScope = async () => {
+      throw new Error("lock read failed");
+    };
+
+    await expect(
+      beginPeriodClose(failing, {
+        organizationId: fixture.organizationId,
+        actorId: fixture.actorId,
+        scopeType: "location",
+        scopeId: fixture.locationId,
+        periodStart: fixture.day,
+        checklist: [],
+      }),
+    ).rejects.toThrow("lock read failed");
+  });
+
+  it("keeps a blocker failure for an existing reopenable close instead of returning it (F1)", async () => {
+    const { store, fixture } = setup();
+    const opened = await beginLocation(store, fixture);
+    const locked = await lockPeriodClose(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      periodCloseId: opened.id,
+    });
+    await reopenPeriodClose(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      periodCloseId: locked.id,
+      reason: "correction",
+    });
+    // A blocker now exists: re-beginning the reopened close must fail; the
+    // recovery must not mistake the pre-existing row for a create-race winner.
+    store.reconciliations.push({
+      organizationId: fixture.organizationId,
+      status: "pending",
+      periodStart: fixture.day,
+      periodEnd: fixture.day,
+    });
+
+    await expect(beginLocation(store, fixture)).rejects.toThrow(/cannot close location/);
+    expect(store.periodCloses.get(opened.id)?.status).toBe("reopened");
   });
 
   it("rejects a duplicate scope+period create in the fake (mirrors the unique)", async () => {
@@ -222,6 +338,345 @@ describe("beginPeriodClose", () => {
     await expect(beginLocation(store, fixture, overrides)).rejects.toThrow(DomainError);
     expect(store.periodCloses.size).toBe(0);
     expect(store.audits).toHaveLength(0);
+  });
+});
+
+describe("beginPeriodClose prerequisites (DEC-107)", () => {
+  function seedReconciliation(
+    store: FakePeriodCloseStore,
+    fixture: PeriodCloseFixture,
+    overrides: Partial<FakePeriodOverlapRow> = {},
+  ): void {
+    store.reconciliations.push({
+      organizationId: fixture.organizationId,
+      status: "pending",
+      periodStart: fixture.day,
+      periodEnd: fixture.day,
+      ...overrides,
+    });
+  }
+
+  function seedImportRun(
+    store: FakePeriodCloseStore,
+    fixture: PeriodCloseFixture,
+    overrides: Partial<FakePeriodOverlapRow> = {},
+  ): void {
+    store.importRuns.push({
+      organizationId: fixture.organizationId,
+      status: "validated",
+      periodStart: fixture.day,
+      periodEnd: fixture.day,
+      ...overrides,
+    });
+  }
+
+  function snapshotOf(close: PeriodCloseRecord): CloseSnapshot {
+    return close.snapshot as CloseSnapshot;
+  }
+
+  it("freezes the version-2 prerequisite block when nothing blocks", async () => {
+    const { store, fixture } = setup();
+    seedReconciliation(store, fixture, { status: "approved" });
+    store.reconciliationTolerances.set(`${fixture.organizationId}:sales_settlement`, {
+      effectiveFrom: "2026-01-01",
+      effectiveTo: null,
+    });
+    store.openDataQualityExceptions.set(fixture.organizationId, 2);
+
+    const close = await beginLocation(store, fixture);
+    const snapshot = snapshotOf(close);
+
+    expect(snapshot.schemaVersion).toBe(2);
+    expect(snapshot.prerequisites).toEqual({
+      reconciliations: {
+        total: 1,
+        byStatus: {
+          pending: 0,
+          within_tolerance: 0,
+          exception: 0,
+          resolved: 0,
+          approved: 1,
+        },
+        blocking: 0,
+      },
+      importRuns: {
+        total: 0,
+        byStatus: {
+          uploaded: 0,
+          parsed: 0,
+          needs_review: 0,
+          validated: 0,
+          posted: 0,
+          partially_posted: 0,
+          failed: 0,
+          superseded: 0,
+        },
+        blocking: 0,
+      },
+      exceptions: { open: 2 },
+      tolerances: { sales_settlement: true, supplier_invoice: false },
+      scopeLimited: true,
+    });
+  });
+
+  it("sets scopeLimited false for a company scope", async () => {
+    const { store, fixture } = setup();
+
+    const close = await beginPeriodClose(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      scopeType: "company",
+      scopeId: fixture.organizationId,
+      periodStart: fixture.monthStart,
+      checklist: [],
+    });
+
+    expect(snapshotOf(close).prerequisites.scopeLimited).toBe(false);
+  });
+
+  it.each([
+    ["pending", "pending"],
+    ["exception", "exception"],
+  ])("blocks on a %s reconciliation and writes nothing", async (_label, status) => {
+    const { store, fixture } = setup();
+    seedReconciliation(store, fixture, { status });
+
+    await expect(beginLocation(store, fixture)).rejects.toThrow(DomainError);
+    await expect(beginLocation(store, fixture)).rejects.toThrow(
+      /cannot close location 2026-03-05: 1 reconciliation\(s\) unresolved \(pending\/exception\)/,
+    );
+    expect(store.periodCloses.size).toBe(0);
+    expect(store.audits).toHaveLength(0);
+  });
+
+  it.each([["parsed"], ["needs_review"], ["validated"], ["partially_posted"]])(
+    "blocks on a %s import run through beginPeriodClose",
+    async (status) => {
+      const { store, fixture } = setup();
+      seedImportRun(store, fixture, { status });
+
+      await expect(beginLocation(store, fixture)).rejects.toThrow(
+        /cannot close location 2026-03-05: 1 import run\(s\) not closed/,
+      );
+      expect(store.periodCloses.size).toBe(0);
+      expect(store.audits).toHaveLength(0);
+    },
+  );
+
+  it("does not block on a posted import run", async () => {
+    const { store, fixture } = setup();
+    seedImportRun(store, fixture, { status: "posted" });
+
+    const close = await beginLocation(store, fixture);
+
+    expect(snapshotOf(close).prerequisites.importRuns.byStatus.posted).toBe(1);
+    expect(snapshotOf(close).prerequisites.importRuns.blocking).toBe(0);
+    expect(store.periodCloses.size).toBe(1);
+  });
+
+  it("does not block on a within_tolerance or resolved reconciliation", async () => {
+    const { store, fixture } = setup();
+    seedReconciliation(store, fixture, { status: "within_tolerance" });
+    seedReconciliation(store, fixture, { status: "resolved" });
+
+    const close = await beginLocation(store, fixture);
+
+    expect(snapshotOf(close).prerequisites.reconciliations.byStatus).toMatchObject({
+      within_tolerance: 1,
+      resolved: 1,
+    });
+    expect(snapshotOf(close).prerequisites.reconciliations.blocking).toBe(0);
+    expect(store.periodCloses.size).toBe(1);
+  });
+
+  it("names both blocking sources in one error", async () => {
+    const { store, fixture } = setup();
+    seedReconciliation(store, fixture, { status: "pending" });
+    seedImportRun(store, fixture, { status: "uploaded" });
+
+    await expect(beginLocation(store, fixture)).rejects.toThrow(
+      /1 reconciliation\(s\) unresolved \(pending\/exception\) and 1 import run\(s\) not closed/,
+    );
+  });
+
+  it("does not block on a non-overlapping pending reconciliation", async () => {
+    const { store, fixture } = setup();
+    seedReconciliation(store, fixture, {
+      periodStart: "2026-04-01",
+      periodEnd: "2026-04-30",
+    });
+
+    const close = await beginLocation(store, fixture);
+
+    expect(snapshotOf(close).prerequisites.reconciliations.total).toBe(0);
+    expect(store.periodCloses.size).toBe(1);
+  });
+
+  it("counts a source ending on the close day as overlapping", async () => {
+    const { store, fixture } = setup();
+    seedReconciliation(store, fixture, {
+      periodStart: "2026-02-01",
+      periodEnd: fixture.day,
+    });
+
+    await expect(beginLocation(store, fixture)).rejects.toThrow(DomainError);
+  });
+
+  it("treats a source starting on a company close's periodEnd as overlapping (inclusive edge)", async () => {
+    const { store, fixture } = setup();
+    seedReconciliation(store, fixture, {
+      periodStart: "2026-03-31",
+      periodEnd: "2026-03-31",
+    });
+
+    await expect(
+      beginPeriodClose(store, {
+        organizationId: fixture.organizationId,
+        actorId: fixture.actorId,
+        scopeType: "company",
+        scopeId: fixture.organizationId,
+        periodStart: fixture.monthStart,
+        checklist: [],
+      }),
+    ).rejects.toThrow(/cannot close company 2026-03-01/);
+  });
+
+  it("treats a source fully spanning the close period as overlapping", async () => {
+    const { store, fixture } = setup();
+    seedReconciliation(store, fixture, {
+      periodStart: "2026-01-01",
+      periodEnd: "2026-12-31",
+    });
+
+    await expect(beginLocation(store, fixture)).rejects.toThrow(DomainError);
+  });
+
+  it("does not block on a source starting after the close period", async () => {
+    const { store, fixture } = setup();
+    seedReconciliation(store, fixture, {
+      periodStart: "2026-03-06",
+      periodEnd: "2026-03-31",
+    });
+
+    const close = await beginLocation(store, fixture);
+
+    expect(snapshotOf(close).prerequisites.reconciliations.total).toBe(0);
+  });
+
+  it("scopes the prerequisite reads to the organization", async () => {
+    const { store, fixture } = setup();
+    seedReconciliation(store, fixture, {
+      organizationId: fixture.otherOrganizationId,
+      status: "pending",
+    });
+
+    const close = await beginLocation(store, fixture);
+
+    expect(snapshotOf(close).prerequisites.reconciliations.total).toBe(0);
+  });
+
+  it("never blocks on open exceptions or a missing tolerance (informational)", async () => {
+    const { store, fixture } = setup();
+    store.openDataQualityExceptions.set(fixture.organizationId, 5);
+
+    const close = await beginLocation(store, fixture);
+
+    expect(snapshotOf(close).prerequisites.exceptions).toEqual({ open: 5 });
+    expect(snapshotOf(close).prerequisites.tolerances).toEqual({
+      sales_settlement: false,
+      supplier_invoice: false,
+    });
+    expect(store.periodCloses.size).toBe(1);
+  });
+
+  it("ignores an expired tolerance at the period end", async () => {
+    const { store, fixture } = setup();
+    store.reconciliationTolerances.set(`${fixture.organizationId}:sales_settlement`, {
+      effectiveFrom: "2026-01-01",
+      effectiveTo: "2026-02-01",
+    });
+
+    const close = await beginLocation(store, fixture);
+
+    expect(snapshotOf(close).prerequisites.tolerances.sales_settlement).toBe(false);
+  });
+
+  it("ignores a not-yet-effective tolerance at the period end", async () => {
+    const { store, fixture } = setup();
+    store.reconciliationTolerances.set(`${fixture.organizationId}:sales_settlement`, {
+      effectiveFrom: "2026-04-01",
+      effectiveTo: null,
+    });
+
+    const close = await beginLocation(store, fixture);
+
+    expect(snapshotOf(close).prerequisites.tolerances.sales_settlement).toBe(false);
+  });
+
+  it("treats the tolerance effectiveTo boundary as exclusive", async () => {
+    const { store, fixture } = setup();
+    // effectiveTo equals the close day, so the half-open window does NOT cover it.
+    store.reconciliationTolerances.set(`${fixture.organizationId}:sales_settlement`, {
+      effectiveFrom: "2026-03-01",
+      effectiveTo: fixture.day,
+    });
+    store.reconciliationTolerances.set(`${fixture.organizationId}:supplier_invoice`, {
+      effectiveFrom: "2026-03-01",
+      effectiveTo: "2026-04-01",
+    });
+
+    const close = await beginLocation(store, fixture);
+
+    expect(snapshotOf(close).prerequisites.tolerances).toEqual({
+      sales_settlement: false,
+      supplier_invoice: true,
+    });
+  });
+
+  it("reads a stored version-1 snapshot (no prerequisites) back unchanged", async () => {
+    const { store, fixture } = setup();
+    const legacySnapshot = {
+      schemaVersion: 1,
+      scopeType: "location",
+      scopeId: fixture.locationId,
+      periodStart: fixture.day,
+      periodEnd: fixture.day,
+      capturedAt: "2026-03-05T22:00:00.000Z",
+      checklist: [{ key: "cash_counted", label: "Count the till", done: true }],
+    };
+    store.periodCloses.set("legacy-1", {
+      id: "legacy-1",
+      organizationId: fixture.organizationId,
+      scopeType: "location",
+      scopeId: fixture.locationId,
+      periodStart: fixture.day,
+      periodEnd: fixture.day,
+      status: "closing",
+      checklist: legacySnapshot.checklist,
+      snapshot: legacySnapshot,
+      correctionPolicy: null,
+      lockedBy: null,
+      lockedAt: null,
+      reopenedBy: null,
+      reopenedAt: null,
+      reopenReason: null,
+      createdAt: "2026-03-05T21:00:00.000Z",
+      updatedAt: null,
+    });
+
+    const found = await findPeriodClose(store, {
+      organizationId: fixture.organizationId,
+      periodCloseId: "legacy-1",
+    });
+    expect(found?.snapshot).toEqual(legacySnapshot);
+    expect((found?.snapshot as { prerequisites?: unknown }).prerequisites).toBeUndefined();
+
+    const locked = await lockPeriodClose(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      periodCloseId: "legacy-1",
+    });
+    expect(locked.snapshot).toEqual(legacySnapshot);
   });
 });
 
@@ -266,6 +721,27 @@ describe("lockPeriodClose", () => {
     expect(store.audits.filter((row) => row.action === "close.period_close.locked")).toHaveLength(
       1,
     );
+  });
+
+  it("does not re-evaluate prerequisites at lock time", async () => {
+    const { store, fixture } = setup();
+    const opened = await beginLocation(store, fixture);
+    // A blocker appearing after begin must not affect the frozen snapshot: lock
+    // freezes the close as begun and deliberately does not re-run the gate.
+    store.reconciliations.push({
+      organizationId: fixture.organizationId,
+      status: "pending",
+      periodStart: fixture.day,
+      periodEnd: fixture.day,
+    });
+
+    const locked = await lockPeriodClose(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      periodCloseId: opened.id,
+    });
+
+    expect(locked.status).toBe("locked");
   });
 
   it("rejects a close that is not closing", async () => {

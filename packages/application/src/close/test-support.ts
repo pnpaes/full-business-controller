@@ -1,4 +1,5 @@
 import { DomainError } from "@aquarela/domain";
+import type { ToleranceKind } from "@aquarela/domain";
 
 import type { AuditInput } from "../auth";
 
@@ -8,16 +9,50 @@ import type {
   PeriodCloseListQuery,
   PeriodCloseRecord,
   PeriodCloseStore,
+  PeriodOverlapRecord,
+  PeriodWindowQuery,
   UpdatePeriodCloseRecord,
 } from "./types";
 
 /**
+ * A prerequisite source row in the fake: the `status` the evaluation reads plus
+ * the `period_start`/`period_end` the overlap filter uses. The organization is
+ * carried so the fake mirrors the adapter's `DEC-061` scoping.
+ */
+export interface FakePeriodOverlapRow {
+  readonly organizationId: string;
+  readonly status: string;
+  /** `date`, `YYYY-MM-DD`. */
+  readonly periodStart: string;
+  /** `date`, `YYYY-MM-DD`. */
+  readonly periodEnd: string;
+}
+
+/**
+ * A seeded `reconciliation_tolerance` in the fake: the half-open
+ * `[effectiveFrom, effectiveTo)` window `findReconciliationTolerance` reads,
+ * mirroring `repositories/reconciliation.ts`.
+ */
+export interface FakeReconciliationTolerance {
+  /** `date`, `YYYY-MM-DD`, inclusive. */
+  readonly effectiveFrom: string;
+  /** `date`, `YYYY-MM-DD`, exclusive; `null` is open-ended. */
+  readonly effectiveTo: string | null;
+}
+
+/**
  * A shallow copy of every mutable map/array a close transaction can touch, used
  * to roll back a failed `withTransaction` (the fake runs inline without one).
+ * The prerequisite fixture maps are included even though the current commands
+ * only read them: a future writing command must not silently skip rollback.
  */
 interface PeriodCloseSnapshot {
   readonly periodCloses: Map<string, PeriodCloseRecord>;
   readonly audits: AuditInput[];
+  readonly reconciliations: FakePeriodOverlapRow[];
+  readonly importRuns: FakePeriodOverlapRow[];
+  readonly openDataQualityExceptions: Map<string, number>;
+  readonly reconciliationTolerances: Map<string, FakeReconciliationTolerance>;
 }
 
 /**
@@ -29,6 +64,16 @@ interface PeriodCloseSnapshot {
 export class FakePeriodCloseStore implements PeriodCloseStore {
   readonly periodCloses = new Map<string, PeriodCloseRecord>();
   readonly audits: AuditInput[] = [];
+
+  // `DEC-107` prerequisite fixtures: tests seed these directly. A command only
+  // reads them today, but they are part of the transaction snapshot so a future
+  // writing command rolls back like the real adapter.
+  readonly reconciliations: FakePeriodOverlapRow[] = [];
+  readonly importRuns: FakePeriodOverlapRow[] = [];
+  /** organization id → open (`open`/`acknowledged`) exception count. */
+  readonly openDataQualityExceptions = new Map<string, number>();
+  /** `${organizationId}:${kind}` → the effective tolerance. */
+  readonly reconciliationTolerances = new Map<string, FakeReconciliationTolerance>();
 
   private sequence = 0;
 
@@ -54,6 +99,10 @@ export class FakePeriodCloseStore implements PeriodCloseStore {
     return {
       periodCloses: new Map(this.periodCloses),
       audits: [...this.audits],
+      reconciliations: [...this.reconciliations],
+      importRuns: [...this.importRuns],
+      openDataQualityExceptions: new Map(this.openDataQualityExceptions),
+      reconciliationTolerances: new Map(this.reconciliationTolerances),
     };
   }
 
@@ -62,6 +111,18 @@ export class FakePeriodCloseStore implements PeriodCloseStore {
     for (const [key, value] of snapshot.periodCloses) this.periodCloses.set(key, value);
     this.audits.length = 0;
     this.audits.push(...snapshot.audits);
+    this.reconciliations.length = 0;
+    this.reconciliations.push(...snapshot.reconciliations);
+    this.importRuns.length = 0;
+    this.importRuns.push(...snapshot.importRuns);
+    this.openDataQualityExceptions.clear();
+    for (const [key, value] of snapshot.openDataQualityExceptions) {
+      this.openDataQualityExceptions.set(key, value);
+    }
+    this.reconciliationTolerances.clear();
+    for (const [key, value] of snapshot.reconciliationTolerances) {
+      this.reconciliationTolerances.set(key, value);
+    }
   }
 
   async writeAudit(input: AuditInput): Promise<void> {
@@ -102,6 +163,55 @@ export class FakePeriodCloseStore implements PeriodCloseStore {
     };
     this.periodCloses.set(record.id, record);
     return record;
+  }
+
+  /** The `DEC-107` overlap filter, organization-scoped: `[start, end]` vs `[from, to]`. */
+  async listReconciliationsForPeriod(
+    query: PeriodWindowQuery,
+  ): Promise<readonly PeriodOverlapRecord[]> {
+    return this.overlapping(this.reconciliations, query);
+  }
+
+  async listImportRunsForPeriod(query: PeriodWindowQuery): Promise<readonly PeriodOverlapRecord[]> {
+    return this.overlapping(this.importRuns, query);
+  }
+
+  private overlapping(
+    rows: readonly FakePeriodOverlapRow[],
+    query: PeriodWindowQuery,
+  ): readonly PeriodOverlapRecord[] {
+    return rows
+      .filter(
+        (row) =>
+          row.organizationId === query.organizationId &&
+          row.periodStart <= query.to &&
+          row.periodEnd >= query.from,
+      )
+      .map((row) => ({ status: row.status }));
+  }
+
+  async countOpenDataQualityExceptions(query: {
+    readonly organizationId: string;
+  }): Promise<number> {
+    return this.openDataQualityExceptions.get(query.organizationId) ?? 0;
+  }
+
+  /**
+   * The effective tolerance at `asOf`, mirroring
+   * `repositories/reconciliation.ts`: half-open `[effectiveFrom, effectiveTo)`,
+   * so `effectiveFrom <= asOf` and `(effectiveTo === null || asOf < effectiveTo)`.
+   * A seeded window that does not contain `asOf` resolves to `undefined`.
+   */
+  async findReconciliationTolerance(query: {
+    readonly organizationId: string;
+    readonly kind: ToleranceKind;
+    readonly asOf: string;
+  }): Promise<FakeReconciliationTolerance | undefined> {
+    const tolerance = this.reconciliationTolerances.get(`${query.organizationId}:${query.kind}`);
+    if (tolerance === undefined) return undefined;
+    if (tolerance.effectiveFrom > query.asOf) return undefined;
+    if (tolerance.effectiveTo !== null && query.asOf >= tolerance.effectiveTo) return undefined;
+    return tolerance;
   }
 
   async findPeriodClose(query: {

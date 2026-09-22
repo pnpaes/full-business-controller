@@ -33,21 +33,14 @@ export { isReadingInRange } from "./monitoring";
 export { PAYROLL_SNAPSHOT_VERSION, buildPayrollSnapshot, isPayrollReportStatus } from "./payroll";
 export type { BuildPayrollSnapshotInput, PayrollSnapshot, PayrollSnapshotLine } from "./payroll";
 export {
-  PERIOD_CLOSE_SCOPE_TYPES,
-  PERIOD_CLOSE_SNAPSHOT_VERSION,
-  PERIOD_CLOSE_STATUSES,
+  IMPORT_RUN_BLOCKING_STATUSES,
+  RECONCILIATION_BLOCKING_STATUSES,
   assertCloseChecklist,
+  buildClosePrerequisites,
   buildCloseSnapshot,
   resolveClosePeriod,
 } from "./period-close";
-export type {
-  BuildCloseSnapshotInput,
-  CloseChecklistItem,
-  ClosePeriod,
-  CloseSnapshot,
-  PeriodCloseScopeType,
-  PeriodCloseStatus,
-} from "./period-close";
+export type { ClosePeriod, ClosePrerequisites, CloseSnapshot } from "./period-close";
 export {
   PRESENTED_MONEY_SCALE,
   TAX_BASES,

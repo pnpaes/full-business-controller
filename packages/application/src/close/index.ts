@@ -20,5 +20,7 @@ export type {
   PeriodCloseScopeType,
   PeriodCloseStatus,
   PeriodCloseStore,
+  PeriodOverlapRecord,
+  PeriodWindowQuery,
   UpdatePeriodCloseRecord,
 } from "./types";

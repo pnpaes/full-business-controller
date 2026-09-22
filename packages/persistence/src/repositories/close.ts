@@ -1,7 +1,9 @@
-import { and, asc, desc, eq, gte, lte } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
 
 import type { Database } from "../client";
-import { periodClose } from "../schema";
+import { dataQualityException, importRun, periodClose, reconciliation } from "../schema";
+import type { ImportRun } from "./imports";
+import type { Reconciliation } from "./reconciliation";
 
 export type PeriodClose = typeof periodClose.$inferSelect;
 
@@ -312,4 +314,90 @@ export async function findLockedPeriodCloseCoveringDate(
     )
     .limit(1);
   return rows[0];
+}
+
+/*
+ * `DEC-107` (row 13b-1): the close-prerequisite reads. They are organization-
+ * scoped (`DEC-061`) and read the sources the close gate evaluates over the
+ * close period. `reconciliation`/`import_run` carry `period_start`/`period_end`
+ * but **no location column**, so the overlap is organization-wide by period;
+ * `data_quality_exception` has neither a period nor a location column, so its
+ * count is organization-wide. The effective tolerance is read with the existing
+ * `findReconciliationTolerance` (`DEC-072`), not re-implemented here.
+ */
+
+export interface ListPeriodOverlapQuery {
+  readonly organizationId: string;
+  /** `date`, `YYYY-MM-DD`; inclusive lower bound of the close period. */
+  readonly from: string;
+  /** `date`, `YYYY-MM-DD`; inclusive upper bound of the close period. */
+  readonly to: string;
+}
+
+/**
+ * `reconciliation` rows for one organization whose `[period_start, period_end]`
+ * overlaps `[from, to]` — `period_start <= to AND period_end >= from` — so a
+ * reconciliation that starts before or ends after the close period is still
+ * counted. Organization-scoped (`DEC-061`).
+ */
+export async function listReconciliationsForPeriod(
+  db: Database,
+  query: ListPeriodOverlapQuery,
+): Promise<Reconciliation[]> {
+  return db
+    .select()
+    .from(reconciliation)
+    .where(
+      and(
+        eq(reconciliation.organizationId, query.organizationId),
+        lte(reconciliation.periodStart, query.to),
+        gte(reconciliation.periodEnd, query.from),
+      ),
+    );
+}
+
+/**
+ * `import_run` rows for one organization whose `[period_start, period_end]`
+ * overlaps `[from, to]` (`period_start <= to AND period_end >= from`).
+ * Organization-scoped (`DEC-061`).
+ */
+export async function listImportRunsForPeriod(
+  db: Database,
+  query: ListPeriodOverlapQuery,
+): Promise<ImportRun[]> {
+  return db
+    .select()
+    .from(importRun)
+    .where(
+      and(
+        eq(importRun.organizationId, query.organizationId),
+        lte(importRun.periodStart, query.to),
+        gte(importRun.periodEnd, query.from),
+      ),
+    );
+}
+
+/** The `data_quality_exception` statuses counted as "open" for the close (`DEC-107`). */
+const OPEN_DATA_QUALITY_EXCEPTION_STATUSES = ["open", "acknowledged"] as const;
+
+/**
+ * Count of one organization's `data_quality_exception` rows in an open state
+ * (`open`/`acknowledged`), organization-scoped (`DEC-061`). Informational for
+ * the close (`DEC-107`): the table has no period/location column, so the count
+ * is organization-wide and never blocks.
+ */
+export async function countOpenDataQualityExceptions(
+  db: Database,
+  query: { readonly organizationId: string },
+): Promise<number> {
+  const rows = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(dataQualityException)
+    .where(
+      and(
+        eq(dataQualityException.organizationId, query.organizationId),
+        inArray(dataQualityException.status, [...OPEN_DATA_QUALITY_EXCEPTION_STATUSES]),
+      ),
+    );
+  return rows[0]?.count ?? 0;
 }

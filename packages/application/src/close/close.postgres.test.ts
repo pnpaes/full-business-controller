@@ -1,6 +1,10 @@
 import { DomainError, NotFoundError } from "@aquarela/domain";
 import {
+  createDataQualityException,
   createDb,
+  createImportRun,
+  createReconciliation,
+  createReconciliationTolerance,
   location,
   organization,
   periodClose,
@@ -208,6 +212,141 @@ describe.skipIf(!databaseUrl)("period close against PostgreSQL", () => {
           periodCloseId: close.id,
         }),
       ).rejects.toThrow(NotFoundError);
+    });
+  });
+
+  it("reads the DEC-107 prerequisites organization-scoped and by period overlap", async () => {
+    await inRollback(client.db, async (tx) => {
+      const store = createPostgresPeriodCloseStore(tx);
+      const otherOrgId = await seedOrganization(tx, `Close IT prereq other ${suffix}`);
+      const scopeId = randomUUID();
+
+      // Two organization reconciliations: one overlapping May, one in June, plus
+      // a May row in another organization that must stay invisible.
+      const overlapping = await createReconciliation(tx, {
+        organizationId: orgId,
+        scopeType: "sales_source",
+        scopeId,
+        periodStart: "2026-05-01",
+        periodEnd: "2026-05-31",
+        expectedAmount: "100.0000",
+        actualAmount: "90.0000",
+        tolerance: "1.0000",
+        difference: "-10.0000",
+        status: "pending",
+      });
+      await createReconciliation(tx, {
+        organizationId: orgId,
+        scopeType: "sales_source",
+        scopeId,
+        periodStart: "2026-06-01",
+        periodEnd: "2026-06-30",
+        expectedAmount: "100.0000",
+        actualAmount: "100.0000",
+        tolerance: "1.0000",
+        difference: "0.0000",
+        status: "pending",
+      });
+      await createReconciliation(tx, {
+        organizationId: otherOrgId,
+        scopeType: "sales_source",
+        scopeId,
+        periodStart: "2026-05-01",
+        periodEnd: "2026-05-31",
+        expectedAmount: "100.0000",
+        actualAmount: "100.0000",
+        tolerance: "1.0000",
+        difference: "0.0000",
+        status: "pending",
+      });
+
+      const reconciliations = await store.listReconciliationsForPeriod({
+        organizationId: orgId,
+        from: "2026-05-01",
+        to: "2026-05-31",
+      });
+      expect(reconciliations).toHaveLength(1);
+      expect(reconciliations[0]?.status).toBe("pending");
+      expect(overlapping.status).toBe("pending");
+
+      // Import runs: an overlapping May run and a June run, plus a May other-org run.
+      await createImportRun(tx, {
+        organizationId: orgId,
+        source: "zettle-legacy",
+        profileVersion: "1",
+        fileHash: randomUUID(),
+        periodStart: "2026-05-01",
+        periodEnd: "2026-05-31",
+        status: "validated",
+      });
+      await createImportRun(tx, {
+        organizationId: orgId,
+        source: "zettle-legacy",
+        profileVersion: "1",
+        fileHash: randomUUID(),
+        periodStart: "2026-06-01",
+        periodEnd: "2026-06-30",
+        status: "posted",
+      });
+      await createImportRun(tx, {
+        organizationId: otherOrgId,
+        source: "zettle-legacy",
+        profileVersion: "1",
+        fileHash: randomUUID(),
+        periodStart: "2026-05-01",
+        periodEnd: "2026-05-31",
+        status: "validated",
+      });
+
+      const importRuns = await store.listImportRunsForPeriod({
+        organizationId: orgId,
+        from: "2026-05-01",
+        to: "2026-05-31",
+      });
+      expect(importRuns).toHaveLength(1);
+      expect(importRuns[0]?.status).toBe("validated");
+
+      // Exceptions: open/acknowledged count; resolved is not open; other org is invisible.
+      for (const status of ["open", "acknowledged", "resolved"]) {
+        await createDataQualityException(tx, {
+          organizationId: orgId,
+          ruleCode: `close_prereq_${suffix}`,
+          entityType: "stock_transfer",
+          entityId: randomUUID(),
+          status,
+        });
+      }
+      await createDataQualityException(tx, {
+        organizationId: otherOrgId,
+        ruleCode: `close_prereq_other_${suffix}`,
+        entityType: "stock_transfer",
+        entityId: randomUUID(),
+        status: "open",
+      });
+      expect(await store.countOpenDataQualityExceptions({ organizationId: orgId })).toBe(2);
+
+      // Tolerance: effective at the period end, and an expired window is not.
+      await createReconciliationTolerance(tx, {
+        organizationId: orgId,
+        kind: "sales_settlement",
+        rate: "0.010000",
+        floorAmount: "1.0000",
+        effectiveFrom: "2026-01-01",
+      });
+      expect(
+        await store.findReconciliationTolerance({
+          organizationId: orgId,
+          kind: "sales_settlement",
+          asOf: "2026-05-31",
+        }),
+      ).toEqual({ effectiveFrom: "2026-01-01" });
+      expect(
+        await store.findReconciliationTolerance({
+          organizationId: orgId,
+          kind: "supplier_invoice",
+          asOf: "2026-05-31",
+        }),
+      ).toBeUndefined();
     });
   });
 

@@ -1,4 +1,5 @@
 import { PERIOD_CLOSE_SCOPE_TYPE, PERIOD_CLOSE_STATUS } from "@aquarela/persistence";
+import type { ToleranceKind } from "@aquarela/domain";
 
 import type { AuditInput } from "../auth";
 
@@ -130,11 +131,37 @@ export interface PeriodCloseListQuery {
 }
 
 /**
+ * A prerequisite source row reduced to its `status` — the only field the close
+ * prerequisite evaluation reads (`DEC-107`).
+ */
+export interface PeriodOverlapRecord {
+  readonly status: string;
+}
+
+/**
+ * An inclusive `[from, to]` `date` window for the period-overlap prerequisite
+ * reads (`DEC-107`). A source row `[periodStart, periodEnd]` overlaps when
+ * `periodStart <= to && periodEnd >= from`.
+ */
+export interface PeriodWindowQuery {
+  readonly organizationId: string;
+  /** `date`, `YYYY-MM-DD`, inclusive lower bound of the close period. */
+  readonly from: string;
+  /** `date`, `YYYY-MM-DD`, inclusive upper bound of the close period. */
+  readonly to: string;
+}
+
+/**
  * The persistence port for the close/lock slice. One port covers the one table,
  * mirroring the persistence repository module. `lockPeriodCloseForScope` takes
  * the scope row's write lock so concurrent `begin` calls serialise;
  * `findLockedPeriodCloseCoveringDate` answers the `REC-006` "is this date
  * locked?" read.
+ *
+ * The four prerequisite reads (`DEC-107`) are organization-scoped (`DEC-061`)
+ * and mirror the persistence repository functions; `reconciliation`/
+ * `import_run` have no location dimension, so the period overlap is
+ * organization-wide.
  */
 export interface PeriodCloseStore {
   /**
@@ -145,6 +172,27 @@ export interface PeriodCloseStore {
   /** Append-only audit fact; the caller must not pass secrets (ADR-0003 convention). */
   writeAudit(input: AuditInput): Promise<void>;
   createPeriodClose(input: NewPeriodCloseRecord): Promise<PeriodCloseRecord>;
+  /** Organization reconciliations overlapping the close period (`DEC-107`). */
+  listReconciliationsForPeriod(query: PeriodWindowQuery): Promise<readonly PeriodOverlapRecord[]>;
+  /** Organization import runs overlapping the close period (`DEC-107`). */
+  listImportRunsForPeriod(query: PeriodWindowQuery): Promise<readonly PeriodOverlapRecord[]>;
+  /**
+   * The organization's `data_quality_exception` count in an open state
+   * (`open`/`acknowledged`). Informational for the close, never blocking
+   * (`DEC-107`).
+   */
+  countOpenDataQualityExceptions(query: { readonly organizationId: string }): Promise<number>;
+  /**
+   * The effective `reconciliation_tolerance` for `(organizationId, kind)` at
+   * `asOf` (`DEC-072`), or `undefined`. Informational for the close, never
+   * blocking (`DEC-107`); the window is half-open `[effectiveFrom, effectiveTo)`.
+   */
+  findReconciliationTolerance(query: {
+    readonly organizationId: string;
+    readonly kind: ToleranceKind;
+    /** `date`, `YYYY-MM-DD`. */
+    readonly asOf: string;
+  }): Promise<{ readonly effectiveFrom: string } | undefined>;
   /** One close by id, organization-scoped (`DEC-061`), or `undefined`. */
   findPeriodClose(query: {
     readonly organizationId: string;
