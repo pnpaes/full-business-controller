@@ -125,6 +125,10 @@ export interface MonitoringPointListQuery {
 export interface MonitoringReadingListQuery {
   readonly organizationId: string;
   readonly monitoringPointId?: string;
+  /** Inclusive lower bound on `measured_at`; an ISO instant (the port convention). */
+  readonly from?: string;
+  /** Inclusive upper bound on `measured_at`; an ISO instant. */
+  readonly to?: string;
   readonly limit?: number;
   readonly offset?: number;
 }
@@ -208,6 +212,10 @@ export interface IncidentListQuery {
   readonly organizationId: string;
   readonly status?: string;
   readonly locationId?: string;
+  /** Inclusive lower bound on `occurred_at`; an ISO instant (the port convention). */
+  readonly from?: string;
+  /** Inclusive upper bound on `occurred_at`; an ISO instant. */
+  readonly to?: string;
   readonly limit?: number;
   readonly offset?: number;
 }
@@ -283,6 +291,10 @@ export interface CorrectiveActionListQuery {
   readonly incidentId?: string;
   readonly status?: string;
   readonly ownerId?: string;
+  /** Inclusive lower bound on `due_date`; a `YYYY-MM-DD` day (a `date` column). */
+  readonly from?: string;
+  /** Inclusive upper bound on `due_date`; a `YYYY-MM-DD` day. */
+  readonly to?: string;
   readonly limit?: number;
   readonly offset?: number;
 }
@@ -409,6 +421,10 @@ export interface ChecklistRunListQuery {
   readonly templateId?: string;
   readonly locationId?: string;
   readonly status?: string;
+  /** Inclusive lower bound on `run_at`; an ISO instant (the port convention). */
+  readonly from?: string;
+  /** Inclusive upper bound on `run_at`; an ISO instant. */
+  readonly to?: string;
   readonly limit?: number;
   readonly offset?: number;
 }
@@ -534,6 +550,10 @@ export interface MaintenanceLogListQuery {
   readonly organizationId: string;
   readonly equipmentId?: string;
   readonly kind?: string;
+  /** Inclusive lower bound on `performed_at`; an ISO instant (the port convention). */
+  readonly from?: string;
+  /** Inclusive upper bound on `performed_at`; an ISO instant. */
+  readonly to?: string;
   readonly limit?: number;
   readonly offset?: number;
 }

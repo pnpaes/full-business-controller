@@ -1,5 +1,6 @@
-import { NotFoundError } from "@aquarela/domain";
+import { DomainError, NotFoundError } from "@aquarela/domain";
 import {
+  auditEvent,
   createDb,
   createMaintenanceLog as createMaintenanceLogRow,
   location,
@@ -11,6 +12,7 @@ import {
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import { buildComplianceExport } from "./build-compliance-export";
 import { findChecklistRun } from "./find-checklist-run";
 import { findChecklistTemplate } from "./find-checklist-template";
 import { findCorrectiveAction } from "./find-corrective-action";
@@ -1031,6 +1033,696 @@ describe.skipIf(!databaseUrl)("HMS monitoring against PostgreSQL", () => {
         }),
       );
       expect(errorCode(cause)).toBe("23505");
+    });
+  });
+
+  it("applies inclusive period windows to the five list queries", async () => {
+    await inRollback(client.db, async (tx) => {
+      const locationId = await seedLocation(tx, orgId, `hms_period_${suffix}`);
+      const store = createPostgresHmsStore(tx);
+      const actorId = randomUUID();
+      const point = await registerMonitoringPoint(store, {
+        organizationId: orgId,
+        actorId,
+        locationId,
+        code: `fridge_period_${suffix}`,
+        name: "Period fridge",
+        kind: "refrigerator",
+        unit: "celsius",
+        targetMin: "0",
+        targetMax: "4",
+        checkFrequency: "daily",
+      });
+      const reading = (measuredAt: string, value: string) =>
+        recordMonitoringReading(store, {
+          organizationId: orgId,
+          actorId,
+          monitoringPointId: point.id,
+          value,
+          measuredAt,
+        });
+      const janReading = await reading("2026-01-01T08:00:00.000Z", "1");
+      const febReading = await reading("2026-02-01T08:00:00.000Z", "2");
+      const marReading = await reading("2026-03-01T08:00:00.000Z", "3");
+
+      const incident = (occurredAt: string, title: string) =>
+        registerIncident(store, {
+          organizationId: orgId,
+          actorId,
+          locationId,
+          category: "near_miss",
+          severity: "medium",
+          occurredAt,
+          reportedAt: occurredAt,
+          reportedBy: actorId,
+          title,
+          involvesPersonalData: false,
+        });
+      const janIncident = await incident("2026-01-01T10:00:00.000Z", "January");
+      await incident("2026-02-01T10:00:00.000Z", "February");
+      const marIncident = await incident("2026-03-01T10:00:00.000Z", "March");
+
+      const action = (incidentId: string, dueDate: string, description: string) =>
+        recordCorrectiveAction(store, {
+          organizationId: orgId,
+          actorId,
+          incidentId,
+          description,
+          dueDate,
+        });
+      await action(janIncident.id, "2026-01-15", "January action");
+      const febAction = await action(janIncident.id, "2026-02-15", "February action");
+      const marAction = await action(marIncident.id, "2026-03-15", "March action");
+
+      const template = await registerChecklistTemplate(store, {
+        organizationId: orgId,
+        actorId,
+        name: `Period routine ${suffix}`,
+        category: "cleaning",
+        frequency: "daily",
+        items: [],
+      });
+      const run = (runAt: string) =>
+        recordChecklistRun(store, {
+          organizationId: orgId,
+          actorId,
+          templateId: template.id,
+          locationId,
+          runAt,
+          performedBy: actorId,
+          results: [],
+        });
+      await run("2026-01-01T08:00:00.000Z");
+      const febRun = await run("2026-02-01T08:00:00.000Z");
+      const marRun = await run("2026-03-01T08:00:00.000Z");
+
+      const equipment = await registerEquipment(store, {
+        organizationId: orgId,
+        actorId,
+        locationId,
+        code: `eq_period_${suffix}`,
+        name: "Period machine",
+        kind: "refrigeration",
+      });
+      const log = (performedAt: string) =>
+        recordMaintenanceLog(store, {
+          organizationId: orgId,
+          actorId,
+          equipmentId: equipment.id,
+          kind: "service",
+          performedAt,
+          performedBy: actorId,
+        });
+      await log("2026-01-01T09:00:00.000Z");
+      const febLog = await log("2026-02-01T09:00:00.000Z");
+      const marLog = await log("2026-03-01T09:00:00.000Z");
+
+      // Both bounds inclusive; newest first for the instant columns.
+      expect(
+        (
+          await listMonitoringReadings(store, {
+            organizationId: orgId,
+            from: "2026-02-01T08:00:00.000Z",
+            to: "2026-03-01T08:00:00.000Z",
+          })
+        ).map((row) => row.id),
+      ).toEqual([marReading.id, febReading.id]);
+      expect(
+        (
+          await listMonitoringReadings(store, {
+            organizationId: orgId,
+            from: "2026-02-01T08:00:00.000Z",
+          })
+        ).map((row) => row.id),
+      ).toEqual([marReading.id, febReading.id]);
+      expect(
+        (
+          await listMonitoringReadings(store, {
+            organizationId: orgId,
+            to: "2026-01-01T08:00:00.000Z",
+          })
+        ).map((row) => row.id),
+      ).toEqual([janReading.id]);
+
+      expect(
+        (await listIncidents(store, { organizationId: orgId, to: "2026-02-01T10:00:00.000Z" })).map(
+          (row) => row.id,
+        ),
+      ).toHaveLength(2);
+      expect(
+        (
+          await listIncidents(store, { organizationId: orgId, from: "2026-02-01T10:00:00.000Z" })
+        ).map((row) => row.id),
+      ).toHaveLength(2);
+
+      // The corrective-action bound is a plain `YYYY-MM-DD` day, inclusive.
+      expect(
+        (
+          await listCorrectiveActions(store, {
+            organizationId: orgId,
+            from: "2026-02-15",
+            to: "2026-03-15",
+          })
+        ).map((row) => row.id),
+      ).toEqual([febAction.id, marAction.id]);
+      expect(
+        (await listCorrectiveActions(store, { organizationId: orgId, to: "2026-01-15" })).map(
+          (row) => row.id,
+        ),
+      ).toHaveLength(1);
+
+      expect(
+        (
+          await listChecklistRuns(store, {
+            organizationId: orgId,
+            from: "2026-02-01T08:00:00.000Z",
+            to: "2026-03-01T08:00:00.000Z",
+          })
+        ).map((row) => row.id),
+      ).toEqual([marRun.id, febRun.id]);
+      expect(
+        (
+          await listChecklistRuns(store, { organizationId: orgId, to: "2026-02-01T08:00:00.000Z" })
+        ).map((row) => row.id),
+      ).toHaveLength(2);
+
+      expect(
+        (
+          await listMaintenanceLogs(store, {
+            organizationId: orgId,
+            from: "2026-02-01T09:00:00.000Z",
+            to: "2026-03-01T09:00:00.000Z",
+          })
+        ).map((row) => row.id),
+      ).toEqual([marLog.id, febLog.id]);
+      expect(
+        (
+          await listMaintenanceLogs(store, {
+            organizationId: orgId,
+            from: "2026-02-01T09:00:00.000Z",
+          })
+        ).map((row) => row.id),
+      ).toHaveLength(2);
+    });
+  });
+
+  it("builds a compliance export with counts, provenance and one audit fact", async () => {
+    await inRollback(client.db, async (tx) => {
+      const locationId = await seedLocation(tx, orgId, `hms_export_${suffix}`);
+      const store = createPostgresHmsStore(tx);
+      const actorId = randomUUID();
+      const technicianId = randomUUID();
+
+      const point = await registerMonitoringPoint(store, {
+        organizationId: orgId,
+        actorId,
+        locationId,
+        code: `fridge_export_${suffix}`,
+        name: "Export fridge",
+        kind: "refrigerator",
+        unit: "celsius",
+        targetMin: "0",
+        targetMax: "4",
+        checkFrequency: "daily",
+      });
+      const reading = await recordMonitoringReading(store, {
+        organizationId: orgId,
+        actorId,
+        monitoringPointId: point.id,
+        value: "2",
+        measuredAt: "2026-02-01T08:00:00.000Z",
+      });
+      const incident = await registerIncident(store, {
+        organizationId: orgId,
+        actorId,
+        locationId,
+        category: "near_miss",
+        severity: "medium",
+        occurredAt: "2026-02-02T10:00:00.000Z",
+        reportedAt: "2026-02-02T10:05:00.000Z",
+        reportedBy: actorId,
+        title: "Export incident",
+        involvesPersonalData: false,
+      });
+      const action = await recordCorrectiveAction(store, {
+        organizationId: orgId,
+        actorId,
+        incidentId: incident.id,
+        description: "Export action",
+        dueDate: "2026-02-10",
+      });
+      const template = await registerChecklistTemplate(store, {
+        organizationId: orgId,
+        actorId,
+        name: `Export routine ${suffix}`,
+        category: "cleaning",
+        frequency: "daily",
+        items: [],
+      });
+      const run = await recordChecklistRun(store, {
+        organizationId: orgId,
+        actorId,
+        templateId: template.id,
+        locationId,
+        runAt: "2026-02-03T08:00:00.000Z",
+        performedBy: actorId,
+        results: [],
+      });
+      const equipment = await registerEquipment(store, {
+        organizationId: orgId,
+        actorId,
+        locationId,
+        code: `eq_export_${suffix}`,
+        name: "Export machine",
+        kind: "refrigeration",
+      });
+      const log = await recordMaintenanceLog(store, {
+        organizationId: orgId,
+        actorId,
+        equipmentId: equipment.id,
+        kind: "inspection",
+        performedAt: "2026-02-04T09:00:00.000Z",
+        performedBy: technicianId,
+      });
+
+      // A foreign organization's rows must never enter the bundle.
+      const otherOrg = await tx
+        .insert(organization)
+        .values({ legalName: `HMS IT export other ${suffix}` })
+        .returning();
+      const otherOrgId = otherOrg[0]!.id;
+      const otherLocationId = await seedLocation(tx, otherOrgId, `hms_export_other_${suffix}`);
+      const otherPoint = await registerMonitoringPoint(store, {
+        organizationId: otherOrgId,
+        actorId,
+        locationId: otherLocationId,
+        code: `fridge_export_other_${suffix}`,
+        name: "Other fridge",
+        kind: "refrigerator",
+        unit: "celsius",
+        targetMin: "0",
+        targetMax: "4",
+        checkFrequency: "daily",
+      });
+      await recordMonitoringReading(store, {
+        organizationId: otherOrgId,
+        actorId,
+        monitoringPointId: otherPoint.id,
+        value: "2",
+        measuredAt: "2026-02-01T08:00:00.000Z",
+      });
+
+      const bundle = await buildComplianceExport(store, {
+        organizationId: orgId,
+        actorId,
+      });
+
+      expect(bundle.organizationId).toBe(orgId);
+      expect(bundle.period).toEqual({ from: null, to: null });
+      expect(bundle.counts).toEqual({
+        monitoringReadings: 1,
+        incidents: 1,
+        correctiveActions: 1,
+        checklistRuns: 1,
+        maintenanceLogs: 1,
+      });
+      expect(bundle.truncated).toEqual({
+        monitoringReadings: false,
+        incidents: false,
+        correctiveActions: false,
+        checklistRuns: false,
+        maintenanceLogs: false,
+      });
+      // Exact id lists: they would gain the foreign organization's rows if the
+      // org filter were dropped.
+      expect(bundle.monitoringReadings.map((row) => row.id)).toEqual([reading.id]);
+      expect(bundle.incidents.map((row) => row.id)).toEqual([incident.id]);
+      expect(bundle.correctiveActions.map((row) => row.id)).toEqual([action.id]);
+      expect(bundle.checklistRuns.map((row) => row.id)).toEqual([run.id]);
+      expect(bundle.maintenanceLogs.map((row) => row.id)).toEqual([log.id]);
+      // Provenance ids ride on the existing view shapes.
+      expect(bundle.monitoringReadings[0]?.monitoringPointId).toBe(point.id);
+      expect(bundle.correctiveActions[0]?.incidentId).toBe(incident.id);
+      expect(bundle.checklistRuns[0]?.templateId).toBe(template.id);
+      expect(bundle.maintenanceLogs[0]?.equipmentId).toBe(equipment.id);
+      expect(bundle.maintenanceLogs[0]?.fileObjectId).toBeNull();
+
+      const exportAudits = (await tx.select().from(auditEvent)).filter(
+        (row) => row.action === "hms.compliance_export.generated",
+      );
+      expect(exportAudits).toHaveLength(1);
+      expect(exportAudits[0]).toMatchObject({
+        organizationId: orgId,
+        actorId,
+        entityType: "hms_compliance_export",
+        after: {
+          scope: "organization",
+          counts: {
+            monitoring_readings: 1,
+            incidents: 1,
+            corrective_actions: 1,
+            checklist_runs: 1,
+            maintenance_logs: 1,
+          },
+        },
+      });
+    });
+  });
+
+  it("scopes a compliance export to the caller's locations and their parents' children", async () => {
+    await inRollback(client.db, async (tx) => {
+      const inLocationId = await seedLocation(tx, orgId, `hms_export_in_${suffix}`);
+      const outLocationId = await seedLocation(tx, orgId, `hms_export_out_${suffix}`);
+      const store = createPostgresHmsStore(tx);
+      const actorId = randomUUID();
+
+      const point = await registerMonitoringPoint(store, {
+        organizationId: orgId,
+        actorId,
+        locationId: inLocationId,
+        code: `fridge_scope_${suffix}`,
+        name: "In-scope fridge",
+        kind: "refrigerator",
+        unit: "celsius",
+        targetMin: "0",
+        targetMax: "4",
+        checkFrequency: "daily",
+      });
+      const reading = await recordMonitoringReading(store, {
+        organizationId: orgId,
+        actorId,
+        monitoringPointId: point.id,
+        value: "2",
+        measuredAt: "2026-02-01T08:00:00.000Z",
+      });
+      const incident = await registerIncident(store, {
+        organizationId: orgId,
+        actorId,
+        locationId: inLocationId,
+        category: "near_miss",
+        severity: "medium",
+        occurredAt: "2026-02-02T10:00:00.000Z",
+        reportedAt: "2026-02-02T10:05:00.000Z",
+        reportedBy: actorId,
+        title: "In-scope incident",
+        involvesPersonalData: false,
+      });
+      const action = await recordCorrectiveAction(store, {
+        organizationId: orgId,
+        actorId,
+        incidentId: incident.id,
+        description: "In-scope action",
+      });
+      const standalone = await recordCorrectiveAction(store, {
+        organizationId: orgId,
+        actorId,
+        description: "Parentless action",
+      });
+      const template = await registerChecklistTemplate(store, {
+        organizationId: orgId,
+        actorId,
+        name: `Scope routine ${suffix}`,
+        category: "cleaning",
+        frequency: "daily",
+        items: [],
+      });
+      const run = await recordChecklistRun(store, {
+        organizationId: orgId,
+        actorId,
+        templateId: template.id,
+        locationId: inLocationId,
+        runAt: "2026-02-03T08:00:00.000Z",
+        performedBy: actorId,
+        results: [],
+      });
+      const equipment = await registerEquipment(store, {
+        organizationId: orgId,
+        actorId,
+        locationId: inLocationId,
+        code: `eq_scope_${suffix}`,
+        name: "In-scope machine",
+        kind: "refrigeration",
+      });
+      const log = await recordMaintenanceLog(store, {
+        organizationId: orgId,
+        actorId,
+        equipmentId: equipment.id,
+        kind: "inspection",
+        performedAt: "2026-02-04T09:00:00.000Z",
+        performedBy: actorId,
+      });
+
+      // Same organization, out-of-scope location: none of this may appear.
+      const outPoint = await registerMonitoringPoint(store, {
+        organizationId: orgId,
+        actorId,
+        locationId: outLocationId,
+        code: `fridge_scope_out_${suffix}`,
+        name: "Out-of-scope fridge",
+        kind: "refrigerator",
+        unit: "celsius",
+        targetMin: "0",
+        targetMax: "4",
+        checkFrequency: "daily",
+      });
+      const outReading = await recordMonitoringReading(store, {
+        organizationId: orgId,
+        actorId,
+        monitoringPointId: outPoint.id,
+        value: "2",
+        measuredAt: "2026-02-01T08:00:00.000Z",
+      });
+      const outIncident = await registerIncident(store, {
+        organizationId: orgId,
+        actorId,
+        locationId: outLocationId,
+        category: "near_miss",
+        severity: "medium",
+        occurredAt: "2026-02-02T10:00:00.000Z",
+        reportedAt: "2026-02-02T10:05:00.000Z",
+        reportedBy: actorId,
+        title: "Out-of-scope incident",
+        involvesPersonalData: false,
+      });
+      const outAction = await recordCorrectiveAction(store, {
+        organizationId: orgId,
+        actorId,
+        incidentId: outIncident.id,
+        description: "Out-of-scope action",
+      });
+      const outRun = await recordChecklistRun(store, {
+        organizationId: orgId,
+        actorId,
+        templateId: template.id,
+        locationId: outLocationId,
+        runAt: "2026-02-03T08:00:00.000Z",
+        performedBy: actorId,
+        results: [],
+      });
+      const outEquipment = await registerEquipment(store, {
+        organizationId: orgId,
+        actorId,
+        locationId: outLocationId,
+        code: `eq_scope_out_${suffix}`,
+        name: "Out-of-scope machine",
+        kind: "refrigeration",
+      });
+      const outLog = await recordMaintenanceLog(store, {
+        organizationId: orgId,
+        actorId,
+        equipmentId: outEquipment.id,
+        kind: "repair",
+        performedAt: "2026-02-04T09:00:00.000Z",
+        performedBy: actorId,
+      });
+
+      const scoped = await buildComplianceExport(store, {
+        organizationId: orgId,
+        actorId,
+        locationIds: [inLocationId],
+      });
+
+      expect(scoped.monitoringReadings.map((row) => row.id)).toEqual([reading.id]);
+      expect(scoped.incidents.map((row) => row.id)).toEqual([incident.id]);
+      expect(scoped.correctiveActions.map((row) => row.id)).toEqual([action.id]);
+      expect(scoped.checklistRuns.map((row) => row.id)).toEqual([run.id]);
+      expect(scoped.maintenanceLogs.map((row) => row.id)).toEqual([log.id]);
+      // Children of an out-of-scope parent and a parentless action are excluded
+      // (the recorded `corrective_action`/`maintenance_log` scope ceiling).
+      const actionIds = scoped.correctiveActions.map((row) => row.id);
+      expect(actionIds).not.toContain(outAction.id);
+      expect(actionIds).not.toContain(standalone.id);
+      expect(scoped.maintenanceLogs.map((row) => row.id)).not.toContain(outLog.id);
+      expect(scoped.monitoringReadings.map((row) => row.id)).not.toContain(outReading.id);
+      expect(scoped.checklistRuns.map((row) => row.id)).not.toContain(outRun.id);
+    });
+  });
+
+  it("applies the export period through the real adapter, mapping the instant to a day", async () => {
+    await inRollback(client.db, async (tx) => {
+      const locationId = await seedLocation(tx, orgId, `hms_export_period_${suffix}`);
+      const store = createPostgresHmsStore(tx);
+      const actorId = randomUUID();
+
+      const point = await registerMonitoringPoint(store, {
+        organizationId: orgId,
+        actorId,
+        locationId,
+        code: `fridge_export_period_${suffix}`,
+        name: "Export period fridge",
+        kind: "refrigerator",
+        unit: "celsius",
+        targetMin: "0",
+        targetMax: "4",
+        checkFrequency: "daily",
+      });
+      await recordMonitoringReading(store, {
+        organizationId: orgId,
+        actorId,
+        monitoringPointId: point.id,
+        value: "1",
+        measuredAt: "2026-01-01T08:00:00.000Z",
+      });
+      const febReading = await recordMonitoringReading(store, {
+        organizationId: orgId,
+        actorId,
+        monitoringPointId: point.id,
+        value: "2",
+        measuredAt: "2026-02-01T08:00:00.000Z",
+      });
+      const janIncident = await registerIncident(store, {
+        organizationId: orgId,
+        actorId,
+        locationId,
+        category: "near_miss",
+        severity: "medium",
+        occurredAt: "2026-01-01T10:00:00.000Z",
+        reportedAt: "2026-01-01T10:05:00.000Z",
+        reportedBy: actorId,
+        title: "January",
+        involvesPersonalData: false,
+      });
+      const febIncident = await registerIncident(store, {
+        organizationId: orgId,
+        actorId,
+        locationId,
+        category: "near_miss",
+        severity: "medium",
+        occurredAt: "2026-02-01T10:00:00.000Z",
+        reportedAt: "2026-02-01T10:05:00.000Z",
+        reportedBy: actorId,
+        title: "February",
+        involvesPersonalData: false,
+      });
+      await recordCorrectiveAction(store, {
+        organizationId: orgId,
+        actorId,
+        incidentId: janIncident.id,
+        description: "January action",
+        dueDate: "2026-01-30",
+      });
+      // Due exactly on the from calendar day: included only by the instant→day
+      // mapping (a raw ISO-string compare would drop it).
+      const onFromDay = await recordCorrectiveAction(store, {
+        organizationId: orgId,
+        actorId,
+        incidentId: febIncident.id,
+        description: "On the from day",
+        dueDate: "2026-02-01",
+      });
+      const template = await registerChecklistTemplate(store, {
+        organizationId: orgId,
+        actorId,
+        name: `Export period routine ${suffix}`,
+        category: "cleaning",
+        frequency: "daily",
+        items: [],
+      });
+      await recordChecklistRun(store, {
+        organizationId: orgId,
+        actorId,
+        templateId: template.id,
+        locationId,
+        runAt: "2026-01-01T08:00:00.000Z",
+        performedBy: actorId,
+        results: [],
+      });
+      const febRun = await recordChecklistRun(store, {
+        organizationId: orgId,
+        actorId,
+        templateId: template.id,
+        locationId,
+        runAt: "2026-02-01T08:00:00.000Z",
+        performedBy: actorId,
+        results: [],
+      });
+      const equipment = await registerEquipment(store, {
+        organizationId: orgId,
+        actorId,
+        locationId,
+        code: `eq_export_period_${suffix}`,
+        name: "Export period machine",
+        kind: "refrigeration",
+      });
+      await recordMaintenanceLog(store, {
+        organizationId: orgId,
+        actorId,
+        equipmentId: equipment.id,
+        kind: "service",
+        performedAt: "2026-01-01T09:00:00.000Z",
+        performedBy: actorId,
+      });
+      const febLog = await recordMaintenanceLog(store, {
+        organizationId: orgId,
+        actorId,
+        equipmentId: equipment.id,
+        kind: "service",
+        performedAt: "2026-02-01T09:00:00.000Z",
+        performedBy: actorId,
+      });
+
+      const bundle = await buildComplianceExport(store, {
+        organizationId: orgId,
+        actorId,
+        from: "2026-02-01T00:00:00.000Z",
+        to: "2026-02-28T23:59:59.000Z",
+      });
+
+      expect(bundle.monitoringReadings.map((row) => row.id)).toEqual([febReading.id]);
+      expect(bundle.incidents.map((row) => row.id)).toEqual([febIncident.id]);
+      expect(bundle.correctiveActions.map((row) => row.id)).toEqual([onFromDay.id]);
+      expect(bundle.checklistRuns.map((row) => row.id)).toEqual([febRun.id]);
+      expect(bundle.maintenanceLogs.map((row) => row.id)).toEqual([febLog.id]);
+      expect(bundle.counts).toEqual({
+        monitoringReadings: 1,
+        incidents: 1,
+        correctiveActions: 1,
+        checklistRuns: 1,
+        maintenanceLogs: 1,
+      });
+    });
+  });
+
+  it("rejects a malformed or inverted export period", async () => {
+    await inRollback(client.db, async (tx) => {
+      const store = createPostgresHmsStore(tx);
+      const actorId = randomUUID();
+      const base = { organizationId: orgId, actorId };
+
+      await expect(
+        buildComplianceExport(store, {
+          ...base,
+          from: "2026-03-01T00:00:00.000Z",
+          to: "2026-02-01T00:00:00.000Z",
+        }),
+      ).rejects.toThrow(DomainError);
+      await expect(buildComplianceExport(store, { ...base, from: "2026-02-01" })).rejects.toThrow(
+        DomainError,
+      );
+      const exportAudits = (await tx.select().from(auditEvent)).filter(
+        (row) => row.action === "hms.compliance_export.generated",
+      );
+      expect(exportAudits).toHaveLength(0);
     });
   });
 });

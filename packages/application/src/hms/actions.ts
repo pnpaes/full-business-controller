@@ -1,8 +1,9 @@
 /**
  * Audit action vocabulary for the HMS monitoring slice (`HMS-002`, `DEC-089`),
  * the incidents + corrective-actions slice (`DEC-090`, `HMS-003`/`HMS-004`),
- * the checklists slice (`DEC-091`, `HMS-005`) and the equipment/maintenance
- * slice (`DEC-092`, `HMS-006`). Values are the `audit_event.action` strings;
+ * the checklists slice (`DEC-091`, `HMS-005`), the equipment/maintenance
+ * slice (`DEC-092`, `HMS-006`) and the compliance/evidence export
+ * (`DEC-093`/`DEC-098`, `HMS-007`). Values are the `audit_event.action` strings;
  * keeping them here stops a handler from drifting into near-duplicate names.
  *
  * A patch that makes the `closed`/`completed`/`verified` transition records the
@@ -28,4 +29,5 @@ export const HMS_AUDIT_ACTIONS = {
   equipmentCreated: "hms.equipment.created",
   equipmentUpdated: "hms.equipment.updated",
   maintenanceLogRecorded: "hms.maintenance_log.recorded",
+  complianceExportGenerated: "hms.compliance_export.generated",
 } as const;

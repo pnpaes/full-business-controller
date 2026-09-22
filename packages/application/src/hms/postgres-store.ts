@@ -373,6 +373,9 @@ export function createPostgresHmsStore(db: Database): HmsStore {
         ...(query.monitoringPointId === undefined
           ? {}
           : { monitoringPointId: query.monitoringPointId }),
+        // The port carries instants as ISO strings; the repository takes `Date`.
+        ...(query.from === undefined ? {} : { from: new Date(query.from) }),
+        ...(query.to === undefined ? {} : { to: new Date(query.to) }),
         ...(query.limit === undefined ? {} : { limit: query.limit }),
         ...(query.offset === undefined ? {} : { offset: query.offset }),
       });
@@ -409,6 +412,9 @@ export function createPostgresHmsStore(db: Database): HmsStore {
         organizationId: query.organizationId,
         ...(query.status === undefined ? {} : { status: query.status }),
         ...(query.locationId === undefined ? {} : { locationId: query.locationId }),
+        // The port carries instants as ISO strings; the repository takes `Date`.
+        ...(query.from === undefined ? {} : { from: new Date(query.from) }),
+        ...(query.to === undefined ? {} : { to: new Date(query.to) }),
         ...(query.limit === undefined ? {} : { limit: query.limit }),
         ...(query.offset === undefined ? {} : { offset: query.offset }),
       });
@@ -444,6 +450,9 @@ export function createPostgresHmsStore(db: Database): HmsStore {
         ...(query.incidentId === undefined ? {} : { incidentId: query.incidentId }),
         ...(query.status === undefined ? {} : { status: query.status }),
         ...(query.ownerId === undefined ? {} : { ownerId: query.ownerId }),
+        // A `date` bound stays a `YYYY-MM-DD` string, like `due_date` itself.
+        ...(query.from === undefined ? {} : { from: query.from }),
+        ...(query.to === undefined ? {} : { to: query.to }),
         ...(query.limit === undefined ? {} : { limit: query.limit }),
         ...(query.offset === undefined ? {} : { offset: query.offset }),
       });
@@ -509,6 +518,9 @@ export function createPostgresHmsStore(db: Database): HmsStore {
         ...(query.templateId === undefined ? {} : { templateId: query.templateId }),
         ...(query.locationId === undefined ? {} : { locationId: query.locationId }),
         ...(query.status === undefined ? {} : { status: query.status }),
+        // The port carries instants as ISO strings; the repository takes `Date`.
+        ...(query.from === undefined ? {} : { from: new Date(query.from) }),
+        ...(query.to === undefined ? {} : { to: new Date(query.to) }),
         ...(query.limit === undefined ? {} : { limit: query.limit }),
         ...(query.offset === undefined ? {} : { offset: query.offset }),
       });
@@ -562,6 +574,9 @@ export function createPostgresHmsStore(db: Database): HmsStore {
         organizationId: query.organizationId,
         ...(query.equipmentId === undefined ? {} : { equipmentId: query.equipmentId }),
         ...(query.kind === undefined ? {} : { kind: query.kind }),
+        // The port carries instants as ISO strings; the repository takes `Date`.
+        ...(query.from === undefined ? {} : { from: new Date(query.from) }),
+        ...(query.to === undefined ? {} : { to: new Date(query.to) }),
         ...(query.limit === undefined ? {} : { limit: query.limit }),
         ...(query.offset === undefined ? {} : { offset: query.offset }),
       });

@@ -1,4 +1,10 @@
 export { HMS_AUDIT_ACTIONS } from "./actions";
+export {
+  buildComplianceExport,
+  COMPLIANCE_EXPORT_MAX_PER_SOURCE,
+  COMPLIANCE_EXPORT_SOURCES,
+} from "./build-compliance-export";
+export type { BuildComplianceExportQuery, ComplianceExportBundle } from "./build-compliance-export";
 export { CHECKLIST_ITEM_OUTCOMES } from "./checklist-validation";
 export {
   EQUIPMENT_CODE_MAX,

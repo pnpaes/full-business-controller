@@ -217,6 +217,16 @@ export class FakeHmsStore implements HmsStore {
           query.monitoringPointId === undefined ||
           reading.monitoringPointId === query.monitoringPointId,
       )
+      // Inclusive `measured_at` window (ISO instants compared as instants, so a
+      // non-UTC offset in a bound still orders correctly); absent bound = open.
+      .filter(
+        (reading) =>
+          query.from === undefined || Date.parse(reading.measuredAt) >= Date.parse(query.from),
+      )
+      .filter(
+        (reading) =>
+          query.to === undefined || Date.parse(reading.measuredAt) <= Date.parse(query.to),
+      )
       .sort((a, b) => {
         if (a.measuredAt !== b.measuredAt) return a.measuredAt < b.measuredAt ? 1 : -1;
         return a.id < b.id ? 1 : -1;
@@ -281,6 +291,15 @@ export class FakeHmsStore implements HmsStore {
       .filter((incident) => query.status === undefined || incident.status === query.status)
       .filter(
         (incident) => query.locationId === undefined || incident.locationId === query.locationId,
+      )
+      // Inclusive `occurred_at` window; absent bound = open.
+      .filter(
+        (incident) =>
+          query.from === undefined || Date.parse(incident.occurredAt) >= Date.parse(query.from),
+      )
+      .filter(
+        (incident) =>
+          query.to === undefined || Date.parse(incident.occurredAt) <= Date.parse(query.to),
       )
       .sort((a, b) => {
         if (a.occurredAt !== b.occurredAt) return a.occurredAt < b.occurredAt ? 1 : -1;
@@ -357,6 +376,16 @@ export class FakeHmsStore implements HmsStore {
       .filter((action) => query.incidentId === undefined || action.incidentId === query.incidentId)
       .filter((action) => query.status === undefined || action.status === query.status)
       .filter((action) => query.ownerId === undefined || action.ownerId === query.ownerId)
+      // Inclusive `due_date` window as plain `YYYY-MM-DD` strings; a null due
+      // date falls outside any bounded window (matching SQL NULL comparison).
+      .filter(
+        (action) =>
+          query.from === undefined || (action.dueDate !== null && action.dueDate >= query.from),
+      )
+      .filter(
+        (action) =>
+          query.to === undefined || (action.dueDate !== null && action.dueDate <= query.to),
+      )
       .sort((a, b) => {
         // `due_date` ascending, a null due date last (the adapter's `asc` with
         // Postgres's default NULLS LAST), then `id` ascending.
@@ -479,6 +508,9 @@ export class FakeHmsStore implements HmsStore {
       .filter((run) => query.templateId === undefined || run.templateId === query.templateId)
       .filter((run) => query.locationId === undefined || run.locationId === query.locationId)
       .filter((run) => query.status === undefined || run.status === query.status)
+      // Inclusive `run_at` window; absent bound = open.
+      .filter((run) => query.from === undefined || Date.parse(run.runAt) >= Date.parse(query.from))
+      .filter((run) => query.to === undefined || Date.parse(run.runAt) <= Date.parse(query.to))
       .sort((a, b) => {
         // Newest `run_at` first, then `id` descending (the adapter's `desc`).
         if (a.runAt !== b.runAt) return a.runAt < b.runAt ? 1 : -1;
@@ -573,6 +605,13 @@ export class FakeHmsStore implements HmsStore {
       .filter((row) => row.organizationId === query.organizationId)
       .filter((row) => query.equipmentId === undefined || row.equipmentId === query.equipmentId)
       .filter((row) => query.kind === undefined || row.kind === query.kind)
+      // Inclusive `performed_at` window; absent bound = open.
+      .filter(
+        (row) => query.from === undefined || Date.parse(row.performedAt) >= Date.parse(query.from),
+      )
+      .filter(
+        (row) => query.to === undefined || Date.parse(row.performedAt) <= Date.parse(query.to),
+      )
       .sort((a, b) => {
         // Newest `performed_at` first, then `id` descending (the adapter's `desc`).
         if (a.performedAt !== b.performedAt) return a.performedAt < b.performedAt ? 1 : -1;

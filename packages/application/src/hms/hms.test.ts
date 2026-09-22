@@ -1,6 +1,11 @@
 import { DomainError, NotFoundError } from "@aquarela/domain";
 import { describe, expect, it } from "vitest";
 
+import {
+  buildComplianceExport,
+  COMPLIANCE_EXPORT_MAX_PER_SOURCE,
+  COMPLIANCE_EXPORT_PERSONAL_DATA_FIELDS,
+} from "./build-compliance-export";
 import { findChecklistRun } from "./find-checklist-run";
 import { findChecklistTemplate } from "./find-checklist-template";
 import { findCorrectiveAction } from "./find-corrective-action";
@@ -635,6 +640,46 @@ describe("monitoring queries", () => {
         monitoringPointId: point.id,
       }),
     ).toBeUndefined();
+  });
+
+  it("applies an inclusive measured_at window, open-ended when a bound is omitted", async () => {
+    const { store, fixture } = setup();
+    const point = await registerFridge(store, fixture);
+    const at = (measuredAt: string) =>
+      recordMonitoringReading(store, {
+        organizationId: fixture.organizationId,
+        actorId: fixture.actorId,
+        monitoringPointId: point.id,
+        value: "2",
+        measuredAt,
+      });
+    const before = await at("2026-01-01T08:00:00.000Z");
+    const atFrom = await at("2026-02-01T08:00:00.000Z");
+    const atTo = await at("2026-03-01T08:00:00.000Z");
+    const after = await at("2026-04-01T08:00:00.000Z");
+    const ids = async (query: Parameters<typeof listMonitoringReadings>[1]) =>
+      (await listMonitoringReadings(store, query)).map((row) => row.id);
+
+    // Both bounds inclusive, newest first.
+    expect(
+      await ids({
+        organizationId: fixture.organizationId,
+        from: "2026-02-01T08:00:00.000Z",
+        to: "2026-03-01T08:00:00.000Z",
+      }),
+    ).toEqual([atTo.id, atFrom.id]);
+    // An omitted lower bound is open-ended.
+    expect(
+      await ids({ organizationId: fixture.organizationId, from: "2026-03-01T08:00:00.000Z" }),
+    ).toEqual([after.id, atTo.id]);
+    // An omitted upper bound is open-ended.
+    expect(
+      await ids({ organizationId: fixture.organizationId, to: "2026-02-01T08:00:00.000Z" }),
+    ).toEqual([atFrom.id, before.id]);
+    // A window that contains nothing returns an empty page.
+    expect(
+      await ids({ organizationId: fixture.organizationId, from: "2027-01-01T00:00:00.000Z" }),
+    ).toEqual([]);
   });
 });
 
@@ -1438,6 +1483,82 @@ describe("listIncidents and listCorrectiveActions", () => {
       ).map((row) => row.id),
     ).toEqual([dueLater.id]);
   });
+
+  it("applies an inclusive occurred_at window to the incident list", async () => {
+    const { store, fixture } = setup();
+    const jan = await registerNearMiss(store, fixture, { occurredAt: "2026-01-01T08:00:00.000Z" });
+    const feb = await registerNearMiss(store, fixture, { occurredAt: "2026-02-01T08:00:00.000Z" });
+    const mar = await registerNearMiss(store, fixture, { occurredAt: "2026-03-01T08:00:00.000Z" });
+    const ids = async (query: Parameters<typeof listIncidents>[1]) =>
+      (await listIncidents(store, query)).map((row) => row.id);
+
+    // Both bounds inclusive, newest first.
+    expect(
+      await ids({
+        organizationId: fixture.organizationId,
+        from: "2026-02-01T08:00:00.000Z",
+        to: "2026-03-01T08:00:00.000Z",
+      }),
+    ).toEqual([mar.id, feb.id]);
+    expect(
+      await ids({ organizationId: fixture.organizationId, from: "2026-02-01T08:00:00.000Z" }),
+    ).toEqual([mar.id, feb.id]);
+    expect(
+      await ids({ organizationId: fixture.organizationId, to: "2026-02-01T08:00:00.000Z" }),
+    ).toEqual([feb.id, jan.id]);
+  });
+
+  it("applies an inclusive due_date window to corrective actions and excludes null due dates", async () => {
+    const { store, fixture } = setup();
+    const incident = await registerNearMiss(store, fixture);
+    const jan = await recordFix(store, fixture, {
+      incidentId: incident.id,
+      description: "January",
+      dueDate: "2026-01-15",
+    });
+    const feb = await recordFix(store, fixture, {
+      incidentId: incident.id,
+      description: "February",
+      dueDate: "2026-02-15",
+    });
+    const mar = await recordFix(store, fixture, {
+      incidentId: incident.id,
+      description: "March",
+      dueDate: "2026-03-15",
+    });
+    const noDue = await recordFix(store, fixture, {
+      incidentId: incident.id,
+      description: "No due date",
+    });
+    const ids = async (query: Parameters<typeof listCorrectiveActions>[1]) =>
+      (await listCorrectiveActions(store, query)).map((row) => row.id);
+
+    // The bound is a plain `YYYY-MM-DD` day, inclusive, earliest due first.
+    expect(
+      await ids({
+        organizationId: fixture.organizationId,
+        from: "2026-02-15",
+        to: "2026-03-15",
+      }),
+    ).toEqual([feb.id, mar.id]);
+    expect(await ids({ organizationId: fixture.organizationId, from: "2026-02-15" })).toEqual([
+      feb.id,
+      mar.id,
+    ]);
+    expect(await ids({ organizationId: fixture.organizationId, to: "2026-02-15" })).toEqual([
+      jan.id,
+      feb.id,
+    ]);
+    // A null due date is not inside any bounded window (SQL NULL comparison).
+    expect(await ids({ organizationId: fixture.organizationId, to: "2026-12-31" })).toEqual([
+      jan.id,
+      feb.id,
+      mar.id,
+    ]);
+    expect(await ids({ organizationId: fixture.organizationId, to: "2026-12-31" })).not.toContain(
+      noDue.id,
+    );
+  });
 });
 
 describe("registerChecklistTemplate", () => {
@@ -2136,6 +2257,31 @@ describe("listChecklistTemplates and listChecklistRuns", () => {
       ).map((row) => row.id),
     ).toEqual([kitchen.id]);
   });
+
+  it("applies an inclusive run_at window to checklist runs", async () => {
+    const { store, fixture } = setup();
+    const template = await registerCleaningTemplate(store, fixture);
+    const jan = await recordRun(store, fixture, template, { runAt: "2026-01-01T08:00:00.000Z" });
+    const feb = await recordRun(store, fixture, template, { runAt: "2026-02-01T08:00:00.000Z" });
+    const mar = await recordRun(store, fixture, template, { runAt: "2026-03-01T08:00:00.000Z" });
+    const ids = async (query: Parameters<typeof listChecklistRuns>[1]) =>
+      (await listChecklistRuns(store, query)).map((row) => row.id);
+
+    // Both bounds inclusive, newest first.
+    expect(
+      await ids({
+        organizationId: fixture.organizationId,
+        from: "2026-02-01T08:00:00.000Z",
+        to: "2026-03-01T08:00:00.000Z",
+      }),
+    ).toEqual([mar.id, feb.id]);
+    expect(
+      await ids({ organizationId: fixture.organizationId, from: "2026-02-01T08:00:00.000Z" }),
+    ).toEqual([mar.id, feb.id]);
+    expect(
+      await ids({ organizationId: fixture.organizationId, to: "2026-02-01T08:00:00.000Z" }),
+    ).toEqual([feb.id, jan.id]);
+  });
 });
 
 describe("registerEquipment", () => {
@@ -2685,5 +2831,549 @@ describe("listEquipment and listMaintenanceLogs", () => {
         })
       ).map((row) => row.id),
     ).toEqual([other.id]);
+  });
+
+  it("applies an inclusive performed_at window to maintenance logs", async () => {
+    const { store, fixture } = setup();
+    const machine = await registerIceMachine(store, fixture);
+    const jan = await recordService(store, fixture, machine, {
+      performedAt: "2026-01-01T09:00:00.000Z",
+    });
+    const feb = await recordService(store, fixture, machine, {
+      performedAt: "2026-02-01T09:00:00.000Z",
+    });
+    const mar = await recordService(store, fixture, machine, {
+      performedAt: "2026-03-01T09:00:00.000Z",
+    });
+    const ids = async (query: Parameters<typeof listMaintenanceLogs>[1]) =>
+      (await listMaintenanceLogs(store, query)).map((row) => row.id);
+
+    // Both bounds inclusive, newest first.
+    expect(
+      await ids({
+        organizationId: fixture.organizationId,
+        from: "2026-02-01T09:00:00.000Z",
+        to: "2026-03-01T09:00:00.000Z",
+      }),
+    ).toEqual([mar.id, feb.id]);
+    expect(
+      await ids({ organizationId: fixture.organizationId, from: "2026-02-01T09:00:00.000Z" }),
+    ).toEqual([mar.id, feb.id]);
+    expect(
+      await ids({ organizationId: fixture.organizationId, to: "2026-02-01T09:00:00.000Z" }),
+    ).toEqual([feb.id, jan.id]);
+  });
+});
+
+describe("buildComplianceExport", () => {
+  it("exports all five sources org-scoped with counts and provenance ids", async () => {
+    const { store, fixture } = setup();
+    const point = await registerFridge(store, fixture);
+    await recordMonitoringReading(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      monitoringPointId: point.id,
+      value: "2",
+      measuredAt: "2026-02-01T08:00:00.000Z",
+    });
+    const incident = await registerNearMiss(store, fixture, {
+      occurredAt: "2026-02-02T08:00:00.000Z",
+    });
+    const action = await recordFix(store, fixture, {
+      incidentId: incident.id,
+      description: "Re-stack",
+      dueDate: "2026-02-10",
+    });
+    const template = await registerCleaningTemplate(store, fixture);
+    const run = await recordRun(store, fixture, template);
+    const machine = await registerIceMachine(store, fixture);
+    await recordService(store, fixture, machine, {
+      performedAt: "2026-02-04T09:00:00.000Z",
+    });
+
+    const bundle = await buildComplianceExport(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+    });
+
+    expect(bundle.organizationId).toBe(fixture.organizationId);
+    expect(bundle.period).toEqual({ from: null, to: null });
+    expect(Number.isNaN(Date.parse(bundle.generatedAt))).toBe(false);
+    expect(bundle.counts).toEqual({
+      monitoringReadings: 1,
+      incidents: 1,
+      correctiveActions: 1,
+      checklistRuns: 1,
+      maintenanceLogs: 1,
+    });
+    expect(bundle.truncated).toEqual({
+      monitoringReadings: false,
+      incidents: false,
+      correctiveActions: false,
+      checklistRuns: false,
+      maintenanceLogs: false,
+    });
+
+    // Provenance is carried by the ids already on each view shape.
+    expect(bundle.monitoringReadings[0]?.monitoringPointId).toBe(point.id);
+    expect(bundle.incidents[0]?.id).toBe(incident.id);
+    expect(bundle.correctiveActions[0]?.id).toBe(action.id);
+    expect(bundle.correctiveActions[0]?.incidentId).toBe(incident.id);
+    expect(bundle.checklistRuns[0]?.templateId).toBe(template.id);
+    expect(bundle.checklistRuns[0]?.id).toBe(run.id);
+    expect(bundle.maintenanceLogs[0]?.equipmentId).toBe(machine.id);
+    expect(bundle.maintenanceLogs[0]?.fileObjectId).toBeNull();
+    // The bundle is plain JSON (no storage client, bytes or signed URL).
+    expect(JSON.parse(JSON.stringify(bundle)).counts).toEqual(bundle.counts);
+  });
+
+  it("names the personal-data fields without minimising them (privacy review pending)", async () => {
+    const { store, fixture } = setup();
+    const incident = await registerNearMiss(store, fixture, { involvesPersonalData: true });
+    await recordFix(store, fixture, { incidentId: incident.id, description: "Fix" });
+
+    const bundle = await buildComplianceExport(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+    });
+
+    // The contract a future minimisation pass shrinks — present and complete.
+    expect(bundle.personalDataFields).toEqual([...COMPLIANCE_EXPORT_PERSONAL_DATA_FIELDS]);
+    expect(bundle.personalDataFields).toEqual([
+      "reported_by",
+      "recorded_by",
+      "owner_id",
+      "performed_by",
+      "verified_by",
+      "involves_personal_data",
+    ]);
+    // No minimisation is applied in this increment: the fields are returned
+    // verbatim, including the personal-data flag on the incident.
+    expect(bundle.incidents[0]?.reportedBy).toBe(fixture.actorId);
+    expect(bundle.incidents[0]?.involvesPersonalData).toBe(true);
+  });
+
+  it("restricts every source to the period, mapping the instant to a day for due_date", async () => {
+    const { store, fixture } = setup();
+    const point = await registerFridge(store, fixture);
+    await recordMonitoringReading(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      monitoringPointId: point.id,
+      value: "2",
+      measuredAt: "2026-01-01T08:00:00.000Z",
+    });
+    const febReading = await recordMonitoringReading(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      monitoringPointId: point.id,
+      value: "3",
+      measuredAt: "2026-02-01T08:00:00.000Z",
+    });
+    const janIncident = await registerNearMiss(store, fixture, {
+      occurredAt: "2026-01-01T08:00:00.000Z",
+    });
+    const febIncident = await registerNearMiss(store, fixture, {
+      occurredAt: "2026-02-01T08:00:00.000Z",
+    });
+    await recordFix(store, fixture, {
+      incidentId: janIncident.id,
+      description: "January action",
+      dueDate: "2026-01-30",
+    });
+    const febAction = await recordFix(store, fixture, {
+      incidentId: febIncident.id,
+      description: "February action",
+      dueDate: "2026-02-15",
+    });
+    // Boundary rows: `due_date` equal to the from/to calendar day must be
+    // included. Raw ISO-string comparison against the instant would drop them,
+    // so this pins the instant→day mapping.
+    const onFromDay = await recordFix(store, fixture, {
+      incidentId: febIncident.id,
+      description: "On the from day",
+      dueDate: "2026-02-01",
+    });
+    const onToDay = await recordFix(store, fixture, {
+      incidentId: febIncident.id,
+      description: "On the to day",
+      dueDate: "2026-02-28",
+    });
+    const template = await registerCleaningTemplate(store, fixture);
+    await recordRun(store, fixture, template, { runAt: "2026-01-01T08:00:00.000Z" });
+    const febRun = await recordRun(store, fixture, template, {
+      runAt: "2026-02-01T08:00:00.000Z",
+    });
+    const machine = await registerIceMachine(store, fixture);
+    await recordService(store, fixture, machine, { performedAt: "2026-01-01T09:00:00.000Z" });
+    const febLog = await recordService(store, fixture, machine, {
+      performedAt: "2026-02-01T09:00:00.000Z",
+    });
+
+    const bundle = await buildComplianceExport(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      from: "2026-02-01T00:00:00.000Z",
+      to: "2026-02-28T23:59:59.000Z",
+    });
+
+    expect(bundle.period).toEqual({
+      from: "2026-02-01T00:00:00.000Z",
+      to: "2026-02-28T23:59:59.000Z",
+    });
+    expect(bundle.monitoringReadings.map((row) => row.id)).toEqual([febReading.id]);
+    expect(bundle.incidents.map((row) => row.id)).toEqual([febIncident.id]);
+    // Earliest due first, both calendar-day bounds inclusive.
+    expect(bundle.correctiveActions.map((row) => row.id)).toEqual([
+      onFromDay.id,
+      febAction.id,
+      onToDay.id,
+    ]);
+    expect(bundle.checklistRuns.map((row) => row.id)).toEqual([febRun.id]);
+    expect(bundle.maintenanceLogs.map((row) => row.id)).toEqual([febLog.id]);
+    expect(bundle.counts).toEqual({
+      monitoringReadings: 1,
+      incidents: 1,
+      correctiveActions: 3,
+      checklistRuns: 1,
+      maintenanceLogs: 1,
+    });
+  });
+
+  it("restricts a scoped caller and excludes children of out-of-scope parents", async () => {
+    const { store, fixture } = setup();
+    const point = await registerFridge(store, fixture);
+    const reading = await recordMonitoringReading(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      monitoringPointId: point.id,
+      value: "2",
+      measuredAt: "2026-02-01T08:00:00.000Z",
+    });
+    const incident = await registerNearMiss(store, fixture);
+    const action = await recordFix(store, fixture, {
+      incidentId: incident.id,
+      description: "In scope",
+    });
+    const standalone = await recordFix(store, fixture, { description: "No parent" });
+    const template = await registerCleaningTemplate(store, fixture);
+    const run = await recordRun(store, fixture, template);
+    const machine = await registerIceMachine(store, fixture);
+    const log = await recordService(store, fixture, machine, { kind: "inspection" });
+
+    // Same organization, a different location: every row is out of scope.
+    const kitchenPoint = await registerFridge(store, fixture, {
+      locationId: "loc-kitchen",
+      code: "fridge-kitchen",
+    });
+    const kitchenReading = await recordMonitoringReading(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      monitoringPointId: kitchenPoint.id,
+      value: "5",
+      measuredAt: "2026-02-02T08:00:00.000Z",
+    });
+    const kitchenIncident = await registerNearMiss(store, fixture, {
+      locationId: "loc-kitchen",
+      occurredAt: "2026-02-02T08:00:00.000Z",
+    });
+    const kitchenAction = await recordFix(store, fixture, {
+      incidentId: kitchenIncident.id,
+      description: "Out of scope action",
+    });
+    const kitchenRun = await recordRun(store, fixture, template, {
+      locationId: "loc-kitchen",
+      runAt: "2026-02-02T08:00:00.000Z",
+    });
+    const kitchenMachine = await registerIceMachine(store, fixture, {
+      locationId: "loc-kitchen",
+      code: "eq-kitchen",
+    });
+    const kitchenLog = await recordService(store, fixture, kitchenMachine, {
+      kind: "repair",
+      performedAt: "2026-02-02T09:00:00.000Z",
+    });
+
+    const scoped = await buildComplianceExport(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      locationIds: [fixture.locationId],
+    });
+
+    expect(scoped.monitoringReadings.map((row) => row.id)).toEqual([reading.id]);
+    expect(scoped.incidents.map((row) => row.id)).toEqual([incident.id]);
+    expect(scoped.correctiveActions.map((row) => row.id)).toEqual([action.id]);
+    expect(scoped.checklistRuns.map((row) => row.id)).toEqual([run.id]);
+    expect(scoped.maintenanceLogs.map((row) => row.id)).toEqual([log.id]);
+    // Children of out-of-scope parents and a parentless action are excluded (the
+    // recorded `corrective_action`/`maintenance_log` location-scope ceiling).
+    const actionIds = scoped.correctiveActions.map((row) => row.id);
+    const logIds = scoped.maintenanceLogs.map((row) => row.id);
+    expect(actionIds).not.toContain(kitchenAction.id);
+    expect(actionIds).not.toContain(standalone.id);
+    expect(logIds).not.toContain(kitchenLog.id);
+    expect(scoped.monitoringReadings.map((row) => row.id)).not.toContain(kitchenReading.id);
+    expect(scoped.checklistRuns.map((row) => row.id)).not.toContain(kitchenRun.id);
+  });
+
+  it("treats an empty location scope as organization-wide, not scoped to nothing", async () => {
+    const { store, fixture } = setup();
+    const point = await registerFridge(store, fixture);
+    const reading = await recordMonitoringReading(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      monitoringPointId: point.id,
+      value: "2",
+      measuredAt: "2026-02-01T08:00:00.000Z",
+    });
+    const incident = await registerNearMiss(store, fixture);
+    const machine = await registerIceMachine(store, fixture);
+    const log = await recordService(store, fixture, machine, { kind: "inspection" });
+
+    // An unscoped caller's `access.locationIds` is `[]`; the query must read
+    // that as organization-wide (the route also forwards `undefined`, but
+    // neither layer should be able to reintroduce the empty-bundle bug).
+    const bundle = await buildComplianceExport(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      locationIds: [],
+    });
+
+    expect(bundle.monitoringReadings.map((row) => row.id)).toEqual([reading.id]);
+    expect(bundle.incidents.map((row) => row.id)).toEqual([incident.id]);
+    expect(bundle.maintenanceLogs.map((row) => row.id)).toEqual([log.id]);
+    const audit = store.audits.find((row) => row.action === "hms.compliance_export.generated");
+    expect((audit?.after as { scope: unknown }).scope).toBe("organization");
+  });
+
+  it("keeps another organization's rows out of scope (the org filter is load-bearing)", async () => {
+    const { store, fixture } = setup();
+    const point = await registerFridge(store, fixture);
+    const reading = await recordMonitoringReading(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      monitoringPointId: point.id,
+      value: "2",
+      measuredAt: "2026-02-01T08:00:00.000Z",
+    });
+    const incident = await registerNearMiss(store, fixture);
+    const template = await registerCleaningTemplate(store, fixture);
+    const run = await recordRun(store, fixture, template);
+    const machine = await registerIceMachine(store, fixture);
+    const log = await recordService(store, fixture, machine, { kind: "inspection" });
+
+    const foreign = {
+      ...fixture,
+      organizationId: fixture.otherOrganizationId,
+      locationId: fixture.otherLocationId,
+    };
+    const foreignPoint = await registerFridge(store, foreign, { code: "fridge-foreign" });
+    const foreignReading = await recordMonitoringReading(store, {
+      organizationId: fixture.otherOrganizationId,
+      actorId: fixture.actorId,
+      monitoringPointId: foreignPoint.id,
+      value: "2",
+      measuredAt: "2026-02-01T08:00:00.000Z",
+    });
+    const foreignIncident = await registerNearMiss(store, foreign);
+    await recordFix(store, fixture, {
+      organizationId: fixture.otherOrganizationId,
+      incidentId: foreignIncident.id,
+      description: "Foreign action",
+    });
+    const foreignTemplate = await registerCleaningTemplate(store, foreign, { name: "Foreign" });
+    const foreignRun = await recordRun(store, foreign, foreignTemplate);
+    const foreignMachine = await registerIceMachine(store, foreign, { code: "eq-foreign" });
+    const foreignLog = await recordService(store, fixture, foreignMachine, {
+      organizationId: fixture.otherOrganizationId,
+      kind: "repair",
+    });
+
+    const bundle = await buildComplianceExport(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+    });
+
+    // Exact id lists: they would gain the foreign rows if the org filter were dropped.
+    expect(bundle.monitoringReadings.map((row) => row.id)).toEqual([reading.id]);
+    expect(bundle.monitoringReadings.map((row) => row.id)).not.toContain(foreignReading.id);
+    expect(bundle.incidents.map((row) => row.id)).toEqual([incident.id]);
+    expect(bundle.incidents.map((row) => row.id)).not.toContain(foreignIncident.id);
+    expect(bundle.checklistRuns.map((row) => row.id)).toEqual([run.id]);
+    expect(bundle.checklistRuns.map((row) => row.id)).not.toContain(foreignRun.id);
+    expect(bundle.maintenanceLogs.map((row) => row.id)).toEqual([log.id]);
+    expect(bundle.maintenanceLogs.map((row) => row.id)).not.toContain(foreignLog.id);
+  });
+
+  it("caps a source at the ceiling and reports truncated rather than dropping silently", async () => {
+    const { store, fixture } = setup();
+    const point = await registerFridge(store, fixture);
+    // One row over the ceiling. A 5001-row fixture is cheap in the fake map, so
+    // this exercises the real cap rather than a stand-in.
+    for (let i = 0; i <= COMPLIANCE_EXPORT_MAX_PER_SOURCE; i += 1) {
+      store.monitoringReadings.set(`reading-${i}`, {
+        id: `reading-${i}`,
+        organizationId: fixture.organizationId,
+        monitoringPointId: point.id,
+        value: "2.000000",
+        unit: "celsius",
+        measuredAt: new Date(Date.UTC(2026, 0, 1) + i * 1000).toISOString(),
+        recordedBy: fixture.actorId,
+        inRange: true,
+        notes: null,
+        createdAt: new Date().toISOString(),
+      });
+    }
+
+    const bundle = await buildComplianceExport(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+    });
+
+    expect(bundle.monitoringReadings).toHaveLength(COMPLIANCE_EXPORT_MAX_PER_SOURCE);
+    expect(bundle.counts.monitoringReadings).toBe(COMPLIANCE_EXPORT_MAX_PER_SOURCE);
+    expect(bundle.truncated.monitoringReadings).toBe(true);
+    expect(bundle.truncated.incidents).toBe(false);
+  });
+
+  it("reports truncated for a scoped caller whose window fills with out-of-scope rows", async () => {
+    const { store, fixture } = setup();
+    const inScopePoint = await registerFridge(store, fixture);
+    const inScopeReading = await recordMonitoringReading(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      monitoringPointId: inScopePoint.id,
+      value: "2",
+      measuredAt: "2026-01-01T00:00:00.000Z",
+    });
+    // An out-of-scope point whose readings (later in time, so they sort first)
+    // fill the whole raw DB window and hide the in-scope reading behind it.
+    const outPoint = await registerFridge(store, fixture, {
+      locationId: "loc-kitchen",
+      code: "fridge-kitchen",
+    });
+    for (let i = 0; i <= COMPLIANCE_EXPORT_MAX_PER_SOURCE; i += 1) {
+      store.monitoringReadings.set(`out-reading-${i}`, {
+        id: `out-reading-${i}`,
+        organizationId: fixture.organizationId,
+        monitoringPointId: outPoint.id,
+        value: "5.000000",
+        unit: "celsius",
+        measuredAt: new Date(Date.UTC(2026, 1, 1) + i * 1000).toISOString(),
+        recordedBy: fixture.actorId,
+        inRange: true,
+        notes: null,
+        createdAt: new Date().toISOString(),
+      });
+    }
+
+    const scoped = await buildComplianceExport(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      locationIds: [fixture.locationId],
+    });
+
+    // The in-scope reading is beyond the raw window, so the export is short...
+    expect(scoped.monitoringReadings.map((row) => row.id)).not.toContain(inScopeReading.id);
+    expect(scoped.monitoringReadings).toHaveLength(0);
+    // ...and `truncated` says so instead of attesting false completeness.
+    expect(scoped.truncated.monitoringReadings).toBe(true);
+  });
+
+  it("resolves a non-UTC offset bound to its literal calendar day for due_date", async () => {
+    const { store, fixture } = setup();
+    const incident = await registerNearMiss(store, fixture, {
+      occurredAt: "2026-02-01T08:00:00.000Z",
+    });
+    const action = await recordFix(store, fixture, {
+      incidentId: incident.id,
+      description: "Due on 2026-02-01",
+      dueDate: "2026-02-01",
+    });
+
+    const bundle = await buildComplianceExport(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      // Both bounds slice to the calendar day `2026-02-01`. Their UTC instants
+      // are `2026-01-31T22:30Z`; a UTC conversion would resolve to
+      // `2026-01-31` and exclude the action, so inclusion pins the literal,
+      // offset-independent slice.
+      from: "2026-02-01T00:30:00+02:00",
+      to: "2026-02-01T00:30:00+02:00",
+    });
+
+    expect(bundle.correctiveActions.map((row) => row.id)).toEqual([action.id]);
+  });
+
+  it("writes exactly one audit fact carrying the actor, scope, period, sources and counts", async () => {
+    const { store, fixture } = setup();
+    await registerNearMiss(store, fixture);
+    const bundle = await buildComplianceExport(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      from: "2026-01-01T00:00:00.000Z",
+      locationIds: [fixture.locationId],
+    });
+
+    const audits = store.audits.filter(
+      (audit) => audit.action === "hms.compliance_export.generated",
+    );
+    expect(audits).toHaveLength(1);
+    expect(audits[0]).toMatchObject({
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      entityType: "hms_compliance_export",
+      entityId: null,
+      after: {
+        scope: [fixture.locationId],
+        period: { from: "2026-01-01T00:00:00.000Z", to: null },
+        sources: [
+          "monitoring_readings",
+          "incidents",
+          "corrective_actions",
+          "checklist_runs",
+          "maintenance_logs",
+        ],
+        counts: {
+          monitoring_readings: bundle.counts.monitoringReadings,
+          incidents: bundle.counts.incidents,
+          corrective_actions: bundle.counts.correctiveActions,
+          checklist_runs: bundle.counts.checklistRuns,
+          maintenance_logs: bundle.counts.maintenanceLogs,
+        },
+      },
+    });
+    expect(bundle.counts.incidents).toBe(1);
+  });
+
+  it("marks an organization-wide export and rejects a malformed or inverted period", async () => {
+    const { store, fixture } = setup();
+    const base = { organizationId: fixture.organizationId, actorId: fixture.actorId };
+
+    await expect(buildComplianceExport(store, { ...base, organizationId: "  " })).rejects.toThrow(
+      DomainError,
+    );
+    await expect(buildComplianceExport(store, { ...base, actorId: "" })).rejects.toThrow(
+      DomainError,
+    );
+    await expect(buildComplianceExport(store, { ...base, from: "2026-02-01" })).rejects.toThrow(
+      DomainError,
+    );
+    await expect(buildComplianceExport(store, { ...base, to: "not-an-instant" })).rejects.toThrow(
+      DomainError,
+    );
+    await expect(
+      buildComplianceExport(store, {
+        ...base,
+        from: "2026-03-01T00:00:00.000Z",
+        to: "2026-02-01T00:00:00.000Z",
+      }),
+    ).rejects.toThrow(DomainError);
+    // A rejected export writes nothing.
+    expect(store.audits).toHaveLength(0);
+
+    await buildComplianceExport(store, base);
+    const audit = store.audits.find((row) => row.action === "hms.compliance_export.generated");
+    expect((audit?.after as { scope: unknown }).scope).toBe("organization");
   });
 });
