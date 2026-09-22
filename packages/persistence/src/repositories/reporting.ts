@@ -1,7 +1,15 @@
-import { and, asc, eq, gte, inArray, lte, ne, sql, type SQL } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, isNotNull, lte, ne, sql, type SQL } from "drizzle-orm";
 
 import type { Database } from "../client";
-import { channel, location, product, productVariant, salesLine, salesTransaction } from "../schema";
+import {
+  channel,
+  location,
+  product,
+  productVariant,
+  salesLine,
+  salesTransaction,
+  wasteEvent,
+} from "../schema";
 
 /**
  * Sales & margin reporting reads (`RPT-001`–`RPT-003`, `ADR-0007`).
@@ -88,6 +96,10 @@ export interface SalesGroupAggregate {
   readonly category: string | null;
   readonly productVariantId: string | null;
   readonly productName: string | null;
+  /** `product.product_kind`; a `product` group only, null otherwise. */
+  readonly productKind: string | null;
+  /** Distinct `sales_line.option_kind` values; a `product` group only, null otherwise. */
+  readonly optionKinds: readonly string[] | null;
   readonly periodBucket: string;
   /** Distinct transactions in the group; a count as text (see the module header). */
   readonly transactions: string;
@@ -300,8 +312,22 @@ export async function summarizeSales(
           select: {
             productVariantId: sql<string | null>`${resolvedVariantIdExpression()}::text`,
             productName: sql<string | null>`${productVariant.name}`,
+            category: sql<string | null>`${product.category}`,
+            productKind: sql<string | null>`${product.productKind}`,
+            optionKinds: sql<
+              readonly string[] | null
+            >`array_agg(distinct ${salesLine.optionKind} order by ${salesLine.optionKind})`,
           },
-          group: [resolvedVariantIdExpression(), sql`${productVariant.name}`],
+          // The product's own category/product_kind are constant per variant
+          // (the variant belongs to one product), but PostgreSQL does not infer
+          // that from the coalesce expression grouped on, so they join the
+          // GROUP BY explicitly and add no extra groups.
+          group: [
+            resolvedVariantIdExpression(),
+            sql`${productVariant.name}`,
+            sql`${product.category}`,
+            sql`${product.productKind}`,
+          ],
           order: [sql`${productVariant.name}`, resolvedVariantIdExpression()],
         };
       case "period":
@@ -324,6 +350,8 @@ export async function summarizeSales(
       category: dimension.select["category"] ?? sql<string | null>`null`,
       productVariantId: dimension.select["productVariantId"] ?? sql<string | null>`null`,
       productName: dimension.select["productName"] ?? sql<string | null>`null`,
+      productKind: dimension.select["productKind"] ?? sql<string | null>`null`,
+      optionKinds: dimension.select["optionKinds"] ?? sql<readonly string[] | null>`null`,
       periodBucket: dimension.select["periodBucket"] ?? windowBucket,
       transactions: sql<string>`count(distinct ${salesTransaction.id})::text`,
       units: sql<string>`sum(${salesLine.quantity})::text`,
@@ -432,4 +460,77 @@ export async function listSalesLineRecords(
     })),
     truncated,
   };
+}
+
+/** The filters a waste-by-product read shares. */
+export interface WasteByProductVariantFilters {
+  readonly organizationId: string;
+  /** Inclusive lower bound on `waste_event.occurred_at`; an ISO instant. */
+  readonly from: string;
+  /** Inclusive upper bound on `waste_event.occurred_at`; an ISO instant. */
+  readonly to: string;
+  /** Empty/undefined = organization-wide (the repo convention). */
+  readonly locationIds?: readonly string[];
+}
+
+/** One variant's summed waste over the window (`RPT-005`, `DEC-109` item 5). */
+export interface WasteByProductVariantAggregate {
+  readonly productVariantId: string;
+  readonly quantity: string;
+  /** The sum of valued events; SQL null when no event carried a value. */
+  readonly value: string | null;
+}
+
+/**
+ * The window's waste by product variant (`RPT-005`, `DEC-109` item 5): one row
+ * per `waste_event.product_variant_id`, org- and location-scoped, over the
+ * inclusive `occurred_at` window. An item-only waste event has a null variant
+ * and is deliberately excluded — no item→product attribution rule exists, so
+ * the annotation is joined only where the event names a variant.
+ *
+ * The quantity is summed across the variant's events **unit-blind**: the events
+ * may carry different `unit_id`s, and no decision defines a normalisation, so
+ * the sum is a recorded ceiling. ponytail: the ceiling is a unit-aware grouping
+ * (`group by product_variant_id, unit_id`) or a conversion via the unit graph
+ * once a rule exists. The value is summed over the events that carry one;
+ * `null` when none did (never a silent 0 that reads as "valued at zero").
+ *
+ * **`DEC-068`.** `value` is the ledger's moving weighted average and is the only
+ * implemented valuation (`value_method = 'moving_average'`); `cost_selection`,
+ * `latest_price` and `manual` remain unimplemented, so their `value` is
+ * excluded here rather than blended into the figure. `value_method` and a
+ * contradicting `value` on the ledger entry stay a recorded ceiling (the
+ * repository does not cross-check the two). `waste_event.currency` is not
+ * cross-checked against the report's hard-coded `NOK` either — no multi-currency
+ * decision exists yet.
+ */
+export async function sumWasteByProductVariant(
+  db: Database,
+  query: WasteByProductVariantFilters,
+): Promise<readonly WasteByProductVariantAggregate[]> {
+  const conditions: SQL[] = [
+    eq(wasteEvent.organizationId, query.organizationId),
+    // DEC-068: only moving_average valuation is implemented; summing another
+    // method's `value` would blend an unimplemented valuation into the report.
+    eq(wasteEvent.valueMethod, "moving_average"),
+    isNotNull(wasteEvent.productVariantId),
+    gte(wasteEvent.occurredAt, new Date(query.from)),
+    lte(wasteEvent.occurredAt, new Date(query.to)),
+  ];
+  if (query.locationIds !== undefined && query.locationIds.length > 0) {
+    conditions.push(inArray(wasteEvent.locationId, [...query.locationIds]));
+  }
+
+  const rows = await db
+    .select({
+      productVariantId: sql<string>`${wasteEvent.productVariantId}::text`,
+      quantity: sql<string>`sum(${wasteEvent.quantity})::text`,
+      value: sql<string | null>`sum(${wasteEvent.value})::text`,
+    })
+    .from(wasteEvent)
+    .where(and(...conditions))
+    .groupBy(wasteEvent.productVariantId)
+    .orderBy(asc(wasteEvent.productVariantId));
+
+  return rows as readonly WasteByProductVariantAggregate[];
 }
