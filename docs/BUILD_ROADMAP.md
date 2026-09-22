@@ -74,12 +74,15 @@ managers only, optional audited acknowledgements; `/api/v1/documents/**` and
 tables** (`DEC-094`) 2026-09-22 (migration `0050`, **83 tables**;
 `task`/`approval` schema-only, org-scoped, no `job`/worker/outbox —
 `ADR-0004` still `Proposed`; provisional clarifications recorded as
-`DEC-101`). **Next task — buildable now:** row 14 workforce/scheduling
-(`WF-001`–`WF-007`; shifts/worked-hours/payroll-input; the `employee` entity
-has landed), subject to the **WF-003 self-assignment login model** and the
-privacy-review retention periods per file class (a recorded provisional
-clarification if needed); the receipt→ledger wiring (the OPS destination
-`storage_area_id` policy) remains the alternative buildable item. Then the
+`DEC-101`). **Delivered — row 14a, shift planning + rota + manager
+assignment** (`WF-002`/`WF-003`, `DEC-037`/`DEC-038`/`DEC-102`) delivered
+2026-09-22 (migrations `0051`/`0052`, **85 tables**): `shift` +
+`shift_assignment`, `/api/v1/workforce/shifts/**` and
+`/shift-assignments/**`, self-assignment deferred pending the WF-003 login
+model. **Next task — row 14b:** `shift_adjustment` + `payroll_report`
+(worked hours `WF-004` and the monthly payroll-input report `WF-005`, epic
+15; the `payroll_report_status` vocabulary; the `DEC-102` item-9 open
+points). Then the
 programme
 build order (§4 rows 19–20). **New open points from the workforce-slice
 reviews (recorded, do not resolve silently):** `WF-007`'s audited
@@ -164,7 +167,7 @@ inputs; the receipt→ledger wiring needs the OPS destination
 history/grain quality (I11); rows 15–18 remain blocked (data /
 `ADR-0009`–`0011`); the deployment rehearsal is parked on the owner inputs;
 the golden fixtures are unsigned.
-Next free decision id `DEC-102`.
+Next free decision id `DEC-103`.
 
 ## 2. The execution loop (per slice)
 
@@ -266,7 +269,7 @@ sequence). Requirement IDs are from `11_REQUIREMENTS_CATALOG.md`; decision IDs f
 | 11 | Import framework + external mappings | P3 / epic 10 | `SALE-002`, `SALE-004`, `SALE-007`, `SALE-008`; `DEC-025`, `DEC-033`, `DEC-035`, `DEC-041`, `DEC-085`; `ADR-0008` (accepted 2026-09-20) | 3 | none — legacy I19 as reference; I1/I15 Frontline shapes gate real profiles | done (committed — migration `0022` (`import_run`/`import_staging_row`/`external_mapping`), vocabularies `IMPORT_STATUS`/`MAPPING_STATE`/`IMPORT_POSTING_POLICY`, domain `sales-mapping.ts` (`resolveExternalEntity`, SKU-first then external id, both `DEC-033` conflict directions), application `imports/**` (create/stage/validate/map/dispose/preview + list/get), web `/api/v1/imports/**` + `(app)/sales/**` + `seed-imports.ts`; row 11 **complete** 2026-09-21 — the `DEC-085` `file_object` table (migrations `0035`/`0036`) closed the last open point; verified 1383/1383 with `DATABASE_URL`) |
 | 12 | Sales + settlements + reconciliation | P3 / epic 11 | `SALE-001`–`011`, `PRICE-006`, `REC-001`–`006`; `DEC-026`, `DEC-035`, `DEC-040`, `DEC-042`, `DEC-043`, `DEC-045`; `ADR-0008` (**Accepted** 2026-09-20) | 8, 11 | none — `ADR-0008` accepted 2026-09-20 (inputs: I1 channel/SKU) | done (committed — migration `0023` (`sales_transaction`/`sales_line`/`settlement`/`reconciliation` + the `sales_line` branch in `stock_movement_source_guard`), vocabularies `RECONCILIATION_STATUS`/`OPTION_KIND`, domain `sales-consumption.ts` (recipe explosion + the `DEC-026` tolerance evaluator), application `sales/**` (`postImportRun`, `postTheoreticalConsumption`, list/get) + `reconciliation/**` (`reconcileImportRun`, `reconcileSettlement`, `resolveReconciliation`, list, `resolveTolerance`), web `/api/v1/sales/**` + `/api/v1/reconciliations/**` + `(app)/sales/**` screens (landing, transactions list/detail, reconciliation with resolve) + `seed-sales.ts`; verified 1186/1186 with `DATABASE_URL`) |
 | 13 | Close + dashboards + menu engineering | P3 / epic 12 | `REC-003`, `REC-006`, `RPT-001`–`005`; `DEC-027`, `DEC-032`; `ADR-0007` (**Accepted** 2026-09-20) | 12 | data — history/grain quality (I11) | todo (data-gated — synthetic fixtures until real history) |
-| 14 | Workforce: employees, shifts, worked hours, payroll-input report | P3 / epics 13–15 | `WF-001`–`007`; `DEC-012`, `DEC-037`, `DEC-038`, `DEC-087`; `SEC-003` | 1, row 20a (the `employee` entity, `DEC-087`) | none — the privacy review / access matrix was approved 2026-09-21 (Phase A); the **WF-003 self-assignment login model** (must a self-assigning employee hold an `app_user` login?) and the retention periods per file class remain open inputs | blocked (owner) — buildable once the `employee` entity lands; the WF-003 login model shapes scheduling/shifts |
+| 14 | Workforce: employees, shifts, worked hours, payroll-input report | P3 / epics 13–15 | `WF-001`–`007`; `DEC-012`, `DEC-037`, `DEC-038`, `DEC-087`, `DEC-102`; `SEC-003` | 1, row 20a (the `employee` entity, `DEC-087`) | none — the privacy review / access matrix was approved 2026-09-21 (Phase A); the **WF-003 self-assignment login model** (must a self-assigning employee hold an `app_user` login?) and the retention periods per file class remain open inputs | **14a: done** — shift planning, rota and manager assignment (`WF-002`/`WF-003`, `DEC-037`/`DEC-038`/`DEC-102`) delivered 2026-09-22 (migrations `0051`/`0052`, **85 tables**; `shift` + `shift_assignment` with the `shift_state` machine and the manager-assignment path of `shift_assignment_state`, `/api/v1/workforce/shifts/**` and `/shift-assignments/**`; provisional clarifications recorded as `DEC-102`; self-assignment deferred pending the WF-003 login model). **Next: 14b** — `shift_adjustment` + `payroll_report` (worked hours `WF-004` and the monthly payroll-input report `WF-005`, epic 15; the `payroll_report_status` vocabulary; the `DEC-102` item-9 open points) |
 | 15 | Forecasts / budgets / planning | P4 / epic 16 | `FCST-001`–`003`, `PLAN-001`–`003`; `DEC-011`, `DEC-019` | 12, 13 | clean history / grain measured (I11, `DEC-011`) | blocked (data) |
 | 16 | Publishing integrations | P3 / epic 17 | `INTG-001`–`003`; `DEC-002`, `DEC-015`, `DEC-041`, `DEC-044`; `ADR-0011` (**Proposed**), `ADR-0008` | 3, 7, 12 | `ADR-0011` acceptance; per-source approval + named credentials owner (I18) | blocked (owner) |
 | 17 | AI-assisted advisory | P4 / epic 18 | `FCST-004`; `DEC-039`; `ADR-0009` (**Proposed**), `ADR-0004` (**Proposed**), `ADR-0007` | 13, 15 | `ADR-0009` acceptance; provider privacy/DPA review (I16) | blocked (owner) |
