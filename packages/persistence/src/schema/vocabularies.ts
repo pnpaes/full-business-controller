@@ -455,6 +455,21 @@ export const SHIFT_ASSIGNMENT_STATE = [
 // `schemas/domain-enums.yaml` (`payroll_report_status`).
 export const PAYROLL_REPORT_STATUS = ["draft", "generated", "exported", "superseded"] as const;
 
+// `REC-003`/`REC-006`, `DEC-027` (row 13a): the `period_close` close/lock slice.
+// `period_close_status` backs `period_close_status_check` and
+// `period_close_scope_type` backs `period_close_scope_type_check`; both keys were
+// present in `schemas/domain-enums.yaml` from the start but deliberately
+// unexported until the `period_close` table needed them, so
+// `vocabularies.test.ts`'s `UNEXPORTED_YAML_KEYS` guard shrinks accordingly
+// (`adjustment_period_status` stays unexported — the `adjustment_period` table is
+// deferred to 13b). The status machine (`closing` → `locked` → `reopened` →
+// `closing`, with `open` unreachable through the API) is **provisional** — see
+// `DEC-105`. From `schemas/domain-enums.yaml` (`period_close_status`,
+// `period_close_scope_type`).
+export const PERIOD_CLOSE_STATUS = ["open", "closing", "locked", "reopened"] as const;
+
+export const PERIOD_CLOSE_SCOPE_TYPE = ["location", "company"] as const;
+
 // `DEC-088` (`DOC-001`…`DOC-004`): the staff document library. `category` and
 // `audience` back `document_category_check` / `document_audience_check`, and
 // `status` backs `document_status_check` via the distinct

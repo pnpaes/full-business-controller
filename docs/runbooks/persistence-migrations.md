@@ -170,11 +170,26 @@ because its target table varies by `source_type`.
 ## Pre-apply preflight for validating constraints and indexes
 Migrations 0014, 0016, 0017, 0018, 0019, 0020, 0021, 0022, 0023, 0024, 0025,
 0026, 0027, 0028, 0029, 0030, 0031, 0032, 0033, 0035, 0037, 0040, 0041, 0042,
-0043, 0044, 0045, 0046, 0047, 0048, 0049, 0051 and 0053 add objects that validate or build, so a failure
+0043, 0044, 0045, 0046, 0047, 0048, 0049, 0051, 0053 and 0057 add objects that validate or build, so a failure
 aborts the whole transactional migration (drizzle-kit runs each file in one
 transaction). Run the matching preflight against the target database **before**
 applying and reconcile any hits; drizzle-kit cannot detect them because these
   files diff against existing data.
+
+- **`0057_period_close.sql`** — one new, empty table (`period_close`) with its six
+  checks (`period_close_status_check`, `period_close_scope_type_check`,
+  `period_close_period_range_check`, `period_close_granularity_check`,
+  `period_close_locked_check`, `period_close_reopened_check`), the
+  `period_close_org_scope_period_key` unique on
+  `(organization_id, scope_type, scope_id, period_start)`, the organization FK
+  and the `period_close_org_scope_idx` / `period_close_org_status_idx` org-first
+  indexes. All are cheap at first apply because the table starts empty: the checks
+  validate nothing existing, the unique builds an empty table and the organization
+  FK validates an empty child table. The granularity check's
+  `date_trunc('month', date)` is an immutable expression, so the CHECK is legal.
+  The migration adds no hand-written statement and no backfill is needed.
+  `0058_period_close_org_guard.sql` (below) adds triggers only, so it scans no
+  existing row either. No separate preflight query is needed.
 
 - **`0051_shift_scheduling.sql`** — two new, empty tables (`shift`,
   `shift_assignment`) with their checks, the `shift_assignment_shift_employee_key`
@@ -1636,6 +1651,51 @@ only, so the down file is an explicit operator action, not an automatic one.
   `psql "$DATABASE_URL" -f packages/persistence/drizzle/0056_payroll_report_org_guard_down.sql`.
   Apply `0056`'s down **before** `0055`'s down if the table goes too: its trigger
   lives on `payroll_report`, which `0055`'s down drops.
+- **0057 adds the `REC-003`/`REC-006`/`DEC-027` (row 13a) close/lock table and
+  follows the down convention** (see the ledger row below): `0057_period_close.sql`
+  is generated DDL for one table, additive like `0037`/`0040`/`0042`/`0044`/
+  `0046`/`0048`/`0050`/`0051`/`0053`/`0055` — `period_close` (`organization_id`,
+  the `scope_type` (`location`/`company`) and NOT NULL plain-uuid `scope_id`, the
+  `period_start`/`period_end` `date`s, `status` default `open`, the `checklist`
+  jsonb default `'[]'::jsonb`, the nullable `snapshot` jsonb, the nullable
+  `correction_policy` text, the nullable plain-uuid `locked_by`/`reopened_by` with
+  their `timestamptz` instants and the nullable `reopen_reason`, the audit
+  columns, the organization FK, the six checks — `period_close_status_check`,
+  `period_close_scope_type_check`, `period_close_period_range_check`,
+  `period_close_granularity_check`, `period_close_locked_check`,
+  `period_close_reopened_check` — the `period_close_org_scope_period_key` unique
+  on `(organization_id, scope_type, scope_id, period_start)` and the
+  `period_close_org_scope_idx` / `period_close_org_status_idx` indexes).
+  `0057_period_close_down.sql` drops the table inside one `BEGIN;`/`COMMIT;`
+  (with `DROP TABLE IF EXISTS` so a half-applied manual run cannot wedge); the
+  checks, unique, FK and indexes drop with the table. It is **destructive** —
+  every close and its frozen snapshot is lost — so run it only while those rows
+  need not be preserved (AGENTS.md Rule 2). Apply `0058`'s down **before**
+  `0057`'s down. Apply it manually with
+  `psql "$DATABASE_URL" -f packages/persistence/drizzle/0057_period_close_down.sql`.
+- **0058 adds the `REC-003`/`REC-006`/`DEC-027` (row 13a) `period_close` guards
+  and follows the down convention:** `0058_period_close_org_guard.sql` is
+  hand-written (`DEC-079`'s `BEFORE INSERT OR UPDATE` guard shape, mirroring
+  `0045`/`0052`/`0056`, plus two immutability guards). Three functions and three
+  triggers: `period_close_scope_org_guard` on `period_close` rejects a `location`
+  scope whose `scope_id` is not a `location` row in the row's own organization
+  (unlike `0045`/`0056`, it checks **existence too**, because `scope_id` carries
+  no FK); `period_close_locked_immutability` rejects any change to a `locked`
+  row's `snapshot`, period, scope, tenancy or lock actor, and any status other
+  than `locked`/`reopened`; `period_close_locked_delete_guard` rejects deleting a
+  `locked` row.
+  All raise `ERRCODE = '23514'`. It is **trigger-only and table-neutral**: it adds
+  no table and no constraint that validates an existing row, so it scans no row
+  and needs no preflight query.
+  `0058_period_close_org_guard_down.sql` drops the three triggers and their
+  functions inside one `BEGIN;`/`COMMIT;` (with `DROP ... IF EXISTS` so a
+  half-applied manual run cannot wedge). No table and no row is touched, so the
+  down cannot fail on data; while dropped, the scope coherence and the
+  locked-snapshot immutability are validated only by the application. Apply it
+  manually with
+  `psql "$DATABASE_URL" -f packages/persistence/drizzle/0058_period_close_org_guard_down.sql`.
+  Apply `0058`'s down **before** `0057`'s down if the table goes too: its triggers
+  live on `period_close`, which `0057`'s down drops.
 
 **Re-applying after a manual down:** drizzle-kit tracks applied migrations in
 `drizzle.__drizzle_migrations`, not by comparing the schema, so a plain
@@ -1681,8 +1741,10 @@ for 0003, `… = 1789850858806` for 0004, `… = 1789851925634` for 0005,
 `… = 1790061475649` for 0050,
 `… = 1790063480942` for 0051,
 `… = 1790063500924` for 0052,
-`… = 1790067016722` for 0053 and
-`… = 1790067030453` for 0054, then
+`… = 1790067016722` for 0053,
+`… = 1790067030453` for 0054,
+`… = 1790110579392` for 0057 and
+`… = 1790110580000` for 0058, then
 `npm run db:migrate` (0003 verified 2026-09-19; 0005 rehearsed in the slice-3
 review follow-up; 0006 rehearsed with the slice-4 receiving work; 0007 and
 0008 rehearsed with the slice-4 review follow-up; 0009 rehearsed with the
@@ -1865,6 +1927,28 @@ function with no table change (87 tables, 0 guards) and
 (`created_at IN (1790069367957, 1790069368959)`) deleted 2 rows, and
 `npm run db:migrate` re-applied 0055/0056 — final 87 public base tables, 1 guard
 trigger present, 57 ledger rows, with a further `npm run db:migrate` a no-op.
+0057 on 2026-09-22 added the `REC-003`/`REC-006`/`DEC-027` (row 13a) close/lock
+table (`period_close`) and 0058 its scope-coherence and locked-snapshot guards,
+taking the database to 88 tables (the ledger holds 59 rows); the close
+integration suite observed the `period_close_granularity_check` rejecting a
+location range spanning two days (`23514`), the `period_close_scope_org_guard`
+rejecting a `scope_id` that is not a location in the row's own organization
+(`23514`), the `period_close_locked_immutability` rejecting a snapshot change to
+a locked row, and the `period_close_locked_delete_guard` blocking the delete of a
+locked row. The 0057/0058 down/re-apply rehearsal was run on 2026-09-22: starting
+from 88 public base tables, 3 `period_close` guard triggers present and 59 ledger
+rows, `0058_period_close_org_guard_down.sql` dropped the three guard triggers and
+their functions with no table change (88 tables, 0 triggers) and
+`0057_period_close_down.sql` dropped the `period_close` table (87 tables, 0
+triggers); deleting the two ledger rows
+(`created_at IN (1790110579392, 1790110580000)`) deleted 2 rows, and
+`npm run db:migrate` re-applied 0057/0058 — final 88 public base tables, 3 guard
+triggers present, 59 ledger rows, with a further `npm run db:migrate` a no-op.
+After the adversarial review, `0058`'s locked-row immutability was hardened to
+also cover tenancy (`organization_id`) and the lock actor
+(`locked_by`/`locked_at`), and the 0058/0057 down/re-apply rehearsal was re-run on
+2026-09-22 with the same counts (88 tables, 3 triggers, 59 ledger rows; a further
+`db:migrate` a no-op); the `0058` sha256 above is the amended file.
 A **full 0011 down** drops the tables the three 0012 constraints live on, so its
 replay must clear **both** ledger rows, not just 0011's:
 `DELETE FROM drizzle.__drizzle_migrations WHERE created_at IN (1789862475550, 1789862630158);`
@@ -2168,6 +2252,8 @@ session will not serialise against each other.
 | 0050 | `0050_workflow_platform.sql` | Generated (`DEC-094`, schema-only workflow platform): the two tables, additive like `0037`/`0040`/`0042`/`0044`/`0046`/`0048` — `task` (`organization_id`, the free-text `type`, the nullable polymorphic `linked_entity_type`/`linked_entity_id` pair, the plain-uuid `owner_id`, the nullable `due_date`, the free-text `priority`, `status` defaulting to `open`, the nullable `resolution` and plain-uuid `created_from_event_id`, the audit columns, the organization FK, the `task_status_check` / `task_linked_entity_check` checks and the `task_org_status_idx` / `task_org_owner_due_idx` / `task_org_linked_idx` org-first indexes) and `approval` (`organization_id`, the polymorphic `entity_type`/`entity_id`, the nullable `entity_version`, the required `requested_by`/`requested_at`, the nullable `decided_by`/`decided_at`/`decision`/`comment`, the audit columns, the organization FK, the `approval_decision_check` / `approval_decided_check` checks and the `approval_org_entity_idx` / `approval_org_decision_idx` indexes). The `job` table, the worker/scheduler and the outbox layer are deliberately not built (`ADR-0004` gated). No hand-written statement and no companion org-guard migration (only the `organization_id` FK). Journal `when` `1790061475649`, sha256 `19438c2f5ead0664a2ed74b19395d833555e999826b8c6787b6ed88aa44ebdc9`. Down companion: `0050_workflow_platform_down.sql` (drops `approval` then `task` — destructive) |
 | 0055 | `0055_payroll_report.sql` | Generated (`DEC-037`, `WF-005`): the monthly payroll-**input** report table, additive like `0037`/`0040`/`0042`/`0044`/`0046`/`0048`/`0050`/`0051`/`0053` — `organization_id`, `period_start`/`period_end` `date`, `generated_at` `timestamptz` default `now()`, the nullable plain-uuid `generated_by` (the `app_user` FK is deferred), `status` default `draft`, the `snapshot` jsonb default `'{}'::jsonb` (the frozen, reproducible lines), the nullable `export_file_id` **real** FK → `file_object(id)` (`DEC-085`; the storage bytes/signed-URL export stays deferred) and the audit columns, with the organization FK, the `payroll_report_status_check` (`PAYROLL_REPORT_STATUS`) and `payroll_report_period_check` (`period_end > period_start`) checks, the **partial** unique index `payroll_report_org_period_key` on `(organization_id, period_start)` `WHERE status <> 'superseded'` (the `DEC-104` provisional supersede key — a plain unique would keep the superseded row occupying the key and make "supersede then insert" impossible), and the `payroll_report_org_status_idx` / `payroll_report_org_period_idx` org-first indexes. The report is generated on demand; the "~3 days before month-end" trigger is `ADR-0004`-gated and not built. The `export_file_id` FK is emitted inline by drizzle-kit (a new empty table, so the `NOT VALID` → `VALIDATE CONSTRAINT` dance is unnecessary). No hand-written statement. Journal `when` `1790069367957`, sha256 `18b9789e64c5fb462828402036ec0a9d87c9090d43034a71fd1de9932c7ae87d`. Down companion: `0055_payroll_report_down.sql` (drops the table — destructive) |
 | 0056 | `0056_payroll_report_org_guard.sql` | Hand-written (`DEC-079`'s guard shape applied to the `DEC-037`/`DEC-085` `payroll_report.export_file_id` FK, mirroring `0045`): one function and one `BEFORE INSERT OR UPDATE FOR EACH ROW` trigger — `payroll_report_export_file_org_guard` on `payroll_report` (rejects a non-null `export_file_id` whose `file_object` belongs to another organization, and skips a null reference). No table and no TypeScript schema change. Journal `when` `1790069368959`, sha256 `4aa9675bcd8156f4882aade667c9dc3ecab3e4f69e5ac2ded508c0dccff63631`. Down companion: `0056_payroll_report_org_guard_down.sql` (drops the trigger and its function — no row is touched) |
+| 0057 | `0057_period_close.sql` | Generated (`REC-003`/`REC-006`, `DEC-027`): the row-13a close/lock table, additive like `0037`/`0040`/`0042`/`0044`/`0046`/`0048`/`0050`/`0051`/`0053`/`0055` — `organization_id`, the `scope_type` (`location`/`company`) and NOT NULL plain-uuid `scope_id` (the `location.id` for a location scope, the `organization.id` for a company scope — no FK because the target varies), `period_start`/`period_end` `date`, `status` default `open`, the `checklist` jsonb default `'[]'::jsonb`, the nullable `snapshot` jsonb, the nullable `correction_policy`, the nullable plain-uuid `locked_by`/`reopened_by` with their `timestamptz` instants and the nullable `reopen_reason` (the `app_user` FK is deferred), and the audit columns, with the organization FK, the `period_close_status_check` (`PERIOD_CLOSE_STATUS`) and `period_close_scope_type_check` (`PERIOD_CLOSE_SCOPE_TYPE`) checks, the `period_close_period_range_check` (`period_end >= period_start`), the `period_close_granularity_check` (location ⇒ a single day; company ⇒ the UTC calendar month first→last day, via immutable `date_trunc('month', date)`), the all-or-nothing `period_close_locked_check` and the `period_close_reopened_check` (the reopen triple required when `status='reopened'`), the `period_close_org_scope_period_key` unique on `(organization_id, scope_type, scope_id, period_start)` and the `period_close_org_scope_idx` / `period_close_org_status_idx` org-first indexes. `adjustment_period` and `daily_close` are deferred to 13b (`DEC-105`). No hand-written statement. Journal `when` `1790110579392`, sha256 `b2cbad1af69cbfca470cd31dd7d84e2ed9154cc4c170666fa2bb3d11e90f3e31`. Down companion: `0057_period_close_down.sql` (drops the table — destructive) |
+| 0058 | `0058_period_close_org_guard.sql` | Hand-written (`DEC-079`'s guard shape applied to the row-13a `period_close`, mirroring `0045`/`0052`/`0056`, plus two immutability guards): three functions and three `BEFORE` triggers — `period_close_scope_org_guard` on INSERT/UPDATE (a `location` scope's `scope_id` must be a `location` row in the row's own organization; checks existence **and** organization because `scope_id` has no FK, and skips when the scope columns are unchanged on UPDATE), `period_close_locked_immutability` on UPDATE (a `locked` row's `snapshot`, period, scope, tenancy and lock actor are immutable and its status may only stay `locked` or move to `reopened`) and `period_close_locked_delete_guard` on DELETE (a `locked` row cannot be deleted). All raise `23514`. No table and no TypeScript schema change. Journal `when` `1790110580000`, sha256 `63bcd67b11649d84e4c97342e6b859baec6b95e97d20719bdc967756267d10b3`. Down companion: `0058_period_close_org_guard_down.sql` (drops the three triggers and their functions — no row is touched) |
 
 Order matters: extensions before DDL that calls `gen_random_uuid()`, and before
 the exclusion constraints. Verify with:
@@ -2270,20 +2356,21 @@ tables).
 0013–0019 were added after this replay was verified; all are additive and
 table-count-neutral. `0020`, `0021`, `0022`, `0023`, `0024`, `0027`, `0030`,
 `0031`, `0033`, `0035`, `0037`, `0040`, `0042`, `0044`, `0046`, `0048`, `0050`,
-`0051` and `0053` are the only migrations after the replay was written to add
-tables (four, four, three, four, one, one, one, one, one, one, two, two, two,
-two, two, three, two, two and one respectively), so the 83-table figure above is
+`0051`, `0053` and `0057` are the only migrations after the replay was written to
+add tables (four, four, three, four, one, one, one, one, one, one, two, two, two,
+two, two, three, two, two, one and one respectively), so the 83-table figure
+above is
 the expected post-`0050` count (51
 after `0020`, 55 after `0021`, 58 after `0022`, 62 after `0023`, 63 after
 `0024`, 64 after `0029`, 65 after `0030`, 66 after `0031` and `0032`, 67 after
 `0033`, still 67 after `0034`, 68 after `0035`, still 68 after `0036`, 70 after
 `0037`, still 70 after `0038`, still 70 after `0039`, 72 after `0040`, still 72
 after `0041`, 74 after `0042`, 76 after `0044`, 78 after `0046`, 81 after
-`0048`, 83 after `0050`, 85 after `0051`, 86 after `0053` and 87 after
-`0055`);
+`0048`, 83 after `0050`, 85 after `0051`, 86 after `0053`, 87 after
+`0055` and 88 after `0057`);
 `0025`, `0026`,
 `0028`, `0032`, `0034`, `0036`, `0038`, `0039`, `0041`, `0043`, `0045`,
-`0047`, `0049`, `0052`, `0054` and `0056` are table-neutral.
+`0047`, `0049`, `0052`, `0054`, `0056` and `0058` are table-neutral.
 `0014`–`0038`'s
 apply/re-run/down/re-apply was rehearsed on the local dev database 2026-09-20
 (0030 and 0031 on 2026-09-21; 0032 on 2026-09-21; 0033 on 2026-09-21 — its

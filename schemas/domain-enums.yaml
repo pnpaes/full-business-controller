@@ -97,6 +97,7 @@ adjustment_reason:
   - transfer_discrepancy
   - other
 period_close_status: [open, closing, locked, reopened]
+period_close_scope_type: [location, company]
 adjustment_period_status: [open, closed]
 cost_center_kind: [company_shared, location, kitchen, front_of_house, project]
 role_code: [owner, general_manager, location_manager, kitchen, front_of_house, purchasing, finance, admin, analyst, product_owner, technical_owner, data_owner]
