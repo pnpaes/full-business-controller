@@ -9,9 +9,14 @@ import { computeWorkedHours } from "./compute-worked-hours";
 import { createShift } from "./create-shift";
 import type { CreateShiftInput } from "./create-shift";
 import { createShiftAdjustment } from "./create-shift-adjustment";
+import { findPayrollReport } from "./find-payroll-report";
 import { findShift } from "./find-shift";
 import { findShiftAdjustment } from "./find-shift-adjustment";
 import { findShiftAssignment } from "./find-shift-assignment";
+import { generatePayrollReport } from "./generate-payroll-report";
+import type { GeneratePayrollReportInput } from "./generate-payroll-report";
+import { DEFAULT_PAYROLL_REPORT_LIMIT, listPayrollReports } from "./list-payroll-reports";
+import { markPayrollReportExported } from "./mark-payroll-report-exported";
 import { DEFAULT_SHIFT_ADJUSTMENT_LIMIT, listShiftAdjustments } from "./list-shift-adjustments";
 import { DEFAULT_SHIFT_ASSIGNMENT_LIMIT, listShiftAssignments } from "./list-shift-assignments";
 import { DEFAULT_SHIFT_LIMIT, listShifts } from "./list-shifts";
@@ -1289,12 +1294,14 @@ describe("computeWorkedHours", () => {
           employeeName: "Ana Andersen",
           roleCode: "barista",
           hours: "4.00",
+          hourlyRate: "200.0000",
         },
         {
           employeeId: fixture.employeeId,
           employeeName: "Nora Nordmann",
           roleCode: "barista",
           hours: "6.50",
+          hourlyRate: "215.5000",
         },
       ],
       totalHours: "10.50",
@@ -1372,5 +1379,358 @@ describe("computeWorkedHours", () => {
         to: "2026-07-03T00:00:00.000Z",
       }),
     ).rejects.toThrow(/from must be an ISO-8601 instant/);
+  });
+});
+
+const PAYROLL_PERIOD = { periodStart: "2026-07-01", periodEnd: "2026-07-31" } as const;
+
+/** Plans a shift, publishes it and assigns the fixture employee (approved). */
+async function workedShift(
+  store: FakeSchedulingStore,
+  fixture: SchedulingFixture,
+  overrides: Partial<CreateShiftInput> = {},
+) {
+  const shift = await plan(store, fixture, overrides);
+  await publishShift(store, {
+    organizationId: fixture.organizationId,
+    actorId: fixture.actorId,
+    shiftId: shift.id,
+  });
+  await assign(store, fixture, shift.id);
+  return shift;
+}
+
+function generate(
+  store: FakeSchedulingStore,
+  fixture: SchedulingFixture,
+  overrides: Partial<GeneratePayrollReportInput> = {},
+) {
+  return generatePayrollReport(store, {
+    organizationId: fixture.organizationId,
+    actorId: fixture.actorId,
+    ...PAYROLL_PERIOD,
+    ...overrides,
+  });
+}
+
+describe("generatePayrollReport", () => {
+  it("freezes the hours, rate and expected pay into the snapshot and audits it", async () => {
+    const { store, fixture } = setup();
+    seedSchedulingEmployee(store, {
+      id: fixture.employeeId,
+      organizationId: fixture.organizationId,
+      primaryLocationId: fixture.locationId,
+      roleCode: "barista",
+      name: "Nora Nordmann",
+      baseHourlyRate: "215.5000",
+    });
+    await workedShift(store, fixture, {
+      startsAt: "2026-07-01T08:00:00.000Z",
+      endsAt: "2026-07-01T16:00:00.000Z",
+    });
+
+    const report = await generate(store, fixture);
+
+    expect(report).toMatchObject({
+      organizationId: fixture.organizationId,
+      periodStart: "2026-07-01",
+      periodEnd: "2026-07-31",
+      status: "generated",
+      generatedBy: fixture.actorId,
+      exportFileId: null,
+    });
+    expect(report.generatedAt).toEqual(expect.any(String));
+    expect(report.snapshot).toEqual({
+      schemaVersion: 1,
+      currency: "NOK",
+      periodStart: "2026-07-01",
+      periodEnd: "2026-07-31",
+      lines: [
+        {
+          employeeId: fixture.employeeId,
+          employeeName: "Nora Nordmann",
+          roleCode: "barista",
+          hours: "8.00",
+          hourlyRate: "215.5000",
+          expectedPay: "1724.0000",
+        },
+      ],
+      totalHours: "8.00",
+      totalExpectedPay: "1724.0000",
+    });
+
+    const audit = store.audits.find((row) => row.action === "workforce.payroll_report.generated");
+    expect(audit).toMatchObject({
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      entityType: "payroll_report",
+      entityId: report.id,
+      after: {
+        period_start: "2026-07-01",
+        period_end: "2026-07-31",
+        status: "generated",
+        total_hours: "8.00",
+        total_expected_pay: "1724.0000",
+        line_count: 1,
+      },
+    });
+  });
+
+  it("includes the whole periodEnd day and excludes the following day", async () => {
+    const { store, fixture } = setup();
+    seedSchedulingEmployee(store, {
+      id: fixture.employeeId,
+      organizationId: fixture.organizationId,
+      primaryLocationId: fixture.locationId,
+      roleCode: "barista",
+      name: "Nora Nordmann",
+    });
+    await workedShift(store, fixture, {
+      startsAt: "2026-07-31T08:00:00.000Z",
+      endsAt: "2026-07-31T16:00:00.000Z",
+    });
+    await workedShift(store, fixture, {
+      startsAt: "2026-08-01T08:00:00.000Z",
+      endsAt: "2026-08-01T16:00:00.000Z",
+    });
+
+    const report = await generate(store, fixture);
+
+    expect(report.snapshot).toMatchObject({ totalHours: "8.00" });
+  });
+
+  it("builds an empty snapshot with zero totals for a period with no hours", async () => {
+    const { store, fixture } = setup();
+
+    const report = await generate(store, fixture);
+
+    expect(report.status).toBe("generated");
+    expect(report.snapshot).toMatchObject({
+      lines: [],
+      totalHours: "0.00",
+      totalExpectedPay: "0.0000",
+    });
+  });
+
+  it("supersedes a prior same-period report before inserting the replacement", async () => {
+    const { store, fixture } = setup();
+    const first = await generate(store, fixture);
+    const second = await generate(store, fixture, { actorId: "actor-2" });
+
+    expect(
+      await findPayrollReport(store, {
+        organizationId: fixture.organizationId,
+        payrollReportId: first.id,
+      }),
+    ).toMatchObject({ status: "superseded" });
+    expect(second.status).toBe("generated");
+    expect(store.payrollReports.size).toBe(2);
+
+    const supersede = store.audits.find(
+      (row) => row.action === "workforce.payroll_report.superseded",
+    );
+    expect(supersede).toMatchObject({
+      actorId: "actor-2",
+      entityId: first.id,
+      before: { status: "generated" },
+      after: { status: "superseded" },
+    });
+    // The unique `(organization, periodStart)` key leaves exactly one live report.
+    expect(
+      (
+        await listPayrollReports(store, {
+          organizationId: fixture.organizationId,
+          status: "generated",
+        })
+      ).map((row) => row.id),
+    ).toEqual([second.id]);
+  });
+
+  it("rejects malformed dates and a non-advancing period", async () => {
+    const { store, fixture } = setup();
+
+    await expect(generate(store, fixture, { periodStart: "2026-07-32" })).rejects.toThrow(
+      /periodStart must be a date/,
+    );
+    await expect(generate(store, fixture, { periodEnd: "2026-07-01" })).rejects.toThrow(
+      new DomainError("periodEnd must be after periodStart"),
+    );
+    expect(store.payrollReports.size).toBe(0);
+  });
+
+  it("rolls the report back when its audit fact cannot be written", async () => {
+    const { store, fixture } = setup();
+    vi.spyOn(store, "writeAudit").mockRejectedValueOnce(new Error("audit down"));
+
+    await expect(generate(store, fixture)).rejects.toThrow("audit down");
+    expect(store.payrollReports.size).toBe(0);
+  });
+});
+
+describe("markPayrollReportExported", () => {
+  it("exports a generated report and links the artifact", async () => {
+    const { store, fixture } = setup();
+    const report = await generate(store, fixture);
+
+    const exported = await markPayrollReportExported(store, {
+      organizationId: fixture.organizationId,
+      payrollReportId: report.id,
+      exportFileId: "file-1",
+      actorId: fixture.actorId,
+    });
+
+    expect(exported).toMatchObject({ status: "exported", exportFileId: "file-1" });
+    expect(exported.updatedAt).not.toBeNull();
+
+    const audit = store.audits.find((row) => row.action === "workforce.payroll_report.exported");
+    expect(audit).toMatchObject({
+      entityId: report.id,
+      before: { status: "generated", export_file_id: null },
+      after: { status: "exported", export_file_id: "file-1" },
+    });
+  });
+
+  it("leaves the export link null when no artifact is given", async () => {
+    const { store, fixture } = setup();
+    const report = await generate(store, fixture);
+
+    const exported = await markPayrollReportExported(store, {
+      organizationId: fixture.organizationId,
+      payrollReportId: report.id,
+      actorId: fixture.actorId,
+    });
+
+    expect(exported).toMatchObject({ status: "exported", exportFileId: null });
+  });
+
+  it("refuses to export anything but a generated report", async () => {
+    const { store, fixture } = setup();
+    const report = await generate(store, fixture);
+    const exportIt = () =>
+      markPayrollReportExported(store, {
+        organizationId: fixture.organizationId,
+        payrollReportId: report.id,
+        actorId: fixture.actorId,
+      });
+    await exportIt();
+
+    await expect(exportIt()).rejects.toThrow(/cannot be exported/);
+  });
+
+  it("refuses to export a superseded report", async () => {
+    const { store, fixture } = setup();
+    const first = await generate(store, fixture);
+    await generate(store, fixture);
+
+    await expect(
+      markPayrollReportExported(store, {
+        organizationId: fixture.organizationId,
+        payrollReportId: first.id,
+        actorId: fixture.actorId,
+      }),
+    ).rejects.toThrow(/cannot be exported/);
+  });
+
+  it("is a typed not-found for a missing or cross-organization report", async () => {
+    const { store, fixture } = setup();
+
+    await expect(
+      markPayrollReportExported(store, {
+        organizationId: fixture.organizationId,
+        payrollReportId: "nope",
+        actorId: fixture.actorId,
+      }),
+    ).rejects.toThrow(NotFoundError);
+    await expect(
+      markPayrollReportExported(store, {
+        organizationId: fixture.otherOrganizationId,
+        payrollReportId: "nope",
+        actorId: fixture.actorId,
+      }),
+    ).rejects.toThrow(NotFoundError);
+  });
+});
+
+describe("findPayrollReport", () => {
+  it("is organization-scoped", async () => {
+    const { store, fixture } = setup();
+    const report = await generate(store, fixture);
+
+    await expect(
+      findPayrollReport(store, {
+        organizationId: fixture.organizationId,
+        payrollReportId: report.id,
+      }),
+    ).resolves.toMatchObject({ id: report.id });
+    await expect(
+      findPayrollReport(store, {
+        organizationId: fixture.otherOrganizationId,
+        payrollReportId: report.id,
+      }),
+    ).resolves.toBeUndefined();
+  });
+});
+
+describe("listPayrollReports", () => {
+  it("defaults the page limit", async () => {
+    const { store, fixture } = setup();
+    const spy = vi.spyOn(store, "listPayrollReports");
+
+    await listPayrollReports(store, { organizationId: fixture.organizationId });
+
+    expect(spy).toHaveBeenCalledWith(
+      expect.objectContaining({ limit: DEFAULT_PAYROLL_REPORT_LIMIT }),
+    );
+  });
+
+  it("rejects an unknown status filter", async () => {
+    const { store, fixture } = setup();
+
+    await expect(
+      listPayrollReports(store, { organizationId: fixture.organizationId, status: "nonsense" }),
+    ).rejects.toThrow(/status must be one of/);
+  });
+
+  it("orders newest period first, filters by status and pages", async () => {
+    const { store, fixture } = setup();
+    const june = await generate(store, fixture, {
+      periodStart: "2026-06-01",
+      periodEnd: "2026-06-30",
+    });
+    const july = await generate(store, fixture, {
+      periodStart: "2026-07-01",
+      periodEnd: "2026-07-31",
+    });
+    await markPayrollReportExported(store, {
+      organizationId: fixture.organizationId,
+      payrollReportId: july.id,
+      actorId: fixture.actorId,
+    });
+
+    const all = await listPayrollReports(store, { organizationId: fixture.organizationId });
+    expect(all.map((row) => row.id)).toEqual([july.id, june.id]);
+
+    const exported = await listPayrollReports(store, {
+      organizationId: fixture.organizationId,
+      status: "exported",
+    });
+    expect(exported.map((row) => row.id)).toEqual([july.id]);
+
+    const page = await listPayrollReports(store, {
+      organizationId: fixture.organizationId,
+      limit: 1,
+      offset: 1,
+    });
+    expect(page.map((row) => row.id)).toEqual([june.id]);
+
+    const fromJuly = await listPayrollReports(store, {
+      organizationId: fixture.organizationId,
+      periodStartFrom: "2026-07-01",
+    });
+    expect(fromJuly.map((row) => row.id)).toEqual([july.id]);
+
+    expect(
+      await listPayrollReports(store, { organizationId: fixture.otherOrganizationId }),
+    ).toEqual([]);
   });
 });

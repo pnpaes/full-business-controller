@@ -5,10 +5,14 @@ import type { AuditInput } from "../auth";
 import { DEFAULT_SHIFT_ADJUSTMENT_LIMIT } from "./list-shift-adjustments";
 import { DEFAULT_SHIFT_ASSIGNMENT_LIMIT } from "./list-shift-assignments";
 import { DEFAULT_SHIFT_LIMIT } from "./list-shifts";
+import { DEFAULT_PAYROLL_REPORT_LIMIT } from "./list-payroll-reports";
 import type {
+  NewPayrollReportRecord,
   NewShiftAdjustmentRecord,
   NewShiftAssignmentRecord,
   NewShiftRecord,
+  PayrollReportListQuery,
+  PayrollReportRecord,
   SchedulingEmployeeRecord,
   SchedulingStore,
   ShiftAdjustmentListQuery,
@@ -17,6 +21,7 @@ import type {
   ShiftAssignmentRecord,
   ShiftListQuery,
   ShiftRecord,
+  UpdatePayrollReportRecord,
   UpdateShiftAssignmentRecord,
   UpdateShiftRecord,
   WorkedHoursAssignmentRow,
@@ -31,6 +36,7 @@ interface SchedulingSnapshot {
   readonly shifts: Map<string, ShiftRecord>;
   readonly shiftAssignments: Map<string, ShiftAssignmentRecord>;
   readonly shiftAdjustments: Map<string, ShiftAdjustmentRecord>;
+  readonly payrollReports: Map<string, PayrollReportRecord>;
   readonly audits: AuditInput[];
 }
 
@@ -44,6 +50,7 @@ export class FakeSchedulingStore implements SchedulingStore {
   readonly shifts = new Map<string, ShiftRecord>();
   readonly shiftAssignments = new Map<string, ShiftAssignmentRecord>();
   readonly shiftAdjustments = new Map<string, ShiftAdjustmentRecord>();
+  readonly payrollReports = new Map<string, PayrollReportRecord>();
   readonly employees = new Map<string, SchedulingEmployeeRecord>();
   readonly audits: AuditInput[] = [];
 
@@ -72,6 +79,7 @@ export class FakeSchedulingStore implements SchedulingStore {
       shifts: new Map(this.shifts),
       shiftAssignments: new Map(this.shiftAssignments),
       shiftAdjustments: new Map(this.shiftAdjustments),
+      payrollReports: new Map(this.payrollReports),
       audits: [...this.audits],
     };
   }
@@ -83,6 +91,8 @@ export class FakeSchedulingStore implements SchedulingStore {
     for (const [key, value] of snapshot.shiftAssignments) this.shiftAssignments.set(key, value);
     this.shiftAdjustments.clear();
     for (const [key, value] of snapshot.shiftAdjustments) this.shiftAdjustments.set(key, value);
+    this.payrollReports.clear();
+    for (const [key, value] of snapshot.payrollReports) this.payrollReports.set(key, value);
     this.audits.length = 0;
     this.audits.push(...snapshot.audits);
   }
@@ -352,6 +362,83 @@ export class FakeSchedulingStore implements SchedulingStore {
       if (a.assignmentId !== b.assignmentId) return a.assignmentId < b.assignmentId ? -1 : 1;
       return 0;
     });
+  }
+
+  async createPayrollReport(input: NewPayrollReportRecord): Promise<PayrollReportRecord> {
+    const record: PayrollReportRecord = {
+      id: this.nextId("payroll-report"),
+      organizationId: input.organizationId,
+      periodStart: input.periodStart,
+      periodEnd: input.periodEnd,
+      generatedAt: new Date().toISOString(),
+      generatedBy: input.generatedBy,
+      status: input.status,
+      snapshot: input.snapshot,
+      exportFileId: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: null,
+    };
+    this.payrollReports.set(record.id, record);
+    return record;
+  }
+
+  async findPayrollReport(query: {
+    readonly organizationId: string;
+    readonly payrollReportId: string;
+  }): Promise<PayrollReportRecord | undefined> {
+    const report = this.payrollReports.get(query.payrollReportId);
+    return report !== undefined && report.organizationId === query.organizationId
+      ? report
+      : undefined;
+  }
+
+  async findPayrollReportForPeriod(query: {
+    readonly organizationId: string;
+    readonly periodStart: string;
+  }): Promise<PayrollReportRecord | undefined> {
+    return [...this.payrollReports.values()].find(
+      (report) =>
+        report.organizationId === query.organizationId && report.periodStart === query.periodStart,
+    );
+  }
+
+  async listPayrollReports(query: PayrollReportListQuery): Promise<readonly PayrollReportRecord[]> {
+    const rows = [...this.payrollReports.values()]
+      .filter((report) => report.organizationId === query.organizationId)
+      .filter((report) => query.status === undefined || report.status === query.status)
+      .filter(
+        (report) =>
+          query.periodStartFrom === undefined || report.periodStart >= query.periodStartFrom,
+      )
+      .sort((a, b) => {
+        // Persistence order: `period_start desc, id asc`.
+        if (a.periodStart !== b.periodStart) return a.periodStart < b.periodStart ? 1 : -1;
+        return a.id < b.id ? -1 : 1;
+      });
+    const offset = query.offset ?? 0;
+    // Mirror the Postgres adapter and the commands: an omitted `limit` is bounded.
+    const limit = query.limit ?? DEFAULT_PAYROLL_REPORT_LIMIT;
+    return rows.slice(offset, offset + limit);
+  }
+
+  async updatePayrollReport(
+    input: UpdatePayrollReportRecord,
+  ): Promise<PayrollReportRecord | undefined> {
+    const existing = await this.findPayrollReport({
+      organizationId: input.organizationId,
+      payrollReportId: input.payrollReportId,
+    });
+    if (existing === undefined) return undefined;
+    // Replace the record rather than mutate it (see `updateShift`).
+    const record: PayrollReportRecord = {
+      ...existing,
+      ...(input.status === undefined ? {} : { status: input.status }),
+      ...(input.snapshot === undefined ? {} : { snapshot: input.snapshot }),
+      ...(input.exportFileId === undefined ? {} : { exportFileId: input.exportFileId }),
+      updatedAt: new Date().toISOString(),
+    };
+    this.payrollReports.set(record.id, record);
+    return record;
   }
 
   async findEmployee(query: {

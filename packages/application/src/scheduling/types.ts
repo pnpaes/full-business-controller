@@ -1,4 +1,4 @@
-import { SHIFT_ASSIGNMENT_STATE, SHIFT_STATE } from "@aquarela/persistence";
+import { PAYROLL_REPORT_STATUS, SHIFT_ASSIGNMENT_STATE, SHIFT_STATE } from "@aquarela/persistence";
 
 import type { AuditInput } from "../auth";
 
@@ -24,6 +24,9 @@ export const SHIFT_STATES: readonly string[] = SHIFT_STATE;
 
 /** The `shift_assignment_state` vocabulary an assignment may hold. */
 export const SHIFT_ASSIGNMENT_STATES: readonly string[] = SHIFT_ASSIGNMENT_STATE;
+
+/** The `payroll_report_status` vocabulary a report may hold. */
+export const PAYROLL_REPORT_STATUSES: readonly string[] = PAYROLL_REPORT_STATUS;
 
 /**
  * One `shift` row (`WF-002`, `DEC-037`). `roleCode` is the free-text role the
@@ -236,6 +239,73 @@ export interface WorkedHoursQuery {
 }
 
 /**
+ * One `payroll_report` row (`WF-005`, `DEC-037`): the monthly payroll-**input**
+ * report. `snapshot` is the frozen, reproducible set of lines (kept as `unknown`
+ * here — the `buildPayrollSnapshot` domain function owns its shape); `status`
+ * follows the provisional `payroll_report_status` lifecycle. `exportFileId` is
+ * the nullable real FK to `file_object` (`DEC-085`); the storage bytes / signed
+ * URL stay deferred.
+ */
+export interface PayrollReportRecord {
+  readonly id: string;
+  readonly organizationId: string;
+  /** `date`, `YYYY-MM-DD`. */
+  readonly periodStart: string;
+  /** `date`, `YYYY-MM-DD`; after `periodStart`. */
+  readonly periodEnd: string;
+  /** `timestamptz`, ISO. */
+  readonly generatedAt: string;
+  readonly generatedBy: string | null;
+  /** One of `PAYROLL_REPORT_STATUSES`. */
+  readonly status: string;
+  readonly snapshot: unknown;
+  readonly exportFileId: string | null;
+  /** `timestamptz`, ISO. */
+  readonly createdAt: string;
+  /** `timestamptz`, ISO; null before any update. */
+  readonly updatedAt: string | null;
+}
+
+export interface NewPayrollReportRecord {
+  readonly organizationId: string;
+  /** `date`, `YYYY-MM-DD`. */
+  readonly periodStart: string;
+  /** `date`, `YYYY-MM-DD`. */
+  readonly periodEnd: string;
+  readonly generatedBy: string | null;
+  /** One of `PAYROLL_REPORT_STATUSES`. */
+  readonly status: string;
+  readonly snapshot: unknown;
+  /** The acting actor; recorded as `created_by`. */
+  readonly createdBy: string | null;
+}
+
+/** The mutable fields of a payroll report. */
+export interface UpdatePayrollReportRecord {
+  readonly organizationId: string;
+  readonly payrollReportId: string;
+  /** One of `PAYROLL_REPORT_STATUSES`. */
+  readonly status?: string;
+  /** Replaces the frozen snapshot; an omitted field is untouched. */
+  readonly snapshot?: unknown;
+  /** Explicit `null` clears the export link; an omitted field is untouched. */
+  readonly exportFileId?: string | null;
+  /** The acting actor; recorded as `updated_by`. */
+  readonly actorId?: string | null;
+}
+
+/** Payroll-report filters for the store read. */
+export interface PayrollReportListQuery {
+  readonly organizationId: string;
+  /** One of `PAYROLL_REPORT_STATUSES`, exact match. */
+  readonly status?: string;
+  /** Inclusive lower bound on `period_start`; `YYYY-MM-DD`. */
+  readonly periodStartFrom?: string;
+  readonly limit?: number;
+  readonly offset?: number;
+}
+
+/**
  * The only `employee` fields the scheduling slice reads: the `primaryLocationId`
  * the provisional same-location assignment rule matches against and the
  * `roleCode` the `WF-003` role-match rule compares with the shift's role.
@@ -322,6 +392,27 @@ export interface SchedulingStore {
    * window, joined to their shift and employee, with the latest correction.
    */
   listWorkedHoursAssignments(query: WorkedHoursQuery): Promise<readonly WorkedHoursAssignmentRow[]>;
+  /** Creates one monthly payroll-input report (`WF-005`, `DEC-037`). */
+  createPayrollReport(input: NewPayrollReportRecord): Promise<PayrollReportRecord>;
+  /** One report by id, organization-scoped (`DEC-061`), or `undefined`. */
+  findPayrollReport(query: {
+    readonly organizationId: string;
+    readonly payrollReportId: string;
+  }): Promise<PayrollReportRecord | undefined>;
+  /**
+   * The report for one `(organization, periodStart)` pair, organization-scoped
+   * (`DEC-061`), or `undefined` — the unique supersede key lookup.
+   */
+  findPayrollReportForPeriod(query: {
+    readonly organizationId: string;
+    readonly periodStart: string;
+  }): Promise<PayrollReportRecord | undefined>;
+  listPayrollReports(query: PayrollReportListQuery): Promise<readonly PayrollReportRecord[]>;
+  /**
+   * Applies a patch to one report, organization-scoped (`DEC-061`); `undefined`
+   * when no row matches in the organization.
+   */
+  updatePayrollReport(input: UpdatePayrollReportRecord): Promise<PayrollReportRecord | undefined>;
   /**
    * One employee by id, organization-scoped (`DEC-061`), or `undefined`,
    * projected to the fields the assignment rule needs.

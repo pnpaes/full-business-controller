@@ -2,9 +2,12 @@ import * as repo from "@aquarela/persistence";
 import type { Database, NodeDatabase } from "@aquarela/persistence";
 
 import type {
+  NewPayrollReportRecord,
   NewShiftAdjustmentRecord,
   NewShiftAssignmentRecord,
   NewShiftRecord,
+  PayrollReportListQuery,
+  PayrollReportRecord,
   SchedulingEmployeeRecord,
   SchedulingStore,
   ShiftAdjustmentListQuery,
@@ -13,6 +16,7 @@ import type {
   ShiftAssignmentRecord,
   ShiftListQuery,
   ShiftRecord,
+  UpdatePayrollReportRecord,
   UpdateShiftAssignmentRecord,
   UpdateShiftRecord,
   WorkedHoursAssignmentRow,
@@ -76,6 +80,22 @@ function toShiftAdjustment(row: repo.ShiftAdjustment): ShiftAdjustmentRecord {
     approvedBy: row.approvedBy,
     approvedAt: toIso(row.approvedAt),
     createdAt: row.createdAt.toISOString(),
+  };
+}
+
+function toPayrollReport(row: repo.PayrollReport): PayrollReportRecord {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    periodStart: row.periodStart,
+    periodEnd: row.periodEnd,
+    generatedAt: row.generatedAt.toISOString(),
+    generatedBy: row.generatedBy,
+    status: row.status,
+    snapshot: row.snapshot,
+    exportFileId: row.exportFileId,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: toIso(row.updatedAt),
   };
 }
 
@@ -249,6 +269,53 @@ export function createPostgresSchedulingStore(db: Database): SchedulingStore {
         breakMinutes: row.breakMinutes,
         adjustedHours: row.adjustedHours,
       }));
+    },
+    createPayrollReport: async (input: NewPayrollReportRecord) =>
+      toPayrollReport(
+        await repo.createPayrollReport(db, {
+          organizationId: input.organizationId,
+          periodStart: input.periodStart,
+          periodEnd: input.periodEnd,
+          generatedBy: input.generatedBy,
+          status: input.status,
+          snapshot: input.snapshot,
+          createdBy: input.createdBy,
+        }),
+      ),
+    findPayrollReport: async (query) => {
+      const row = await repo.findPayrollReport(db, {
+        organizationId: query.organizationId,
+        payrollReportId: query.payrollReportId,
+      });
+      return row === undefined ? undefined : toPayrollReport(row);
+    },
+    findPayrollReportForPeriod: async (query) => {
+      const row = await repo.findPayrollReportForPeriod(db, {
+        organizationId: query.organizationId,
+        periodStart: query.periodStart,
+      });
+      return row === undefined ? undefined : toPayrollReport(row);
+    },
+    listPayrollReports: async (query: PayrollReportListQuery) => {
+      const rows = await repo.listPayrollReports(db, {
+        organizationId: query.organizationId,
+        ...(query.status === undefined ? {} : { status: query.status }),
+        ...(query.periodStartFrom === undefined ? {} : { periodStartFrom: query.periodStartFrom }),
+        ...(query.limit === undefined ? {} : { limit: query.limit }),
+        ...(query.offset === undefined ? {} : { offset: query.offset }),
+      });
+      return rows.map(toPayrollReport);
+    },
+    updatePayrollReport: async (input: UpdatePayrollReportRecord) => {
+      const row = await repo.updatePayrollReport(db, {
+        organizationId: input.organizationId,
+        payrollReportId: input.payrollReportId,
+        ...(input.status === undefined ? {} : { status: input.status }),
+        ...(input.snapshot === undefined ? {} : { snapshot: input.snapshot }),
+        ...(input.exportFileId === undefined ? {} : { exportFileId: input.exportFileId }),
+        ...(input.actorId === undefined ? {} : { actorId: input.actorId }),
+      });
+      return row === undefined ? undefined : toPayrollReport(row);
     },
     findEmployee: async (query): Promise<SchedulingEmployeeRecord | undefined> => {
       const row = await repo.findEmployee(db, {

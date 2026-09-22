@@ -26,6 +26,8 @@ export interface WorkedHoursSummary {
   readonly roleCode: string;
   /** `numeric(9,2)` hours. */
   readonly hours: string;
+  /** The employee's `base_hourly_rate`, `numeric(19,4)` money. */
+  readonly hourlyRate: string;
 }
 
 export interface WorkedHoursResult {
@@ -43,7 +45,9 @@ export interface WorkedHoursResult {
  * `to` must be ISO instants and `from < to` (a `DomainError` otherwise, before
  * the store is touched). The per-assignment derivation (an adjustment overrides
  * its own assignment) is summed per employee by the domain, and `totalHours` is
- * the sum of the returned rows at `WORKED_HOURS_SCALE`.
+ * the sum of the returned rows at `WORKED_HOURS_SCALE`. Each row also carries the
+ * employee's `base_hourly_rate` (`hourlyRate`), which the payroll report needs
+ * alongside the hours to compute the frozen expected-pay lines.
  */
 export async function computeWorkedHours(
   store: SchedulingStore,
@@ -63,7 +67,20 @@ export async function computeWorkedHours(
     ...(query.employeeId === undefined ? {} : { employeeId: query.employeeId }),
   });
 
-  const rows = sumWorkedHoursByEmployee(assignments);
+  // Every assignment carries its employee's `base_hourly_rate`; an employee's
+  // rate is one value, so the first assignment row for an employee supplies it
+  // for the summed row (the payroll report needs hours and rate together).
+  const rateByEmployee = new Map<string, string>();
+  for (const assignment of assignments) {
+    if (!rateByEmployee.has(assignment.employeeId)) {
+      rateByEmployee.set(assignment.employeeId, assignment.baseHourlyRate);
+    }
+  }
+
+  const rows = sumWorkedHoursByEmployee(assignments).map((row) => ({
+    ...row,
+    hourlyRate: rateByEmployee.get(row.employeeId) ?? "0.0000",
+  }));
   let total = 0n;
   for (const row of rows) {
     total += parseDecimal(row.hours, WORKED_HOURS_SCALE);

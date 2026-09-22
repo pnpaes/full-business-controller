@@ -16,11 +16,15 @@ import { completeShift } from "./complete-shift";
 import { computeWorkedHours } from "./compute-worked-hours";
 import { createShift } from "./create-shift";
 import { createShiftAdjustment } from "./create-shift-adjustment";
+import { findPayrollReport } from "./find-payroll-report";
 import { findShift } from "./find-shift";
 import { findShiftAdjustment } from "./find-shift-adjustment";
+import { generatePayrollReport } from "./generate-payroll-report";
+import { listPayrollReports } from "./list-payroll-reports";
 import { listShiftAdjustments } from "./list-shift-adjustments";
 import { listShiftAssignments } from "./list-shift-assignments";
 import { listShifts } from "./list-shifts";
+import { markPayrollReportExported } from "./mark-payroll-report-exported";
 import { createPostgresSchedulingStore } from "./postgres-store";
 import { publishShift } from "./publish-shift";
 import { updateShift } from "./update-shift";
@@ -429,7 +433,13 @@ describe.skipIf(!databaseUrl)("scheduling against PostgreSQL", () => {
       const to = "2026-07-02T00:00:00.000Z";
       const result = await computeWorkedHours(store, { organizationId: orgId, from, to });
       expect(result.rows).toEqual([
-        { employeeId, employeeName: "Nora Nordmann", roleCode: "barista", hours: "6.50" },
+        {
+          employeeId,
+          employeeName: "Nora Nordmann",
+          roleCode: "barista",
+          hours: "6.50",
+          hourlyRate: "215.5000",
+        },
       ]);
       expect(result.totalHours).toBe("6.50");
 
@@ -508,6 +518,113 @@ describe.skipIf(!databaseUrl)("scheduling against PostgreSQL", () => {
           reason: "x",
         }),
       ).rejects.toThrow(NotFoundError);
+    });
+  });
+
+  it("generates, supersedes, exports and org-scopes the monthly payroll report", async () => {
+    await inRollback(client.db, async (tx) => {
+      const locationId = await seedLocation(tx, orgId, `sch_pr_${suffix}`);
+      const employeeId = await seedEmployee(tx, orgId, locationId);
+      const store = createPostgresSchedulingStore(tx);
+      const actorId = randomUUID();
+
+      const shift = await createShift(store, {
+        organizationId: orgId,
+        actorId,
+        locationId,
+        startsAt: STARTS,
+        endsAt: ENDS,
+        breakMinutes: 30,
+      });
+      await publishShift(store, { organizationId: orgId, actorId, shiftId: shift.id });
+      await assignShift(store, { organizationId: orgId, actorId, shiftId: shift.id, employeeId });
+
+      const report = await generatePayrollReport(store, {
+        organizationId: orgId,
+        periodStart: "2026-07-01",
+        periodEnd: "2026-07-31",
+        actorId,
+      });
+      expect(report).toMatchObject({
+        organizationId: orgId,
+        periodStart: "2026-07-01",
+        periodEnd: "2026-07-31",
+        status: "generated",
+        generatedBy: actorId,
+        exportFileId: null,
+      });
+      // 8 h shift (16:00 − 08:00) minus a 30-minute break = 7.50 h;
+      // 7.50 × 215.5000 = 1616.2500.
+      expect(report.snapshot).toMatchObject({
+        currency: "NOK",
+        lines: [
+          {
+            employeeId,
+            employeeName: "Nora Nordmann",
+            roleCode: "barista",
+            hours: "7.50",
+            hourlyRate: "215.5000",
+            expectedPay: "1616.2500",
+          },
+        ],
+        totalHours: "7.50",
+        totalExpectedPay: "1616.2500",
+      });
+
+      expect(
+        await findPayrollReport(store, { organizationId: orgId, payrollReportId: report.id }),
+      ).toMatchObject({ id: report.id });
+      expect(
+        await findPayrollReport(store, {
+          organizationId: randomUUID(),
+          payrollReportId: report.id,
+        }),
+      ).toBeUndefined();
+      expect(await listPayrollReports(store, { organizationId: randomUUID() })).toEqual([]);
+
+      const regenerated = await generatePayrollReport(store, {
+        organizationId: orgId,
+        periodStart: "2026-07-01",
+        periodEnd: "2026-07-31",
+        actorId,
+      });
+      expect(regenerated.id).not.toBe(report.id);
+      expect(
+        await findPayrollReport(store, { organizationId: orgId, payrollReportId: report.id }),
+      ).toMatchObject({ status: "superseded" });
+
+      const live = await listPayrollReports(store, { organizationId: orgId, status: "generated" });
+      expect(live.map((row) => row.id)).toEqual([regenerated.id]);
+
+      await expect(
+        markPayrollReportExported(store, {
+          organizationId: orgId,
+          payrollReportId: report.id,
+          actorId,
+        }),
+      ).rejects.toThrow(/cannot be exported/);
+      await expect(
+        markPayrollReportExported(store, {
+          organizationId: randomUUID(),
+          payrollReportId: regenerated.id,
+          actorId,
+        }),
+      ).rejects.toThrow(NotFoundError);
+
+      const exported = await markPayrollReportExported(store, {
+        organizationId: orgId,
+        payrollReportId: regenerated.id,
+        actorId,
+      });
+      expect(exported).toMatchObject({ status: "exported" });
+
+      const audit = (await listAuditEventsForEntity(tx, "payroll_report", regenerated.id)).map(
+        (row) => row.action,
+      );
+      expect(audit).toEqual([
+        "workforce.payroll_report.generated",
+        "workforce.payroll_report.exported",
+      ]);
     });
   });
 });
