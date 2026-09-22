@@ -427,6 +427,24 @@ export const EMPLOYMENT_TYPE = [
 
 export const EMPLOYEE_DOCUMENT_KIND = ["contract", "certificate", "id_document", "other"] as const;
 
+// `DEC-037`/`DEC-038` (`WF-002`, `WF-003`): the shift-scheduling slice.
+// `shift_state` backs `shift_state_check` (`open` → `published` → `assigned`,
+// with `cancelled`/`completed` as terminal states) and
+// `shift_assignment_state` backs `shift_assignment_state_check`. Both keys were
+// present in `schemas/domain-enums.yaml` from the start but deliberately
+// unexported until the `shift`/`shift_assignment` tables needed them, so
+// `vocabularies.test.ts`'s `UNEXPORTED_YAML_KEYS` guard shrinks accordingly.
+// From `schemas/domain-enums.yaml` (`shift_state`, `shift_assignment_state`).
+export const SHIFT_STATE = ["open", "published", "assigned", "cancelled", "completed"] as const;
+
+export const SHIFT_ASSIGNMENT_STATE = [
+  "self_assigned",
+  "pending_approval",
+  "approved",
+  "withdrawn",
+  "rejected",
+] as const;
+
 // `DEC-088` (`DOC-001`…`DOC-004`): the staff document library. `category` and
 // `audience` back `document_category_check` / `document_audience_check`, and
 // `status` backs `document_status_check` via the distinct

@@ -27,6 +27,7 @@ export * from "./repositories/receiving";
 export * from "./repositories/recipes";
 export * from "./repositories/reconciliation";
 export * from "./repositories/sales";
+export * from "./repositories/scheduling";
 export * from "./repositories/sessions";
 export * from "./repositories/settlements";
 export * from "./repositories/totp";

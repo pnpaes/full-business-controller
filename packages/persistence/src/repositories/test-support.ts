@@ -42,6 +42,8 @@ import {
   salesLine,
   salesTransaction,
   settlement,
+  shift,
+  shiftAssignment,
   stockCount,
   stockCountLine,
   stockLot,
@@ -1026,6 +1028,58 @@ export async function createTestEmployeeDocument(
       employeeId,
       kind: "contract",
       title: uniqueName("doc"),
+      ...overrides,
+    })
+    .returning();
+  return rows[0]!;
+}
+
+/**
+ * A `DEC-037`/`DEC-038`/`WF-002` shift. `starts_at`/`ends_at` default to a valid
+ * ordered pair and `break_minutes`/`state` take the schema defaults, so a test
+ * need only override the field under test. `role_code` and the reserved actual
+ * times stay null unless a test sets them.
+ */
+export async function createTestShift(
+  db: Database,
+  organizationId: string,
+  locationId: string,
+  overrides: Partial<typeof shift.$inferInsert> = {},
+): Promise<typeof shift.$inferSelect> {
+  const rows = await db
+    .insert(shift)
+    .values({
+      organizationId,
+      locationId,
+      startsAt: new Date("2026-03-01T08:00:00.000Z"),
+      endsAt: new Date("2026-03-01T16:00:00.000Z"),
+      ...overrides,
+    })
+    .returning();
+  return rows[0]!;
+}
+
+/**
+ * A `DEC-037`/`DEC-038`/`WF-003` shift assignment. `state` defaults to
+ * `self_assigned`, `assigned_by` to null (self-assigned) and `assigned_at` to a
+ * fixed test instant, so a test need only override the field under test. The
+ * `(shift_id, employee_id)` unique means a test overriding either must keep the
+ * pair distinct.
+ */
+export async function createTestShiftAssignment(
+  db: Database,
+  organizationId: string,
+  refs: { readonly shiftId: string; readonly employeeId: string },
+  overrides: Partial<typeof shiftAssignment.$inferInsert> = {},
+): Promise<typeof shiftAssignment.$inferSelect> {
+  const rows = await db
+    .insert(shiftAssignment)
+    .values({
+      organizationId,
+      shiftId: refs.shiftId,
+      employeeId: refs.employeeId,
+      state: "self_assigned",
+      assignedAt: new Date("2026-03-01T08:00:00.000Z"),
       ...overrides,
     })
     .returning();

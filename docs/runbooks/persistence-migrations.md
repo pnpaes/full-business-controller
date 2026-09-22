@@ -170,11 +170,32 @@ because its target table varies by `source_type`.
 ## Pre-apply preflight for validating constraints and indexes
 Migrations 0014, 0016, 0017, 0018, 0019, 0020, 0021, 0022, 0023, 0024, 0025,
 0026, 0027, 0028, 0029, 0030, 0031, 0032, 0033, 0035, 0037, 0040, 0041, 0042,
-0043, 0044, 0045, 0046, 0047, 0048 and 0049 add objects that validate or build, so a failure
+0043, 0044, 0045, 0046, 0047, 0048, 0049 and 0051 add objects that validate or build, so a failure
 aborts the whole transactional migration (drizzle-kit runs each file in one
 transaction). Run the matching preflight against the target database **before**
 applying and reconcile any hits; drizzle-kit cannot detect them because these
   files diff against existing data.
+
+- **`0051_shift_scheduling.sql`** — two new, empty tables (`shift`,
+  `shift_assignment`) with their checks, the `shift_assignment_shift_employee_key`
+  unique, FKs and the org-first indexes. All are cheap at first apply because
+  both tables start empty: the `shift_state_check` / `shift_time_range_check` /
+  `shift_break_minutes_check` / `shift_actual_range_check` /
+  `shift_assignment_state_check` checks validate nothing existing, the unique
+  builds an empty table and the organization/location/shift/employee FKs
+  validate empty child tables. The migration adds no hand-written statement and
+  no backfill is needed. `0052_shift_scheduling_org_guard.sql` (below) adds
+  triggers only, so it scans no existing row either. No separate preflight query
+  is needed.
+
+- **`0050_workflow_platform.sql`** — two new, empty tables (`task`, `approval`)
+  with their checks, FKs and org-first indexes. All are cheap at first apply
+  because both tables start empty: the `task_status_check` /
+  `task_linked_entity_check` / `approval_decision_check` /
+  `approval_decided_check` checks validate nothing existing and the organization
+  FKs validate empty child tables. The migration adds no hand-written statement
+  and no backfill is needed. It has no companion org-guard migration. No
+  separate preflight query is needed.
 
 - **`0048_staff_documents.sql`** — three new, empty tables (`document`,
   `document_version`, `document_acknowledgement`) with their checks, uniques,
@@ -1472,6 +1493,57 @@ only, so the down file is an explicit operator action, not an automatic one.
   **destructive** — every task and approval row is lost — so run it only while
   those rows need not be preserved (AGENTS.md Rule 2). Apply it manually with
   `psql "$DATABASE_URL" -f packages/persistence/drizzle/0050_workflow_platform_down.sql`.
+- **0051 adds the `DEC-037`/`DEC-038` (`WF-002`, `WF-003`) shift-scheduling
+  tables and follows the down convention** (see the ledger row below): `0051_shift_scheduling.sql` is
+  generated DDL for the two tables, additive like `0037`/`0040`/`0042`/`0044`;
+  `shift` (`organization_id`, the NOT NULL `location_id`, the nullable free-text
+  `role_code` (null = any role), `starts_at`/`ends_at`, `break_minutes`
+  defaulting to 0, `state` defaulting to `open`, the nullable `published_at` and
+  the reserved `actual_start`/`actual_end` (`DEC-038`), the audit columns, the
+  organization and location FKs, the `shift_state_check` /
+  `shift_time_range_check` / `shift_break_minutes_check` /
+  `shift_actual_range_check` checks and the `shift_org_location_starts_idx` /
+  `shift_org_state_idx` org-first indexes) and `shift_assignment`
+  (`organization_id`, the NOT NULL `shift_id`/`employee_id`, `state`, the
+  nullable plain-uuid `assigned_by` (null = self-assigned), `assigned_at`, the
+  audit columns, the organization/shift/employee FKs, the
+  `shift_assignment_state_check` check, the
+  `shift_assignment_shift_employee_key` unique on `(shift_id, employee_id)` and
+  the `shift_assignment_org_shift_idx` / `shift_assignment_org_employee_idx`
+  org-first indexes). The spec's `created_by`/`created_at` are the
+  `auditColumns()` ones — no duplicate business column. Both tables are mutable.
+  It adds two tables and no hand-written statement.
+  `0051_shift_scheduling_down.sql` drops the two tables in FK-safe order
+  (`shift_assignment` first — it FKs `shift` and `employee` — then `shift`)
+  inside one `BEGIN;`/`COMMIT;`, with `DROP TABLE IF EXISTS` so a half-applied
+  manual run cannot wedge. It is **destructive** — every shift and assignment
+  row is lost — so run it only while those rows need not be preserved (AGENTS.md
+  Rule 2). Apply `0052`'s down **before** `0051`'s down. Apply it manually with
+  `psql "$DATABASE_URL" -f packages/persistence/drizzle/0051_shift_scheduling_down.sql`.
+- **0052 adds the `DEC-037`/`DEC-038` shift-scheduling cross-organization
+  coherence guards and follows the down convention:**
+  `0052_shift_scheduling_org_guard.sql` is hand-written (`DEC-079`'s
+  `BEFORE INSERT OR UPDATE` guard shape, mirroring `0049`). Three functions and
+  three triggers: `shift_location_org_guard` on `shift` rejects a `location_id`
+  whose `location` belongs to another organization than the shift,
+  `shift_assignment_shift_org_guard` on `shift_assignment` rejects a `shift_id`
+  whose `shift` belongs to another organization, and
+  `shift_assignment_employee_org_guard` on `shift_assignment` rejects an
+  `employee_id` whose `employee` belongs to another organization. Each resolves
+  the referenced row's organization through the existing FK path (a missing row
+  falls through to the FK error) and raises `ERRCODE = '23514'`, naming the
+  offending column. All three columns are NOT NULL, so the guards are
+  unconditional (no null-reference skip, unlike `0049`). It is **trigger-only
+  and table-neutral**: it adds no table and no constraint that validates an
+  existing row, so it scans no row and needs no preflight query.
+  `0052_shift_scheduling_org_guard_down.sql` drops the three triggers and their
+  functions inside one `BEGIN;`/`COMMIT;` (with `DROP ... IF EXISTS` so a
+  half-applied manual run cannot wedge). No table and no row is touched, so the
+  down cannot fail on data; while dropped, the references' organization
+  coherence is validated only by the application. Apply it manually with
+  `psql "$DATABASE_URL" -f packages/persistence/drizzle/0052_shift_scheduling_org_guard_down.sql`.
+  Apply `0052`'s down **before** `0051`'s down if the tables go too: its
+  triggers live on `shift`/`shift_assignment`, which `0051`'s down drops.
 
 **Re-applying after a manual down:** drizzle-kit tracks applied migrations in
 `drizzle.__drizzle_migrations`, not by comparing the schema, so a plain
@@ -1513,8 +1585,10 @@ for 0003, `… = 1789850858806` for 0004, `… = 1789851925634` for 0005,
 `… = 1790035770192` for 0046,
 `… = 1790035771192` for 0047,
 `… = 1790054700573` for 0048,
-`… = 1790054714766` for 0049 and
-`… = 1790061475649` for 0050, then
+`… = 1790054714766` for 0049,
+`… = 1790061475649` for 0050,
+`… = 1790063480942` for 0051 and
+`… = 1790063500924` for 0052, then
 `npm run db:migrate` (0003 verified 2026-09-19; 0005 rehearsed in the slice-3
 review follow-up; 0006 rehearsed with the slice-4 receiving work; 0007 and
 0008 rehearsed with the slice-4 review follow-up; 0009 rehearsed with the
@@ -1639,7 +1713,27 @@ document library tables (78 tables, 0 guards); deleting the two ledger rows
 (`created_at IN (1790054700573, 1790054714766)`) deleted 2 rows, and
 `npm run db:migrate` re-applied 0048/0049 — final 81 public base tables, 3
 guard triggers present, 50 ledger rows, with a further `npm run db:migrate` a
-no-op.
+no-op. 0050 on 2026-09-22 added the two `DEC-094` workflow platform tables
+(`task`, `approval`), taking the database to 83 tables (the ledger holds 51
+rows). 0051 on 2026-09-22 added the two `DEC-037`/`DEC-038` shift-scheduling
+tables (`shift`, `shift_assignment`) and 0052 the three guards, taking the
+database to 85 tables (the ledger holds 53 rows); the scheduling integration
+suite observed the five CHECK violations (`shift_state_check`,
+`shift_time_range_check`, `shift_break_minutes_check`,
+`shift_actual_range_check`, `shift_assignment_state_check`), the
+`shift_assignment_shift_employee_key` unique raising `23505`, and the three guard
+messages (`shift.location_id …`, `shift_assignment.shift_id …`,
+`shift_assignment.employee_id …`) raising `23514`, with a partial actual-time
+pair (one side null) accepted (the check skips a null side). The 0051/0052
+down/re-apply rehearsal was run on 2026-09-22: starting from 85 public base
+tables, 3 guard triggers present and 53 ledger rows,
+`0052_shift_scheduling_org_guard_down.sql` dropped the three guard triggers and
+their functions with no table change (85 tables, 0 guards) and
+`0051_shift_scheduling_down.sql` dropped the two shift-scheduling tables (83
+tables, 0 guards); deleting the two ledger rows
+(`created_at IN (1790063480942, 1790063500924)`) deleted 2 rows, and
+`npm run db:migrate` re-applied 0051/0052 — final 85 public base tables, 3 guard
+triggers present, 53 ledger rows, with a further `npm run db:migrate` a no-op.
 A **full 0011 down** drops the tables the three 0012 constraints live on, so its
 replay must clear **both** ledger rows, not just 0011's:
 `DELETE FROM drizzle.__drizzle_migrations WHERE created_at IN (1789862475550, 1789862630158);`
@@ -1926,6 +2020,8 @@ session will not serialise against each other.
 | 0037 | `0037_hms_monitoring.sql` | Generated (`DEC-089`/`HMS-002`): the two HMS monitoring tables — `monitoring_point` (`organization_id`, `location_id`, the nullable `storage_area_id`, `code`, `name`, `kind` (`monitoring_point_kind_check`), `unit`, `target_min`/`target_max` numeric(19,6) (`monitoring_point_target_range_check`, `target_min <= target_max`), `check_frequency` (`monitoring_point_check_frequency_check`), `active` default `true` and the audit columns, with the `monitoring_point_organization_id_code_key` unique on `(organization_id, code)` and the organization/location/storage-area FKs) and `monitoring_reading` (`organization_id`, `monitoring_point_id`, `value` numeric(19,6), `unit`, `measured_at`, the nullable `recorded_by`, `in_range`, the nullable `notes` and the audit columns, with the organization and point FKs and the `monitoring_reading_org_point_measured_idx` index on `(organization_id, monitoring_point_id, measured_at)`). No hand-written statement. Down companion: `0037_hms_monitoring_down.sql` (drops the index, then `monitoring_reading`, then `monitoring_point`, FK-safe order — destructive) |
 | 0038 | `0038_hms_monitoring_append_only.sql` | Hand-written (`DEC-089`/`HMS-002`): the `monitoring_reading` append-only guard — one function (`monitoring_reading_append_only()`) and three triggers: two `BEFORE FOR EACH ROW` triggers (`monitoring_reading_immutable` on UPDATE, `monitoring_reading_no_delete` on DELETE) and one `BEFORE TRUNCATE FOR EACH STATEMENT` trigger (`monitoring_reading_no_truncate`) that reject a DELETE, a TRUNCATE and an UPDATE of `value`/`unit`/`measured_at`/`monitoring_point_id`/`organization_id`, so only `notes` may be amended. No table and no TypeScript schema change. Down companion: `0038_hms_monitoring_append_only_down.sql` (drops the three triggers and their function — no row is touched) |
 | 0039 | `0039_hms_monitoring_org_guard.sql` | Hand-written (`DEC-079`'s guard shape applied to `DEC-089`'s HMS monitoring FKs, mirroring `0036`): two functions and two `BEFORE INSERT OR UPDATE FOR EACH ROW` triggers — `monitoring_point_org_guard` on `monitoring_point` (rejects a `location_id` or a non-null `storage_area_id` whose `location`/`storage_area` belongs to another organization) and `monitoring_reading_org_guard` on `monitoring_reading` (rejects a `monitoring_point_id` whose `monitoring_point` belongs to another organization). No table and no TypeScript schema change. Down companion: `0039_hms_monitoring_org_guard_down.sql` (drops the two triggers and their functions — no row is touched) |
+| 0051 | `0051_shift_scheduling.sql` | Generated (`DEC-037`/`DEC-038`, `WF-002`/`WF-003`): the two shift-scheduling tables, additive like `0037`/`0040`/`0042`/`0044` — `shift` (`organization_id`, the NOT NULL `location_id`, the nullable free-text `role_code` (null = any role), `starts_at`/`ends_at`, `break_minutes` default `0`, `state` default `open`, the nullable `published_at` and the reserved `actual_start`/`actual_end`, the audit columns, the organization/location FKs, the `shift_state_check` / `shift_time_range_check` / `shift_break_minutes_check` / `shift_actual_range_check` checks and the `shift_org_location_starts_idx` / `shift_org_state_idx` org-first indexes) and `shift_assignment` (`organization_id`, the NOT NULL `shift_id`/`employee_id`, `state`, the nullable plain-uuid `assigned_by`, `assigned_at`, the audit columns, the organization/shift/employee FKs, the `shift_assignment_state_check` check, the `shift_assignment_shift_employee_key` unique on `(shift_id, employee_id)` and the `shift_assignment_org_shift_idx` / `shift_assignment_org_employee_idx` org-first indexes). The spec's `created_by`/`created_at` are the `auditColumns()` ones (no duplicate business column). Worked hours (`shift_adjustment`) and `payroll_report` are the next slice. No hand-written statement. Journal `when` `1790063480942`, sha256 `157cadb1d6be16d6ccdee59ee1d2fbfdff205e212881367c6b6b00bed69d5e36`. Down companion: `0051_shift_scheduling_down.sql` (drops `shift_assignment` then `shift` — destructive) |
+| 0052 | `0052_shift_scheduling_org_guard.sql` | Hand-written (`DEC-079`'s guard shape applied to the `DEC-037`/`DEC-038` shift-scheduling FKs, mirroring `0049`): three functions and three `BEFORE INSERT OR UPDATE FOR EACH ROW` triggers — `shift_location_org_guard` on `shift` (rejects a `location_id` whose `location` belongs to another organization), `shift_assignment_shift_org_guard` on `shift_assignment` (rejects a `shift_id` whose `shift` belongs to another organization) and `shift_assignment_employee_org_guard` on `shift_assignment` (rejects an `employee_id` whose `employee` belongs to another organization). All three columns are NOT NULL, so the guards are unconditional. No table and no TypeScript schema change. Journal `when` `1790063500924`, sha256 `f168c524b62e78f2c41a59eb1f044e7a0d2d81cec9a6abf847533f8c6c2bf5bd`. Down companion: `0052_shift_scheduling_org_guard_down.sql` (drops the three triggers and their functions — no row is touched) |
 | 0040 | `0040_hms_incidents.sql` | Generated (HMS incidents): the two tables, additive like `0037` — `hms_incident` (`hms_incident_category_check` / `hms_incident_severity_check` / `hms_incident_status_check` vocabulary checks, the organization/location FKs and org-first indexes) and `corrective_action` (`corrective_action_status_check` and the FKs to `organization`, `location`, `hms_incident` and `monitoring_reading`). No hand-written statement. Down companion: `0040_hms_incidents_down.sql` (drops the two tables, FK-safe order — destructive) |
 | 0041 | `0041_hms_incidents_org_guard.sql` | Hand-written (`DEC-079`'s guard shape applied to the HMS incidents FKs, mirroring `0039`): two functions and two `BEFORE INSERT OR UPDATE FOR EACH ROW` triggers — `hms_incident_org_guard` on `hms_incident` (rejects a `location_id` whose `location` belongs to another organization) and `corrective_action_org_guard` on `corrective_action` (rejects an `incident_id` or a `monitoring_reading_id` whose `hms_incident`/`monitoring_reading` belongs to another organization). No table and no TypeScript schema change. Down companion: `0041_hms_incidents_org_guard_down.sql` (drops the two triggers and their functions — no row is touched) |
 | 0042 | `0042_checklists.sql` | Generated: the two checklist tables, additive like `0037`/`0040` — `checklist_template` (the nullable `supersedes_id` self-FK, the `checklist_template_category_check` / `checklist_template_frequency_check` vocabulary checks, the `checklist_template_items_array_check` jsonb-array check and the `checklist_template_supersedes_self_check` no-self-supersede check) and `checklist_run` (the FKs to `checklist_template` and `location`, the `checklist_run_status_check` vocabulary and `checklist_run_results_array_check` jsonb-array checks, and org-first indexes). No hand-written statement. Down companion: `0042_checklists_down.sql` (drops the two tables, FK-safe order: `checklist_run` then `checklist_template` — destructive) |
