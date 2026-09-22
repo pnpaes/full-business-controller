@@ -9,200 +9,179 @@ duplicate their content.
 
 **Say "resume the work" and start here.** A fresh session must be able to
 continue from this section alone. (This section was rewritten by the
-2026-09-22 `employee` + personnel-documents handoff session.)
+2026-09-22 workflow-platform (`DEC-094`) handoff session.)
 
-**State:** `main`; HEAD before this slice was **`282046d`** (`docs(context)` —
-the HMS compliance / evidence-export handoff, `DEC-093`/`DEC-098`). The slice
-lands as **5 commits** (the orchestrator committed them as the slice closed),
-plus this `docs(context)` handoff as the last: 1. `246c735` `docs(decisions)` —
-`DEC-099`; 2. `59ad19e` `feat(persistence)` — the `employee` +
-`employee_document` tables (migrations `0046`/`0047`), the
-`employee_document_kind` vocabulary and the repository + tests; 3. `4faa6aa`
-`feat(application)` — the workforce commands/queries + store port + adapter +
-fake + tests; 4. `603054f` `feat(web)` — the `/api/v1/workforce/**` routes with
-role + location scope; 5. `5b932a8` `docs(runbook)` — the
-migration-ledger/rehearsal entries. Nothing pushed; nothing applied to
-DigitalOcean.
+**State:** `main`; HEAD before this slice was **`838d11a`** (`docs(runbook)` —
+the 0048/0049 ledger/rehearsal + roadmap for the staff library). The slice
+lands as commits: **`c90a45a`** `feat(persistence)` — the `task`/`approval`
+tables (**already committed**) — plus the **pending** `docs(decisions)`
+`DEC-101`, the roadmap update and this `docs(context)` handoff. Nothing
+pushed; nothing applied to DigitalOcean.
 
-**Delivered (programme step 20a — `DEC-087`, requirement `WF-007`, provisional
-`DEC-099`):** the **`employee`** parent — `user_id` (a real nullable FK to the
-organization-scoped `app_user`), `name`, `role_code` free text,
-`employment_type` CHECK-backed, `base_hourly_rate numeric(19,4)`,
-`cost_center_id` plain uuid (the cost-centre FK stays deferred),
-`primary_location_id`, `active_from`/`active_to`, `retired_at`; **retired,
-never deleted** — and **`employee_document`** — `employee_id` FK,
-`kind ∈ {contract, certificate, id_document, other}` from the new
-`employee_document_kind` vocabulary, `title`, a **nullable real FK**
-`file_object_id`, `issued_at`/`expires_at` as nullable calendar dates.
-Org-scoped (`DEC-061`); **four** cross-org coherence guards
-(`employee.primary_location_id`, `employee.user_id`,
-`employee_document.employee_id`, the nullable `employee_document.file_object_id`)
-raising `23514`. **No document version model** (`DEC-087` defines none — the
-"versioning" wording belongs to `DEC-088`'s staff library, which was
-deliberately **not** built). Access: employees follow the matrix row
-`Employee records` (owner, general_manager, location_manager location-scoped,
-**finance**, admin); personnel documents follow `Employee personnel documents`
-(**owner, general_manager, admin only — finance explicitly excluded**, a
-deliberate asymmetry). A location-scoped caller cannot see or mutate an
-employee whose `primary_location_id` is NULL (fail-closed). `baseHourlyRate`
-is a decimal **string** end to end, never a float. The API is
-`/api/v1/workforce/**`.
+**Delivered (`DEC-094` — the workflow platform, schema-only):** the spec'd
+**`task`** and **`approval`** platform tables (`DATA_DICTIONARY` §9), schema-only
+and with no ADR dependency; the `job` table, worker/scheduler and outbox layer
+are **not** built (gated on `ADR-0004`, still `Proposed`).
 
-**Schema:** migrations through **`0047`**; **78 tables** (was 76). Next free
-decision id **`DEC-100`**.
+- **`task`** — `type` and `priority` free text (NOT NULL, no vocabulary in the
+  spec — the `equipment.kind`/`DEC-097` precedent), `status ∈ task_status
+{open, in_progress, blocked, resolved, dismissed}` default `open`, nullable
+  `linked_entity_type`/`linked_entity_id` (polymorphic, all-or-nothing via
+  `task_linked_entity_check`), nullable `owner_id` (plain uuid, the `app_user`
+  FK deferred), nullable `due_date`, nullable `resolution`, nullable
+  `created_from_event_id` (plain uuid — no FK to `outbox_event` while the
+  outbox is `ADR-0004`-gated), audit columns.
+- **`approval`** — `entity_type`/`entity_id` (polymorphic), nullable
+  `entity_version` (integer, matching `audit_event.entity_version`),
+  `requested_by`/`requested_at` NOT NULL, nullable
+  `decided_by`/`decided_at`/`decision` with the all-or-nothing
+  `approval_decided_check`, nullable `comment`, audit columns. `decision ∈
+approval_decision {approved, rejected}` and is **nullable while pending**
+  (the vocabulary has no `pending` value). The repository's `decideApproval`
+  enforces **decide-once** (`WHERE decision IS NULL`); a re-decide updates
+  nothing and returns `undefined`.
+- Both tables are organization-scoped (`DEC-061`), mutable (not append-only),
+  with three indexes each. The `TASK_STATUS` and `APPROVAL_DECISION`
+  vocabularies are now exported (the yaml keys `task_status`/
+  `approval_decision` are no longer in `UNEXPORTED_YAML_KEYS`).
+- **No application or web port** is built — schema-only, the `DEC-085`
+  `file_object` precedent. The `07_SECURITY_AND_NFR.md` access matrix has
+  **no `task`/`approval` row**, so no access rule is enforced yet (recorded
+  input for the consuming slice).
+- Provisional clarifications recorded as **`DEC-101`** (12 items: free-text
+  type/priority; task_status with no transition guard; nullable decision;
+  decide-once; plain-uuid actors; polymorphic targets + all-or-nothing
+  linking; plain-uuid `created_from_event_id`; no `task.location_id`; access
+  unset; mutable not append-only; no task↔approval link (the `HMS-001`
+  conflict); job/outbox not built).
 
-**Verification (exact):** `typecheck`, `lint`, `format:check`, `build` clean;
-**2057/2057 tests with `DATABASE_URL`** (168 files); `npm audit --omit=dev`
-= 0; `db:migrate` through `0047` a no-op on re-run; **78** public base tables;
-the four workforce guard triggers present.
+**Prior slice (programme step 20b — `DEC-088`/`DEC-100`, `DOC-001`…`DOC-004`,
+committed `2784f18`…`838d11a`, migrations `0048`/`0049`):** the **staff
+document library** — the programme's first versioned entity (`document`,
+`document_version` with `version_no` + the all-or-nothing
+`document_version_published_check`, `document_acknowledgement` with no audit
+columns; vocabularies `document_category`/`document_audience`/
+`staff_document_status`; three cross-org coherence guards; the current
+published version is the greatest _published_ version; archived terminal;
+full application + web slice at `/api/v1/documents/**` and
+`/api/v1/document-versions/**`; the real `DOC-002` bug fixed in-slice via
+`findCurrentPublishedVersion`; open points — the unenforceable
+per-document location scope, the acknowledgement retention period, no
+un-archive, the `DEC-100` provisional items, the storage path deferred,
+the `reviewer-glm` web-route test coverage gap). Full detail in "Current
+status", the work log and the first bullet under "Open decisions / inputs".
 
-**Migrations:** `0046_workforce` (journal `idx` 46, `when` `1790035770192`,
-sha256 `c6ac6a67a527bfeeda6392733b76ad14112d56d3549cbbc1545c5485879dc158`);
-`0047_workforce_org_guard` (journal `idx` 47, `when` `1790035771192`, sha256
-`51cdb6d141c38c36d50393e22ef8183160c531c58e2e9245978108521f558940`). Down
-companions (unjournalled): `0046_workforce_down.sql` (drops `employee_document`
-then `employee`; 78 → 76), `0047_workforce_org_guard_down.sql` (trigger-only;
-78 → 78). Rehearsed: apply → 78; the four CHECKs and four guards all `23514`;
-NULL-skipping accepted; down `0047` → `0046` → 76; ledger rows deleted +
-re-apply → 78; further run no-op. **Note:** `0047` was amended **before
-commit** to add the `employee_user_org_guard` after a review established that
-`app_user` is organization-scoped; the migration was uncommitted, so its
-ledger hash was updated and the rehearsal re-run. Also note `employee` moved
-from `schema.test.ts`'s `NOT_EXPECTED_TABLES` into `EXPECTED_TABLES`.
+**Schema:** migrations through **`0050`**; **83 tables** (was 81). Next free
+decision id **`DEC-102`**.
+
+**Verification (exact, at the committed tree):** `typecheck`, `lint`,
+`format:check`, `build` clean; **2306/2306 tests with `DATABASE_URL`** (179
+files); `npm audit --omit=dev` = 0; `db:migrate` through `0050` a no-op on
+re-run; **83** public base tables.
+
+**Migrations:** `0050_workflow_platform` (journal `idx` 50, `when`
+`1790061475649`, sha256
+`19438c2f5ead0664a2ed74b19395d833555e999826b8c6787b6ed88aa44ebdc9`). Down
+companion (unjournalled): `0050_workflow_platform_down.sql` (drops `approval`
+then `task`; 83 → 81). **No guard migration** — neither table has a
+cross-organization FK beyond `organization_id`. **Rehearsed 2026-09-22:** 83
+tables / 51 ledger rows → down (81 tables) → delete the ledger row
+(`created_at = 1790061475649`) → `npm run db:migrate` → 83 tables / 51 ledger
+rows; a further `db:migrate` a no-op.
 
 **Reviews and reconciliation (recorded honestly):** both reviewers found **no
-blockers and no majors**. `reviewer-qwen`'s three minors: route comments cited
-`DOC-001`…`DOC-004` (the `DEC-088` staff-library requirements) instead of
-`WF-007` (**accepted + fixed**); the NULL-`primary_location_id` fail-closed
-rule was an unrecorded design decision (**accepted — recorded in `DEC-099`
-item 6**); `employee.user_id` had no org guard (**accepted + fixed** once
-`app_user` was confirmed organization-scoped, which also amended `0047`
-pre-commit). `reviewer-glm`'s seven minors: the document list filter did not
-vocabulary-check `kind` (**accepted + fixed**); the fake store defaulted
-`limit` to unbounded (**accepted + fixed**); a repeat retire wrote a spurious
-audit fact and bumped `updated_at` (**accepted + fixed** — now a true no-op);
-a dead `NotFoundError` branch in the employees POST route (**accepted +
-fixed**); contradictory `active`/`retired` list filters were silently accepted
-(**accepted + fixed** — now a `DomainError`); the fake sorts by JS codepoint
-while Postgres uses collation for non-ASCII names (**declined, noted**); a
-blank-string PATCH date clears the field (**declined** — the documented
-convention). `reviewer-glm` reported no unreached areas this time.
+blockers**. `reviewer-minimax`'s one major: `decideApproval` did not enforce
+the decide-once its doc comment claimed (**accepted + fixed** —
+`WHERE decision IS NULL`, with a test asserting a re-decide returns
+`undefined` and does not overwrite). Its minors: `job` was not listed in
+`NOT_EXPECTED_TABLES` (**accepted + fixed**); no second-decide test
+(**accepted + fixed**); `task.status` is freely reversible/reopen
+(**recorded in `DEC-101`**); `UpdateTaskInput` omits `created_from_event_id`
+(**accepted — a comment now records the immutable provenance field**); a
+pre-existing journal trailing-newline nit (**declined, style-only**);
+`task.priority` free text (**recorded in `DEC-101`**). `reviewer-glm`'s
+minors: the same decide-once comment/test (**accepted + fixed**); the update
+path violating `task_linked_entity_check` was untested (**accepted +
+fixed**); the "not append-only" test asserted nothing about the updated row
+(**accepted + fixed**). Both reviewers verified the `0050` SQL matches the
+Drizzle schema exactly, the down path is FK-safe, the vocabulary guard change
+holds, and there is no dead code or unreachable branch.
 
-**Next task:** the **staff document library** slice (`DEC-088`; requirements
-`DOC-001`…`DOC-004`) — programme step 20b, the **last slice of the
-workforce-documents half**. It builds `document` (`category ∈ {routine,
-guideline, policy, form, other}`, `audience ∈ {all_staff, managers}`,
-`status ∈ {draft, published, archived}`, `owner_id`), `document_version` (a
-`version`, `file_object_id`, `published_at`/`published_by`) and
-`document_acknowledgement`; **all staff may read published `all_staff`
-documents**, **managers publish**, superseded versions stay retrievable to
-managers only, acknowledgements are optional per document and audited. Note
-for the next session: it needs its own reconnaissance, it is the **first
-versioned** entity in the programme (so `DEC-088`'s version model must be
-implemented, unlike personnel documents), it must not resolve the privacy
-review's retention periods silently, and it should record a provisional
-clarification decision if the text leaves gaps (next free id **`DEC-100`**).
-Programme build order after it: the `task`/`approval` platform tables
-(`DEC-094`; the `job`/worker/outbox layer stays gated on `ADR-0004` acceptance,
-which is still `Proposed`).
+**Next task:** **row 14 — workforce/scheduling** (`WF-001`…`WF-007`, all Must;
+epics 13–15). The `employee` entity (`DEC-087`) and the `task`/`approval`
+tables (`DEC-094`) have landed. Natural sub-slices: **(14a) `shift` +
+`shift_assignment`** (epic 14 — shift planning, rota and staff
+self-assignment; the recommended next slice), then **(14b) `shift_adjustment`
 
-**Scope (do):** implement the staff document library (`DEC-088`, requirements
-`DOC-001`…`DOC-004`) — programme step 20b: additive migrations (`document`,
-`document_version`, `document_acknowledgement`), plus the domain/application/web
-layer per the existing package boundaries, keeping every change
-organization-scoped (`DEC-061`) and reusing the established role +
-location-scope enforcement pattern (the `/api/v1/workforce/**` and
-`/api/v1/hms/*` routes are the reference); implement `DEC-088`'s version model
-(a versioned document chain; superseded versions retrievable to managers only);
-enforce **all-staff read of published `all_staff` documents** and **managers
-publish**; make acknowledgements optional per document and audited; do the
-reconnaissance first and add a provisional clarification decision only if the
-decision text leaves gaps (`DEC-100`); do not resolve the privacy-review
-retention periods silently; rehearse the down path, add a `.test.ts` for new
-non-trivial logic, make small atomic commits with the rollback approach in the
-body (per `AGENTS.md` Rule 2), and update `CONTEXT.md` at the end. Then
-continue down the programme build order above.
+- `payroll_report`** (epic 15 — worked hours and the monthly payroll-input
+  report). The spec is `DATA_DICTIONARY.md` §4A (`employee` at `:381`, `shift`
+  at `:396`, `shift_assignment` at `:409`, `shift_adjustment` at `:420`,
+  `payroll_report` at `:430`), the draft DDL
+  `schemas/phase1_2_draft.sql:906-964`, and `03_DOMAIN_MODEL.md` §3.9/§3.10.
+  The `shift_state` (`open, published, assigned, cancelled, completed`),
+  `shift_assignment_state` (`self_assigned, pending_approval, approved,
+withdrawn, rejected`) and `payroll_report_status` (`draft, generated,
+exported, superseded`) vocabularies exist in `schemas/domain-enums.yaml` but
+  are unexported (`UNEXPORTED_YAML_KEYS`). `NOT_EXPECTED_TABLES` still lists
+  `shift`, `shift_assignment`, `shift_adjustment`, `payroll_report`; next free
+  migration index **`0051`**. The access-matrix rows are `Shift planning and
+rota` (owner/GM Full, location_manager Edit (assigned), kitchen/FOH View own,
+  finance Read, admin As required) and `Payroll-input reports` (owner/GM/finance
+  Full, location_manager None, analyst Aggregate). It needs its own
+  reconnaissance, and a **`DEC-102` provisional clarification** for the
+  under-specified points: the shift and shift_assignment state machines (no
+  `05_WORKFLOWS.md` flow), the **WF-003 self-assignment login model** (must a
+  self-assigning employee hold an `app_user` login? — still an open owner
+  input), the `role_code` matching between shift and employee, worked-hours
+  derivation (for 14b), the payroll-report snapshot shape and period (for
+  14b), "Aggregate only" payroll visibility, location scope for shifts, and
+  the retention periods. It must not resolve the privacy-review retention
+  periods silently.
 
-**Scope (do not):** do not build the `task`/`approval` platform tables
-(`DEC-094` — the next slice after this one) or the `job`/worker/outbox layer
-(`ADR-0004` gate, still `Proposed` — only `task`/`approval` build under
-`DEC-094`); do not touch the storage integration (deferred) or resolve the
-`file_object` immutability/soft-delete posture or the five deferred file FKs
-silently; do not resolve the recorded open inputs silently — the new
-workforce-slice open points (`WF-007` (Must) requires "audited
-upload/replace **and retention**", but `DEC-087` defers the storage path, so
-**the bytes cannot be uploaded, downloaded, scanned or retention-enforced** —
-there is no storage client, no signed URLs, and `file_object` has **no
-application port at all**; retention periods per file class remain a
-privacy-review input; there is **no version model** for personnel documents —
-a `supersedes_id` chain is the upgrade path; `role_code` has **no CHECK**
-(the vocabulary carries non-employee values); `employee.cost_center_id` is a
-plain uuid — the cost-centre FK stays deferred; **no un-retire path** and no
-delete path (retired, never deleted); the NULL-`primary_location_id`
-fail-closed rule is provisional; **location scope is enforced in the web layer
-only** — the systemic pattern; the fake's codepoint ordering vs Postgres
-collation for non-ASCII names; the standing systemic `writeAudit` transaction
-binding and driver-error→500 mapping), the export-slice open points (the
-export's **DB-side location push-down** — today the per-source cap is applied
-org-wide then filtered in memory, so a scoped caller can still receive an
-incomplete bundle, now honestly flagged via `truncated` rather than silently;
-**no personal-data minimization/redaction** — a privacy-review input, the
-bundle declares a `personalDataFields` list as the contract to shrink; the
-bundle is **not persisted**, so no retention class applies to it yet — a
-persisted export artifact's class and period remain open (`DEC-093`,
-`ADR-0006:47`); a **partial bundle for `analyst`** is not implemented
-(fail-closed); a **regulator-final format** (CSV/ZIP, per-regulator shapes) is
-a later slice; evidence **file bytes / signed URLs** stay deferred
-(`DEC-085`/`ADR-0006`); the **period column choices remain provisional** (the
-owner may prefer `completed_at`/`verified_at` for corrective actions); the
-`DEC-098` provisional items still need owner/OPS confirmation; the
-`reviewer-glm` step-capped export-period coverage gap), the equipment-slice
-open points (the **systemic driver-error mapping** — bad FK/check ids → 500
-instead of 400/404, proposed single fix in `mapErrors`; the **unused audit
-columns on fact logs**; ISO instants requiring seconds; command-level
-`limit`/`offset` range checks; the `reviewer-glm` coverage gap;
-`maintenance_log` has no `location_id` — the `corrective_action` ceiling
-again; `equipment.kind` is free text pending an owner/OPS vocabulary;
-`maintenance_log` has **no DB immutability trigger** — create+read-only is
-enforced only in the repository; the `DEC-097` provisional items), the
-`HMS-001` `task`/`approval`-link conflict (the `HMS-007` conflict is now
-resolved by `DEC-098`), the checklist-slice open points (template versioning
-has no completeness rule, no per-item evidence, no failed-item →
-`corrective_action` link, the provisional jsonb 500-element ceiling,
-unvalidated list filters, route tests not exercising `withMutationGuards`, the
-short-page multi-location filter, no scheduling), the systemic location-scope
-gap, the audit-write transaction binding, the `notes`-amendment audit trail,
-the **corrective-action location-scope ceiling**, the `involves_personal_data`
-privacy-review input, the `DEC-095` provisional items, the `DEC-096`
-provisional items, the incidents-slice `reviewer-glm` coverage gap, the WF-003
-self-assignment login model, the privacy-review retention periods per file
-class, the FIN variance-tolerance thresholds, consumption grain A1, the
-price-version scope-resolution fallback, the OPS receipt destination
-`storage_area_id` policy; do not deploy, `terraform apply`, or write
-externally (per `DEC-015`); do not rewrite the specification inputs
-(`00_README.md` … `13_`, `docs/phase0/`, `schemas/`, `samples/`) except for
-the already-amended programme scope.
+**Step after row 14:** epic 15 (worked hours + payroll report), then row 13
+(data-gated), the receipt→ledger wiring (if the OPS `storage_area_id` policy
+lands), and rows 15–18 (blocked).
+
+**Scope (do):** implement row 14 workforce/scheduling per the sub-slice split
+above — starting with 14a (`shift` + `shift_assignment`): schema +
+domain/application/web per the existing package boundaries, organization-
+scoped, additive, with a rehearsed down path, `EXPECTED_TABLES` updated, a
+`.test.ts` for new non-trivial logic, small atomic commits with the rollback
+approach in the body (per `AGENTS.md` Rule 2), and `CONTEXT.md` updated at
+the end. Then continue down the programme build order.
+
+**Scope (do not):** do not build the `job` table, the worker/scheduler or the
+outbox async layer (gated on `ADR-0004`, still `Proposed`). Do not resolve
+the recorded open inputs silently — in particular the **WF-003
+self-assignment login model** and the **privacy-review retention periods per
+file class** (record them for `DEC-102`, decide nothing), plus the standing
+systemic `writeAudit` transaction binding, the driver-error→500 mapping and
+the systemic location-scope gap. Do not deploy, `terraform apply`, or write
+externally (`DEC-015`). Do not rewrite the specification inputs.
 
 **Files/paths:** new additive migrations under
-`packages/persistence/drizzle/` (the `document`, `document_version` and
-`document_acknowledgement` tables) — the Drizzle schema
-(`packages/persistence/src/schema/`) + repository + domain/application packages
+`packages/persistence/drizzle/` (next index `0051`; the `shift` and
+`shift_assignment` tables) — the Drizzle schema
+(`packages/persistence/src/schema/`) + repository + domain/application
+packages; `apps/web` shift/rota slice + `docs/runbooks/persistence-migrations.md`;
+`12_OPEN_DECISIONS.md` for any `DEC-102` provisional clarification; update
+`CONTEXT.md` at the end.
 
-- `apps/web` staff-library slice + `docs/runbooks/persistence-migrations.md`;
-  `12_OPEN_DECISIONS.md` for any `DEC-100` provisional clarification; update
-  `CONTEXT.md` at the end.
-
-**Authoritative docs to read first:** the programme requirements (`DOC-001`…
-`DOC-004` and the phase map in `11_REQUIREMENTS_CATALOG.md`, the scope
-amendment in `01_PRODUCT_SCOPE.md`, the access-matrix rows + retention notes
-in `07_SECURITY_AND_NFR.md`, the screens in `08_UI_UX.md`); `DEC-086`…`DEC-099`
-in `12_OPEN_DECISIONS.md` (next free id **`DEC-100`**);
-`docs/BUILD_ROADMAP.md` §1 and §4 (rows 19/20); this file's "Open decisions /
-inputs"; `AGENTS.md` Rules 1–3.
+**Authoritative docs to read first:** `DATA_DICTIONARY.md` §4A (`employee`
+at `:381`, `shift` at `:396`, `shift_assignment` at `:409`,
+`shift_adjustment` at `:420`, `payroll_report` at `:430`);
+`schemas/phase1_2_draft.sql:906-964`; `03_DOMAIN_MODEL.md` §3.9/§3.10; the
+requirements `WF-001`…`WF-007` and the phase map in
+`11_REQUIREMENTS_CATALOG.md`; the access-matrix rows `Shift planning and
+rota` and `Payroll-input reports` + retention notes in
+`07_SECURITY_AND_NFR.md`; the screens in `08_UI_UX.md`;
+`DEC-086`…`DEC-101` in `12_OPEN_DECISIONS.md` (next free id **`DEC-102`**);
+`docs/BUILD_ROADMAP.md` §1 and §4; this file's "Open decisions / inputs";
+`AGENTS.md` Rules 1–3.
 
 **Acceptance / verification:** `export NVM_DIR="$HOME/.nvm"; . "$NVM_DIR/nvm.sh";
 nvm use 22`, then `npm run typecheck` before the change, `npm run lint`,
-`npm run test` (with `DATABASE_URL` — current baseline: **2057/2057**, 168
+`npm run test` (with `DATABASE_URL` — current baseline: **2306/2306**, 179
 files), `npm run build`, `npm run format:check`, `npm audit --omit=dev` = 0;
 `db:migrate` applies any new migration, is a no-op on re-run, and its down
 path is rehearsed; after each commit re-run the suite at the clean tree and
@@ -214,86 +193,37 @@ and next steps → commit → next task. Global ruleset
 (`~/.config/kilo/AGENTS.md`): compact context at 25 %; pausing is permitted
 above USD 20 at a clean point (committed, verified, documented).
 
-**Open inputs (recorded, do not decide):** from this slice — the
-workforce-slice open points (`WF-007` (Must) requires "audited
-upload/replace **and retention**", but `DEC-087` defers the storage path, so
-**the bytes cannot be uploaded, downloaded, scanned or retention-enforced**;
-there is no storage client, no signed URLs, and `file_object` has **no
-application port at all**; retention periods per file class remain a
-privacy-review input; there is **no version model** for personnel documents —
-a `supersedes_id` chain is the upgrade path; `role_code` has **no CHECK**;
-`employee.cost_center_id` is a plain uuid and the cost-centre FK stays
-deferred; **no un-retire path** and no delete path; the NULL-`primary_location_id`
-fail-closed rule is provisional; **location scope is enforced in the web layer
-only**; the fake's codepoint ordering vs Postgres collation for non-ASCII
-names; and the standing systemic points — the `writeAudit` transaction binding
-and the driver-error→500 mapping); from the export slice — the export's
-**DB-side location push-down** (today the per-source cap is applied org-wide
-then filtered in memory, so a scoped caller can still receive an incomplete
-bundle — now honestly flagged via `truncated` rather than silently, with the
-push-down the recorded upgrade path); **no personal-data
-minimization/redaction** (a privacy-review input; the bundle declares a
-`personalDataFields` list as the contract to shrink); the bundle is **not
-persisted**, so **no retention class applies to it yet** — a persisted export
-artifact's class and period remain open (`DEC-093`, `ADR-0006:47`); a
-**partial bundle for `analyst`** is not implemented (fail-closed); a
-**regulator-final format** (CSV/ZIP, per-regulator shapes) is a later slice;
-evidence **file bytes / signed URLs** stay deferred (`DEC-085`/`ADR-0006`);
-the **period column choices remain provisional** (the owner may prefer
-`completed_at`/`verified_at` for corrective actions); the **`DEC-098`
-provisional items** still need owner/OPS confirmation; the `reviewer-glm`
-step-capped export-period coverage gap (it did not read part of the
-export-period test body in `hms.postgres.test.ts` or the persistence
-`*.postgres.test.ts` diffs); plus the equipment-slice residuals (the
-**systemic driver-error mapping** — a bad FK/check id surfaces as a **500**
-rather than a 400/404; the proposed root-cause fix is one shared mapping in
-`apps/web/lib/http.ts`'s `mapErrors`; the **unused audit columns on fact
-logs**; ISO instants require seconds; command-level `limit`/`offset` range
-checks are absent; the `reviewer-glm` equipment coverage gap;
-`maintenance_log` has no `location_id`; `equipment.kind` is free text;
-`maintenance_log` has no DB immutability trigger; the `DEC-097` provisional
-items) and the `HMS-001` conflict (it implies a `task`/`approval` link that
-`DEC-092`/`DEC-094` never define — the `HMS-007` conflict is now resolved by
-`DEC-098`); plus the standing incident-slice residuals (corrective-action
-location-scope ceiling, inert `involves_personal_data`, the step-capped
-`reviewer-glm` coverage gap) and the checklists-slice open points (template
-versioning has no completeness rule, no per-item evidence, no failed-item →
-`corrective_action` link, the provisional jsonb 500-element ceiling,
-unvalidated list filters, route tests not exercising `withMutationGuards`,
-the short-page multi-location filter, no scheduling, the `DEC-096` provisional
-items). Standing ones: the **systemic location-scope gap** (HMS is the first
-route to enforce location scope; the other routes do not pass `locationId` to
-`isAuthorizedFor`); the **audit-write transaction binding** (the adapters'
-`writeAudit` closes over the parent `db`, so the audit fact is not strictly
-inside `withTransaction` — systemic, a separate cross-cutting slice); the
-**`notes`-amendment audit trail** (no before/after history yet); duplicate
-readings at the same instant are **intentional** (no dedupe); the **`ADR-0004`
-gate** (accepting it — the named decider — is required before the
-`job`/worker/outbox layer of `DEC-094`); the **WF-003 self-assignment
-login model** (must a self-assigning employee hold an `app_user` login?);
-the **privacy-review retention periods per file class** (personnel
-documents, incident register, acknowledgements — note the export bundle itself
-carries no retention class because it is not persisted); the `file_object`
-immutability/soft-delete posture, the five deferred file FKs, the storage
-integration, the FIN variance-tolerance thresholds, consumption grain A1
-(`DEC-009`), the price-version scope-resolution fallback, the OPS receipt
-destination `storage_area_id` policy, receipts not wired to the ledger, the
-unsigned golden fixtures, the remaining `DEC-083`-review points, the
-owner/deployment inputs. Full list under "Open decisions / inputs"; next
-free decision id **`DEC-100`**.
+**Open inputs (recorded, do not decide):** from this slice — the **`DEC-101`
+provisional items** awaiting owner/OPS confirmation (the 12 workflow-platform
+clarifications: free-text type/priority, no task_status transition guard,
+nullable decision, decide-once with no amendment path, plain-uuid actors,
+polymorphic targets + all-or-nothing linking, plain-uuid
+`created_from_event_id`, no `task.location_id`, **access unset** — the
+`07_SECURITY_AND_NFR.md` matrix has no `task`/`approval` row, mutable not
+append-only, no task↔approval link (the `HMS-001` conflict), job/outbox not
+built); plus the staff-document open points from the prior slice (the
+**unenforceable per-document location scope** (`DOC-001` "at authorized
+locations" — `document` has no location column, the library is
+organization-wide); the **acknowledgement retention period per file class**
+(a privacy-review input); **no un-archive** (archived is terminal); the
+**`DEC-100` provisional items** awaiting owner/OPS confirmation; the storage
+path deferred (`DEC-085` — no bytes, no signed URLs, no retention
+enforcement) and `file_object` has **no application port**; the
+`reviewer-glm` step-capped **web route test-assertion coverage gap**).
+And the row-14 inputs: the **WF-003 self-assignment login model** (must a
+self-assigning employee hold an `app_user` login?), the shift/
+shift_assignment state machines, the `role_code` matching, the
+payroll-report shape/period and "Aggregate only" visibility (14b), and the
+privacy-review retention periods. Plus the standing systemic ones already in
+the file (the `writeAudit` transaction binding, the driver-error→500
+mapping, the systemic location-scope gap, the `ADR-0004` gate, the
+golden-fixture sign-off). Full list under "Open decisions / inputs"; next
+free decision id **`DEC-102`**.
 
 **Parallel owner action — golden-fixture sign-off:** the six golden fixtures are
 prepared as machine-readable JSON under `tests/fixtures/` (`DEC-065`) with the
 sign-off trail ready; finance + product owner sign. Until signed, no cost is
 "verified"; `I8`/`I9` still gate the real rates behind the fixtures.
-
-**Step after this one:** the `task`/`approval` platform tables (`DEC-094`;
-the `job`/worker/outbox layer gated on `ADR-0004`, still `Proposed`); row 14
-workforce/scheduling is now buildable — the `employee` entity has landed — and
-is subject to the WF-003 self-assignment login input; the receipt→ledger
-wiring if the OPS destination `storage_area_id` policy lands; row 13 when
-history/grain quality (I11) is confirmed; the deployment rehearsal once the
-owner inputs arrive (see "Next up").
 
 ## What this is
 
@@ -332,6 +262,14 @@ the first five build slices of the `DEC-086`–`DEC-094` programme
 are committed; the `DEC-087` `employee` + personnel-documents slice (the
 `DEC-099` provisional clarifications; migrations `0046`/`0047`; the first slice
 of the workforce-documents half) is **committed** (`246c735`…`5b932a8`); the
+`DEC-088` **staff document library** slice (the `DEC-100` provisional
+clarifications; migrations `0048`/`0049`; the programme's **first versioned
+entity** — `document`, `document_version`, `document_acknowledgement`) is
+**committed** (`2784f18`…`838d11a`); the `DEC-094` **workflow platform**
+slice (the `DEC-101` provisional clarifications; migration `0050`;
+schema-only — the `task`/`approval` tables, no application/web port; the
+`job`/worker/outbox layer gated on `ADR-0004`) is **committed** (`c90a45a`);
+the
 `DEC-072`–`DEC-085` low-risk implementations (effective-dated reconciliation
 tolerance, sales-line reversal, `MAPPING_STATE` `conflict`, typed recipe 404s,
 the `price_version` slice, the `settlement.status`/`reconciliation.scope_type`
@@ -343,8 +281,8 @@ import posting-policy enforcement).
 
 - `00_README.md` … `13_AGENT_BUILD_BRIEF.md` — the specification package
   (inputs, rarely edited). Start with `00_README.md`.
-- `12_OPEN_DECISIONS.md` — the accepted decisions (DEC-001…DEC-099); the
-  authority. New decisions are appended here (next free id `DEC-100`).
+- `12_OPEN_DECISIONS.md` — the accepted decisions (DEC-001…DEC-101); the
+  authority. New decisions are appended here (next free id `DEC-102`).
 - `docs/phase0/` — close-out plan, calculation contract, data dictionary, golden
   fixtures, source-data request, notes. See `docs/phase0/PHASE0_CLOSEOUT_PLAN.md`
   and `docs/phase0/CALCULATION_CONTRACT.md`.
@@ -363,65 +301,96 @@ import posting-policy enforcement).
 
 ## Current status
 
-- **As of:** 2026-09-22 — branch `main`; HEAD before this slice was `282046d`
-  (the HMS compliance / evidence-export handoff, `DEC-093`/`DEC-098`); the
-  workforce slice is **5 commits** — `246c735` `docs(decisions)` `DEC-099`,
-  `59ad19e` `feat(persistence)`, `4faa6aa` `feat(application)`, `603054f`
-  `feat(web)`, `5b932a8` `docs(runbook)` — plus this `docs(context)` update;
-  the branch was clean before these handoff edits. Lineage:
+- **As of:** 2026-09-22 — branch `main`; HEAD before this slice was `838d11a`
+  (`docs(runbook)` — the 0048/0049 ledger/rehearsal + roadmap for the staff
+  library); the DEC-094 slice lands as commits — **`c90a45a`**
+  `feat(persistence)` (the `task`/`approval` tables; already committed), plus
+  the pending `docs(decisions)` `DEC-101`, the roadmap update and this
+  `docs(context)` update; the branch was clean before these handoff edits.
+  Lineage:
   `02f7c33` (the Phase A / small-TECH handoff) → the HMS monitoring slice,
   5 commits → the HMS incidents + corrective-actions slice, 6 commits → the
   HMS checklists slice, 6 commits → the HMS equipment / maintenance slice,
-  6 commits → the HMS compliance / evidence export slice, 5 commits → **the
-  `employee` + personnel-documents slice (programme step 20a), 5 commits** —
-  **all committed** (see "Work log" and "Reversibility").
-  **Delivered (programme step 20a — `DEC-087`, requirement `WF-007`,
-  provisional `DEC-099`):** the **`employee`** parent (`user_id` — a real
-  nullable FK to the organization-scoped `app_user`; `name`; `role_code` free
-  text; `employment_type` CHECK-backed; `base_hourly_rate numeric(19,4)`;
-  `cost_center_id` plain uuid, the cost-centre FK deferred;
-  `primary_location_id`; `active_from`/`active_to`; `retired_at`; **retired,
-  never deleted**) and **`employee_document`** (`employee_id` FK, `kind ∈
-{contract, certificate, id_document, other}` from the new
-  `employee_document_kind` vocabulary, `title`, a **nullable real FK**
-  `file_object_id`, `issued_at`/`expires_at` as nullable calendar dates).
-  Org-scoped (`DEC-061`); **four** cross-org coherence guards
-  (`employee.primary_location_id`, `employee.user_id`,
-  `employee_document.employee_id`, the nullable
-  `employee_document.file_object_id`) raising `23514`; **no document version
-  model** (`DEC-087` defines none). Access: employees follow the matrix row
-  `Employee records` (owner, general_manager, location_manager location-scoped,
-  **finance**, admin); personnel documents follow `Employee personnel
-documents` (**owner, general_manager, admin only — finance explicitly
-  excluded**); a location-scoped caller cannot see or mutate an employee whose
-  `primary_location_id` is NULL (fail-closed); `baseHourlyRate` is a decimal
-  **string** end to end. The API is `/api/v1/workforce/**`. **Nothing applied
-  to DigitalOcean.**
-  **Schema:** migrations through **`0047`**; **78 tables**. Next free decision
-  id **`DEC-100`**.
-  **Reviews and reconciliation.** Both reviewers found **no blockers and no
-  majors**. `reviewer-qwen`'s three minors: route comments cited
-  `DOC-001`…`DOC-004` instead of `WF-007` (**accepted + fixed**); the
-  NULL-`primary_location_id` fail-closed rule was unrecorded (**accepted —
-  recorded in `DEC-099` item 6**); `employee.user_id` had no org guard
-  (**accepted + fixed** once `app_user` was confirmed organization-scoped,
-  which also amended `0047` pre-commit). `reviewer-glm`'s seven minors: the
-  document list filter did not vocabulary-check `kind` (**accepted + fixed**);
-  the fake store defaulted `limit` to unbounded (**accepted + fixed**); a
-  repeat retire wrote a spurious audit fact and bumped `updated_at`
-  (**accepted + fixed** — now a no-op); a dead `NotFoundError` branch in the
-  employees POST route (**accepted + fixed**); contradictory `active`/`retired`
-  list filters were silently accepted (**accepted + fixed** — now a
-  `DomainError`); the fake's JS-codepoint sort vs Postgres collation for
-  non-ASCII names (**declined, noted**); a blank-string PATCH date clears the
-  field (**declined** — the documented convention). `reviewer-glm` reported no
-  unreached areas this time.
+  6 commits → the HMS compliance / evidence export slice, 5 commits →
+  the `employee` + personnel-documents slice (programme step 20a), 5 commits →
+  the staff document library slice (programme step 20b), 6 commits →
+  **the workflow-platform slice (`DEC-094`, schema-only)** — **all committed**
+  (see "Work log" and "Reversibility").
+  **Delivered (`DEC-094` — the workflow platform, schema-only):** the spec'd
+  **`task`** and **`approval`** platform tables (`DATA_DICTIONARY` §9) —
+  `task` (free-text `type`/`priority` per the `equipment.kind`/`DEC-097`
+  precedent; `status ∈ task_status {open, in_progress, blocked, resolved,
+dismissed}` default `open`; nullable polymorphic
+  `linked_entity_type`/`linked_entity_id` with the all-or-nothing
+  `task_linked_entity_check`; plain-uuid nullable `owner_id`; nullable
+  `due_date`/`resolution`; plain-uuid nullable `created_from_event_id` — no
+  FK while the outbox is `ADR-0004`-gated; audit columns) and `approval`
+  (polymorphic `entity_type`/`entity_id`, nullable `entity_version`, required
+  `requested_by`/`requested_at`, nullable `decided_by`/`decided_at`/`decision`
+  with the all-or-nothing `approval_decided_check`, nullable `comment`; the
+  vocabulary `approval_decision {approved, rejected}` has no `pending`, so
+  `decision` is **nullable while pending**; `decideApproval` enforces
+  **decide-once** via `WHERE decision IS NULL` — a re-decide updates nothing
+  and returns `undefined`). Both organization-scoped (`DEC-061`), mutable
+  (not append-only), three indexes each; `TASK_STATUS`/`APPROVAL_DECISION`
+  vocabularies exported (the yaml keys `task_status`/`approval_decision` left
+  `UNEXPORTED_YAML_KEYS`). **No application or web port** — schema-only, the
+  `DEC-085` `file_object` precedent; the access matrix has no
+  `task`/`approval` row, so no access rule is enforced yet. Provisional
+  clarifications recorded as **`DEC-101`** (12 items; the `HMS-001`
+  task↔approval conflict recorded, not resolved). The `job` table,
+  worker/scheduler and outbox layer stay **gated on `ADR-0004`** (still
+  `Proposed`). **Nothing applied to DigitalOcean.**
+  **Prior slice (programme step 20b — `DEC-088`/`DEC-100`,
+  `DOC-001`…`DOC-004`, committed `2784f18`…`838d11a`):** the staff document
+  library — the programme's first versioned entity: `document` (`title`,
+  `category`, `audience`, `status ∈ {draft, published, archived}` default
+  `draft`, plain-uuid `owner_id`, audit columns), `document_version`
+  (`document_id` FK, `version_no` integer > 0 — avoiding the `auditColumns()`
+  `version` row-counter collision, the API field is `version`; nullable real
+  `file_object_id` FK per `DEC-085`; nullable `notes`/`published_at`/
+  `published_by`; `UNIQUE (document_id, version_no)`; the all-or-nothing
+  `document_version_published_check`) and `document_acknowledgement`
+  (`document_version_id` FK, `acknowledged_by`, `acknowledged_at`,
+  `UNIQUE (document_version_id, acknowledged_by)`, no audit columns). Three
+  cross-org coherence guards raising `23514`. Version model: publish stamps
+  both fields together via an explicit command, only the highest-numbered
+  version may publish, the **current published version is the greatest
+  _published_ version** (the real `DOC-002` bug — a newer _unpublished_
+  version hiding the still-current published version — found in review and
+  fixed via `findCurrentPublishedVersion`); status lifecycle: draft →
+  published (through a version only), archived terminal, repeat archive a
+  true no-op. Access: read = all nine roles on published `all_staff`
+  documents; manage = owner, general_manager, location_manager, admin; a
+  non-manager sees only the current published version. Concurrency: version
+  creation and publication lock the parent `document` row (`SELECT … FOR
+UPDATE`). The API is `/api/v1/documents/**` and
+  `/api/v1/document-versions/**`.
+  **Schema:** migrations through **`0050`**; **83 tables**. Next free decision
+  id **`DEC-102`**.
+  **Reviews and reconciliation (`DEC-094`).** Both reviewers found **no
+  blockers**. `reviewer-minimax`'s one major: `decideApproval` did not
+  enforce the decide-once its doc comment claimed (**accepted + fixed** —
+  `WHERE decision IS NULL`, with a test asserting a re-decide returns
+  `undefined` and does not overwrite). Its minors: `job` not listed in
+  `NOT_EXPECTED_TABLES` (**accepted + fixed**); no second-decide test
+  (**accepted + fixed**); `task.status` freely reversible/reopen (**recorded
+  in `DEC-101`**); `UpdateTaskInput` omits `created_from_event_id`
+  (**accepted — a comment now records the immutable provenance field**); a
+  pre-existing journal trailing-newline nit (**declined, style-only**);
+  `task.priority` free text (**recorded in `DEC-101`**). `reviewer-glm`'s
+  minors: the same decide-once comment/test (**accepted + fixed**); the
+  update path violating `task_linked_entity_check` was untested (**accepted +
+  fixed**); the "not append-only" test asserted nothing about the updated row
+  (**accepted + fixed**). Both reviewers verified the `0050` SQL matches the
+  Drizzle schema exactly, the down path is FK-safe, the vocabulary guard
+  change holds, and there is no dead code or unreachable branch.
   **Verification:** `typecheck`, `lint`, `format:check`, `build` clean;
-  **2057/2057 tests with `DATABASE_URL`** (168 files); `npm audit --omit=dev`
-  = 0; `db:migrate` through `0047` is a no-op on re-run; **78 tables**; the
-  four workforce guard triggers present; organization-scoped everywhere
-  (`DEC-061`).
-  **Also delivered earlier (the `DEC-089` HMS monitoring slice, the `DEC-090`
+  **2306/2306 tests with `DATABASE_URL`** (179 files); `npm audit --omit=dev`
+  = 0; `db:migrate` through `0050` is a no-op on re-run; **83 tables**;
+  organization-scoped everywhere (`DEC-061`).
+  **Also delivered earlier (the `DEC-087` workforce `employee` +
+  personnel-documents slice, the `DEC-089` HMS monitoring slice, the `DEC-090`
   incidents slice, the `DEC-091` checklists slice, the `DEC-092`
   equipment/maintenance slice and the `DEC-093` compliance export slice — full
   detail in "Reversibility" and the work log):** the fridge/freezer monitoring
@@ -441,13 +410,15 @@ documents` (**owner, general_manager, admin only — finance explicitly
   (`profile_version` `i19-v1`, `posting_policy` `allow_partial`); a fresh
   session must restart the server.
   Remaining roadmap: the HMS/personnel-documents programme (Phase 6 + Epics
-  20/21 — `DEC-086`…`DEC-094`) is approved; the **HMS half is complete** and
-  the **workforce-documents half is under way** — row 20a (the `employee`
-  entity + personnel documents, `DEC-087`/`DEC-099`) is **delivered** (this
-  slice): the next build slice is 20b, the staff document library
-  (`DEC-088`), then the `task`/`approval` tables (`DEC-094`; the
-  `job`/worker/outbox layer gated on `ADR-0004`). Row 14 (
-  workforce/scheduling) is now buildable once the slice commits.
+  20/21 — `DEC-086`…`DEC-094`) is approved; the **HMS half is complete**, the
+  **workforce-documents half is complete** (row 20a — the `employee` entity +
+  personnel documents, `DEC-087`/`DEC-099`; row 20b — the staff document
+  library, `DEC-088`/`DEC-100`) and the **workflow platform is delivered**
+  (`DEC-094`/`DEC-101` — the `task`/`approval` tables, schema-only; the
+  `job`/worker/outbox layer gated on `ADR-0004`): the next build slice is
+  **row 14 — workforce/scheduling** (14a `shift` + `shift_assignment`, then
+  14b `shift_adjustment` + `payroll_report`; the **WF-003 self-assignment
+  login model** remains an open owner input).
   Beyond the programme: the receipt→ledger wiring needs the OPS destination
   `storage_area_id` policy; row 13 is data-gated
   on history/grain quality (I11); rows 15–18 blocked (data /
@@ -495,16 +466,16 @@ documents` (**owner, general_manager, admin only — finance explicitly
 - **DEC-049 closed:** drizzle-orm 0.45.2 / drizzle-kit 0.31.10 upgrade (`cc86f13`);
   `npm audit --omit=dev` = 0.
 - **Tests:** without `DATABASE_URL` the integration tests skip; with it
-  **2057/2057 passed** (168 files) — recorded 2026-09-22 at the
-  workforce-slice tree (all checks pass; `db:migrate` through `0047` is a
-  no-op). Re-verify with `npm run test` and update if they differ.
+  **2306/2306 passed** (179 files) — recorded 2026-09-22 at the
+  workflow-platform (`DEC-094`) tree (all checks pass; `db:migrate` through
+  `0050` is a no-op). Re-verify with `npm run test` and update if they differ.
   Open verification debt: the per-process rate limiter needs a shared
   store before multi-instance deployment; the reset-token delivery is a no-op stub
   until the email slice; the palette hex values and data-viz palette semantics
   await owner sign-off (see "Open decisions / inputs"); the six golden fixtures
   remain unsigned and are the "verified" gate.
 - **Persistence core + deployment foundation (committed):** Drizzle schema,
-  migrations `0000_enable_extensions` → `0047` additive with tested down paths
+  migrations `0000_enable_extensions` → `0050` additive with tested down paths
   (`0011_cost_allocation.sql` adds the four slice-6 tables; `0014_cost_card_pricing`
   adds four deferred `price_scenario` columns + `snapshot_component_kind_check`;
   `0015` adds `calculation_snapshot_cost_card_index`; the hand-written `0016` adds
@@ -574,12 +545,17 @@ documents` (**owner, general_manager, admin only — finance explicitly
   **`0038`** the append-only triggers incl. a TRUNCATE guard (only `notes`
   amendable) and **`0039`** the cross-org coherence guards (the
   `DEC-079`/`DEC-081` precedent);
-  ledger through `0047` (`0040` the `DEC-090` incident +
+  ledger through `0049` (`0040` the `DEC-090` incident +
   corrective-action tables, `0041` their coherence guards, `0042` the
   `DEC-091` checklist tables, `0043` their coherence guards, `0044` the
   `DEC-092` equipment/maintenance tables, `0045` their coherence guards,
-  `0046` the `DEC-087` `employee` + `employee_document` tables and `0047` the
-  four workforce coherence guards — committed `59ad19e`/`5b932a8`);
+  `0046` the `DEC-087` `employee` + `employee_document` tables, `0047` the
+  four workforce coherence guards — committed `59ad19e`/`5b932a8` — and
+  `0048` the `DEC-088` `document`/`document_version`/
+  `document_acknowledgement` tables, `0049` the three staff-document
+  coherence guards — committed `ee47947`, runbook `838d11a` — and `0050` the
+  `DEC-094` `task`/`approval` workflow-platform tables — committed
+  `c90a45a`);
   the `asset`
   register is deliberately deferred — note `DEC-092`'s `equipment` is a
   distinct HMS register, not the finance `asset`), the
@@ -587,16 +563,20 @@ documents` (**owner, general_manager, admin only — finance explicitly
   stubs and the `infra/` Terraform scaffold validated offline. Not applied.
 - **Not yet built:** row 13 (close + dashboards + menu engineering —
   data-gated on history/grain quality, I11), row 14 (workforce/scheduling —
-  the privacy review / access matrix gate is lifted and the `employee` entity
-  has landed; the **WF-003 self-assignment login model** remains open) and
+  the privacy review / access matrix gate is lifted, the `employee` entity
+  and the `task`/`approval` platform tables have landed; the **WF-003
+  self-assignment login model** remains open) and
   rows 15–18
   (blocked: data / `ADR-0009`–`0011`); also
   the deferred tables
-  (workforce scheduling — shifts/worked hours; the `employee` and
-  `employee_document` tables have landed — integrations, competitor, AI,
-  procurement, period close,
-  platform job/approval — note the
-  `approval` platform table from DATA_DICTIONARY §9 does not exist yet, and the
+  (workforce scheduling — shifts/worked hours (row 14's `shift`,
+  `shift_assignment`, `shift_adjustment`, `payroll_report` — the next build
+  slice); the `employee`,
+  `employee_document`, `document`, `document_version`,
+  `document_acknowledgement`, `task` and `approval` tables have landed —
+  integrations, competitor, AI,
+  procurement, period close, the platform `job` table (gated on `ADR-0004`),
+  and the
   five deferred file FKs (`goods_receipt.evidence_file_id`,
   `cost_observation.receipt_file_id`, `operating_cost.evidence_file_id`,
   `settlement.source_file_id`, `waste_event.photo_file_id`) stay plain uuids
@@ -613,39 +593,63 @@ variance-producer slice and the `DEC-085` `file_object` slice —
 **row 11 is complete**; the `DEC-072`–`DEC-095`
 decisions + low-risk implementations are done,
 committed `aaec400`–`8b22468` plus the slice commits; the new programme
-(Phase 6 + Epics 20/21, `DEC-086`…`DEC-094`) is approved and its first six
+(Phase 6 + Epics 20/21, `DEC-086`…`DEC-094`) is approved and its first seven
 build slices — HMS monitoring points + readings (`DEC-089`), HMS
 incidents + corrective actions (`DEC-090`), HMS checklists (`DEC-091`),
 HMS equipment/maintenance (`DEC-092`), HMS compliance / evidence export
-(`DEC-093`) and the workforce `employee` + personnel-documents slice
-(`DEC-087`) —
-are **delivered** (the HMS half of the programme is complete and the
-workforce-documents half is under way);
+(`DEC-093`), the workforce `employee` + personnel-documents slice
+(`DEC-087`) and the staff document library (`DEC-088`) —
+are **delivered** (the HMS half and the workforce-documents half of the
+programme are complete) and the **workflow platform (`DEC-094`/`DEC-101` —
+the `task`/`approval` tables, schema-only) is delivered**;
 further original rows are
 gated — row 13 on data (I11),
-rows 15–18 on data/ADRs; row 14 is now buildable (`employee` has landed)).
+rows 15–18 on data/ADRs; row 14 is now buildable (`employee` and the
+`task`/`approval` tables have landed)).
 The list below is the short narrative form.
 
-1. **Staff document library (`DEC-088`; `DOC-001`…`DOC-004`) — the lead
-   item:** programme step 20b, the **last slice of the workforce-documents
-   half**; it builds `document` (`category`/`audience`/`status`/`owner_id`),
-   `document_version` (a `version`, `file_object_id`,
-   `published_at`/`published_by`) and `document_acknowledgement`, with
-   **all-staff read of published `all_staff` documents**, **managers publish**,
-   superseded versions retrievable to managers only and audited, optional
-   per-document acknowledgements; it is the **first versioned** entity in the
-   programme and needs its own reconnaissance and a provisional clarification
-   decision if the text leaves gaps (next free id **`DEC-100`**); it must not
-   resolve the privacy-review retention periods silently.
-2. **Programme build order after the staff library (`DEC-086`…`DEC-094`):** the
-   `task`/`approval` platform tables
-   (`DEC-094` — the `job`/worker/outbox layer stays gated on **`ADR-0004`
-   acceptance**, still `Proposed`). Scheduling/shifts (row 14) is buildable
-   now that `employee` has landed, subject to the **WF-003 self-assignment
-   login input** (must a self-assigning employee hold an `app_user` login?) and
-   the privacy-review retention periods per file class.
-3. **New open points from the workforce, export, equipment, checklists and
-   incidents slices (recorded, do not resolve silently):** from the workforce
+1. **Row 14 — workforce/scheduling (`WF-001`…`WF-007`, all Must; epics
+   13–15) — the lead item:** buildable now that the `employee` entity
+   (`DEC-087`) and the `task`/`approval` tables (`DEC-094`) have landed.
+   Natural sub-slices: **(14a) `shift` + `shift_assignment`** (epic 14 —
+   shift planning, rota and staff self-assignment; the recommended next
+   slice), then **(14b) `shift_adjustment` + `payroll_report`** (epic 15 —
+   worked hours and the monthly payroll-input report). Spec:
+   `DATA_DICTIONARY.md` §4A (`employee` `:381`, `shift` `:396`,
+   `shift_assignment` `:409`, `shift_adjustment` `:420`, `payroll_report`
+   `:430`), `schemas/phase1_2_draft.sql:906-964`, `03_DOMAIN_MODEL.md`
+   §3.9/§3.10. The `shift_state`, `shift_assignment_state` and
+   `payroll_report_status` vocabularies exist in `schemas/domain-enums.yaml`
+   but are unexported (`UNEXPORTED_YAML_KEYS`); `NOT_EXPECTED_TABLES` still
+   lists all four tables; next free migration index `0051`. Access-matrix
+   rows: `Shift planning and rota` (owner/GM Full, location_manager Edit
+   (assigned), kitchen/FOH View own, finance Read, admin As required) and
+   `Payroll-input reports` (owner/GM/finance Full, location_manager None,
+   analyst Aggregate). Needs its own reconnaissance and a **`DEC-102`
+   provisional clarification** for the under-specified points (the shift and
+   shift_assignment state machines, the **WF-003 self-assignment login
+   model** — must a self-assigning employee hold an `app_user` login? — the
+   `role_code` matching, worked-hours derivation and the payroll-report
+   snapshot shape/period for 14b, "Aggregate only" payroll visibility,
+   location scope for shifts, retention periods). Do not resolve the
+   privacy-review retention periods silently.
+2. **Row 14 residuals / gates:** the **WF-003 self-assignment login input**
+   (owner) and the privacy-review retention periods per file class
+   (rows 15–18 remain blocked: data / `ADR-0009`–`0011`).
+3. **New open points from the staff-library, workforce, export, equipment,
+   checklists and incidents slices (recorded, do not resolve silently):**
+   from the staff-library slice — `document` has **no location column**, so
+   `DOC-001`'s "readable by all active staff **at authorized locations**" is
+   unenforceable (the library is organization-wide); the **acknowledgement
+   retention period per file class** (a privacy-review input); **no
+   un-archive** (archived is terminal); the **`DEC-100` provisional items**
+   awaiting owner/OPS confirmation; the storage path deferred (`DEC-085` —
+   no bytes, no signed URLs, no retention enforcement) and `file_object` has
+   **no application port**; the `reviewer-glm` step-capped web route
+   test-assertion coverage gap; noted, no action: the
+   `findLatestDocumentVersion` dual semantics, the latent acknowledge-command
+   audience check, and the `document_status_check` naming vs the generic
+   `document_status` vocabulary. From the workforce
    slice — `WF-007`'s audited upload/replace **and retention** is not
    implementable while `DEC-087` defers the storage path (the bytes cannot be
    uploaded, downloaded, scanned or retention-enforced; there is no storage
@@ -690,7 +694,8 @@ The list below is the short narrative form.
    jsonb 500-element ceiling; list-filter values not vocabulary-validated;
    route tests not exercising `withMutationGuards`; a multi-location scope
    filter can return a short page; no scheduling (due dates/reminders/
-   assignment stay with the unbuilt `task`/`approval`); the `DEC-096`
+   assignment stay with the `task`/`approval` tables, which now exist
+   (`DEC-094`) but have no application/web layer yet); the `DEC-096`
    provisional items awaiting owner/OPS confirmation. From the incidents
    slice: the **corrective-action location-scope ceiling**
    (`corrective_action` has no `location_id`; a scoped caller must supply
@@ -720,12 +725,13 @@ The list below is the short narrative form.
 6. **Row 13 — close + dashboards + menu engineering** — `ADR-0007` is accepted
    (2026-09-20); **data-gated** on history/grain quality (I11) — synthetic
    fixtures until real data.
-7. **Row 14 — workforce/scheduling** — the original gate is lifted: the
-   privacy review / access matrix is approved and the `employee` tables
-   (`DEC-087`) have **landed** (this slice) as the entry point; the shifts /
-   worked-hours / payroll-input tables are still to build; the **WF-003
-   self-assignment login model** remains an open input (rows 15–18 remain
-   blocked: data / `ADR-0009`–`0011`).
+7. **Row 14 — workforce/scheduling** — now the lead item (see item 1): the
+   original gate is lifted, the privacy review / access matrix is approved,
+   and the `employee` tables (`DEC-087`) plus the `task`/`approval` platform
+   tables (`DEC-094`) have **landed** (delivered) as the entry points; the
+   shifts / worked-hours / payroll-input tables are still to build; the
+   **WF-003 self-assignment login model** remains an open input (rows 15–18
+   remain blocked: data / `ADR-0009`–`0011`).
 8. **Test-deployment rehearsal** — per `docs/runbooks/deployment.md`, staging first
    with sanitized/synthetic data only; parked on the deployment prerequisite inputs
    (see "Open decisions / inputs" — a scoped `DIGITALOCEAN_TOKEN`, a private
@@ -760,6 +766,56 @@ The list below is the short narrative form.
 
 ## Open decisions / inputs (do not block development)
 
+- **Recorded this session (2026-09-22, from the `DEC-094` workflow-platform
+  slice reviews and reconciliation; recorded, not decided — do not resolve
+  silently):** the **`DEC-101` provisional items** (12 workflow-platform
+  clarifications) still need owner/OPS confirmation: free-text
+  `task.type`/`task.priority` (no vocabulary in the spec; upgrade path is
+  CHECK-backed vocabularies); `task_status` with **no transition guard**
+  (any status transition accepted — whether reopen should be constrained is
+  open); `approval.decision` **nullable while pending** (the vocabulary has
+  no `pending` value); **decide-once** with no amendment/re-decision path;
+  plain-uuid actor columns (the `app_user` FK deferred); polymorphic
+  targets + all-or-nothing linking (`task_linked_entity_check`);
+  plain-uuid `created_from_event_id` (no outbox FK while `ADR-0004`-gated);
+  no `task.location_id`; **access unset** — the `07_SECURITY_AND_NFR.md`
+  matrix has no `task`/`approval` row, so no access rule is enforced yet
+  (a recorded input for the consuming slice); mutable, not append-only; **no
+  task↔approval link** (the `HMS-001` conflict, recorded not resolved); the
+  `job` table/outbox not built (gated on `ADR-0004`, still `Proposed`).
+  **And the row-14 (workforce/scheduling) inputs** for the next slice's
+  `DEC-102` provisional clarification: the shift and shift_assignment state
+  machines (no `05_WORKFLOWS.md` flow); the **WF-003 self-assignment login
+  model** (must a self-assigning employee hold an `app_user` login? — an
+  open owner input); the `role_code` matching between shift and employee;
+  worked-hours derivation (14b); the payroll-report snapshot shape and
+  period (14b); "Aggregate only" payroll visibility; location scope for
+  shifts; the retention periods (do not resolve the privacy-review retention
+  periods silently). **The `DEC-094` workflow-platform slice is delivered**
+  (schema-only; `DEC-094`/`DEC-101`; migration `0050`; **83 tables**;
+  committed `c90a45a`). Next free decision id **`DEC-102`**.
+- **Recorded this session (2026-09-22, from the `DEC-088`
+  staff-document-library slice reviews and reconciliation; recorded, not
+  decided — do not resolve silently):** `document` has **no location column**,
+  so `DOC-001`'s "readable by all active staff **at authorized locations**" is
+  unenforceable — the library is organization-wide (owner/TECH input wanted on
+  whether a location scope matters); the **acknowledgement retention period
+  per file class** is a privacy-review input; **no un-archive path** (archived
+  is terminal, per `DEC-100`); the **`DEC-100` provisional items** still need
+  owner/OPS confirmation; the storage path stays deferred (`DEC-085` — no
+  bytes, no signed URLs, no retention enforcement) and `file_object` has **no
+  application port at all**; the `reviewer-glm` step cap truncated part of the
+  web route test-assertion pass (a recorded coverage gap); noted, no action:
+  the `findLatestDocumentVersion` dual semantics, the latent lack of an
+  audience check in the acknowledge command, and the `document_status_check`
+  naming vs the generic `document_status` vocabulary. The **real `DOC-002`
+  bug** surfaced during reconciliation (a newer _unpublished_ version hid the
+  still-current published version from staff and broke acknowledgement) was
+  **accepted + fixed in-slice** (`findCurrentPublishedVersion` = greatest
+  published version). **The `DEC-088` staff document library slice is
+  delivered** (programme step 20b; `DEC-088`/`DEC-100`; migrations
+  `0048`/`0049`; **81 tables**; committed `2784f18`…`838d11a`). Next free
+  decision id **`DEC-101`**.
 - **Recorded this session (2026-09-22, from the `DEC-087` `employee` +
   personnel-documents-slice reviews and reconciliation; recorded, not decided —
   do not resolve silently):** `WF-007` (Must) requires "audited
@@ -1420,6 +1476,20 @@ and Spaces credentials via `-backend-config` / `AWS_ACCESS_KEY_ID` +
 
 ## Reversibility
 
+- **2026-09-22 staff document library slice (`DEC-088`/`DEC-100`; 6 commits
+  incl. this docs commit; nothing pushed)**: 1. `2784f18` `docs(decisions)` —
+  `DEC-100`; 2. `ee47947` `feat(persistence)`; 3. `2aabd1b`
+  `feat(application)`; 4. `3fe7d4a` `feat(web)`; 5. `838d11a` `docs(runbook)`
+  — the migration-ledger/rehearsal + roadmap entries; 6. this
+  `docs(context)` update — each independently revertible with
+  `git revert <sha>`. Migration **`0048_staff_documents` adds three tables**
+  (additive; down drops `document_acknowledgement` → `document_version` →
+  `document`, 81 → 78); **`0049_staff_documents_org_guard` is trigger-only**
+  (down 81 → 81); the rehearsed down order is **`0049` → `0048`**. If the DB
+  is rolled back, delete the two ledger rows (`created_at`
+  `1790054700573` / `1790054714766`) and re-migrate; 81 tables after
+  re-apply (rehearsed 2026-09-22 — see the work log). Nothing pushed;
+  nothing applied to DigitalOcean.
 - **2026-09-22 `employee` + personnel-documents slice (`DEC-087`/`DEC-099`;
   5 commits incl. this docs commit; nothing pushed)**: 1. `246c735`
   `docs(decisions)` — `DEC-099`; 2. `59ad19e` `feat(persistence)` — the
@@ -1748,15 +1818,15 @@ scale)` cap in `parseDecimal` + `packages/domain/src/decimal.test.ts`;
   them with `git revert` if needed. **No cloud resource was created — only offline
   `fmt`/`validate`/`plan` ran, never `apply`; no Terraform state exists, and
   nothing has been applied to DigitalOcean.**
-- Migrations 0000–0047 are additive with tested down paths (`0011` down drops the
+- Migrations 0000–0050 are additive with tested down paths (`0011` down drops the
   four slice-6 tables; `0012` down drops the three EXCLUDE constraints; `0015`/
-  `0016` down drop their indexes/invariant — rehearsed; `0017`–`0047` down are
+  `0016` down drop their indexes/invariant — rehearsed; `0017`–`0050` down are
   rehearsed — see the slice-8 bullet, the slice-9/10, row-11, row-12,
   DEC-072–076, price-version, `DEC-078`, `DEC-079`, `DEC-080`, `DEC-081`,
   `DEC-083`, `DEC-085` `file_object`, `DEC-089` HMS monitoring,
   `DEC-090` HMS incidents, `DEC-091` HMS checklists, `DEC-092` HMS
-  equipment and `DEC-087` `employee`/personnel-documents
-  bullets
+  equipment, `DEC-087` `employee`/personnel-documents, `DEC-088`
+  staff-document and `DEC-094` workflow-platform bullets
   above; the `DEC-093` HMS compliance / evidence export slice added **no
   migration**). While the
   database is
@@ -1768,6 +1838,227 @@ CASCADE; CREATE SCHEMA public; npm run db:migrate` (see the runbook). Once data
   (`DEC-015`).
 
 ## Work log (append-only, newest first)
+
+### 2026-09-22 — Workflow platform delivered schema-only (DEC-094/DEC-101, migration 0050); the `task`/`approval` tables, the programme's prerequisite/workflow slice; handoff updated
+
+`main`; HEAD before the slice was `838d11a` (`docs(runbook)` — the 0048/0049
+ledger/rehearsal + roadmap for the staff library); the slice lands as commits
+`c90a45a` `feat(persistence)` — the `task`/`approval` tables (**already
+committed**) — plus the pending `docs(decisions)` `DEC-101`, the roadmap
+update and this `docs(context)` handoff (nothing pushed; nothing applied to
+DigitalOcean).
+
+- **Delivered (`DEC-094` — the workflow platform, schema-only):** the spec'd
+  **`task`** and **`approval`** platform tables (`DATA_DICTIONARY` §9),
+  schema-only with no ADR dependency; the `job` table, worker/scheduler and
+  outbox layer are **not** built (gated on `ADR-0004`, still `Proposed`).
+  **`task`:** free-text `type`/`priority` (NOT NULL, no vocabulary in the
+  spec — the `equipment.kind`/`DEC-097` precedent), `status ∈ task_status
+{open, in_progress, blocked, resolved, dismissed}` default `open`, nullable
+  polymorphic `linked_entity_type`/`linked_entity_id` (all-or-nothing via
+  `task_linked_entity_check`), plain-uuid nullable `owner_id` (the `app_user`
+  FK deferred), nullable `due_date`/`resolution`, plain-uuid nullable
+  `created_from_event_id` (no FK to `outbox_event` while the outbox is
+  `ADR-0004`-gated), audit columns. **`approval`:** polymorphic
+  `entity_type`/`entity_id`, nullable `entity_version` (integer, matching
+  `audit_event.entity_version`), required `requested_by`/`requested_at`,
+  nullable `decided_by`/`decided_at`/`decision` with the all-or-nothing
+  `approval_decided_check`, nullable `comment`, audit columns; `decision ∈
+approval_decision {approved, rejected}` is **nullable while pending** (the
+  vocabulary has no `pending` value); `decideApproval` enforces
+  **decide-once** (`WHERE decision IS NULL`; a re-decide updates nothing and
+  returns `undefined`). Both organization-scoped (`DEC-061`), mutable (not
+  append-only), three indexes each; the `TASK_STATUS`/`APPROVAL_DECISION`
+  vocabularies exported (the yaml keys `task_status`/`approval_decision` no
+  longer in `UNEXPORTED_YAML_KEYS`). **No application or web port** — the
+  `DEC-085` `file_object` precedent; the `07_SECURITY_AND_NFR.md` access
+  matrix has no `task`/`approval` row, so no access rule is enforced yet
+  (a recorded input for the consuming slice).
+- **Provisional clarifications recorded as `DEC-101`** (12 items: free-text
+  type/priority; task_status with no transition guard; nullable decision;
+  decide-once; plain-uuid actors; polymorphic targets + all-or-nothing
+  linking; plain-uuid `created_from_event_id`; no `task.location_id`; access
+  unset; mutable not append-only; no task↔approval link — the `HMS-001`
+  conflict; job/outbox not built).
+- **Migration:** `0050_workflow_platform` (journal `idx` 50, `when`
+  `1790061475649`, sha256
+  `19438c2f5ead0664a2ed74b19395d833555e999826b8c6787b6ed88aa44ebdc9`); down
+  companion unjournalled (`0050_workflow_platform_down.sql` drops `approval`
+  then `task`, 83 → 81). **No guard migration** — neither table has a
+  cross-organization FK beyond `organization_id`. **Rehearsal evidence
+  (local dev DB, 2026-09-22):** 83 tables / 51 ledger rows → down (81
+  tables) → delete the ledger row (`created_at = 1790061475649`) →
+  `npm run db:migrate` → 83 tables / 51 ledger rows; a further `db:migrate`
+  a no-op.
+- **Reviews and reconciliation.** Both reviewers found **no blockers**.
+  `reviewer-minimax`'s one major: `decideApproval` did not enforce the
+  decide-once its doc comment claimed (**accepted + fixed** —
+  `WHERE decision IS NULL`, with a test asserting a re-decide returns
+  `undefined` and does not overwrite). Its minors: `job` not listed in
+  `NOT_EXPECTED_TABLES` (**accepted + fixed**); no second-decide test
+  (**accepted + fixed**); `task.status` freely reversible/reopen
+  (**recorded in `DEC-101`**); `UpdateTaskInput` omits
+  `created_from_event_id` (**accepted — a comment now records the immutable
+  provenance field**); a pre-existing journal trailing-newline nit
+  (**declined, style-only**); `task.priority` free text (**recorded in
+  `DEC-101`**). `reviewer-glm`'s minors: the same decide-once comment/test
+  (**accepted + fixed**); the update path violating
+  `task_linked_entity_check` was untested (**accepted + fixed**); the "not
+  append-only" test asserted nothing about the updated row (**accepted +
+  fixed**). Both reviewers verified the `0050` SQL matches the Drizzle
+  schema exactly, the down path is FK-safe, the vocabulary guard change
+  holds, and there is no dead code or unreachable branch.
+- **Verification (exact):** `typecheck`, `lint`, `format:check`, `build`
+  clean; **2306/2306 tests with `DATABASE_URL`** (179 files);
+  `npm audit --omit=dev` = 0; `db:migrate` through `0050` is a no-op on
+  re-run; **83** public base tables. **Schema:** migrations through `0050`;
+  83 tables (was 81). Next free decision id **`DEC-102`**.
+- **Next step:** **row 14 — workforce/scheduling** (`WF-001`…`WF-007`, all
+  Must; epics 13–15), split into **(14a) `shift` + `shift_assignment`**
+  (epic 14; the recommended next slice) and **(14b) `shift_adjustment` +
+  `payroll_report`** (epic 15). Needs its own reconnaissance and a
+  **`DEC-102` provisional clarification** (the state machines, the WF-003
+  self-assignment login model, `role_code` matching, worked-hours
+  derivation, the payroll-report shape/period, "Aggregate only" visibility,
+  location scope, retention periods — the privacy-review retention periods
+  must not be resolved silently).
+
+Rollback: commit `c90a45a` is independently `git revert`-able; migration
+`0050` adds two tables (additive) with the rehearsed down order —
+`0050_workflow_platform_down.sql` drops `approval` then `task` (83 → 81);
+if the DB is rolled back, delete the ledger row (`when` `1790061475649`)
+and re-migrate (83 tables); nothing pushed; nothing applied to DigitalOcean.
+
+### 2026-09-22 — Staff document library delivered (DEC-088/DEC-100, migrations 0048–0049); programme step 20b, the programme's first versioned entity, the last slice of the workforce-documents half; handoff updated
+
+`main`; HEAD before the slice was `b09bbc3` (the workforce-slice handoff,
+`DEC-087`/`DEC-099`); the slice lands as **5 commits** (`2784f18`
+`docs(decisions)` `DEC-100`, `ee47947` `feat(persistence)`, `2aabd1b`
+`feat(application)`, `3fe7d4a` `feat(web)`, `838d11a` `docs(runbook)` — the
+migration-ledger/rehearsal + roadmap entries) plus this `docs(context)`
+update (nothing pushed; nothing applied to DigitalOcean).
+
+- **Delivered (`DEC-088`, requirements `DOC-001`…`DOC-004`, provisional
+  `DEC-100` — programme step 20b, the last slice of the workforce-documents
+  half and the programme's first versioned entity):** the staff document
+  library — `document` (`title`, `category ∈ {routine, guideline, policy,
+form, other}`, `audience ∈ {all_staff, managers}`, `status ∈ {draft,
+published, archived}` default `draft`, plain-uuid nullable `owner_id`
+  (the `app_user` FK stays deferred repo-wide), audit columns;
+  organization-scoped per `DEC-061`), `document_version` (`document_id` FK,
+  `version_no` integer > 0 — named to avoid the `auditColumns()` `version`
+  row-counter collision, the `recipe_version.version_no` precedent; the API
+  field is `version`; a nullable real `file_object_id` FK, storage path
+  deferred per `DEC-085`; nullable `notes`/`published_at`/`published_by`;
+  `UNIQUE (document_id, version_no)`; the all-or-nothing
+  `document_version_published_check`) and `document_acknowledgement`
+  (`document_version_id` FK, `acknowledged_by`, `acknowledged_at`,
+  `UNIQUE (document_version_id, acknowledged_by)`; **no audit columns** —
+  the `import_disposition` fact-table precedent). Vocabularies
+  `document_category`/`document_audience`/`staff_document_status` (the
+  generic `document_status` backs `recipe_version.state` and was
+  deliberately not reused). **Three** cross-org coherence guards (`BEFORE
+INSERT OR UPDATE`, `23514`). Version model: a version is created
+  unpublished and published by an explicit command stamping
+  `published_at`/`published_by` together; only the highest-numbered version
+  may be published; the **current published version is the greatest
+  _published_ version** (a newer draft never hides it); superseded versions
+  are retrievable to managers only. Status lifecycle: `draft` until the
+  first version is published, then `published`; `PATCH` may set only
+  `archived`; archived is terminal; publishing into an archived document is
+  rejected; a repeat archive is a true no-op (no write, no audit fact).
+  Access: read = **all nine roles** on published `all_staff` documents
+  (matrix row `Staff document library (published)`); manage = **owner,
+  general_manager, location_manager, admin**; a non-manager sees only
+  published `all_staff` documents and only their current published version.
+  Acknowledgements: one idempotent fact per `(version, user)`, the actor
+  the session user; "optional per document" = no per-document flag or
+  requirement (`DEC-088` defines none). Audit: `documents.document.
+created`/`updated`, `documents.document_version.created`/`published`,
+  `documents.document_acknowledgement.created` via `writeAudit`; the
+  draft→published promotion lives inside the publish fact's before/after
+  (one fact per action). Concurrency: version creation and publication lock
+  the parent `document` row (`SELECT … FOR UPDATE`) inside the transaction.
+  API: `/api/v1/documents/**` and `/api/v1/document-versions/**`.
+  **Schema:** migrations through `0049`; **81 tables** (was 78). Next free
+  decision id **`DEC-101`**.
+- **Build:** the slice was built with parallel background agents over the
+  frozen `DEC-088` contract (persistence → application → web per the
+  existing package boundaries), then the adversarial reviews, the
+  reconciliation fixes and the migration rehearsal; small atomic commits
+  with the rollback approach in the body (Rule 2).
+- **Migrations:** `0048_staff_documents` (journal `idx` 48, `when`
+  `1790054700573`, sha256
+  `a3583018395213ae882880c3bbb773fc74fa8a70c6b80aa36ca54a4b3fe091e5`);
+  `0049_staff_documents_org_guard` (journal `idx` 49, `when`
+  `1790054714766`, sha256
+  `91dd4a2c63e0f3201f9c4626ee80b644358bc75d92353ecb8510d6bc323408da`); down
+  companions unjournalled (`0048_staff_documents_down.sql` drops
+  `document_acknowledgement` → `document_version` → `document`, 81 → 78;
+  `0049_staff_documents_org_guard_down.sql` trigger-only, 81 → 81).
+  **Rehearsal evidence (local dev DB, 2026-09-22):** apply → 81 tables; the
+  three document guards plus the earlier workforce guards all raise
+  `23514`; down `0049` → `0048` → 78; ledger rows deleted (`created_at IN
+(1790054700573, 1790054714766)`) + re-apply → 81 tables / 3 document
+  guards / 50 ledger rows; a further `db:migrate` a no-op.
+- **Reviews and reconciliation.** Both reviewers found **no blockers**.
+  `reviewer-qwen` raised two majors, both **accepted and fixed**: (a) the
+  version-number computation could collide under concurrency (raw `23505` → 500) and (b) the publish "latest version" check had a TOCTOU race — both
+  closed by locking the parent `document` row (`SELECT … FOR UPDATE`) in
+  `createDocumentVersion`/`publishDocumentVersion`. Its minors:
+  join-after-where fragility in `listDocumentAcknowledgements` (**accepted +
+  fixed** by reordering); no concurrency test (**accepted** — lock usage
+  asserted with spies, the `.for("update")` query exercised against real
+  Postgres); `findLatestDocumentVersion` serving two semantics, and the
+  latent lack of an audience check in the acknowledge command (**noted**);
+  the `document_status_check` naming vs the generic `document_status`
+  vocabulary (**noted**). `reviewer-glm` raised: the draft→published
+  promotion writing no separate `document.updated` fact (**declined** — the
+  publish fact's before/after already carries `document_status`, one fact
+  per action); the same join-after-where fragility (**accepted + fixed**);
+  an unused domain helper `selectCurrentPublishedVersion` and dead timer
+  cleanup (**accepted**). Reconciling that last item exposed a **real
+  `DOC-002` bug** both reviewers had framed as minor: the current published
+  version was resolved as "latest + published", so creating a newer
+  _unpublished_ version hid the still-current published version from staff
+  and broke acknowledgement — **accepted + fixed** by adding
+  `findCurrentPublishedVersion` (greatest published version) to the
+  repository/port/adapter/fake and using it in the `[id]` route and
+  `acknowledgeDocument`; the now-unused domain helper was deleted.
+  `reviewer-glm`'s step cap truncated part of the web route test-assertion
+  pass (a recorded coverage gap).
+- **New open points (recorded, do not decide):** the unenforceable
+  per-document location scope (`DOC-001` "at authorized locations"); the
+  acknowledgement retention period per file class (privacy review); no
+  un-archive; the `DEC-100` provisional items awaiting owner/OPS
+  confirmation; the storage path deferred (`DEC-085`); `file_object` has no
+  application port; the `reviewer-glm` web-route test coverage gap. See the
+  first bullet under "Open decisions / inputs".
+- **Verification (exact):** `typecheck`, `lint`, `format:check`, `build`
+  clean; **2292/2292 tests with `DATABASE_URL`** (178 files);
+  `npm audit --omit=dev` = 0; `db:migrate` through `0049` is a no-op on
+  re-run; **81** public base tables; the three staff-document guard triggers
+  (plus the earlier workforce guards) present.
+- **Next step:** the **`task`/`approval` platform tables** (`DEC-094`) —
+  programme prerequisite/workflow slice: build the spec'd `task` and
+  `approval` platform tables **now** (schema + domain/application/web),
+  organization-scoped, additive with a rehearsed down path, `EXPECTED_TABLES`
+  updated; they host ownership and due-dates (HMS reminders from checklist
+  `frequency` and monitoring `check_frequency`, corrective-action
+  due-dates). The `job` table, worker/scheduler and outbox async layer stay
+  **gated on `ADR-0004`** (still `Proposed`); nothing may rely on it. Needs
+  its own reconnaissance; record a provisional clarification decision if the
+  text leaves gaps (next free id **`DEC-101`**). Then row 14
+  workforce/scheduling (buildable; subject to the WF-003 self-assignment
+  login input and the privacy-review retention periods per file class).
+
+Rollback: each of the slice's 5 commits is independently `git revert`-able;
+migration `0048` adds three tables (additive), `0049` is trigger-only; the
+rehearsed down order is `0049` → `0048`; `0048` down drops
+`document_acknowledgement` then `document_version` then `document` (81 →
+78), `0049` down is trigger-only (81 → 81); if the DB is rolled back, delete
+the two ledger rows (`when` `1790054700573` / `1790054714766`) and re-migrate
+(81 tables); nothing pushed; nothing applied to DigitalOcean.
 
 ### 2026-09-22 — `employee` + personnel documents delivered (DEC-087/DEC-099, migrations 0046–0047); programme step 20a, the first slice of the workforce-documents half; handoff updated
 
