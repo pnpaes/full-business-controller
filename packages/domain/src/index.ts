@@ -91,6 +91,15 @@ export type {
   RecipeVersionState,
 } from "./recipe";
 export {
+  SALES_REPORT_GRAINS,
+  contributionBeforeLabour,
+  contributionMarginPctOrNull,
+  isSalesReportGrain,
+  netSalesFromLine,
+  periodBucket,
+} from "./reporting";
+export type { SalesLineNetInput, SalesReportGrain } from "./reporting";
+export {
   RECONCILIATION_TOLERANCE_DEFAULTS,
   TOLERANCE_KINDS,
   defaultToleranceFor,
