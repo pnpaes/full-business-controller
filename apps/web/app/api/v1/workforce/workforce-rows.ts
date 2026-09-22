@@ -1,6 +1,7 @@
 import {
   DEFAULT_EMPLOYEE_DOCUMENT_LIMIT,
   DEFAULT_EMPLOYEE_LIMIT,
+  DEFAULT_PAYROLL_REPORT_LIMIT,
   DEFAULT_SHIFT_ADJUSTMENT_LIMIT,
   DEFAULT_SHIFT_ASSIGNMENT_LIMIT,
   DEFAULT_SHIFT_LIMIT,
@@ -9,6 +10,7 @@ import {
   SHIFT_STATES,
   type EmployeeDocumentRecord,
   type EmployeeRecord,
+  type PayrollReportRecord,
   type ShiftAdjustmentRecord,
   type ShiftAssignmentRecord,
   type ShiftRecord,
@@ -1162,6 +1164,197 @@ export function toShiftAdjustmentRows(
   const rows: ShiftAdjustmentRow[] = [];
   for (const adjustment of adjustments) {
     const row = toShiftAdjustmentRow(organizationId, adjustment);
+    if (row !== undefined) {
+      rows.push(row);
+    }
+  }
+  return rows;
+}
+
+/* ------------------------------ payroll reports --------------------------- */
+
+/**
+ * Query/body parsing and row mapping for the monthly payroll-input report
+ * (`WF-005`, row 14b-2), kept beside the shift parsers so the slice has one
+ * wire-shape module.
+ *
+ * The report's period is calendar days (`period_start`/`period_end` are `date`
+ * columns), so `periodStart`/`periodEnd`/`periodStartFrom` are `YYYY-MM-DD`
+ * checked with the shared `isDate` helper and the `periodEnd > periodStart`
+ * window is enforced here (the command re-validates). The `status` vocabulary is
+ * checked against `PAYROLL_REPORT_STATUSES` so `?status=bogus` is a 400 rather
+ * than a silently empty page. The row mappers drop a foreign-organization row
+ * defensively, like the other slices, even though the application reads are
+ * already organization-scoped (`DEC-061`).
+ */
+
+/**
+ * The `payroll_report_status` vocabulary (`DATA_DICTIONARY.md` §4A,
+ * `schemas/domain-enums.yaml`): `draft, generated, exported, superseded`.
+ * Declared locally rather than imported because the enum is still unexported by
+ * `@aquarela/application` (`UNEXPORTED_YAML_KEYS`); the four literal values are
+ * the check, so a non-member filter is fail-closed.
+ */
+const PAYROLL_REPORT_STATUSES = ["draft", "generated", "exported", "superseded"] as const;
+
+/** An optional `YYYY-MM-DD` filter: absent → `undefined`; malformed → `"invalid"`. */
+function readDateFilter(
+  searchParams: URLSearchParams,
+  key: string,
+): string | undefined | "invalid" {
+  const raw = searchParams.get(key);
+  if (raw === null) {
+    return undefined;
+  }
+  const value = raw.trim();
+  return value.length > 0 && isDate(value) ? value : "invalid";
+}
+
+export interface PayrollReportListQuery {
+  /** One of `PAYROLL_REPORT_STATUSES`, exact match. */
+  readonly status?: string;
+  /** Inclusive lower bound on `periodStart`; a `YYYY-MM-DD` day. */
+  readonly periodStartFrom?: string;
+  readonly limit: number;
+  readonly offset: number;
+}
+
+export type ParsedPayrollReportListQuery =
+  { readonly ok: true; readonly query: PayrollReportListQuery } | { readonly ok: false };
+
+/** Parses the optional `status`/`periodStartFrom` filters and `limit`/`offset` paging. */
+export function parsePayrollReportListQuery(
+  searchParams: URLSearchParams,
+): ParsedPayrollReportListQuery {
+  const status = readVocabFilter(searchParams, "status", PAYROLL_REPORT_STATUSES);
+  if (status === "invalid") {
+    return { ok: false };
+  }
+  const periodStartFrom = readDateFilter(searchParams, "periodStartFrom");
+  if (periodStartFrom === "invalid") {
+    return { ok: false };
+  }
+  const paging = readPaging(searchParams, DEFAULT_PAYROLL_REPORT_LIMIT);
+  if (!paging.ok) {
+    return { ok: false };
+  }
+  return {
+    ok: true,
+    query: {
+      ...(status === undefined ? {} : { status }),
+      ...(periodStartFrom === undefined ? {} : { periodStartFrom }),
+      limit: paging.limit,
+      offset: paging.offset,
+    },
+  };
+}
+
+export interface GeneratePayrollReportBody {
+  readonly periodStart: string;
+  readonly periodEnd: string;
+}
+
+export type ParsedGeneratePayrollReport =
+  { readonly ok: true; readonly input: GeneratePayrollReportBody } | { readonly ok: false };
+
+/**
+ * `POST /payroll-reports` body: the two calendar days of the period. Both must be
+ * real `YYYY-MM-DD` days and `periodEnd` must be strictly after `periodStart`
+ * (the report's half-open month); an equal or inverted pair is a 400.
+ */
+export function parseGeneratePayrollReportBody(
+  body: Record<string, unknown> | undefined,
+): ParsedGeneratePayrollReport {
+  if (body === undefined) {
+    return { ok: false };
+  }
+  const periodStart = readOptionalDate(body, "periodStart");
+  const periodEnd = readOptionalDate(body, "periodEnd");
+  if (
+    !periodStart.ok ||
+    !periodStart.present ||
+    periodStart.value === null ||
+    !periodEnd.ok ||
+    !periodEnd.present ||
+    periodEnd.value === null
+  ) {
+    return { ok: false };
+  }
+  if (periodEnd.value <= periodStart.value) {
+    return { ok: false };
+  }
+  return { ok: true, input: { periodStart: periodStart.value, periodEnd: periodEnd.value } };
+}
+
+export interface MarkPayrollReportExportedBody {
+  readonly exportFileId?: string;
+}
+
+export type ParsedMarkPayrollReportExported =
+  { readonly ok: true; readonly input: MarkPayrollReportExportedBody } | { readonly ok: false };
+
+/**
+ * `POST /payroll-reports/[id]/export` body: the whole body is optional, so an
+ * absent body (or one without `exportFileId`) marks the report exported with no
+ * file link. A present `exportFileId` must be a UUID; `null`, a blank string or
+ * any other value is a 400 rather than a silently ignored field.
+ */
+export function parseMarkPayrollReportExportedBody(
+  body: Record<string, unknown> | undefined,
+): ParsedMarkPayrollReportExported {
+  if (body === undefined || body["exportFileId"] === undefined) {
+    return { ok: true, input: {} };
+  }
+  const exportFileId = readText(body, "exportFileId", 64);
+  if (exportFileId === null || !isUuid(exportFileId)) {
+    return { ok: false };
+  }
+  return { ok: true, input: { exportFileId } };
+}
+
+export interface PayrollReportRow {
+  readonly id: string;
+  readonly periodStart: string;
+  readonly periodEnd: string;
+  readonly generatedAt: string;
+  readonly generatedBy: string | null;
+  readonly status: string;
+  readonly snapshot: unknown;
+  readonly exportFileId: string | null;
+  readonly createdAt: string;
+  readonly updatedAt: string | null;
+}
+
+/** Maps one payroll report to an HTTP row; `undefined` for a foreign-organization row. */
+export function toPayrollReportRow(
+  organizationId: string,
+  report: PayrollReportRecord,
+): PayrollReportRow | undefined {
+  if (report.organizationId !== organizationId) {
+    return undefined;
+  }
+  return {
+    id: report.id,
+    periodStart: report.periodStart,
+    periodEnd: report.periodEnd,
+    generatedAt: report.generatedAt,
+    generatedBy: report.generatedBy,
+    status: report.status,
+    snapshot: report.snapshot,
+    exportFileId: report.exportFileId,
+    createdAt: report.createdAt,
+    updatedAt: report.updatedAt,
+  };
+}
+
+/** Maps payroll report records to HTTP rows, dropping any foreign-organization report. */
+export function toPayrollReportRows(
+  organizationId: string,
+  reports: readonly PayrollReportRecord[],
+): readonly PayrollReportRow[] {
+  const rows: PayrollReportRow[] = [];
+  for (const report of reports) {
+    const row = toPayrollReportRow(organizationId, report);
     if (row !== undefined) {
       rows.push(row);
     }

@@ -24,6 +24,10 @@ export const workforceLimiters = {
  * assigning/withdrawing an assignment are the amendment writes (120). Like every
  * limiter in this app the window is per-process — a shared store is the
  * pre-multi-instance follow-up.
+ *
+ * The payroll-input report mutations (`WF-005`, row 14b-2) sit here too rather
+ * than in a fourth limiter object: generating a report is the rarer create (60)
+ * and marking one exported is an amendment write (120).
  */
 export const shiftLimiters = {
   createShift: createInMemoryRateLimiter({ limit: 60, windowMs: FIFTEEN_MINUTES_MS }),
@@ -34,4 +38,9 @@ export const shiftLimiters = {
   assignShift: createInMemoryRateLimiter({ limit: 120, windowMs: FIFTEEN_MINUTES_MS }),
   withdrawShiftAssignment: createInMemoryRateLimiter({ limit: 120, windowMs: FIFTEEN_MINUTES_MS }),
   createShiftAdjustment: createInMemoryRateLimiter({ limit: 120, windowMs: FIFTEEN_MINUTES_MS }),
+  generatePayrollReport: createInMemoryRateLimiter({ limit: 60, windowMs: FIFTEEN_MINUTES_MS }),
+  markPayrollReportExported: createInMemoryRateLimiter({
+    limit: 120,
+    windowMs: FIFTEEN_MINUTES_MS,
+  }),
 } as const;

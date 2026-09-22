@@ -116,6 +116,31 @@ export const WORKED_HOURS_WRITE_ROLES = [
   "admin",
 ] as const;
 
+/**
+ * The `Payroll-input reports` matrix row (`07_SECURITY_AND_NFR.md:19`): read =
+ * owner, general_manager, finance and admin. `location_manager` is deliberately
+ * **excluded** even though `WORKED_HOURS_READ_ROLES` above grants it — the matrix
+ * gives the location manager **None** on payroll-input reports specifically,
+ * while it grants Full on the worked-hours row the report is derived from. That
+ * is the recorded `DEC-103`/`DEC-104` reconciliation tension: this slice keeps
+ * the narrower matrix row rather than silently widening to the hours-read set,
+ * and the report is an organization-level, location-agnostic aggregate so a
+ * location scope could not be applied to it in any case. `analyst` is excluded
+ * too — the matrix's "Aggregate" grant is **not implemented** (still an open
+ * point), so access fails closed — and `kitchen`, `front_of_house` and
+ * `purchasing` get nothing. `admin` is an explicit grant (there is no implicit
+ * admin bypass).
+ */
+export const PAYROLL_REPORT_READ_ROLES = ["owner", "general_manager", "finance", "admin"] as const;
+
+/**
+ * Generating a payroll-input report and marking one exported is a payroll-input
+ * action, so its write set mirrors the read set: owner, general_manager, finance
+ * and admin. `location_manager` (matrix None), the operational roles and
+ * `analyst` may not. `admin` is an explicit grant (no implicit bypass).
+ */
+export const PAYROLL_REPORT_WRITE_ROLES = ["owner", "general_manager", "finance", "admin"] as const;
+
 /** Loads the caller's roles and location scope live from server data (ADR-0003). */
 export async function loadWorkforceAccess(userId: string): Promise<UserAccess> {
   return loadUserAccess(getAuthStore(), userId);
