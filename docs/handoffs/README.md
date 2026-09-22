@@ -8,6 +8,7 @@ for that slice, including commits, verification and reconciliation notes.
 The per-slice rollback/commit inventory lives in
 [`reversibility-log.md`](reversibility-log.md).
 
+- **2026-09-22** — [Row 13b delivered: close prerequisites + `adjustment_period` (DEC-106/DEC-107, migration 0059); the row-13 close half is complete; the row-13a create-race recovery fixed](065-2026-09-22-row-13b-close-prerequisites-adjustment-period-dec-106-dec-107.md)
 - **2026-09-22** — [Row 13a period close/lock delivered (REC-003/REC-006, DEC-027, DEC-105, migrations 0057–0058); the `period_close` table + domain + application + web port; adversarial-review fixes applied (row locking, create race, reopen scope, hardened 0058 guards)](064-2026-09-22-row-13a-period-close-lock-delivered-rec-003-rec-006.md)
 - **2026-09-22** — [Handoff folder introduced; `CONTEXT.md` slimmed to a live orientation](063-2026-09-22-handoff-folder-refactor.md)
 - **2026-09-22** — [Row 14b-2 payroll-input report delivered (WF-005, DEC-104, migrations 0055–0056); the `payroll_report` table + snapshot + full application + web port — row 14 complete (14a + 14b-1 + 14b-2); handoff updated](062-2026-09-22-row-14b-2-payroll-input-report-delivered-wf-005-dec-104.md)

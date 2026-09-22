@@ -1,5 +1,22 @@
 # Reversibility log
 
+- **2026-09-22 row-13b close prerequisites + `adjustment_period` slice
+  (`REC-003`/`REC-005`/`REC-006`/`DEC-027`, provisional `DEC-106`/`DEC-107`; 6
+  commits incl. this docs commit; nothing pushed)**: 1. `3ee7b25`
+  `fix(persistence)` — the missing `0058` snapshot + chain (metadata only);
+  2. `2de4072` `feat(persistence)` — `adjustment_period` + migration `0059`;
+  3. `faeb049` `feat(application)`; 4. `6ac1158` `feat(web)`; 5. `c903954`
+  `feat(close)` — prerequisites + snapshot v2 + the row-13a race fix;
+  6. `956ceb6` `docs(decisions)` (`DEC-106`/`DEC-107`); 7. this `docs(context)`
+  update — each independently revertible with `git revert <sha>`. Migration
+  **`0059_adjustment_period` adds one table** (additive; down drops
+  `adjustment_period`, 89 → 88); the rehearsed down order is a single step; on a
+  DB rollback delete the ledger row (`when` `1790113826232`) and re-migrate; 89
+  tables after re-apply. `0059` sha256
+  `51cd81f25b2551e1705028b9f04d242ee71f9387769db0328a6620bee632f1cf`; down sha256
+  `cbf3b711c2dfb552e1d07622287a0d18c2ff29edbc92f2802f41cad073752e87`. No
+  migration for the prerequisites slice (jsonb snapshot only). Nothing pushed;
+  nothing applied to DigitalOcean.
 - **2026-09-22 row-13a period close/lock slice (`REC-003`/`REC-006`/`DEC-027`,
   provisional `DEC-105`; 5 commits incl. this docs commit; nothing pushed)**:
   1. `415297b` `feat(persistence)` (close schema + repository + `0057`/`0058`);
