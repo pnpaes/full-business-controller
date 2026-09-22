@@ -9,184 +9,172 @@ duplicate their content.
 
 **Say "resume the work" and start here.** A fresh session must be able to
 continue from this section alone. (This section was rewritten by the
-2026-09-22 row-14a shift-scheduling handoff session.)
+2026-09-22 row-14b-1 worked-hours handoff session.)
 
-**State:** `main`; HEAD before the row-14a slice was **`e1b910b`** (the
-staff-library + workflow-platform handoff). Row 14a lands as: **`f3a990b`**
-`feat(persistence)`, **`f4fca08`** `feat(application)`, **`b071ad6`**
-`feat(web)`, **`f495047`** `fix(application)` (the review fixes),
-**`6fc3494`** `docs(decisions)` (`DEC-102`), **`da745f0`** `docs(roadmap)`,
-plus this `docs(context)` handoff. Nothing pushed; nothing applied to
-DigitalOcean.
+**State:** `main`; HEAD before the row-14b-1 slice was **`50651f8`** (the
+row-14a handoff). Row 14b-1 lands as: **`a67fe49`** `feat(persistence)`,
+**`826800e`** `feat(domain)`, **`74d9210`** `feat(application)`,
+**`9b8e8fc`** `feat(web)`, **`dce1a15`** `fix(workforce)` (the review
+fixes), **`5c1dd73`** `docs(decisions)` (`DEC-103`), **`f49490a`**
+`docs(roadmap)`, plus this `docs(context)` handoff. Nothing pushed; nothing
+applied to DigitalOcean.
 
-**Delivered (row 14a — `WF-002`/`WF-003`, `DEC-037`/`DEC-038`, provisional
-`DEC-102`):** the **shift scheduling** slice — `shift` + `shift_assignment`
-with the full application + web port.
+**Delivered (row 14b-1 — `WF-004`, `DEC-037`/`DEC-038`, provisional
+`DEC-103`):** the **worked-hours** slice — `shift_adjustment` + the
+worked-hours derivation/report with the full application + web port.
 
-- **`shift`** — location-scoped (`location_id` NOT NULL FK), nullable
-  `role_code` (null = any role), `starts_at`/`ends_at` (with
-  `ends_at > starts_at`), `break_minutes` (>= 0, default 0),
-  `state ∈ shift_state {open, published, assigned, cancelled, completed}`
-  (default `open`), nullable `published_at`/`actual_start`/`actual_end`
-  (actual_* reserved for later time tracking, unused in the MVP), audit
-  columns (supplying the dictionary's `created_by`/`created_at`).
-- **`shift_assignment`** — `shift_id`/`employee_id` FKs,
-  `state ∈ shift_assignment_state` (only `approved`/`withdrawn` reachable in
-  this slice), nullable `assigned_by` (null = self-assigned), `assigned_at`,
-  unique `(shift_id, employee_id)`, audit columns.
-- **Three cross-org coherence guards** (`0052`): `shift.location_id`,
-  `shift_assignment.shift_id`, `shift_assignment.employee_id` (all NOT NULL →
-  unconditional; `23514`).
-- **Provisional state machine (`DEC-102`):** `open → published` (stamping
-  `published_at`) → `assigned` (on an approved manager assignment) →
-  `completed`; `open|published → cancelled`; `completed`/`cancelled`
-  terminal. A shift in `assigned` must be withdrawn before cancelling; a
-  terminal shift cannot be amended/published/completed/withdrawn (each a
-  `DomainError`).
-- **Manager assignment only:** `assignShift` creates an `approved` assignment
-  and sets the shift `assigned`; `withdrawShiftAssignment` reverts the shift
-  to `published`/`open`. `assignShift` enforces the employee's `role_code`
-  against a non-null shift `role_code` (WF-003 "within their role") and the
-  employee's `primary_location_id` against the shift location (fail-closed on
-  null, the `DEC-099` precedent). **Self-assignment
-  (`self_assigned`/`pending_approval`/`rejected`) is deferred** pending the
-  **WF-003 self-assignment login model** (still an open owner input) — no
-  self-assign endpoint (fail-closed).
-- **Access:** read = owner, general_manager, location_manager, kitchen,
-  front_of_house, finance, admin; write = owner, general_manager,
-  location_manager (location-scoped), admin (the `Shift planning and rota`
-  matrix row; `analyst`/`purchasing` excluded). `kitchen`/`front_of_house`
-  "View own" is **not** yet narrowed to own shifts (deferred with
-  self-assignment).
-- **API:** `/api/v1/workforce/shifts/**` (GET/POST, GET/PATCH `[id]`, POST
-  `[id]/publish|cancel|complete`, GET/POST `[id]/assignments`) and
-  `/api/v1/workforce/shift-assignments/[id]` (GET/PATCH withdraw).
-  Multi-assignment per shift is allowed (the unique is per
-  `(shift, employee)`; no headcount column).
+- **`shift_adjustment`** — `shift_assignment_id` FK, `adjusted_hours
+numeric(9,2)` (>= 0, capped at 9999999.99), required `reason`, nullable
+  `approved_by`/`approved_at` with the all-or-nothing
+  `shift_adjustment_approved_check`, audit columns. Appended by the `0054`
+  cross-org guard (`shift_assignment_id`, `23514`).
+- **Worked-hours derivation** (domain, decimal-only never floats): an
+  assignment contributes hours when `shift_assignment.state = 'approved'` and
+  `shift.state ∈ {assigned, completed}` and the shift `starts_at` is in the
+  report's half-open period `[from, to)`; per assignment the hours are the
+  **latest `shift_adjustment.adjusted_hours`** when one exists, else
+  `(ends_at − starts_at) − break_minutes`, floored at zero, at scale 2
+  HALF_UP; `sumWorkedHoursByEmployee` sums per employee ordered by name then
+  id.
+- **Application:** `createShiftAdjustment` (validated decimal string,
+  approved by the acting manager at write time — single-stage, rejected on a
+  withdrawn assignment), `find`/`listShiftAdjustment(s)`, and
+  `computeWorkedHours` (the derived per-employee report for a period,
+  `{ from, to, rows, totalHours }`).
+- **Access:** `WORKED_HOURS_READ_ROLES`/`WRITE_ROLES` = owner,
+  general_manager, location_manager, finance, admin (the payroll-input rows;
+  **`analyst` excluded** — the matrix grants "Aggregate", but no aggregate
+  projection exists in the MVP, and the row-level report would expose
+  individual hours). The adjustment register follows the worked-hours roles,
+  **not** the rota read roles (a review fix — the payroll hours must not leak
+  to kitchen/FOH).
+- **API:** `GET/POST /api/v1/workforce/shift-assignments/[id]/adjustments`
+  and `GET /api/v1/workforce/worked-hours`. The report is **not persisted**
+  (computed on demand; no artifact, no retention class). A scoped caller is
+  bounded to their location; a multi-location caller must name `locationId`
+  (fail-closed).
 
-**Prior slices (condensed):** the **workflow platform** (`DEC-094`/`DEC-101`,
-migration `0050`) — the schema-only `task`/`approval` platform tables
-(`DATA_DICTIONARY` §9), no application/web port, the `job`/worker/outbox
-layer gated on `ADR-0004` (still `Proposed`); and the **staff document
-library** (`DEC-088`/`DEC-100`, migrations `0048`/`0049`) — the programme's
-first versioned entity (`document`, `document_version` with `version_no`,
-`document_acknowledgement`), full application + web port at
-`/api/v1/documents/**` and `/api/v1/document-versions/**`, the real `DOC-002`
-bug fixed in-slice via `findCurrentPublishedVersion`. Full detail in "Current
-status", the work log and the "Open decisions / inputs" bullets.
+**Prior slice (condensed):** the **row-14a shift scheduling** slice
+(`WF-002`/`WF-003`, `DEC-037`/`DEC-038`, provisional `DEC-102`, migrations
+`0051`/`0052`) — `shift` + `shift_assignment` with the full application +
+web port: the provisional shift state machine (`open → published → assigned
+→ completed`, `open|published → cancelled`, terminal
+`completed`/`cancelled`), manager-assignment only (`assignShift` enforcing
+`role_code` matching and `primary_location_id` location, self-assignment
+deferred pending the **WF-003 self-assignment login model** — no
+self-assign endpoint, fail-closed), three cross-org coherence guards
+(`0052`), access read = owner/GM/location_manager/kitchen/FOH/finance/admin,
+write = owner/GM/location_manager (location-scoped)/admin, API
+`/api/v1/workforce/shifts/**` and
+`/api/v1/workforce/shift-assignments/[id]`, multi-assignment per shift
+allowed. Full detail in "Current status", the work log and the "Open
+decisions / inputs" bullets.
 
-**Schema:** migrations through **`0052`**; **85 tables** (was 83). Next free
-decision id **`DEC-103`**.
+**Schema:** migrations through **`0054`**; **86 tables** (was 85). Next free
+decision id **`DEC-104`**.
 
 **Verification (exact, at the committed tree):** `typecheck`, `lint`,
-`format:check`, `build` clean; **2577/2577 tests with `DATABASE_URL`** (189
-files); `npm audit --omit=dev` = 0; `db:migrate` through `0052` a no-op on
-re-run; **85** public base tables.
+`format:check`, `build` clean; **2703/2703 tests with `DATABASE_URL`** (192
+files); `npm audit --omit=dev` = 0; `db:migrate` through `0054` a no-op on
+re-run; **86** public base tables.
 
-**Migrations:** `0051_shift_scheduling` (journal `idx` 51, `when`
-`1790063480942`, sha256
-`157cadb1d6be16d6ccdee59ee1d2fbfdff205e212881367c6b6b00bed69d5e36`);
-`0052_shift_scheduling_org_guard` (journal `idx` 52, `when` `1790063500924`,
-sha256
-`f168c524b62e78f2c41a59eb1f044e7a0d2d81cec9a6abf847533f8c6c2bf5bd`). Down
-companions (unjournalled): `0051_shift_scheduling_down.sql` (drops
-`shift_assignment` then `shift`; 85 → 83) and
-`0052_shift_scheduling_org_guard_down.sql` (trigger-only). **Rehearsed
-2026-09-22:** 85 tables / 3 shift guards / 53 ledger rows → `0052` down (85
-tables, 0 guards) → `0051` down (83 tables, 0) → delete the two ledger rows
-(`created_at IN (1790063480942, 1790063500924)`) → `npm run db:migrate` → 85
-tables / 3 guards / 53 ledger rows; a further `db:migrate` a no-op.
+**Migrations:** `0053_shift_adjustment` (journal `idx` 53, `when`
+`1790067016722`, sha256
+`cc589075fe649e35d2eb1fd57129b2b339dacce22dc7ac2e8daee7a7afe0c5e3`);
+`0054_shift_adjustment_org_guard` (journal `idx` 54, `when`
+`1790067030453`, sha256
+`202aeaad413ae3dbf6be2e24dd28d56363dd0203b62163492e54b0d86a3f0585`). Down
+companions (unjournalled): `0053_shift_adjustment_down.sql` (drops
+`shift_adjustment`; 86 → 85), `0054_shift_adjustment_org_guard_down.sql`
+(trigger-only). **Rehearsed 2026-09-22:** 86 tables / 1 shift_adjustment
+guard / 55 ledger rows → `0054` down (86, 0 guards) → `0053` down (85, 0) →
+delete the two ledger rows (`created_at IN (1790067016722, 1790067030453)`)
+→ `npm run db:migrate` → 86 tables / 1 guard / 55 ledger rows; a further
+`db:migrate` a no-op.
 
-**Reviews and reconciliation (recorded honestly):** both reviewers
-(`reviewer-glm`, `reviewer-minimax`) independently found the **same
-blocker**: `withdrawShiftAssignment` reverted the shift to `published`/`open`
-unconditionally, so withdrawing an `approved` assignment on a
-`completed`/`cancelled` shift executed an illegal terminal transition
-(**accepted + fixed** — withdrawal now rejects unless the shift is
-`assigned`). Majors, both **accepted + fixed**: `assignShift` did not enforce
-`role_code` matching (WF-003 "within their role") — now rejected on a
-mismatch; `cancelShift` orphaned an `approved` assignment on a cancelled
-shift — now rejected while the shift is `assigned` (withdraw first). Minors,
-**accepted + fixed**: `updateShift` did not lock the shift (now `lockShift`);
-the double-withdraw race (withdrawal now re-reads the assignment under the
-shift lock). Recorded in `DEC-102`, not fixed: the dictionary's
-`shift.created_by` (NOT NULL FK `app_user`) is satisfied by the nullable
-plain-uuid audit `created_by`; `shift_assignment`'s audit columns are a
-convention; multi-assignment per shift (no headcount invariant); the
-`listShifts`/`listShiftAssignments` ordering is not fully index-covered
-(harmless at MVP volume); `role_code` stays free text. Both reviewers
-verified the `0051` SQL matches the Drizzle schema exactly, the `0052`
-guards cover all three cross-org FKs, the down path is FK-safe, the
-vocabulary guard change holds, the access matrix is faithful, and there is
-no dead code.
+**Reviews and reconciliation (recorded honestly):** both reviewers found
+**no blocker**. Majors, both **accepted + fixed**: the adjustment GET/POST
+was gated on the rota read roles, leaking the payroll-input hours to
+kitchen/FOH — now `WORKED_HOURS_READ_ROLES`/`WRITE_ROLES`; `adjusted_hours`
+above the `numeric(9,2)` range raised an unhandled `22003` (500) — now
+capped in the command and the parser (400/`DomainError`). Minors,
+**accepted + fixed**: the report's latest-adjustment tie-break disagreed
+with `listShiftAdjustments` (now both `created_at desc, id asc`); the report
+joins now org-scope `shift`/`employee` explicitly (defence in depth).
+Recorded in `DEC-103`, not fixed: the **single-stage approval model** (the
+actor is the approver; the nullable pair supports a future two-stage flow
+but none is implemented); **`analyst` excluded** from the worked-hours
+report (the matrix's "Aggregate" is unimplemented — an open point); the
+report is not persisted; the retention period. Both reviewers verified the
+`0053` SQL matches the schema, the `0054` guard is correct, the decimal
+derivation is float-free with HALF_UP at 2dp, the `[from, to)` window and
+latest-adjustment subquery are correct, and the down path is FK-safe.
 
-**Next task:** **row 14b — `shift_adjustment` + `payroll_report`** (`WF-004`
-worked hours, `WF-005` monthly payroll-input report; epic 15). Spec:
-`DATA_DICTIONARY.md` §4A (`shift_adjustment` at `:420`, `payroll_report` at
-`:430`) and `schemas/phase1_2_draft.sql:937-961`; the `payroll_report_status`
-(`draft, generated, exported, superseded`) vocabulary exists but is
-unexported (`UNEXPORTED_YAML_KEYS`); `shift_adjustment`/`payroll_report` are
-in `NOT_EXPECTED_TABLES`; next free migration index **`0053`**. Needs its own
-reconnaissance and a **`DEC-103` provisional clarification** for: the
-worked-hours derivation (how `adjusted_hours` interacts with
-`(ends_at − starts_at − break_minutes)`, whether multiple adjustments
-accumulate, what a "registered shift" is — `assigned`/`completed` only); the
-`payroll_report.snapshot` JSON shape/rounding/expected-pay formula; the
-monthly period boundary and the "remaining planned shifts run as scheduled"
-assumption; the status transitions (`draft → generated → exported →
-superseded`, regeneration/supersede); the "Aggregate only" visibility for
-location_manager/analyst; whether the accountant is a role;
-`payroll_report.export_file_id` (a deferred `file_object` FK); and the
-working-time retention period. It must not resolve the privacy-review
-retention periods silently. The `job`/scheduler is `ADR-0004`-gated, so the
-report is generated on demand, not scheduled.
+**Next task:** **row 14b-2 — `payroll_report`** (`WF-005`, the monthly
+payroll-input report; epic 15). Spec: `DATA_DICTIONARY.md` §4A
+(`payroll_report` at `:430`) and `schemas/phase1_2_draft.sql:948-961`;
+columns `period_start`/`period_end` (date), `generated_at`, `generated_by`,
+`status ∈ payroll_report_status {draft, generated, exported, superseded}`,
+`snapshot` jsonb (the frozen employee/hours/rate/expected-pay lines), a
+nullable `export_file_id` (a deferred `file_object` FK), audit columns. The
+`payroll_report_status` vocabulary exists but is **unexported**
+(`UNEXPORTED_YAML_KEYS`); `payroll_report` is in `NOT_EXPECTED_TABLES`; next
+free migration index **`0055`**. Needs its own reconnaissance and a
+**`DEC-104` provisional clarification** for: the snapshot JSON
+shape/rounding/expected-pay formula (hours × `base_hourly_rate`,
+decimal-only), the period boundary (calendar month) and the "remaining
+planned shifts run as scheduled" assumption, the status transitions
+(`draft → generated → exported → superseded`) and regeneration/supersede
+semantics, the "~3 days before month-end" trigger (the `job`/scheduler is
+`ADR-0004`-gated, so the report is generated **on demand**),
+`export_file_id` (deferred, `DEC-085`), and the working-time retention
+period. It must reuse `computeWorkedHours` for the period lines and must not
+resolve the privacy-review retention periods silently.
 
-**Step after row 14b:** row 13 (data-gated on I11), the receipt→ledger
-wiring (if the OPS `storage_area_id` policy lands), and rows 15–18 (blocked).
+**Step after row 14b-2:** row 13 (data-gated on I11), the receipt→ledger
+wiring (if the OPS `storage_area_id` policy lands), rows 15–18 (blocked).
 
-**Scope (do):** implement row 14b (`shift_adjustment` + `payroll_report`):
-schema + domain/application/web per the existing package boundaries,
+**Scope (do):** implement row 14b-2 (`payroll_report`): schema +
+domain/application/web per the existing package boundaries,
 organization-scoped, additive, with a rehearsed down path, `EXPECTED_TABLES`
 updated, a `.test.ts` for new non-trivial logic, small atomic commits with
 the rollback approach in the body (per `AGENTS.md` Rule 2), and `CONTEXT.md`
 updated at the end. Then continue down the programme build order.
 
 **Scope (do not):** do not build the `job` table, the worker/scheduler or the
-outbox async layer (gated on `ADR-0004`, still `Proposed`) — the
-payroll-input report is generated on demand, not scheduled. Do not add a
-self-assignment endpoint (the **WF-003 self-assignment login model** is
-still an open owner input; fail-closed). Do not resolve the recorded open
-inputs silently — in particular the **`DEC-102` provisional items**, the
-**WF-003 self-assignment login model** and the **privacy-review retention
-periods per file class** (record them for `DEC-103`, decide nothing), plus
-the standing systemic `writeAudit` transaction binding, the
-driver-error→500 mapping and the systemic location-scope gap. Do not deploy,
-`terraform apply`, or write externally (`DEC-015`). Do not rewrite the
-specification inputs.
+outbox async layer (gated on `ADR-0004`, still `Proposed`) — the payroll-input
+report is generated on demand, not scheduled. Do not add a self-assignment
+endpoint (the **WF-003 self-assignment login model** is still an open owner
+input; fail-closed). Do not resolve the recorded open inputs silently — in
+particular the **`DEC-102`/`DEC-103` provisional items**, the **WF-003
+self-assignment login model** and the **privacy-review retention periods per
+file class** (record them for `DEC-104`, decide nothing), plus the standing
+systemic `writeAudit` transaction binding, the driver-error→500 mapping and
+the systemic location-scope gap. Do not deploy, `terraform apply`, or write
+externally (`DEC-015`). Do not rewrite the specification inputs.
 
 **Files/paths:** new additive migrations under
-`packages/persistence/drizzle/` (next index `0053`; the `shift_adjustment`
-and `payroll_report` tables) — the Drizzle schema
-(`packages/persistence/src/schema/`) + repository + domain/application
-packages; `apps/web` payroll-report slice +
+`packages/persistence/drizzle/` (next index `0055`; the `payroll_report`
+table) — the Drizzle schema (`packages/persistence/src/schema/`) +
+repository + domain/application packages; `apps/web` payroll-report slice +
 `docs/runbooks/persistence-migrations.md`; `12_OPEN_DECISIONS.md` for any
-`DEC-103` provisional clarification; update `CONTEXT.md` at the end.
+`DEC-104` provisional clarification; update `CONTEXT.md` at the end.
 
 **Authoritative docs to read first:** `DATA_DICTIONARY.md` §4A
-(`shift_adjustment` at `:420`, `payroll_report` at `:430`; `shift` at `:396`,
+(`payroll_report` at `:430`; `shift_adjustment` at `:420`, `shift` at `:396`,
 `shift_assignment` at `:409` for the landed context);
-`schemas/phase1_2_draft.sql:937-961`; `03_DOMAIN_MODEL.md` §3.9/§3.10; the
-requirements `WF-004`/`WF-005` and the phase map in
-`11_REQUIREMENTS_CATALOG.md`; the access-matrix row `Payroll-input reports`
+`schemas/phase1_2_draft.sql:948-961`; `03_DOMAIN_MODEL.md` §3.10; the
+requirement `WF-005` and the phase map in `11_REQUIREMENTS_CATALOG.md`; the
+access-matrix row `Payroll-input reports`
 
 - retention notes in `07_SECURITY_AND_NFR.md`; the screens in `08_UI_UX.md`;
-  `DEC-086`…`DEC-102` in `12_OPEN_DECISIONS.md` (next free id **`DEC-103`**);
+  `DEC-086`…`DEC-103` in `12_OPEN_DECISIONS.md` (next free id **`DEC-104`**);
   `docs/BUILD_ROADMAP.md` §1 and §4; this file's "Open decisions / inputs";
   `AGENTS.md` Rules 1–3.
 
 **Acceptance / verification:** `export NVM_DIR="$HOME/.nvm"; . "$NVM_DIR/nvm.sh";
 nvm use 22`, then `npm run typecheck` before the change, `npm run lint`,
-`npm run test` (with `DATABASE_URL` — current baseline: **2577/2577**, 189
+`npm run test` (with `DATABASE_URL` — current baseline: **2703/2703**, 192
 files), `npm run build`, `npm run format:check`, `npm audit --omit=dev` = 0;
 `db:migrate` applies any new migration, is a no-op on re-run, and its down
 path is rehearsed; after each commit re-run the suite at the clean tree and
@@ -198,30 +186,35 @@ and next steps → commit → next task. Global ruleset
 (`~/.config/kilo/AGENTS.md`): compact context at 25 %; pausing is permitted
 above USD 20 at a clean point (committed, verified, documented).
 
-**Open inputs (recorded, do not decide):** from this slice — the **`DEC-102`
-provisional items** awaiting owner/OPS confirmation (the provisional shift
-state machine; manager-assignment-only with self-assignment deferred pending
-the **WF-003 self-assignment login model**; the dictionary's
-`shift.created_by` NOT NULL FK `app_user` satisfied by the nullable
-plain-uuid audit `created_by`; `shift_assignment`'s audit columns a
-convention; multi-assignment per shift with no headcount invariant; the
-`listShifts`/`listShiftAssignments` ordering not fully index-covered;
-`role_code` free text); plus the carried-over **`DEC-101` provisional items**
-(the 12 workflow-platform clarifications) and the staff-document open points
-(the unenforceable per-document location scope, the acknowledgement
-retention period, no un-archive, the `DEC-100` provisional items, the
-storage path deferred with `file_object` having **no application port**).
-And the row-14b inputs: the worked-hours derivation, the
-`payroll_report.snapshot` shape/rounding/expected-pay formula, the monthly
-period boundary and the "remaining planned shifts run as scheduled"
-assumption, the status transitions, the "Aggregate only" visibility, whether
-the accountant is a role, `payroll_report.export_file_id` (a deferred
-`file_object` FK), the working-time retention period, and the **WF-003
+**Open inputs (recorded, do not decide):** from this slice — the **`DEC-103`
+provisional items** awaiting owner/OPS confirmation (the single-stage
+adjustment-approval model — the actor is the approver, the nullable
+`approved_by`/`approved_at` pair supports a future two-stage flow; the
+**`analyst` exclusion** from the worked-hours report — the matrix's
+"Aggregate" is unimplemented; the worked-hours report is not persisted; the
+working-time retention period); plus the carried-over **`DEC-102`
+provisional items** (the provisional shift state machine;
+manager-assignment-only with self-assignment deferred pending the **WF-003
+self-assignment login model**; the dictionary's `shift.created_by` NOT NULL
+FK `app_user` satisfied by the nullable plain-uuid audit `created_by`;
+`shift_assignment`'s audit columns a convention; multi-assignment per shift
+with no headcount invariant; the `listShifts`/`listShiftAssignments` ordering
+not fully index-covered; `role_code` free text), the **`DEC-101` provisional
+items** (the 12 workflow-platform clarifications) and the staff-document open
+points (the unenforceable per-document location scope, the acknowledgement
+retention period, no un-archive, the `DEC-100` provisional items, the storage
+path deferred with `file_object` having **no application port**).
+And the row-14b-2 inputs: the `payroll_report.snapshot` shape/rounding/
+expected-pay formula, the monthly period boundary and the "remaining planned
+shifts run as scheduled" assumption, the status transitions and
+regeneration/supersede semantics, the on-demand generation trigger (the
+`ADR-0004` gate), `payroll_report.export_file_id` (a deferred `file_object`
+FK, `DEC-085`), and the working-time retention period — plus the **WF-003
 self-assignment login model**. Plus the standing systemic ones already in
 the file (the `writeAudit` transaction binding, the driver-error→500
 mapping, the systemic location-scope gap, the `ADR-0004` gate, the
 golden-fixture sign-off). Full list under "Open decisions / inputs"; next
-free decision id **`DEC-103`**.
+free decision id **`DEC-104`**.
 
 **Parallel owner action — golden-fixture sign-off:** the six golden fixtures are
 prepared as machine-readable JSON under `tests/fixtures/` (`DEC-065`) with the
@@ -284,8 +277,8 @@ import posting-policy enforcement).
 
 - `00_README.md` … `13_AGENT_BUILD_BRIEF.md` — the specification package
   (inputs, rarely edited). Start with `00_README.md`.
-- `12_OPEN_DECISIONS.md` — the accepted decisions (DEC-001…DEC-102); the
-  authority. New decisions are appended here (next free id `DEC-103`).
+- `12_OPEN_DECISIONS.md` — the accepted decisions (DEC-001…DEC-103); the
+  authority. New decisions are appended here (next free id `DEC-104`).
 - `docs/phase0/` — close-out plan, calculation contract, data dictionary, golden
   fixtures, source-data request, notes. See `docs/phase0/PHASE0_CLOSEOUT_PLAN.md`
   and `docs/phase0/CALCULATION_CONTRACT.md`.
@@ -304,13 +297,14 @@ import posting-policy enforcement).
 
 ## Current status
 
-- **As of:** 2026-09-22 — branch `main`; HEAD before the row-14a slice was
-  `e1b910b` (the staff-library + workflow-platform handoff); the row-14a
-  slice lands as commits — **`f3a990b`** `feat(persistence)`, **`f4fca08`**
-  `feat(application)`, **`b071ad6`** `feat(web)`, **`f495047`**
-  `fix(application)` (the review fixes), **`6fc3494`** `docs(decisions)`
-  `DEC-102`, **`da745f0`** `docs(roadmap)`, plus this `docs(context)` update;
-  the branch was clean before these handoff edits. Lineage:
+- **As of:** 2026-09-22 — branch `main`; HEAD before the row-14b-1 slice was
+  `50651f8` (the row-14a handoff); the row-14b-1 slice lands as commits —
+  **`a67fe49`** `feat(persistence)`, **`826800e`** `feat(domain)`,
+  **`74d9210`** `feat(application)`, **`9b8e8fc`** `feat(web)`,
+  **`dce1a15`** `fix(workforce)` (the review fixes), **`5c1dd73`**
+  `docs(decisions)` `DEC-103`, **`f49490a`** `docs(roadmap)`, plus this
+  `docs(context)` update; the branch was clean before these handoff edits.
+  Lineage:
   `02f7c33` (the Phase A / small-TECH handoff) → the HMS monitoring slice,
   5 commits → the HMS incidents + corrective-actions slice, 6 commits → the
   HMS checklists slice, 6 commits → the HMS equipment / maintenance slice,
@@ -318,12 +312,44 @@ import posting-policy enforcement).
   the `employee` + personnel-documents slice (programme step 20a), 5 commits →
   the staff document library slice (programme step 20b), 6 commits →
   the workflow-platform slice (`DEC-094`, schema-only) →
-  **the row-14a shift-scheduling slice (`WF-002`/`WF-003`, `DEC-102`)** —
+  the row-14a shift-scheduling slice (`WF-002`/`WF-003`, `DEC-102`) →
+  **the row-14b-1 worked-hours slice (`WF-004`, `DEC-103`)** —
   **all committed** (see "Work log" and "Reversibility").
-  **Delivered (row 14a — shift scheduling, `WF-002`/`WF-003`,
-  `DEC-037`/`DEC-038`, provisional `DEC-102`):** the `shift` +
-  `shift_assignment` tables with the full application + web port — `shift`
-  (location-scoped, nullable `role_code`, `starts_at`/`ends_at` with
+  **Delivered (row 14b-1 — worked hours, `WF-004`, `DEC-037`/`DEC-038`,
+  provisional `DEC-103`):** the `shift_adjustment` table and the
+  worked-hours derivation/report with the full application + web port —
+  `shift_adjustment` (`shift_assignment_id` FK, `adjusted_hours
+numeric(9,2)` >= 0 capped at 9999999.99, required `reason`, nullable
+  `approved_by`/`approved_at` with the all-or-nothing
+  `shift_adjustment_approved_check`, audit columns; the `0054` cross-org
+  guard on `shift_assignment_id`, `23514`). Worked-hours derivation
+  (domain, decimal-only never floats): an assignment contributes hours when
+  `shift_assignment.state = 'approved'` and `shift.state ∈ {assigned,
+completed}` and the shift `starts_at` is in the report's half-open period
+  `[from, to)`; per assignment the hours are the **latest
+  `shift_adjustment.adjusted_hours`** when one exists, else
+  `(ends_at − starts_at) − break_minutes`, floored at zero, at scale 2
+  HALF_UP; `sumWorkedHoursByEmployee` sums per employee ordered by name then
+  id. Application: `createShiftAdjustment` (validated decimal string,
+  approved by the acting manager at write time — single-stage, rejected on a
+  withdrawn assignment), `find`/`listShiftAdjustment(s)`, and
+  `computeWorkedHours` (the derived per-employee report for a period,
+  `{ from, to, rows, totalHours }`). Access: `WORKED_HOURS_READ_ROLES`/
+  `WRITE_ROLES` = owner, general_manager, location_manager, finance, admin
+  (the payroll-input rows; `analyst` excluded — the matrix's "Aggregate" is
+  unimplemented; the adjustment register follows the worked-hours roles,
+  **not** the rota read roles, a review fix so the payroll hours do not leak
+  to kitchen/FOH). API: `GET/POST
+/api/v1/workforce/shift-assignments/[id]/adjustments` and
+  `GET /api/v1/workforce/worked-hours`. The report is **not persisted**
+  (computed on demand; no artifact, no retention class); a scoped caller is
+  bounded to their location, and a multi-location caller must name
+  `locationId` (fail-closed). **Nothing applied to DigitalOcean.**
+  **Prior slice (row 14a — shift scheduling, `WF-002`/`WF-003`,
+  `DEC-037`/`DEC-038`, provisional `DEC-102`, migrations `0051`/`0052`,
+  committed `f3a990b`…`da745f0`):** the `shift` +
+  `shift_assignment` tables with the full application + web port —
+  `shift` (location-scoped, nullable `role_code`, `starts_at`/`ends_at` with
   `ends_at > starts_at`, `break_minutes >= 0` default 0,
   `state ∈ shift_state {open, published, assigned, cancelled, completed}`
   default `open`, nullable `published_at`/`actual_start`/`actual_end` — the
@@ -357,8 +383,7 @@ published` (stamping `published_at`) → `assigned` (on an approved manager
   GET/PATCH `[id]`, POST `[id]/publish|cancel|complete`, GET/POST
   `[id]/assignments`) and `/api/v1/workforce/shift-assignments/[id]`
   (GET/PATCH withdraw). Multi-assignment per shift is allowed (the unique is
-  per `(shift, employee)`; no headcount column). **Nothing applied to
-  DigitalOcean.**
+  per `(shift, employee)`; no headcount column).
   **Prior slice (`DEC-094` — the workflow platform, schema-only):** the
   spec'd `task`/`approval` platform tables (`DATA_DICTIONARY` §9) with the
   `DEC-101` provisional clarifications (12 items); no application or web
@@ -389,34 +414,43 @@ published` (stamping `published_at`) → `assigned` (on an approved manager
   creation and publication lock the parent `document` row (`SELECT … FOR
 UPDATE`). The API is `/api/v1/documents/**` and
   `/api/v1/document-versions/**`.
-  **Schema:** migrations through **`0052`**; **85 tables** (was 83). Next free
-  decision id **`DEC-103`**.
-  **Reviews and reconciliation (row 14a).** Both reviewers
-  (`reviewer-glm`/`reviewer-minimax`) independently found the **same
-  blocker**: `withdrawShiftAssignment` reverted the shift to
-  `published`/`open` unconditionally, so withdrawing an `approved` assignment
+  **Schema:** migrations through **`0054`**; **86 tables** (was 83). Next free
+  decision id **`DEC-104`**.
+  **Reviews and reconciliation (row 14a, condensed).** Both reviewers
+  independently found the same blocker (withdrawing an `approved` assignment
   on a `completed`/`cancelled` shift executed an illegal terminal transition
-  (**accepted + fixed** — withdrawal now rejects unless the shift is
-  `assigned`). Majors, both **accepted + fixed**: `assignShift` did not
-  enforce `role_code` matching (WF-003 "within their role") — now rejected
-  on a mismatch; `cancelShift` orphaned an `approved` assignment on a
-  cancelled shift — now rejected while the shift is `assigned` (withdraw
-  first). Minors, **accepted + fixed**: `updateShift` did not lock the shift
-  (now `lockShift`); the double-withdraw race (withdrawal now re-reads the
-  assignment under the shift lock). Recorded in `DEC-102`, not fixed: the
-  dictionary's `shift.created_by` (NOT NULL FK `app_user`) satisfied by the
-  nullable plain-uuid audit `created_by`; `shift_assignment`'s audit columns
-  a convention; multi-assignment per shift (no headcount invariant); the
-  `listShifts`/`listShiftAssignments` ordering not fully index-covered
-  (harmless at MVP volume); `role_code` stays free text. Both reviewers
-  verified the `0051` SQL matches the Drizzle schema exactly, the `0052`
-  guards cover all three cross-org FKs, the down path is FK-safe, the
-  vocabulary guard change holds, the access matrix is faithful, and there is
-  no dead code. (The `DEC-094` review outcome — no blockers, the
-  decide-once fix — is in the work log.)
+  — fixed: withdrawal rejects unless the shift is `assigned`); majors fixed
+  (`role_code` matching in `assignShift`; `cancelShift` orphaning an
+  `approved` assignment); minors fixed (`updateShift` locking; the
+  double-withdraw race). Recorded in `DEC-102`, not fixed: the
+  dictionary's `shift.created_by` satisfied by the nullable plain-uuid audit
+  `created_by`; `shift_assignment`'s audit columns a convention;
+  multi-assignment per shift; the list orderings not fully index-covered;
+  `role_code` free text. Full detail in the row-14a work-log entry.
+  **Reviews and reconciliation (row 14b-1).** Both reviewers found **no
+  blocker**. Majors, both **accepted + fixed**: the adjustment GET/POST was
+  gated on the rota read roles, leaking the payroll-input hours to
+  kitchen/FOH — now `WORKED_HOURS_READ_ROLES`/`WRITE_ROLES`; `adjusted_hours`
+  above the `numeric(9,2)` range raised an unhandled `22003` (500) — now
+  capped in the command and the parser (400/`DomainError`). Minors,
+  **accepted + fixed**: the report's latest-adjustment tie-break disagreed
+  with `listShiftAdjustments` (now both `created_at desc, id asc`); the
+  report joins now org-scope `shift`/`employee` explicitly (defence in
+  depth). Recorded in `DEC-103`, not fixed: the single-stage approval model
+  (the actor is the approver; the nullable pair supports a future two-stage
+  flow but none is implemented); `analyst` excluded from the worked-hours
+  report (the matrix's "Aggregate" is unimplemented — an open point); the
+  report is not persisted; the retention period. Both reviewers verified the
+  `0053` SQL matches the schema, the `0054` guard is correct, the decimal
+  derivation is float-free with HALF_UP at 2dp, the `[from, to)` window and
+  latest-adjustment subquery are correct, and the down path is FK-safe. (The
+  `DEC-094` review outcome — no blockers, the decide-once fix — is in the
+  work log.)
+  **Schema:** migrations through **`0054`**; **86 tables** (was 85). Next free
+  decision id **`DEC-104`**.
   **Verification:** `typecheck`, `lint`, `format:check`, `build` clean;
-  **2577/2577 tests with `DATABASE_URL`** (189 files); `npm audit --omit=dev`
-  = 0; `db:migrate` through `0052` is a no-op on re-run; **85 tables**;
+  **2703/2703 tests with `DATABASE_URL`** (192 files); `npm audit --omit=dev`
+  = 0; `db:migrate` through `0054` is a no-op on re-run; **86 tables**;
   organization-scoped everywhere (`DEC-061`).
   **Also delivered earlier (the `DEC-087` workforce `employee` +
   personnel-documents slice, the `DEC-089` HMS monitoring slice, the `DEC-090`
@@ -446,17 +480,20 @@ UPDATE`). The API is `/api/v1/documents/**` and
   (`DEC-094`/`DEC-101` — the `task`/`approval` tables, schema-only; the
   `job`/worker/outbox layer gated on `ADR-0004`) and **row 14a shift
   scheduling is delivered** (`WF-002`/`WF-003`, `DEC-102` — `shift` +
-  `shift_assignment` with the full application + web port): the next build
-  slice is **row 14b — `shift_adjustment` + `payroll_report`** (worked hours
-  - the monthly payroll-input report; the **WF-003 self-assignment login
-    model** remains an open owner input).
-    Beyond the programme: the receipt→ledger wiring needs the OPS destination
-    `storage_area_id` policy; row 13 is data-gated
-    on history/grain quality (I11); rows 15–18 blocked (data /
-    `ADR-0009`–`0011`); the deployment rehearsal is parked on owner inputs; the
-    golden fixtures are unsigned. Programme direction (user instruction):
-    proceed autonomously — review/fix, document status + next steps, commit,
-    then the next unblocked task. Nothing has been applied to DigitalOcean.
+  `shift_assignment` with the full application + web port) and **row 14b-1
+  worked hours are delivered** (`WF-004`, `DEC-103` — `shift_adjustment` +
+  the `computeWorkedHours` derivation/report with the full application +
+  web port): the next build
+  slice is **row 14b-2 — `payroll_report`** (the monthly payroll-input
+  report; the **WF-003 self-assignment login
+  model** remains an open owner input).
+  Beyond the programme: the receipt→ledger wiring needs the OPS destination
+  `storage_area_id` policy; row 13 is data-gated
+  on history/grain quality (I11); rows 15–18 blocked (data /
+  `ADR-0009`–`0011`); the deployment rehearsal is parked on owner inputs; the
+  golden fixtures are unsigned. Programme direction (user instruction):
+  proceed autonomously — review/fix, document status + next steps, commit,
+  then the next unblocked task. Nothing has been applied to DigitalOcean.
 - **Auth complete and security-reviewed (slices 1a–1e):** domain primitives (1a);
   persistence layer (1b-i); application flow (1b-ii); password reset + access
   control (1b-iii, `2ce8847`; reset neutrality `5776914`); hardening (`60ac52e`:
@@ -497,16 +534,16 @@ UPDATE`). The API is `/api/v1/documents/**` and
 - **DEC-049 closed:** drizzle-orm 0.45.2 / drizzle-kit 0.31.10 upgrade (`cc86f13`);
   `npm audit --omit=dev` = 0.
 - **Tests:** without `DATABASE_URL` the integration tests skip; with it
-  **2577/2577 passed** (189 files) — recorded 2026-09-22 at the
-  row-14a shift-scheduling tree (all checks pass; `db:migrate` through
-  `0052` is a no-op). Re-verify with `npm run test` and update if they differ.
+  **2703/2703 passed** (192 files) — recorded 2026-09-22 at the
+  row-14b-1 worked-hours tree (all checks pass; `db:migrate` through
+  `0054` is a no-op). Re-verify with `npm run test` and update if they differ.
   Open verification debt: the per-process rate limiter needs a shared
   store before multi-instance deployment; the reset-token delivery is a no-op stub
   until the email slice; the palette hex values and data-viz palette semantics
   await owner sign-off (see "Open decisions / inputs"); the six golden fixtures
   remain unsigned and are the "verified" gate.
 - **Persistence core + deployment foundation (committed):** Drizzle schema,
-  migrations `0000_enable_extensions` → `0052` additive with tested down paths
+  migrations `0000_enable_extensions` → `0054` additive with tested down paths
   (`0011_cost_allocation.sql` adds the four slice-6 tables; `0014_cost_card_pricing`
   adds four deferred `price_scenario` columns + `snapshot_component_kind_check`;
   `0015` adds `calculation_snapshot_cost_card_index`; the hand-written `0016` adds
@@ -587,7 +624,9 @@ UPDATE`). The API is `/api/v1/documents/**` and
   coherence guards — committed `ee47947`, runbook `838d11a` — and `0050` the
   `DEC-094` `task`/`approval` workflow-platform tables — committed
   `c90a45a` — and `0051`/`0052` the row-14a `shift`/`shift_assignment`
-  tables + the three shift coherence guards — committed `f3a990b`);
+  tables + the three shift coherence guards — committed `f3a990b` — and
+  `0053`/`0054` the row-14b-1 `shift_adjustment` table + its coherence
+  guard — committed `a67fe49`);
   the `asset`
   register is deliberately deferred — note `DEC-092`'s `equipment` is a
   distinct HMS register, not the finance `asset`), the
@@ -596,17 +635,18 @@ UPDATE`). The API is `/api/v1/documents/**` and
 - **Not yet built:** row 13 (close + dashboards + menu engineering —
   data-gated on history/grain quality, I11), the rest of row 14
   (workforce/scheduling — 14a `shift`/`shift_assignment` is **delivered**;
-  14b `shift_adjustment`/`payroll_report` is the next build slice; the
+  14b-1 `shift_adjustment` is **delivered**; 14b-2 `payroll_report` is the
+  next build slice; the
   **WF-003 self-assignment login model** remains open) and
   rows 15–18
   (blocked: data / `ADR-0009`–`0011`); also
   the deferred tables
-  (worked hours / payroll input (row 14b's `shift_adjustment`,
+  (payroll input (row 14b-2's
   `payroll_report` — the next build
   slice); the `employee`,
   `employee_document`, `document`, `document_version`,
-  `document_acknowledgement`, `task`, `approval`, `shift` and
-  `shift_assignment` tables have landed —
+  `document_acknowledgement`, `task`, `approval`, `shift`,
+  `shift_assignment` and `shift_adjustment` tables have landed —
   integrations, competitor, AI,
   procurement, period close, the platform `job` table (gated on `ADR-0004`),
   and the
@@ -634,44 +674,50 @@ HMS equipment/maintenance (`DEC-092`), HMS compliance / evidence export
 (`DEC-087`) and the staff document library (`DEC-088`) —
 are **delivered** (the HMS half and the workforce-documents half of the
 programme are complete), the **workflow platform (`DEC-094`/`DEC-101` —
-the `task`/`approval` tables, schema-only) is delivered** and **row 14a
-shift scheduling (`shift` + `shift_assignment`) is delivered**;
+the `task`/`approval` tables, schema-only) is delivered**, **row 14a
+shift scheduling (`shift` + `shift_assignment`) is delivered** and
+**row 14b-1 worked hours (`shift_adjustment` + the worked-hours
+derivation/report) is delivered**;
 further original rows are
 gated — row 13 on data (I11),
-rows 15–18 on data/ADRs; row 14b is the lead item).
+rows 15–18 on data/ADRs; row 14b-2 is the lead item).
 The list below is the short narrative form.
 
-1. **Row 14b — `shift_adjustment` + `payroll_report` (`WF-004` worked hours,
-   `WF-005` monthly payroll-input report; epic 15) — the lead item:** row 14a
-   (`shift` + `shift_assignment`, epic 14) is **delivered** (`DEC-102`,
-   migrations `0051`/`0052`). Spec: `DATA_DICTIONARY.md` §4A
-   (`shift_adjustment` `:420`, `payroll_report` `:430`),
-   `schemas/phase1_2_draft.sql:937-961`, `03_DOMAIN_MODEL.md` §3.9/§3.10.
-   The `payroll_report_status` (`draft, generated, exported, superseded`)
+1. **Row 14b-2 — `payroll_report` (`WF-005`, the monthly payroll-input
+   report; epic 15) — the lead item:** row 14a (`shift` +
+   `shift_assignment`, epic 14) and row 14b-1 (`shift_adjustment` + the
+   worked-hours derivation/report, `WF-004`) are **delivered** (`DEC-102`/
+   `DEC-103`, migrations `0051`–`0054`). Spec: `DATA_DICTIONARY.md` §4A
+   (`payroll_report` `:430`), `schemas/phase1_2_draft.sql:948-961`,
+   `03_DOMAIN_MODEL.md` §3.10. Columns `period_start`/`period_end` (date),
+   `generated_at`, `generated_by`, `status ∈ payroll_report_status {draft,
+generated, exported, superseded}`, `snapshot` jsonb (the frozen
+   employee/hours/rate/expected-pay lines), a nullable `export_file_id`
+   (a deferred `file_object` FK), audit columns. The `payroll_report_status`
    vocabulary exists in `schemas/domain-enums.yaml` but is unexported
-   (`UNEXPORTED_YAML_KEYS`); `shift_adjustment`/`payroll_report` are still in
-   `NOT_EXPECTED_TABLES`; next free migration index `0053`. Access-matrix
-   row: `Payroll-input reports` (owner/GM/finance Full, location_manager
-   None, analyst Aggregate). Needs its own reconnaissance and a **`DEC-103`
-   provisional clarification** for the under-specified points (the
-   worked-hours derivation — how `adjusted_hours` interacts with
-   `(ends_at − starts_at − break_minutes)`, whether multiple adjustments
-   accumulate, what a "registered shift" is — `assigned`/`completed` only;
-   the `payroll_report.snapshot` JSON shape/rounding/expected-pay formula;
-   the monthly period boundary and the "remaining planned shifts run as
-   scheduled" assumption; the status transitions — `draft → generated →
-exported → superseded`, regeneration/supersede; the "Aggregate only"
-   visibility for location_manager/analyst; whether the accountant is a
-   role; `payroll_report.export_file_id` — a deferred `file_object` FK; the
-   working-time retention period). The `job`/scheduler is `ADR-0004`-gated,
-   so the report is generated on demand, not scheduled. Do not resolve the
+   (`UNEXPORTED_YAML_KEYS`); `payroll_report` is still in
+   `NOT_EXPECTED_TABLES`; next free migration index `0055`. It must reuse
+   `computeWorkedHours` for the period lines. Needs its own reconnaissance
+   and a **`DEC-104` provisional clarification** for the under-specified
+   points (the snapshot JSON shape/rounding/expected-pay formula — hours ×
+   `base_hourly_rate`, decimal-only; the monthly period boundary and the
+   "remaining planned shifts run as scheduled" assumption; the status
+   transitions — `draft → generated → exported → superseded`,
+   regeneration/supersede; the "~3 days before month-end" trigger — the
+   `job`/scheduler is `ADR-0004`-gated, so the report is generated **on
+   demand**; `payroll_report.export_file_id` — a deferred `file_object` FK,
+   `DEC-085`; the working-time retention period). Do not resolve the
    privacy-review retention periods silently.
 2. **Row 14 residuals / gates:** the **WF-003 self-assignment login input**
    (owner; self-assignment stays deferred, no self-assign endpoint), the
-   **`DEC-102` provisional items** awaiting owner/OPS confirmation and the
-   row-14b `DEC-103` inputs (the worked-hours derivation, the snapshot
-   shape/period, "Aggregate only" visibility, the accountant role, the
-   retention periods); the privacy-review retention periods per file class
+   **`DEC-102`/`DEC-103` provisional items** awaiting owner/OPS confirmation
+   (the provisional shift state machine; the single-stage adjustment
+   approval model; the `analyst` exclusion from the worked-hours report /
+   the unimplemented "Aggregate" visibility; the retention periods) and the
+   row-14b-2 `DEC-104` inputs (the snapshot shape/period/status
+   transitions, the on-demand generation trigger, `export_file_id`, the
+   working-time retention period); the privacy-review retention periods per
+   file class
    (rows 15–18 remain blocked: data / `ADR-0009`–`0011`).
 3. **New open points from the staff-library, workforce, export, equipment,
    checklists and incidents slices (recorded, do not resolve silently):**
@@ -763,9 +809,10 @@ exported → superseded`, regeneration/supersede; the "Aggregate only"
    (2026-09-20); **data-gated** on history/grain quality (I11) — synthetic
    fixtures until real data.
 7. **Row 14 — workforce/scheduling** — 14a (`shift` + `shift_assignment`) is
-   **delivered** (`DEC-102`, migrations `0051`/`0052`); 14b
-   (`shift_adjustment` + `payroll_report`) is the lead item (see item 1);
-   the **WF-003 self-assignment login model** remains an open input
+   **delivered** (`DEC-102`, migrations `0051`/`0052`); 14b-1
+   (`shift_adjustment` + worked hours) is **delivered** (`DEC-103`,
+   migrations `0053`/`0054`); 14b-2 (`payroll_report`) is the lead item (see
+   item 1); the **WF-003 self-assignment login model** remains an open input
    (rows 15–18 remain blocked: data / `ADR-0009`–`0011`).
 8. **Test-deployment rehearsal** — per `docs/runbooks/deployment.md`, staging first
    with sanitized/synthetic data only; parked on the deployment prerequisite inputs
@@ -801,12 +848,32 @@ exported → superseded`, regeneration/supersede; the "Aggregate only"
 
 ## Open decisions / inputs (do not block development)
 
-- **Recorded this session (2026-09-22, from the row-14a shift-scheduling
+- **Recorded this session (2026-09-22, from the row-14b-1 worked-hours
   slice reviews and reconciliation; recorded, not decided — do not resolve
-  silently):** the **`DEC-102` provisional items** still need owner/OPS
-  confirmation: the provisional shift state machine (`open → published →
-assigned → completed`, `open|published → cancelled`, terminal
-  `completed`/`cancelled` — no `05_WORKFLOWS.md` flow existed); manager
+  silently):** the **`DEC-103` provisional items** still need owner/OPS
+  confirmation: the **single-stage approval model** for `shift_adjustment`
+  (the actor is the approver; the nullable `approved_by`/`approved_at` pair
+  supports a future two-stage flow but none is implemented); the
+  **`analyst` exclusion** from the worked-hours report (the access matrix
+  grants "Aggregate", but no aggregate projection exists in the MVP and the
+  row-level report would expose individual hours — an open point); the
+  worked-hours report is **not persisted** (computed on demand; no
+  artifact, no retention class); the **working-time retention period**
+  (do not resolve the privacy-review retention periods silently). **And
+  the row-14b-2 inputs** for the next slice's `DEC-104` provisional
+  clarification: the `payroll_report.snapshot` JSON shape/rounding/
+  expected-pay formula (hours × `base_hourly_rate`, decimal-only); the
+  monthly period boundary and the "remaining planned shifts run as
+  scheduled" assumption; the status transitions (`draft → generated →
+exported → superseded`) and regeneration/supersede semantics; the
+  "~3 days before month-end" trigger (the `job`/scheduler is
+  `ADR-0004`-gated, so the report is generated on demand);
+  `payroll_report.export_file_id` (a deferred `file_object` FK, `DEC-085`);
+  the working-time retention period. **Also still carried: the `DEC-102`
+  provisional items** awaiting owner/OPS confirmation (the provisional
+  shift state machine (`open → published → assigned → completed`,
+  `open|published → cancelled`, terminal `completed`/`cancelled` — no
+  `05_WORKFLOWS.md` flow existed); manager
   assignment only, with **self-assignment (`self_assigned`/
   `pending_approval`/`rejected`) deferred** pending the **WF-003
   self-assignment login model** (must a self-assigning employee hold an
@@ -815,21 +882,10 @@ assigned → completed`, `open|published → cancelled`, terminal
   plain-uuid audit `created_by`; `shift_assignment`'s audit columns are a
   convention; multi-assignment per shift (no headcount invariant); the
   `listShifts`/`listShiftAssignments` ordering not fully index-covered
-  (harmless at MVP volume); `role_code` stays free text. **And the row-14b
-  inputs** for the next slice's `DEC-103` provisional clarification: the
-  worked-hours derivation (how `adjusted_hours` interacts with
-  `(ends_at − starts_at − break_minutes)`, whether multiple adjustments
-  accumulate, what a "registered shift" is — `assigned`/`completed` only);
-  the `payroll_report.snapshot` JSON shape/rounding/expected-pay formula;
-  the monthly period boundary and the "remaining planned shifts run as
-  scheduled" assumption; the status transitions (`draft → generated →
-exported → superseded`, regeneration/supersede); the "Aggregate only"
-  visibility for location_manager/analyst; whether the accountant is a role;
-  `payroll_report.export_file_id` (a deferred `file_object` FK); the
-  working-time retention period (do not resolve the privacy-review retention
-  periods silently). **The row-14a shift-scheduling slice is delivered**
-  (`WF-002`/`WF-003`; `DEC-102`; migrations `0051`/`0052`; **85 tables**;
-  committed `f3a990b`…`da745f0`). Next free decision id **`DEC-103`**.
+  (harmless at MVP volume); `role_code` stays free text). **The row-14b-1
+  worked-hours slice is delivered**
+  (`WF-004`; `DEC-103`; migrations `0053`/`0054`; **86 tables**;
+  committed `a67fe49`…`f49490a`). Next free decision id **`DEC-104`**.
 - **Recorded this session (2026-09-22, from the `DEC-094` workflow-platform
   slice reviews and reconciliation; recorded, not decided — do not resolve
   silently):** the **`DEC-101` provisional items** (12 workflow-platform
@@ -1540,6 +1596,20 @@ and Spaces credentials via `-backend-config` / `AWS_ACCESS_KEY_ID` +
 
 ## Reversibility
 
+- **2026-09-22 row-14b-1 worked-hours slice (`WF-004`/`DEC-103`; 7 commits
+  incl. this docs commit; nothing pushed)**: 1. `a67fe49`
+  `feat(persistence)`; 2. `826800e` `feat(domain)`; 3. `74d9210`
+  `feat(application)`; 4. `9b8e8fc` `feat(web)`; 5. `dce1a15`
+  `fix(workforce)` — the review fixes; 6. `5c1dd73` `docs(decisions)` —
+  `DEC-103`; 7. `f49490a` `docs(roadmap)`; 8. this `docs(context)` update —
+  each independently revertible with `git revert <sha>`. Migration
+  **`0053_shift_adjustment` adds one table** (additive; down drops
+  `shift_adjustment`, 86 → 85); **`0054_shift_adjustment_org_guard` is
+  trigger-only** (down 86 → 86); the rehearsed down order is **`0054` →
+  `0053`**. If the DB is rolled back, delete the two ledger rows
+  (`created_at` `1790067016722` / `1790067030453`) and re-migrate; 86
+  tables after re-apply (rehearsed 2026-09-22 — see the work log). Nothing
+  pushed; nothing applied to DigitalOcean.
 - **2026-09-22 staff document library slice (`DEC-088`/`DEC-100`; 6 commits
   incl. this docs commit; nothing pushed)**: 1. `2784f18` `docs(decisions)` —
   `DEC-100`; 2. `ee47947` `feat(persistence)`; 3. `2aabd1b`
@@ -1902,6 +1972,98 @@ CASCADE; CREATE SCHEMA public; npm run db:migrate` (see the runbook). Once data
   (`DEC-015`).
 
 ## Work log (append-only, newest first)
+
+### 2026-09-22 — Row 14b-1 worked hours delivered (WF-004, DEC-103, migrations 0053–0054); the `shift_adjustment` table + the worked-hours derivation/report with the full application + web port; handoff updated
+
+`main`; HEAD before the slice was `50651f8` (the row-14a handoff); the slice
+lands as commits `a67fe49` `feat(persistence)`, `826800e` `feat(domain)`,
+`74d9210` `feat(application)`, `9b8e8fc` `feat(web)`, `dce1a15`
+`fix(workforce)` (the review fixes), `5c1dd73` `docs(decisions)` `DEC-103`,
+`f49490a` `docs(roadmap)`, plus this `docs(context)` handoff (nothing
+pushed; nothing applied to DigitalOcean).
+
+- **Parallel build:** the slice was built with parallel background agents
+  over the frozen contract (persistence → domain/application → web per the
+  existing package boundaries), then the adversarial reviews, the
+  reconciliation fixes and the migration rehearsal; small atomic commits
+  with the rollback approach in the body (Rule 2).
+- **Delivered (`WF-004`, `DEC-037`/`DEC-038`, provisional `DEC-103`):**
+  `shift_adjustment` (`shift_assignment_id` FK, `adjusted_hours
+numeric(9,2)` >= 0 capped at 9999999.99, required `reason`, nullable
+  `approved_by`/`approved_at` with the all-or-nothing
+  `shift_adjustment_approved_check`, audit columns) with the `0054`
+  cross-org guard on `shift_assignment_id` (`23514`). Worked-hours
+  derivation (domain, decimal-only never floats): an assignment contributes
+  hours when `shift_assignment.state = 'approved'` and `shift.state ∈
+{assigned, completed}` and the shift `starts_at` is in the report's
+  half-open period `[from, to)`; per assignment the hours are the **latest
+  `shift_adjustment.adjusted_hours`** when one exists, else
+  `(ends_at − starts_at) − break_minutes`, floored at zero, at scale 2
+  HALF_UP; `sumWorkedHoursByEmployee` sums per employee ordered by name
+  then id. Application: `createShiftAdjustment` (validated decimal string,
+  approved by the acting manager at write time — single-stage, rejected on
+  a withdrawn assignment), `find`/`listShiftAdjustment(s)`, and
+  `computeWorkedHours` (the derived per-employee report for a period,
+  `{ from, to, rows, totalHours }`). Access: `WORKED_HOURS_READ_ROLES`/
+  `WRITE_ROLES` = owner, general_manager, location_manager, finance, admin
+  (the payroll-input rows; **`analyst` excluded** — the matrix's
+  "Aggregate" is unimplemented; the adjustment register follows the
+  worked-hours roles, **not** the rota read roles — a review fix so the
+  payroll hours do not leak to kitchen/FOH). API: `GET/POST
+/api/v1/workforce/shift-assignments/[id]/adjustments` and
+  `GET /api/v1/workforce/worked-hours`. The report is **not persisted**
+  (computed on demand; no artifact, no retention class); a scoped caller is
+  bounded to their location, and a multi-location caller must name
+  `locationId` (fail-closed). Migrations `0053`/`0054`; `EXPECTED_TABLES`
+  85 → 86 (`shift_adjustment` removed from `NOT_EXPECTED_TABLES`; only
+  `payroll_report` still deferred).
+- **Migrations:** `0053_shift_adjustment` (journal `idx` 53, `when`
+  `1790067016722`, sha256
+  `cc589075fe649e35d2eb1fd57129b2b339dacce22dc7ac2e8daee7a7afe0c5e3`);
+  `0054_shift_adjustment_org_guard` (journal `idx` 54, `when`
+  `1790067030453`, sha256
+  `202aeaad413ae3dbf6be2e24dd28d56363dd0203b62163492e54b0d86a3f0585`). Down
+  companions (unjournalled): `0053_shift_adjustment_down.sql` (drops
+  `shift_adjustment`; 86 → 85), `0054_shift_adjustment_org_guard_down.sql`
+  (trigger-only). **Rehearsal evidence (local dev DB, 2026-09-22):** 86
+  tables / 1 shift_adjustment guard / 55 ledger rows → `0054` down (86, 0
+  guards) → `0053` down (85, 0) → delete the two ledger rows (`created_at
+IN (1790067016722, 1790067030453)`) → `npm run db:migrate` → 86 tables /
+  1 guard / 55 ledger rows; a further `db:migrate` a no-op.
+- **Reviews and reconciliation.** Both reviewers found **no blocker**.
+  Majors, both **accepted + fixed**: the adjustment GET/POST was gated on
+  the rota read roles, leaking the payroll-input hours to kitchen/FOH —
+  now `WORKED_HOURS_READ_ROLES`/`WRITE_ROLES`; `adjusted_hours` above the
+  `numeric(9,2)` range raised an unhandled `22003` (500) — now capped in
+  the command and the parser (400/`DomainError`). Minors, **accepted +
+  fixed**: the report's latest-adjustment tie-break disagreed with
+  `listShiftAdjustments` (now both `created_at desc, id asc`); the report
+  joins now org-scope `shift`/`employee` explicitly (defence in depth).
+  Recorded in `DEC-103`, not fixed: the single-stage approval model (the
+  actor is the approver; the nullable pair supports a future two-stage
+  flow but none is implemented); `analyst` excluded from the worked-hours
+  report (the matrix's "Aggregate" is unimplemented — an open point); the
+  report is not persisted; the retention period. Both reviewers verified
+  the `0053` SQL matches the schema, the `0054` guard is correct, the
+  decimal derivation is float-free with HALF_UP at 2dp, the `[from, to)`
+  window and latest-adjustment subquery are correct, and the down path is
+  FK-safe.
+- **Verification (exact):** `typecheck`, `lint`, `format:check`, `build`
+  clean; **2703/2703 tests with `DATABASE_URL`** (192 files);
+  `npm audit --omit=dev` = 0; `db:migrate` through `0054` is a no-op on
+  re-run; **86** public base tables. **Schema:** migrations through
+  `0054`; 86 tables (was 85). Next free decision id **`DEC-104`**.
+- **Next step:** **row 14b-2 — `payroll_report`** (`WF-005`; epic 15),
+  needing its own reconnaissance and a `DEC-104` provisional clarification
+  (see "Resume here").
+
+Rollback: each of `a67fe49`/`826800e`/`74d9210`/`9b8e8fc`/`dce1a15`/
+`5c1dd73`/`f49490a` is independently `git revert`-able; migration `0053`
+adds one table (additive) and `0054` is trigger-only, with the rehearsed
+down order — `0054_shift_adjustment_org_guard_down.sql` (trigger-only, 86 → 86) then `0053_shift_adjustment_down.sql` (drops `shift_adjustment`, 86 →
+85); if the DB is rolled back, delete the two ledger rows (`created_at`
+`1790067016722` / `1790067030453`) and re-migrate (86 tables); nothing
+pushed; nothing applied to DigitalOcean.
 
 ### 2026-09-22 — Row 14a shift scheduling delivered (WF-002/WF-003, DEC-102, migrations 0051–0052); the `shift`/`shift_assignment` tables with the full application + web port; handoff updated
 
