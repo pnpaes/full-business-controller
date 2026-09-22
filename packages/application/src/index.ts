@@ -3,6 +3,7 @@ export * from "./catalog";
 export * from "./costing";
 export * from "./counts";
 export * from "./data-quality";
+export * from "./documents";
 export * from "./hms";
 export * from "./inventory";
 export * from "./imports";

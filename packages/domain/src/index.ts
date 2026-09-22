@@ -10,6 +10,7 @@ export type { AllocatedUnitOverheadOptions, AllocationFallback } from "./allocat
 export * from "./auth";
 export { computeCostCardTotals } from "./cost-card";
 export type { CostCardCompositionInput, CostCardTotals } from "./cost-card";
+export { nextDocumentVersionNumber } from "./documents";
 export { DomainError, NotFoundError } from "./errors";
 export { normalizeCurrency } from "./currency";
 export { computeLandedCost, type LandedCost, type LandedCostInput } from "./landed-cost";
