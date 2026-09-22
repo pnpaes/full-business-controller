@@ -8,6 +8,9 @@ import {
   costCenter,
   correctiveAction,
   dataQualityException,
+  document,
+  documentAcknowledgement,
+  documentVersion,
   employee,
   employeeDocument,
   equipment,
@@ -1021,6 +1024,76 @@ export async function createTestEmployeeDocument(
       employeeId,
       kind: "contract",
       title: uniqueName("doc"),
+      ...overrides,
+    })
+    .returning();
+  return rows[0]!;
+}
+
+/**
+ * A `DEC-088`/`DOC-001` staff document. `title` gets a unique test value; the
+ * vocabulary columns default to `routine`/`all_staff` and `status` takes the
+ * schema default `draft`, so a test need only override the field under test.
+ */
+export async function createTestDocument(
+  db: Database,
+  organizationId: string,
+  overrides: Partial<typeof document.$inferInsert> = {},
+): Promise<typeof document.$inferSelect> {
+  const rows = await db
+    .insert(document)
+    .values({
+      organizationId,
+      title: uniqueName("document"),
+      category: "routine",
+      audience: "all_staff",
+      ...overrides,
+    })
+    .returning();
+  return rows[0]!;
+}
+
+/**
+ * A `DEC-088`/`DOC-002` staff document version. `version_no` defaults to 1 (the
+ * `(document_id, version_no)` unique means a test overriding it must keep the
+ * pair distinct); the nullable file/notes/published fields stay null.
+ */
+export async function createTestDocumentVersion(
+  db: Database,
+  organizationId: string,
+  documentId: string,
+  overrides: Partial<typeof documentVersion.$inferInsert> = {},
+): Promise<typeof documentVersion.$inferSelect> {
+  const rows = await db
+    .insert(documentVersion)
+    .values({
+      organizationId,
+      documentId,
+      versionNo: 1,
+      ...overrides,
+    })
+    .returning();
+  return rows[0]!;
+}
+
+/**
+ * A `DEC-088`/`DOC-004` acknowledgement fact. `acknowledged_by` gets a random
+ * uuid (the `app_user` FK is deferred) and the instant defaults to a fixed test
+ * time.
+ */
+export async function createTestDocumentAcknowledgement(
+  db: Database,
+  organizationId: string,
+  documentVersionId: string,
+  overrides: Partial<typeof documentAcknowledgement.$inferInsert> = {},
+): Promise<typeof documentAcknowledgement.$inferSelect> {
+  const rows = await db
+    .insert(documentAcknowledgement)
+    .values({
+      organizationId,
+      documentVersionId,
+      acknowledgedBy: randomUUID(),
+      acknowledgedAt: new Date("2026-01-01T08:00:00.000Z"),
       ...overrides,
     })
     .returning();

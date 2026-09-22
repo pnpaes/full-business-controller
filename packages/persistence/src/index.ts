@@ -11,6 +11,7 @@ export * from "./repositories/cost-card";
 export * from "./repositories/costing";
 export * from "./repositories/counts";
 export * from "./repositories/data-quality-exception";
+export * from "./repositories/document";
 export * from "./repositories/equipment";
 export * from "./repositories/file-object";
 export * from "./repositories/imports";

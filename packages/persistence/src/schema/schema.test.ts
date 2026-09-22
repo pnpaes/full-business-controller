@@ -14,7 +14,7 @@ import * as schema from "./index";
 
 const tables = Object.values(schema).filter((value) => is(value, PgTable));
 
-/** The 78 in-scope Phase 1-2 tables: the 35 core tables, the slice-3
+/** The 81 in-scope Phase 1-2 tables: the 35 core tables, the slice-3
  * master-data additions (`unit_conversion`, `supplier`, `supplier_item`,
  * `cost_center`), the slice-4 receiving additions (`goods_receipt`,
  * `goods_receipt_line`), the slice-5 allergen additions (`allergen`,
@@ -35,7 +35,9 @@ const tables = Object.values(schema).filter((value) => is(value, PgTable));
  * incident slice (`hms_incident`, `corrective_action`), the `DEC-091` HMS
  * checklist slice (`checklist_template`, `checklist_run`), the `DEC-092` HMS
  * equipment/maintenance slice (`equipment`, `maintenance_log`) and the `DEC-087`
- * workforce personnel slice (`employee`, `employee_document`), from
+ * workforce personnel slice (`employee`, `employee_document`), and the `DEC-088`
+ * staff document library (`document`, `document_version`,
+ * `document_acknowledgement`), from
  * `schemas/phase1_2_draft.sql` / `DATA_DICTIONARY`. */
 const EXPECTED_TABLES = [
   "addon_applicability",
@@ -56,6 +58,9 @@ const EXPECTED_TABLES = [
   "cost_pool",
   "data_ownership",
   "data_quality_exception",
+  "document",
+  "document_acknowledgement",
+  "document_version",
   "employee",
   "employee_document",
   "equipment",

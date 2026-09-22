@@ -19,3 +19,4 @@ export * from "./sales";
 export * from "./platform";
 export * from "./hms";
 export * from "./workforce";
+export * from "./document";

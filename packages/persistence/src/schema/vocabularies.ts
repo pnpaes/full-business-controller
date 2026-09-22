@@ -426,3 +426,15 @@ export const EMPLOYMENT_TYPE = [
 ] as const;
 
 export const EMPLOYEE_DOCUMENT_KIND = ["contract", "certificate", "id_document", "other"] as const;
+
+// `DEC-088` (`DOC-001`…`DOC-004`): the staff document library. `category` and
+// `audience` back `document_category_check` / `document_audience_check`, and
+// `status` backs `document_status_check` via the distinct
+// `staff_document_status` key — deliberately NOT the generic `DOCUMENT_STATUS`
+// above, which `recipe_version` uses. From `schemas/domain-enums.yaml`
+// (`document_category`, `document_audience`, `staff_document_status`).
+export const DOCUMENT_CATEGORY = ["routine", "guideline", "policy", "form", "other"] as const;
+
+export const DOCUMENT_AUDIENCE = ["all_staff", "managers"] as const;
+
+export const STAFF_DOCUMENT_STATUS = ["draft", "published", "archived"] as const;

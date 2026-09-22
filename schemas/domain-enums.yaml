@@ -148,3 +148,11 @@ maintenance_kind: [service, repair, inspection]
 # `employee_document_kind_check`. `employee.employment_type` reuses the existing
 # `employment_type` vocabulary above.
 employee_document_kind: [contract, certificate, id_document, other]
+
+# DEC-088 (staff document library): the internal-document category and
+# audience, and the distinct staff-document lifecycle. `staff_document_status`
+# is deliberately NOT the generic `document_status` above (which `recipe_version`
+# uses): a published internal document is not a submitted/approved record.
+document_category: [routine, guideline, policy, form, other]
+document_audience: [all_staff, managers]
+staff_document_status: [draft, published, archived]
