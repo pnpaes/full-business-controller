@@ -16,10 +16,17 @@ export type {
 } from "./post-theoretical-consumption";
 export { reverseSalesLine } from "./reverse-sales-line";
 export type { ReverseSalesLineInput, ReverseSalesLineResult } from "./reverse-sales-line";
-export { createPostgresConsumptionStore, createPostgresSalesStore } from "./postgres-store";
+export { correctSalesLine } from "./correct-sales-line";
+export type { CorrectSalesLineInput, CorrectSalesLineResult } from "./correct-sales-line";
+export {
+  createPostgresConsumptionStore,
+  createPostgresCorrectSalesLineStore,
+  createPostgresSalesStore,
+} from "./postgres-store";
 export type {
   ConsumptionSalesLineRecord,
   ConsumptionStore,
+  CorrectSalesLineStore,
   FindSalesLineQuery,
   FindSalesTransactionByExternalKeyQuery,
   FindSalesTransactionQuery,
@@ -27,6 +34,7 @@ export type {
   ListSalesLinesForDayQuery,
   ListSalesLinesQuery,
   ListSalesTransactionsQuery,
+  ListStockMovementsBySourceQuery,
   NewSalesLineRecord,
   NewSalesTransactionRecord,
   SalesLineRecord,

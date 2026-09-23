@@ -1,6 +1,11 @@
 import type { AuditInput } from "../auth";
 import type { ImportStore } from "../imports";
-import type { InventoryStore } from "../inventory";
+import type {
+  InventoryStore,
+  ReverseStockMovementInput,
+  ReverseStockMovementResult,
+  StockMovementRecord,
+} from "../inventory";
 
 /**
  * Application-level ports and DTOs for row 12 — **sales + settlements +
@@ -30,8 +35,10 @@ import type { InventoryStore } from "../inventory";
  *     (`DEC-045`);
  * (d) sales-line reversal (`DEC-028`/`DEC-073`) is implemented: `reverseSalesLine`
  *     creates a new negated `sales_line` in the same transaction, never edits or
- *     deletes the original; linked theoretical-consumption movements are reversed
- *     separately through the inventory `reverseStockMovement` primitive;
+ *     deletes the original; `correctSalesLine` (`DEC-116`) is the orchestrating
+ *     command that reverses the line and every `sales_line`-sourced movement for
+ *     it in one transaction, through the inventory `reverseStockMovement`
+ *     primitive;
  * (h) the normalized import-row shape is owned by the row-11 slice; this slice
  *     reads the keys documented on `NORMALIZED_SALES_FIELDS` and nothing else.
  */
@@ -286,4 +293,38 @@ export interface ConsumptionStore extends InventoryStore {
    * is not recipe-based (a retail pack) or no assignment is effective.
    */
   findVariantRecipe(query: FindVariantRecipeQuery): Promise<VariantRecipeRecord | undefined>;
+}
+
+/** One posted source's movements (`source_type` + `source_id`), org-scoped (`DEC-116`). */
+export interface ListStockMovementsBySourceQuery {
+  readonly organizationId: string;
+  readonly sourceType: string;
+  readonly sourceId: string;
+  /**
+   * Keep only originals not already reversed (`DEC-116`): a movement that is
+   * itself a reversal, or that already has one, is excluded, so a
+   * partially-reversed line stays correctable.
+   */
+  readonly onlyReversible?: boolean;
+}
+
+/**
+ * The port `correctSalesLine` orchestrates (`DEC-116`): the row-12 `SalesStore`
+ * for the line-level reversal, plus the two inventory capabilities the
+ * correction needs — a source-scoped movement read and the movement-reversal
+ * primitive — and one transaction runner so the reversal line and every
+ * movement reversal commit or roll back together. The movement-reversal member
+ * delegates to the inventory `reverseStockMovement` primitive (`DEC-028`); it
+ * copies the original's `source_type`/`source_id`, so the source line's ledger
+ * cost nets to zero (the ledger convention).
+ */
+export interface CorrectSalesLineStore extends SalesStore {
+  /** Binds `fn` to one transaction so the line and its movements reverse atomically. */
+  withTransaction<T>(fn: (store: CorrectSalesLineStore) => Promise<T>): Promise<T>;
+  /** Every movement posted for one source, organization-scoped, in ledger order. */
+  listStockMovementsBySource(
+    query: ListStockMovementsBySourceQuery,
+  ): Promise<readonly StockMovementRecord[]>;
+  /** Reverses one posted movement exactly (`DEC-028`) against this store's ledger. */
+  reverseStockMovement(input: ReverseStockMovementInput): Promise<ReverseStockMovementResult>;
 }

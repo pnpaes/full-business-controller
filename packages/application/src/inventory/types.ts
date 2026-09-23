@@ -196,6 +196,16 @@ export interface InventoryMovementListQuery {
   readonly storageAreaId?: string;
   /** Absent = no filter; `null` = match only the no-lot movements. */
   readonly lotId?: string | null;
+  /** Filters `source_type`; pair with `sourceId` for one posted source (`DEC-116`). */
+  readonly sourceType?: string;
+  /** Filters `source_id` (`DEC-116`). */
+  readonly sourceId?: string;
+  /**
+   * Keep only originals not already reversed (`DEC-116`): excludes a movement
+   * that is itself a reversal and one that already has one, so a
+   * partially-reversed source lists only the still-correctable originals.
+   */
+  readonly onlyReversible?: boolean;
   readonly occurredFrom?: Date;
   readonly occurredTo?: Date;
   readonly limit?: number;

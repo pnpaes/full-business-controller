@@ -1,8 +1,10 @@
 import { netSalesFromLine, periodBucket } from "@aquarela/domain";
 import {
+  auditEvent,
   channel,
   createDb,
   externalMapping,
+  findSalesLineReversal,
   item,
   location,
   product,
@@ -22,6 +24,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createPostgresReportingStore } from "./postgres-store";
 import { buildSalesReport } from "./build-sales-report";
 import { listSalesReportRecords } from "./list-sales-report-records";
+import { correctSalesLine, createPostgresCorrectSalesLineStore } from "../sales";
 
 const databaseUrl = process.env.DATABASE_URL;
 const suffix = randomUUID().replace(/-/g, "").slice(0, 12);
@@ -358,13 +361,16 @@ describe.skipIf(!databaseUrl)("reporting against PostgreSQL", () => {
         netAmount: "16.0000",
         taxAmount: "4.0000",
       });
-      await seedLine(tx, orgId, txn, {
-        productVariantId: refs.otherProductVariantId,
-        reversalOfId: original,
-        quantity: "-1.000000",
-        grossAmount: "-20.0000",
-        netAmount: "-16.0000",
-        taxAmount: "-4.0000",
+      // The ingredient cost the original line posted, at the ledger source key.
+      await seedConsumptionCost(tx, orgId, refs, original, "-30.0000");
+
+      // The correction path (`DEC-116`): reverses the line and every
+      // `sales_line`-sourced movement for it in one transaction.
+      await correctSalesLine(createPostgresCorrectSalesLineStore(tx), {
+        organizationId: orgId,
+        actorId: randomUUID(),
+        salesLineId: original,
+        reasonCode: "customer-refund",
       });
 
       const { rows } = await store.summarizeSales({
@@ -377,7 +383,86 @@ describe.skipIf(!databaseUrl)("reporting against PostgreSQL", () => {
 
       expect(rows).toHaveLength(1);
       expect(rows[0]?.periodBucket).toBe(periodBucket("week", "2026-03-01T12:00:00.000Z"));
-      expect(rows[0]).toMatchObject({ netSales: "0.0000", units: "0.000000" });
+      // Revenue and units net to zero, and the ledger cost nets to zero too:
+      // the reversal movement copies the original's source, so the original
+      // line's cost cancels and the reversal line carries none.
+      expect(rows[0]).toMatchObject({
+        netSales: "0.0000",
+        units: "0.000000",
+        ingredientCost: "0.0000",
+      });
+    });
+  });
+
+  it("rolls back the line reversal and its audit when a movement reversal fails (DEC-116)", async () => {
+    await inRollback(client.db, async (tx) => {
+      const refs = await seedRefs(tx, orgId);
+      const txn = await seedTransaction(tx, orgId, {
+        locationId: refs.locationId,
+        occurredAt: MARCH,
+      });
+      const original = await seedLine(tx, orgId, txn, {
+        productVariantId: refs.productVariantId,
+        quantity: "1.000000",
+        grossAmount: "20.0000",
+        netAmount: "16.0000",
+      });
+      // Failure injection: the original consumption movement claims the key the
+      // correction's reversal will use (`reversal:<movement id>`), so the
+      // movement reversal hits the per-organization
+      // `stock_movement_org_idempotency_key_key` unique index — a genuine DB
+      // failure raised after the line reversal has been posted in the same
+      // transaction.
+      const movementId = randomUUID();
+      await tx.insert(stockMovement).values({
+        id: movementId,
+        organizationId: orgId,
+        locationId: refs.locationId,
+        storageAreaId: refs.storageAreaId,
+        itemId: refs.itemId,
+        movementType: "sale_consumption",
+        quantityDelta: "-1",
+        unitId: refs.unitId,
+        valueDelta: "-30.0000",
+        currency: "NOK",
+        sourceType: "sales_line",
+        sourceId: original,
+        occurredAt: new Date(MARCH),
+        postedBy: randomUUID(),
+        idempotencyKey: `reversal:${movementId}`,
+      });
+
+      let failure: unknown;
+      try {
+        await correctSalesLine(createPostgresCorrectSalesLineStore(tx), {
+          organizationId: orgId,
+          actorId: randomUUID(),
+          salesLineId: original,
+          reasonCode: "customer-refund",
+        });
+      } catch (error) {
+        failure = error;
+      }
+
+      // The correction runs in a savepoint, so the outer transaction is still
+      // usable after the rollback: assert against real database state. No
+      // `drizzle-orm` import (not a dependency of this package), so the
+      // reversal is read through the repository and the audit is filtered in JS.
+      expect(failure).toBeInstanceOf(Error);
+      const message =
+        failure instanceof Error
+          ? `${failure.message} ${failure.cause instanceof Error ? failure.cause.message : ""}`
+          : String(failure);
+      expect(message).toMatch(/duplicate key|idempotency/i);
+
+      expect(
+        await findSalesLineReversal(tx, { organizationId: orgId, salesLineId: original }),
+      ).toBeUndefined();
+
+      const leakedAudits = (await tx.select().from(auditEvent)).filter(
+        (event) => event.organizationId === orgId && event.action === "sales.sales_line.reversed",
+      );
+      expect(leakedAudits).toHaveLength(0);
     });
   });
 

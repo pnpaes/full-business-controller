@@ -245,6 +245,16 @@ export class FakeInventoryStore implements InventoryStore {
           query.lotId === undefined ||
           (query.lotId === null ? movement.lotId === null : movement.lotId === query.lotId),
       )
+      .filter(
+        (movement) => query.sourceType === undefined || movement.sourceType === query.sourceType,
+      )
+      .filter((movement) => query.sourceId === undefined || movement.sourceId === query.sourceId)
+      .filter(
+        (movement) =>
+          query.onlyReversible !== true ||
+          (movement.reversalOfId === null &&
+            ![...this.stockMovements.values()].some((other) => other.reversalOfId === movement.id)),
+      )
       .filter((movement) => from === undefined || movement.occurredAt >= from)
       .filter((movement) => to === undefined || movement.occurredAt <= to)
       .sort(ledgerOrder);

@@ -3,11 +3,12 @@ import * as repo from "@aquarela/persistence";
 import type { Database, NodeDatabase } from "@aquarela/persistence";
 
 import { createPostgresImportStore } from "../imports";
-import { createPostgresInventoryStore } from "../inventory";
+import { createPostgresInventoryStore, reverseStockMovement } from "../inventory";
 import { createPostgresProductionStore, resolvePlannedSnapshot } from "../production";
 
 import type {
   ConsumptionStore,
+  CorrectSalesLineStore,
   NewSalesLineRecord,
   NewSalesTransactionRecord,
   SalesLineRecord,
@@ -311,5 +312,35 @@ export function createPostgresConsumptionStore(db: Database): ConsumptionStore {
         })),
       };
     },
+  };
+}
+
+/**
+ * Adapts the row-12 sales writes plus the slice-8 inventory ledger to the
+ * `CorrectSalesLineStore` port (`DEC-116`). The sales adapter is composed in for
+ * the line reversal; the inventory adapter supplies the source-scoped movement
+ * read and the reversal primitive. `withTransaction` is the single runner that
+ * binds both to one transaction, so `correctSalesLine`'s line and movement
+ * reversals commit or roll back together (the composed adapters' own
+ * `withTransaction` then nests as savepoints).
+ */
+export function createPostgresCorrectSalesLineStore(db: Database): CorrectSalesLineStore {
+  const inventory = createPostgresInventoryStore(db);
+  return {
+    ...createPostgresSalesStore(db),
+    withTransaction: async (fn) => {
+      if (!isNodeDatabase(db)) {
+        return fn(createPostgresCorrectSalesLineStore(db));
+      }
+      return db.transaction((tx) => fn(createPostgresCorrectSalesLineStore(tx)));
+    },
+    listStockMovementsBySource: async (query) =>
+      inventory.listStockMovements({
+        organizationId: query.organizationId,
+        sourceType: query.sourceType,
+        sourceId: query.sourceId,
+        ...(query.onlyReversible === undefined ? {} : { onlyReversible: query.onlyReversible }),
+      }),
+    reverseStockMovement: (input) => reverseStockMovement(inventory, input),
   };
 }

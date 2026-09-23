@@ -16,8 +16,10 @@ import { DEFAULT_SALES_LIMIT, listSalesTransactions } from "./list-sales-transac
 import { postImportRun } from "./post-import-run";
 import { postTheoreticalConsumption } from "./post-theoretical-consumption";
 import { reverseSalesLine } from "./reverse-sales-line";
+import { correctSalesLine } from "./correct-sales-line";
 import {
   FakeConsumptionStore,
+  FakeCorrectSalesLineStore,
   FakeSalesStore,
   seedConsumptionFixture,
   seedImportRun,
@@ -1167,5 +1169,219 @@ describe("reverseSalesLine", () => {
       }),
     ).rejects.toThrow(/sales line not found in organization/);
     expect(store.salesLines.size).toBe(1);
+  });
+});
+
+describe("correctSalesLine", () => {
+  async function seedCorrectableLine(
+    store: FakeCorrectSalesLineStore,
+    options: { readonly movements?: number } = {},
+  ): Promise<{ line: SalesLineRecord; movementIds: string[] }> {
+    const transaction = await store.createSalesTransaction(transactionInput("txn-1", OCCURRED_AT));
+    const line = await store.createSalesLine(lineInput(transaction.id, "line-1"));
+    const movementIds: string[] = [];
+    const count = options.movements ?? 2;
+    for (let index = 0; index < count; index += 1) {
+      const movement = await store.inventory.createStockMovement({
+        organizationId: ORG,
+        locationId: "loc",
+        storageAreaId: "area",
+        itemId: `item-${index}`,
+        lotId: null,
+        movementType: "sale_consumption",
+        quantityDelta: "-1.000000",
+        unitId: "unit",
+        unitCost: null,
+        valueDelta: "-5.0000",
+        currency: "NOK",
+        sourceType: "sales_line",
+        sourceId: line.id,
+        reversalOfId: null,
+        occurredAt: OCCURRED_AT,
+        postedBy: ACTOR,
+        reasonCode: null,
+        idempotencyKey: null,
+      });
+      movementIds.push(movement.id);
+    }
+    return { line, movementIds };
+  }
+
+  it("reverses the line and each of its sales_line movements exactly once (DEC-116)", async () => {
+    const store = new FakeCorrectSalesLineStore();
+    const { line, movementIds } = await seedCorrectableLine(store);
+
+    const result = await correctSalesLine(store, {
+      organizationId: ORG,
+      actorId: ACTOR,
+      salesLineId: line.id,
+      reasonCode: "customer-refund",
+    });
+
+    // The line-level reversal: a new negated line, the original untouched.
+    expect(store.salesLines.size).toBe(2);
+    expect(store.salesLines.get(line.id)).toEqual(line);
+    expect(store.salesLines.get(result.reversalSalesLineId)?.reversalOfId).toBe(line.id);
+
+    // Each original movement is reversed exactly once, and the reversal copies
+    // the original's source so the line's ledger cost nets to zero.
+    expect(result.reversedMovementIds).toHaveLength(movementIds.length);
+    for (const movementId of movementIds) {
+      const reversals = [...store.inventory.stockMovements.values()].filter(
+        (movement) => movement.reversalOfId === movementId,
+      );
+      expect(reversals).toHaveLength(1);
+      expect(reversals[0]).toMatchObject({
+        sourceType: "sales_line",
+        sourceId: line.id,
+        quantityDelta: "1.000000",
+        valueDelta: "5.0000",
+      });
+    }
+    expect(result.revaluationMovementIds).toEqual([]);
+
+    // The line-reversal audit fact is written (`DEC-073`).
+    expect(store.auditEvents.some((event) => event.action === "sales.sales_line.reversed")).toBe(
+      true,
+    );
+  });
+
+  it("reverses a line with no consumption movements and returns an empty list", async () => {
+    const store = new FakeCorrectSalesLineStore();
+    const { line } = await seedCorrectableLine(store, { movements: 0 });
+
+    const result = await correctSalesLine(store, {
+      organizationId: ORG,
+      actorId: ACTOR,
+      salesLineId: line.id,
+      reasonCode: "customer-refund",
+    });
+
+    expect(result.reversedMovementIds).toEqual([]);
+    expect(result.revaluationMovementIds).toEqual([]);
+    expect(store.salesLines.size).toBe(2);
+  });
+
+  it("reverses only the un-reversed originals of a partially-reversed line (DEC-116)", async () => {
+    const store = new FakeCorrectSalesLineStore();
+    const { line, movementIds } = await seedCorrectableLine(store);
+    const alreadyReversed = movementIds[0]!;
+    const stillCorrectable = movementIds[1]!;
+    // A prior partial correction: one original already has its reversal.
+    await store.inventory.createStockMovement({
+      organizationId: ORG,
+      locationId: "loc",
+      storageAreaId: "area",
+      itemId: "item-0",
+      lotId: null,
+      movementType: "correction",
+      quantityDelta: "1.000000",
+      unitId: "unit",
+      unitCost: null,
+      valueDelta: "5.0000",
+      currency: "NOK",
+      sourceType: "sales_line",
+      sourceId: line.id,
+      reversalOfId: alreadyReversed,
+      occurredAt: OCCURRED_AT,
+      postedBy: ACTOR,
+      reasonCode: "customer-refund",
+      idempotencyKey: `reversal:${alreadyReversed}`,
+    });
+
+    const result = await correctSalesLine(store, {
+      organizationId: ORG,
+      actorId: ACTOR,
+      salesLineId: line.id,
+      reasonCode: "customer-refund",
+    });
+
+    // Only the still-correctable original is reversed, and the line is reversed.
+    expect(result.reversedMovementIds).toHaveLength(1);
+    const newReversal = [...store.inventory.stockMovements.values()].find(
+      (movement) => movement.reversalOfId === stillCorrectable,
+    );
+    expect(result.reversedMovementIds[0]).toBe(newReversal?.id);
+    // The already-reversed original is not reversed a second time.
+    expect(
+      [...store.inventory.stockMovements.values()].filter(
+        (movement) => movement.reversalOfId === alreadyReversed,
+      ),
+    ).toHaveLength(1);
+    expect(store.salesLines.size).toBe(2);
+    expect(store.salesLines.get(result.reversalSalesLineId)?.reversalOfId).toBe(line.id);
+  });
+
+  it("rejects a retry of an already-corrected line and reverses nothing further", async () => {
+    const store = new FakeCorrectSalesLineStore();
+    const { line, movementIds } = await seedCorrectableLine(store);
+    const input = {
+      organizationId: ORG,
+      actorId: ACTOR,
+      salesLineId: line.id,
+      reasonCode: "customer-refund",
+    };
+
+    await correctSalesLine(store, input);
+    const movementsAfterFirst = store.inventory.stockMovements.size;
+
+    await expect(correctSalesLine(store, input)).rejects.toThrow(/already reversed/);
+    expect(store.salesLines.size).toBe(2);
+    expect(store.inventory.stockMovements.size).toBe(movementsAfterFirst);
+    for (const movementId of movementIds) {
+      expect(
+        [...store.inventory.stockMovements.values()].filter(
+          (movement) => movement.reversalOfId === movementId,
+        ),
+      ).toHaveLength(1);
+    }
+  });
+
+  it("rejects a blank reasonCode and writes nothing", async () => {
+    const store = new FakeCorrectSalesLineStore();
+    const { line } = await seedCorrectableLine(store);
+
+    await expect(
+      correctSalesLine(store, {
+        organizationId: ORG,
+        actorId: ACTOR,
+        salesLineId: line.id,
+        reasonCode: "   ",
+      }),
+    ).rejects.toThrow(/reasonCode is required/);
+    expect(store.salesLines.size).toBe(1);
+    expect(store.inventory.stockMovements.size).toBe(2);
+  });
+
+  it("rejects a reasonCode longer than 200 characters and writes nothing", async () => {
+    const store = new FakeCorrectSalesLineStore();
+    const { line } = await seedCorrectableLine(store);
+
+    await expect(
+      correctSalesLine(store, {
+        organizationId: ORG,
+        actorId: ACTOR,
+        salesLineId: line.id,
+        reasonCode: "x".repeat(201),
+      }),
+    ).rejects.toThrow(/at most 200/);
+    expect(store.salesLines.size).toBe(1);
+    expect(store.inventory.stockMovements.size).toBe(2);
+  });
+
+  it("hides a line that is missing or in another organization", async () => {
+    const store = new FakeCorrectSalesLineStore();
+    const { line } = await seedCorrectableLine(store);
+
+    await expect(
+      correctSalesLine(store, {
+        organizationId: OTHER_ORG,
+        actorId: ACTOR,
+        salesLineId: line.id,
+        reasonCode: "customer-refund",
+      }),
+    ).rejects.toThrow(/sales line not found in organization/);
+    expect(store.salesLines.size).toBe(1);
+    expect(store.inventory.stockMovements.size).toBe(2);
   });
 });

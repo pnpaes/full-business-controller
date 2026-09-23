@@ -1,12 +1,20 @@
 import type { ImportStagingRowRecord } from "../imports";
 import { FakeImportStore } from "../imports/test-support";
+import { reverseStockMovement } from "../inventory";
 import { FakeInventoryStore, seedInventoryFixture } from "../inventory/test-support";
 import type { InventoryFixture } from "../inventory/test-support";
+import type {
+  ReverseStockMovementInput,
+  ReverseStockMovementResult,
+  StockMovementRecord,
+} from "../inventory";
 
 import type {
   ConsumptionSalesLineRecord,
   ConsumptionStore,
+  CorrectSalesLineStore,
   FindVariantRecipeQuery,
+  ListStockMovementsBySourceQuery,
   NewSalesLineRecord,
   NewSalesTransactionRecord,
   SalesLineRecord,
@@ -133,6 +141,35 @@ export class FakeSalesStore extends FakeImportStore implements SalesStore {
       (row) =>
         row.organizationId === query.organizationId && row.reversalOfId === query.salesLineId,
     );
+  }
+}
+
+/**
+ * In-memory `CorrectSalesLineStore` for the unit suite (`DEC-116`): the sales
+ * fake plus an embedded `FakeInventoryStore` for the source-scoped movement read
+ * and the movement-reversal primitive, so `correctSalesLine` runs against the
+ * same `reverseStockMovement` path the real adapter composes.
+ */
+export class FakeCorrectSalesLineStore extends FakeSalesStore implements CorrectSalesLineStore {
+  readonly inventory = new FakeInventoryStore();
+
+  override async withTransaction<T>(fn: (store: CorrectSalesLineStore) => Promise<T>): Promise<T> {
+    return fn(this);
+  }
+
+  listStockMovementsBySource(
+    query: ListStockMovementsBySourceQuery,
+  ): Promise<readonly StockMovementRecord[]> {
+    return this.inventory.listStockMovements({
+      organizationId: query.organizationId,
+      sourceType: query.sourceType,
+      sourceId: query.sourceId,
+      ...(query.onlyReversible === undefined ? {} : { onlyReversible: query.onlyReversible }),
+    });
+  }
+
+  reverseStockMovement(input: ReverseStockMovementInput): Promise<ReverseStockMovementResult> {
+    return reverseStockMovement(this.inventory, input);
   }
 }
 
