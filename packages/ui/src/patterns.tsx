@@ -1,7 +1,7 @@
 /**
  * Composite patterns for the Aquarela Business Controller screens
- * (08_UI_UX.md §8.5 forms and tables, §8.6 mobile operational behavior, §8.7
- * visual direction; 07_SECURITY_AND_NFR.md §7.8).
+ * (08_UI_UX.md §8.5 forms and tables, §8.6 mobile operational behavior;
+ * visuals per `designer-agent-modern-saas-ui-brief.md` §11–§12, DEC-120).
  *
  * Every primitive here is a pure, hook-free function with token-driven inline
  * styles, exactly like `components.tsx`, so it renders identically under SSR
@@ -18,7 +18,7 @@ import type {
 } from "react";
 
 import { MIN_TOUCH_TARGET_PX, Table, Td, Th, cx } from "./components";
-import { color, radius, spacing, typography } from "./tokens";
+import { color, motion, radius, spacing, typography } from "./tokens";
 
 const fontSans = { fontFamily: typography.fontFamily.sans } as const;
 const fontDisplay = { fontFamily: typography.fontFamily.display } as const;
@@ -31,19 +31,24 @@ const controlStyle: CSSProperties = {
   padding: `${spacing[2]}px ${spacing[3]}px`,
   font: "inherit",
   fontSize: typography.fontSize.md,
-  color: color.text.primary,
+  color: color.ink.primary,
   outline: "none",
 };
 
-/** Bordered input frame; the border turns danger when a `TextField`-style error is set. */
+/**
+ * Quiet tonal field frame matching the redesigned `TextField` (brief §12):
+ * soft well surface, hairline border, medium radius, strong focus ring via
+ * the `aquarela-field:focus-within` rule in `uiGlobalCss`.
+ */
 function controlFrame(error: string | undefined): CSSProperties {
   return {
     display: "flex",
     alignItems: "center",
-    backgroundColor: color.background.surface,
-    border: `1px solid ${error ? color.status.danger.fg : color.border.default}`,
-    borderRadius: radius.sm,
+    backgroundColor: color.surface.well,
+    border: `1px solid ${error ? color.status.danger.border : color.border.subtle}`,
+    borderRadius: radius.md,
     minHeight: MIN_TOUCH_TARGET_PX,
+    transition: `border-color ${motion.duration.fast}ms ${motion.easing}`,
   };
 }
 
@@ -51,7 +56,7 @@ function controlFrame(error: string | undefined): CSSProperties {
 const unitStyle: CSSProperties = {
   padding: `0 ${spacing[3]}px`,
   fontSize: typography.fontSize.sm,
-  color: color.text.muted,
+  color: color.ink.secondary,
   borderLeft: `1px solid ${color.border.subtle}`,
   alignSelf: "stretch",
   display: "flex",
@@ -72,7 +77,7 @@ function FieldLabel({ htmlFor, label, required }: FieldLabelProps) {
       style={{
         fontSize: typography.fontSize.sm,
         fontWeight: typography.fontWeight.medium,
-        color: color.text.secondary,
+        color: color.ink.secondary,
       }}
     >
       {label}
@@ -109,7 +114,7 @@ function FieldMessage({ helpId, errorId, help, error }: FieldMessageProps) {
     return (
       <p
         id={helpId}
-        style={{ margin: 0, fontSize: typography.fontSize.sm, color: color.text.muted }}
+        style={{ margin: 0, fontSize: typography.fontSize.sm, color: color.ink.secondary }}
       >
         {help}
       </p>
@@ -464,14 +469,14 @@ export function CheckboxField({
           type="checkbox"
           defaultChecked={defaultChecked}
           aria-describedby={helpId}
-          style={{ width: 20, height: 20, accentColor: color.brand.navy, flexShrink: 0 }}
+          style={{ width: 20, height: 20, accentColor: color.accent.deep, flexShrink: 0 }}
         />
-        <span style={{ fontSize: typography.fontSize.md, color: color.text.primary }}>{label}</span>
+        <span style={{ fontSize: typography.fontSize.md, color: color.ink.primary }}>{label}</span>
       </label>
       {help ? (
         <p
           id={helpId}
-          style={{ margin: 0, fontSize: typography.fontSize.sm, color: color.text.muted }}
+          style={{ margin: 0, fontSize: typography.fontSize.sm, color: color.ink.secondary }}
         >
           {help}
         </p>
@@ -499,6 +504,8 @@ export interface DataTableProps {
   emptyMessage?: string;
   /** When provided, the first column of each row is wrapped in a link to this href. */
   rowHref?: (row: DataTableRow, index: number) => string;
+  /** Sticky header hook for long tables (brief §11). */
+  stickyHeader?: boolean;
 }
 
 /** Column alignment/width as a partial style; kept empty when unset. */
@@ -509,17 +516,36 @@ function columnStyle(column: DataTableColumn): CSSProperties {
   return style;
 }
 
+/** Generous row height (brief §11): one spacing step more vertically than `Td`. */
+const dataCellBase: CSSProperties = {
+  padding: `${spacing[4]}px ${spacing[3]}px`,
+};
+
 /**
- * Generic table over `Table`/`Th`/`Td` with an empty state and an optional
- * per-row link (§8.5 tables, §8.4 empty states). Rows are plain column-keyed
- * records so callers map domain records without inventing a view model.
+ * Lightweight table over `Table`/`Th`/`Td` (brief §11): quiet metadata-scale
+ * column labels, soft horizontal separators only, tonal row hover via the
+ * `aquarela-table` class hook, optional sticky header, and an optional
+ * per-row link on the first column. Rows are plain column-keyed records so
+ * callers map domain records without inventing a view model.
  */
-export function DataTable({ caption, columns, rows, emptyMessage, rowHref }: DataTableProps) {
+export function DataTable({
+  caption,
+  columns,
+  rows,
+  emptyMessage,
+  rowHref,
+  stickyHeader = false,
+}: DataTableProps) {
   const isEmpty = rows.length === 0;
   // exactOptionalPropertyTypes: only forward emptyMessage when it is set.
   const emptyProps = isEmpty && emptyMessage !== undefined ? { emptyMessage } : {};
   return (
-    <Table caption={caption} columnCount={columns.length} {...emptyProps}>
+    <Table
+      caption={caption}
+      columnCount={columns.length}
+      stickyHeader={stickyHeader}
+      {...emptyProps}
+    >
       <thead>
         <tr>
           {columns.map((column) => (
@@ -535,9 +561,18 @@ export function DataTable({ caption, columns, rows, emptyMessage, rowHref }: Dat
           return (
             <tr key={index}>
               {columns.map((column, columnIndex) => (
-                <Td key={column.key} style={columnStyle(column)}>
+                <Td key={column.key} style={{ ...dataCellBase, ...columnStyle(column) }}>
                   {href && columnIndex === 0 ? (
-                    <a href={href} style={{ color: color.brand.berry }}>
+                    <a
+                      href={href}
+                      style={{
+                        color: color.ink.primary,
+                        fontWeight: typography.fontWeight.medium,
+                        textDecoration: "underline",
+                        textDecorationColor: color.border.strong,
+                        textUnderlineOffset: 3,
+                      }}
+                    >
                       {row[column.key]}
                     </a>
                   ) : (
@@ -559,7 +594,11 @@ export interface FilterBarProps {
   children: ReactNode;
 }
 
-/** Compact toolbar row for filters/search on the cream canvas (§8.5 saved filters). */
+/**
+ * Quiet filter toolbar (brief §12): a hairline-bordered surface strip that
+ * hosts chips, segmented controls, search and date-range fields in one row.
+ * Compose it from `FilterChip`, `SegmentedControl`, `Search` and `DateField`.
+ */
 export function FilterBar({ children }: FilterBarProps) {
   return (
     <div
@@ -570,9 +609,9 @@ export function FilterBar({ children }: FilterBarProps) {
         alignItems: "flex-end",
         gap: spacing[3],
         padding: `${spacing[3]}px ${spacing[4]}px`,
-        backgroundColor: color.background.surfaceAlt,
+        backgroundColor: color.surface.base,
         border: `1px solid ${color.border.subtle}`,
-        borderRadius: radius.md,
+        borderRadius: radius.lg,
       }}
     >
       {children}
@@ -591,10 +630,14 @@ export interface BreadcrumbsProps {
   items: readonly BreadcrumbItem[];
 }
 
-/** Small muted trail; the last item is the current page (`aria-current`) (§8.1). */
+/** Quiet metadata-scale trail; the last item is the current page (`aria-current`) (§8.1). */
 export function Breadcrumbs({ items }: BreadcrumbsProps) {
   return (
-    <nav aria-label="Breadcrumb" style={{ ...fontSans, fontSize: typography.fontSize.sm }}>
+    <nav
+      aria-label="Breadcrumb"
+      className="aquarela-crumb"
+      style={{ ...fontSans, fontSize: typography.fontSize.sm }}
+    >
       <ol
         style={{
           display: "flex",
@@ -604,7 +647,7 @@ export function Breadcrumbs({ items }: BreadcrumbsProps) {
           margin: 0,
           padding: 0,
           listStyle: "none",
-          color: color.text.muted,
+          color: color.ink.tertiary,
         }}
       >
         {items.map((item, index) => {
@@ -620,14 +663,17 @@ export function Breadcrumbs({ items }: BreadcrumbsProps) {
                 {item.href && !current ? (
                   <a
                     href={item.href}
-                    style={{ color: color.text.secondary, textDecoration: "none" }}
+                    style={{ color: color.ink.secondary, textDecoration: "none" }}
                   >
                     {item.label}
                   </a>
                 ) : (
                   <span
                     aria-current={current ? "page" : undefined}
-                    style={{ color: color.text.muted }}
+                    style={{
+                      color: current ? color.ink.primary : color.ink.tertiary,
+                      fontWeight: current ? typography.fontWeight.medium : undefined,
+                    }}
                   >
                     {item.label}
                   </span>
@@ -660,8 +706,8 @@ export function DescriptionList({ items }: DescriptionListProps) {
         ...fontSans,
         display: "grid",
         gridTemplateColumns: "minmax(8rem, max-content) 1fr",
-        rowGap: spacing[2],
-        columnGap: spacing[4],
+        rowGap: spacing[3],
+        columnGap: spacing[5],
         margin: 0,
       }}
     >
@@ -670,13 +716,14 @@ export function DescriptionList({ items }: DescriptionListProps) {
           <dt
             style={{
               fontSize: typography.fontSize.sm,
-              color: color.text.muted,
+              color: color.ink.tertiary,
               fontWeight: typography.fontWeight.medium,
+              paddingTop: 2,
             }}
           >
             {item.term}
           </dt>
-          <dd style={{ margin: 0, fontSize: typography.fontSize.md, color: color.text.primary }}>
+          <dd style={{ margin: 0, fontSize: typography.fontSize.md, color: color.ink.primary }}>
             {item.description}
           </dd>
         </Fragment>
@@ -696,21 +743,22 @@ export interface FormSectionProps {
 /** Titled group of related fields (§8.5: effective-date conflicts visible before submit). */
 export function FormSection({ title, description, children }: FormSectionProps) {
   return (
-    <section style={{ display: "flex", flexDirection: "column", gap: spacing[3], ...fontSans }}>
+    <section style={{ display: "flex", flexDirection: "column", gap: spacing[4], ...fontSans }}>
       <div style={{ display: "flex", flexDirection: "column", gap: spacing[1] }}>
         <h2
           style={{
             ...fontDisplay,
             margin: 0,
-            fontSize: typography.fontSize.xl,
-            fontWeight: typography.fontWeight.semibold,
-            color: color.text.primary,
+            fontSize: typography.fontSize.lg,
+            fontWeight: typography.fontWeight.medium,
+            color: color.ink.primary,
+            letterSpacing: "-0.01em",
           }}
         >
           {title}
         </h2>
         {description ? (
-          <p style={{ margin: 0, fontSize: typography.fontSize.sm, color: color.text.secondary }}>
+          <p style={{ margin: 0, fontSize: typography.fontSize.sm, color: color.ink.secondary }}>
             {description}
           </p>
         ) : null}
@@ -733,8 +781,9 @@ export function FormActions({ children }: FormActionsProps) {
         display: "flex",
         flexWrap: "wrap",
         justifyContent: "flex-end",
+        alignItems: "center",
         gap: spacing[3],
-        paddingTop: spacing[4],
+        paddingTop: spacing[5],
         borderTop: `1px solid ${color.border.subtle}`,
       }}
     >
@@ -756,10 +805,14 @@ export interface TabsProps {
   ariaLabel: string;
 }
 
-/** Link-based area-section tabs: no client state, the router owns the hrefs (§8.1). */
+/**
+ * Link-based area-section tabs styled as a quiet segmented/filter row
+ * (brief §12): the active tab gets the accent tint, not a heavy filled
+ * block. No client state; the router owns the hrefs (§8.1).
+ */
 export function Tabs({ items, ariaLabel }: TabsProps) {
   return (
-    <nav aria-label={ariaLabel}>
+    <nav aria-label={ariaLabel} className="aquarela-tabs">
       <ul
         style={{
           ...fontSans,
@@ -769,7 +822,6 @@ export function Tabs({ items, ariaLabel }: TabsProps) {
           margin: 0,
           padding: 0,
           listStyle: "none",
-          borderBottom: `1px solid ${color.border.subtle}`,
         }}
       >
         {items.map((item) => (
@@ -782,10 +834,12 @@ export function Tabs({ items, ariaLabel }: TabsProps) {
                 alignItems: "center",
                 minHeight: MIN_TOUCH_TARGET_PX,
                 padding: `0 ${spacing[4]}px`,
-                color: item.active ? color.brand.navy : color.text.secondary,
-                borderBottom: `2px solid ${item.active ? color.brand.berry : "transparent"}`,
+                borderRadius: radius.md,
+                backgroundColor: item.active ? color.accent.soft : "transparent",
+                color: item.active ? color.ink.primary : color.ink.secondary,
+                boxShadow: item.active ? `inset 0 0 0 1px ${color.accent.deep}` : "none",
                 fontWeight: item.active
-                  ? typography.fontWeight.semibold
+                  ? typography.fontWeight.medium
                   : typography.fontWeight.regular,
                 fontSize: typography.fontSize.md,
                 textDecoration: "none",
@@ -821,7 +875,7 @@ const progressTones: Record<ProgressTone, string> = {
   danger: color.status.danger.fg,
 };
 
-/** Token-coloured progress bar; `value` is clamped into `[0, max]` (§7.8, §8.7). */
+/** Thin token-coloured progress bar; `value` is clamped into `[0, max]` (§7.8, §8.7). */
 export function ProgressBar({ value, max = 100, tone = "info", label }: ProgressBarProps) {
   const safeMax = max > 0 ? max : 100;
   const finite = Number.isFinite(value) ? value : 0;
@@ -831,7 +885,7 @@ export function ProgressBar({ value, max = 100, tone = "info", label }: Progress
     <div style={{ ...fontSans, display: "flex", flexDirection: "column", gap: spacing[1] }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: spacing[2] }}>
         {label ? (
-          <span style={{ fontSize: typography.fontSize.sm, color: color.text.secondary }}>
+          <span style={{ fontSize: typography.fontSize.sm, color: color.ink.secondary }}>
             {label}
           </span>
         ) : (
@@ -839,7 +893,11 @@ export function ProgressBar({ value, max = 100, tone = "info", label }: Progress
         )}
         <span
           aria-hidden="true"
-          style={{ fontSize: typography.fontSize.sm, color: color.text.muted }}
+          style={{
+            fontSize: typography.fontSize.sm,
+            color: color.ink.tertiary,
+            fontVariantNumeric: typography.fontVariantNumeric.tabular,
+          }}
         >
           {`${Math.round(percent)}%`}
         </span>
@@ -852,8 +910,8 @@ export function ProgressBar({ value, max = 100, tone = "info", label }: Progress
         aria-label={label}
         style={{
           width: "100%",
-          height: 8,
-          backgroundColor: color.background.inset,
+          height: 4,
+          backgroundColor: color.surface.well,
           borderRadius: radius.pill,
           overflow: "hidden",
         }}

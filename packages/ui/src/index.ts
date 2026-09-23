@@ -3,5 +3,6 @@ export * from "./tokens";
 export * from "./components";
 export * from "./primitives";
 export * from "./shell";
+export * from "./charts";
 export * from "./patterns";
 export * from "./modal";

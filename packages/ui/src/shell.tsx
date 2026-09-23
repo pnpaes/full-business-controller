@@ -1,16 +1,19 @@
 /**
- * Application-shell primitives for the Aquarela Business Controller
- * (08_UI_UX.md §8.1 navigation and scope, §8.4 dashboard rules, §8.7 visual
- * direction).
+ * Application-shell primitives for the Aquarela Business Controller.
+ *
+ * Visual direction: `designer-agent-modern-saas-ui-brief.md` (modern editorial
+ * SaaS), recorded as DEC-120 — supersedes 08_UI_UX.md §8.7 for visuals only.
+ * Accessibility, business logic and the component APIs are unchanged
+ * (08_UI_UX.md §8.3–§8.9, 07_SECURITY_AND_NFR.md §7.8 still govern behaviour).
  *
  * Server-component compatible: no hooks, no effects, no client state.
  * All styling is token-driven inline styles; the few rules inline styles
- * cannot express (hover, focus) are noted on the component that needs them.
+ * cannot express (hover) live in `uiGlobalCss` (components.tsx).
  */
 import type { ReactNode } from "react";
 
 import { MIN_TOUCH_TARGET_PX } from "./components";
-import { color, elevation, radius, spacing, typography } from "./tokens";
+import { color, elevation, motion, radius, spacing, typography } from "./tokens";
 
 const fontSans = { fontFamily: typography.fontFamily.sans } as const;
 const fontDisplay = { fontFamily: typography.fontFamily.display } as const;
@@ -22,25 +25,26 @@ export interface NavItemProps {
   label: string;
   /** Optional leading glyph; callers pass inline SVG. Decorative (`aria-hidden`). */
   icon?: ReactNode;
-  /** Marks the current area; sets `aria-current="page"` and the gold cue (§8.7). */
+  /** Marks the current area; sets `aria-current="page"` and the quiet cues (§6). */
   active?: boolean;
   /** Destination. Rendered as a plain `<a>`; the app router owns real hrefs. */
   href?: string;
 }
 
 /**
- * One navigation row for the dark-navy sidebar (§8.1, §8.7): ≥44px tall for
- * kitchen/phone use, cream text, gold marker and label when active.
+ * One slim, quiet navigation row (brief §6): ≥44px tall, muted text, and for
+ * the current area a tinted background, a thin 2px accent indicator and
+ * slightly stronger text — never a large filled primary block.
  *
- * `color.navigation.backgroundHover` cannot be expressed inline (server
- * component, no handlers), so a neutral darker navy backs the active row; the
- * hover wash is left to the shell stylesheet.
+ * Hover cannot be expressed inline (server component), so the row carries the
+ * `aquarela-nav-item` class backed by a rule in `uiGlobalCss`.
  */
 export function NavItem({ label, icon, active = false, href }: NavItemProps) {
   return (
     <a
       href={href}
       aria-current={active ? "page" : undefined}
+      className="aquarela-nav-item"
       style={{
         ...fontSans,
         display: "flex",
@@ -48,12 +52,13 @@ export function NavItem({ label, icon, active = false, href }: NavItemProps) {
         gap: spacing[3],
         minHeight: MIN_TOUCH_TARGET_PX,
         padding: `${spacing[2]}px ${spacing[4]}px`,
-        color: active ? color.navigation.active : color.navigation.text,
+        color: active ? color.navigation.active : color.navigation.textMuted,
         backgroundColor: active ? color.navigation.backgroundHover : "transparent",
-        borderLeft: `3px solid ${active ? color.navigation.active : "transparent"}`,
+        borderLeft: `2px solid ${active ? color.navigation.active : "transparent"}`,
         textDecoration: "none",
         fontSize: typography.fontSize.md,
-        fontWeight: active ? typography.fontWeight.semibold : typography.fontWeight.regular,
+        fontWeight: active ? typography.fontWeight.medium : typography.fontWeight.regular,
+        transition: `color ${motion.duration.fast}ms ${motion.easing}, background-color ${motion.duration.fast}ms ${motion.easing}`,
       }}
     >
       {icon ? (
@@ -70,7 +75,7 @@ export interface NavListProps {
   children: ReactNode;
 }
 
-/** Vertical stack of `NavItem`s on the dark-navy navigation surface (§8.1). */
+/** Vertical stack of `NavItem`s on the dark-neutral navigation surface (§6). */
 export function NavList({ children }: NavListProps) {
   return (
     <nav
@@ -102,10 +107,10 @@ export interface ScopeBarProps {
 }
 
 /**
- * The persistent scope control from §8.1: company/location and date context on
- * the cream canvas. Display-only until the shell wires real controls, so the
- * values are explicitly marked as placeholders (§8.4: every figure shows its
- * period and scope).
+ * The persistent scope context from §8.1, rendered as quiet metadata (brief
+ * §6/§21): no box, no shouting "placeholder" chip — the values themselves say
+ * what they are. Display-only until the shell wires real controls (§8.4:
+ * every figure shows its period and scope).
  */
 export function ScopeBar({ company, location, dateLabel, onChangeHint }: ScopeBarProps) {
   return (
@@ -116,38 +121,23 @@ export function ScopeBar({ company, location, dateLabel, onChangeHint }: ScopeBa
         alignItems: "center",
         flexWrap: "wrap",
         gap: spacing[3],
-        padding: `${spacing[2]}px ${spacing[4]}px`,
-        backgroundColor: color.background.surfaceAlt,
-        border: `1px solid ${color.border.subtle}`,
-        borderRadius: radius.md,
+        padding: `${spacing[1]}px 0`,
         fontSize: typography.fontSize.sm,
         color: color.text.secondary,
       }}
     >
-      <span>
-        <strong style={{ color: color.text.primary, fontWeight: typography.fontWeight.semibold }}>
-          {company}
-        </strong>
-        {` · ${location}`}
+      <span style={{ color: color.text.primary, fontWeight: typography.fontWeight.medium }}>
+        {company}
       </span>
       <span aria-hidden="true" style={{ color: color.border.strong }}>
-        |
+        ·
+      </span>
+      <span>{location}</span>
+      <span aria-hidden="true" style={{ color: color.border.strong }}>
+        ·
       </span>
       <span>{dateLabel}</span>
-      <span
-        style={{
-          ...fontSans,
-          fontSize: typography.fontSize.xs,
-          color: color.text.muted,
-          backgroundColor: color.background.inset,
-          border: `1px solid ${color.border.subtle}`,
-          borderRadius: radius.pill,
-          padding: `0 ${spacing[2]}px`,
-        }}
-      >
-        placeholder
-      </span>
-      <span style={{ color: color.text.muted, fontStyle: "italic" }}>
+      <span style={{ color: color.text.muted, fontSize: typography.fontSize.xs }}>
         {onChangeHint ?? "Scope controls are not wired yet."}
       </span>
     </div>
@@ -165,6 +155,17 @@ export interface KpiCardProps {
   delta?: string;
   /** §8.4 line: period · scope · comparison · freshness. */
   meta: ReactNode;
+  /** Optional tiny trend direction; renders a small arrow beside the delta. */
+  trend?: "up" | "down" | "flat";
+  /** Optional subtle comparison line under the value (e.g. "vs previous month"). */
+  comparison?: ReactNode;
+  /** Optional micro-chart, visually secondary to the number (brief §9). */
+  sparkline?: {
+    points: readonly number[];
+    tone?: SparklineTone | undefined;
+    comparisonPoints?: readonly number[] | undefined;
+    ariaLabel: string;
+  };
 }
 
 /** Sign → tone mapping for the delta chip (§8.7: green healthy, gold review). */
@@ -174,8 +175,14 @@ function deltaTone(delta: string) {
   return color.status.warning;
 }
 
-/** A dashboard KPI tile: muted label, serif display value, delta chip, meta line (§8.3, §8.4). */
-export function KpiCard({ label, value, delta, meta }: KpiCardProps) {
+const trendGlyphs = { up: "↗", down: "↘", flat: "→" } as const;
+
+/**
+ * The elegant metric module (brief §9): metadata-scale label, large light
+ * tabular value, optional compact delta chip with trend arrow, optional
+ * sparkline and comparison line, quiet meta. A calm module, not a heavy card.
+ */
+export function KpiCard({ label, value, delta, meta, trend, comparison, sparkline }: KpiCardProps) {
   const tone = delta ? deltaTone(delta) : null;
   return (
     <section
@@ -186,8 +193,8 @@ export function KpiCard({ label, value, delta, meta }: KpiCardProps) {
         gap: spacing[2],
         backgroundColor: color.background.surface,
         border: `1px solid ${color.border.subtle}`,
-        borderRadius: radius.lg,
-        boxShadow: elevation.sm,
+        borderRadius: radius.xl,
+        boxShadow: elevation.none,
         padding: spacing[5],
       }}
     >
@@ -204,9 +211,11 @@ export function KpiCard({ label, value, delta, meta }: KpiCardProps) {
         <span
           style={{
             ...fontDisplay,
-            fontSize: typography.fontSize["3xl"],
-            fontWeight: typography.fontWeight.semibold,
-            lineHeight: typography.lineHeight.tight,
+            fontSize: typography.fontSize["4xl"],
+            fontWeight: typography.fontWeight.regular,
+            lineHeight: typography.lineHeight.display,
+            letterSpacing: "-0.01em",
+            fontVariantNumeric: typography.fontVariantNumeric.tabular,
             color: color.text.primary,
           }}
         >
@@ -215,19 +224,45 @@ export function KpiCard({ label, value, delta, meta }: KpiCardProps) {
         {delta && tone ? (
           <span
             style={{
-              fontSize: typography.fontSize.sm,
-              fontWeight: typography.fontWeight.semibold,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: spacing[1],
+              fontSize: typography.fontSize.xs,
+              fontWeight: typography.fontWeight.medium,
               color: tone.fg,
               backgroundColor: tone.bg,
-              border: `1px solid ${tone.border}`,
+              border: `1px solid ${color.border.subtle}`,
               borderRadius: radius.pill,
               padding: `0 ${spacing[2]}px`,
             }}
           >
+            {trend ? <span aria-hidden="true">{trendGlyphs[trend]}</span> : null}
             {delta}
           </span>
         ) : null}
       </div>
+      {comparison ? (
+        <span
+          style={{
+            fontSize: typography.fontSize.xs,
+            color: color.text.muted,
+          }}
+        >
+          {comparison}
+        </span>
+      ) : null}
+      {sparkline ? (
+        <div style={{ marginTop: spacing[1], maxWidth: 220 }}>
+          <Sparkline
+            points={sparkline.points}
+            tone={sparkline.tone}
+            comparisonPoints={sparkline.comparisonPoints}
+            ariaLabel={sparkline.ariaLabel}
+            width={200}
+            height={40}
+          />
+        </div>
+      ) : null}
       <span
         style={{
           fontSize: typography.fontSize.xs,
@@ -255,9 +290,9 @@ export interface SectionCardProps {
 }
 
 /**
- * Titled panel using the same surface/border/radius tokens as `Card`/`Panel`
- * (§8.7): white surface, subtle border, large radius, serif title. Adds an
- * `actions` slot that `Panel` does not have.
+ * A data panel (brief §7/§8): 20px radius, 1px subtle border, no shadow, a
+ * surface one step above the canvas, module-title-scale heading and quiet
+ * meta, with an `actions` slot.
  */
 export function SectionCard({
   title,
@@ -272,8 +307,8 @@ export function SectionCard({
       style={{
         backgroundColor: color.background.surface,
         border: `1px solid ${color.border.subtle}`,
-        borderRadius: radius.lg,
-        boxShadow: elevation.sm,
+        borderRadius: radius["2xl"],
+        boxShadow: elevation.none,
         padding: spacing[5],
       }}
     >
@@ -297,10 +332,10 @@ export function SectionCard({
         >
           <Heading
             style={{
-              ...fontDisplay,
+              ...fontSans,
               margin: 0,
-              fontSize: typography.fontSize.xl,
-              fontWeight: typography.fontWeight.semibold,
+              fontSize: typography.fontSize.lg,
+              fontWeight: typography.fontWeight.medium,
               color: color.text.primary,
             }}
           >
@@ -308,7 +343,11 @@ export function SectionCard({
           </Heading>
           {meta ? (
             <span
-              style={{ ...fontSans, fontSize: typography.fontSize.sm, color: color.text.muted }}
+              style={{
+                ...fontSans,
+                fontSize: typography.fontSize.xs,
+                color: color.text.muted,
+              }}
             >
               {meta}
             </span>
@@ -333,7 +372,11 @@ export interface EmptyStateProps {
   action?: ReactNode;
 }
 
-/** Centred muted block that explains a missing source or setup step (§8.4, §8.7). */
+/**
+ * Centred, calm block that explains a missing source or setup step (§8.4,
+ * brief §16/§21): a quiet solid border and tonal surface instead of a heavy
+ * dashed frame, with a small neutral mark above the title.
+ */
 export function EmptyState({ title, children, action }: EmptyStateProps) {
   return (
     <div
@@ -344,18 +387,28 @@ export function EmptyState({ title, children, action }: EmptyStateProps) {
         alignItems: "center",
         textAlign: "center",
         gap: spacing[2],
-        padding: `${spacing[8]}px ${spacing[5]}px`,
-        backgroundColor: color.background.surfaceAlt,
-        border: `1px dashed ${color.border.default}`,
-        borderRadius: radius.lg,
+        padding: `${spacing[12]}px ${spacing[6]}px`,
+        backgroundColor: color.background.surface,
+        border: `1px solid ${color.border.subtle}`,
+        borderRadius: radius["2xl"],
         color: color.text.muted,
       }}
     >
       <span
+        aria-hidden="true"
         style={{
-          ...fontDisplay,
+          width: 28,
+          height: 2,
+          borderRadius: radius.pill,
+          backgroundColor: color.border.strong,
+          marginBottom: spacing[2],
+        }}
+      />
+      <span
+        style={{
+          ...fontSans,
           fontSize: typography.fontSize.lg,
-          fontWeight: typography.fontWeight.semibold,
+          fontWeight: typography.fontWeight.medium,
           color: color.text.secondary,
         }}
       >
@@ -380,16 +433,19 @@ export function EmptyState({ title, children, action }: EmptyStateProps) {
 
 const sparkTones = {
   navy: color.dataViz.categorical[0],
-  berry: color.dataViz.categorical[1],
+  berry: color.dataViz.categorical[3],
   green: color.dataViz.categorical[2],
-  gold: color.dataViz.categorical[3],
-  teal: color.dataViz.categorical[4],
+  gold: color.dataViz.categorical[7],
+  teal: color.dataViz.categorical[1],
   plum: color.dataViz.categorical[5],
   slate: color.dataViz.categorical[6],
-  orange: color.dataViz.categorical[7],
+  orange: color.dataViz.categorical[4],
 } as const;
 
 export type SparklineTone = keyof typeof sparkTones;
+
+/** Pale neutral used for comparison series (brief §10). */
+const comparisonStroke = color.dataViz.sequential.navy[1];
 
 export interface SparklineProps {
   /** Series values in render order; fewer than two renders a flat line. */
@@ -397,15 +453,20 @@ export interface SparklineProps {
   width?: number;
   height?: number;
   /** Categorical chart colour (§8.7 data-viz tokens); default navy. */
-  tone?: SparklineTone;
+  tone?: SparklineTone | undefined;
   /** Required accessible name, rendered as `role="img"` + `aria-label` (§7.8). */
   ariaLabel: string;
+  /** Optional pale neutral comparison series drawn behind the accent series. */
+  comparisonPoints?: readonly number[] | undefined;
+  /** Optional visually-hidden longer description for screen readers. */
+  summary?: string | undefined;
 }
 
 /**
- * Dependency-free inline SVG sparkline: a polyline plus a soft area fill, drawn
- * from the `dataViz.categorical` tokens. Charts answer a named management
- * question (§8.4) — put that question in `ariaLabel`.
+ * Dependency-free inline SVG sparkline (brief §9/§10): a thin accent stroke
+ * with rounded ends, a very subtle baseline, an optional pale comparison
+ * series and a small highlight on the last value. Charts answer a named
+ * management question (§8.4) — put that question in `ariaLabel`.
  */
 export function Sparkline({
   points,
@@ -413,11 +474,16 @@ export function Sparkline({
   height = 40,
   tone = "navy",
   ariaLabel,
+  comparisonPoints,
+  summary,
 }: SparklineProps) {
-  const pad = 2;
+  const pad = 3;
   const source = points.length >= 2 ? points : [points[0] ?? 0, points[0] ?? 0];
-  const min = Math.min(...source);
-  const max = Math.max(...source);
+  const comparison =
+    comparisonPoints && comparisonPoints.length >= 2 ? comparisonPoints : undefined;
+  const all = comparison ? [...source, ...comparison] : source;
+  const min = Math.min(...all);
+  const max = Math.max(...all);
   const range = max - min;
   const stepX = (width - pad * 2) / (source.length - 1);
   const xy = source.map((point, index) => {
@@ -426,42 +492,91 @@ export function Sparkline({
     const y = pad + (height - pad * 2) * (1 - ratio);
     return { x, y };
   });
-  const first = xy[0] ?? { x: pad, y: height / 2 };
   const last = xy[xy.length - 1] ?? { x: width - pad, y: height / 2 };
   const line = xy.map((c) => `${c.x.toFixed(2)},${c.y.toFixed(2)}`).join(" ");
-  const baseline = height - pad;
-  const areaPath = `M ${line} L ${last.x.toFixed(2)},${baseline} L ${first.x.toFixed(2)},${baseline} Z`;
   const stroke = sparkTones[tone];
 
-  return (
+  const comparisonLine = comparison
+    ? comparison
+        .map((point, index) => {
+          const x = pad + ((width - pad * 2) / (comparison.length - 1)) * index;
+          const ratio = range === 0 ? 0.5 : (point - min) / range;
+          const y = pad + (height - pad * 2) * (1 - ratio);
+          return `${x.toFixed(2)},${y.toFixed(2)}`;
+        })
+        .join(" ")
+    : null;
+
+  const svg = (
     <svg
       role="img"
       aria-label={ariaLabel}
       width={width}
       height={height}
       viewBox={`0 0 ${width} ${height}`}
-      preserveAspectRatio="none"
       style={{ display: "block" }}
     >
-      <path d={areaPath} fill={stroke} opacity={0.12} stroke="none" />
+      {/* Very subtle baseline (brief §10). */}
+      <line
+        x1={pad}
+        x2={width - pad}
+        y1={height - pad}
+        y2={height - pad}
+        stroke={color.border.subtle}
+        strokeWidth={1}
+      />
+      {comparisonLine ? (
+        <polyline
+          points={comparisonLine}
+          fill="none"
+          stroke={comparisonStroke}
+          strokeWidth={1.5}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      ) : null}
       <polyline
         points={line}
         fill="none"
         stroke={stroke}
-        strokeWidth={2}
+        strokeWidth={1.5}
         strokeLinecap="round"
         strokeLinejoin="round"
       />
+      {/* Small highlight for the last/active value. */}
+      <circle cx={last.x} cy={last.y} r={2.5} fill={stroke} />
     </svg>
+  );
+
+  return summary ? (
+    <span style={{ display: "inline-block" }}>
+      {svg}
+      <span
+        style={{
+          position: "absolute",
+          width: 1,
+          height: 1,
+          margin: -1,
+          overflow: "hidden",
+          clip: "rect(0 0 0 0)",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {summary}
+      </span>
+    </span>
+  ) : (
+    svg
   );
 }
 
 /* ---------------------------- WatercolorBackdrop --------------------------- */
 
 /**
- * CSS-only watercolor blobs in berry/green/gold at low opacity over cream
- * (§8.7: watercolor accents limited to sign-in, empty states and occasional
- * section cues). `aria-hidden` decoration; position a `relative` ancestor.
+ * Very restrained CSS-only watercolor washes (brief §23: avoid gradients
+ * everywhere; §8.7 allows watercolor on sign-in/empty states only) — two
+ * low-opacity tonal zones over the canvas. `aria-hidden` decoration;
+ * position a `relative` ancestor.
  */
 export function WatercolorBackdrop() {
   return (
@@ -474,9 +589,8 @@ export function WatercolorBackdrop() {
         pointerEvents: "none",
         backgroundColor: color.background.page,
         backgroundImage: [
-          `radial-gradient(circle at 15% 20%, ${color.brand.berry}1f, transparent 60%)`,
-          `radial-gradient(circle at 85% 15%, ${color.brand.green}1a, transparent 55%)`,
-          `radial-gradient(circle at 70% 85%, ${color.brand.gold}24, transparent 60%)`,
+          `radial-gradient(circle at 12% 18%, ${color.accent.soft}59, transparent 55%)`,
+          `radial-gradient(circle at 88% 82%, ${color.accent.secondary}2e, transparent 50%)`,
         ].join(", "),
       }}
     />

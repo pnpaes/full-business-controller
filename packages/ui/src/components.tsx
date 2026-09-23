@@ -167,6 +167,32 @@ export const uiGlobalCss = `
 .aquarela-tooltip:focus-within .aquarela-tooltip-bubble {
   display: block;
 }
+/* Navigation rows (brief §6): quiet hover wash on the dark nav surface. */
+.aquarela-nav-item {
+  transition: color ${motion.duration.fast}ms ${motion.easing},
+    background-color ${motion.duration.fast}ms ${motion.easing};
+}
+.aquarela-nav-item:hover:not([aria-current="page"]) {
+  color: ${color.navigation.text};
+  background-color: rgba(245, 246, 244, 0.05);
+}
+/* Tabs (patterns.tsx): quiet hover wash on inactive tabs (brief §12). */
+.aquarela-tabs a {
+  transition: background-color ${motion.duration.fast}ms ${motion.easing},
+    color ${motion.duration.fast}ms ${motion.easing},
+    box-shadow ${motion.duration.fast}ms ${motion.easing};
+}
+.aquarela-tabs a:hover:not([aria-current="page"]) {
+  background-color: ${color.surface.muted};
+  color: ${color.ink.primary};
+}
+/* Breadcrumb links (patterns.tsx): quiet hover darken. */
+.aquarela-crumb a {
+  transition: color ${motion.duration.fast}ms ${motion.easing};
+}
+.aquarela-crumb a:hover {
+  color: ${color.ink.primary};
+}
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
