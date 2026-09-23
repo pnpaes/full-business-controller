@@ -315,15 +315,15 @@ Full detail for each item lives in its slice's handoff file and in
   and the 15-minute refresh stay open, the job layer gated on `ADR-0004`); net
   sales prefers the imported `net_amount`; cost is **ingredient-only**
   (ledger-derived) so contribution is **before labour/fees** and **full cost is
-   not reported** — the cost-card composition assembler is built (`DEC-111`) and
-   three of its four component resolvers now exist (`DEC-112`); the `RPT-003` normalized measures are
+  not reported** — the cost-card composition assembler is built (`DEC-111`) and
+  three of its four component resolvers now exist (`DEC-112`); the `RPT-003` normalized measures are
   undefined (totals only);
   `product.category` is free text; read access is provisional.
   `DEC-109` (13d) — menu-engineering thresholds are **computed medians** only
   (no Star/Puzzle labels, no approved-target rule), `option_kind='included'`
   excluded from popularity units, no add-on roll-up, and labour/fees/overhead/
   forecast-reliability/strategic-role have no per-product attribution.
-   is implemented, but the row-11 importer still never writes
+  is implemented, but the row-11 importer still never writes
   `sales_line.product_variant_id`, so the **mapping writer** remains the lead
   sub-task for real product labels. 13d also records: waste annotations are
   **`moving_average`-only** (`DEC-068`), and that filter also excludes
