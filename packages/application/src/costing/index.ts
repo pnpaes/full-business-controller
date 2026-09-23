@@ -11,6 +11,15 @@ export type {
   CalculateCostCardResult,
   CostCardComponentInput,
 } from "./cost-card";
+export { assembleCostCardComposition } from "./assemble-cost-card-composition";
+export type {
+  AssembleCostCardCompositionInput,
+  AssembleCostCardCompositionResult,
+  CostCardCompositionProvenance,
+  CostCardCompositionStore,
+  CostCardSnapshotOptions,
+} from "./assemble-cost-card-composition";
+export { createPostgresCostCardCompositionStore } from "./cost-card-composition-postgres-store";
 export { createPostgresCostCardStore } from "./cost-card-postgres-store";
 export type {
   CalculationSnapshotRecord,

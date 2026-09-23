@@ -2,6 +2,7 @@ import type { AuditInput } from "../auth";
 import type { ConversionEdge } from "../catalog";
 import type {
   AllergenRecord,
+  FindVariantRecipeAssignmentQuery,
   ListRecipesQuery,
   NewAllergenRecord,
   NewRecipeAllergenRecord,
@@ -18,7 +19,18 @@ import type {
   RecipeUnit,
   RecipeVersionRecord,
   SupplierPriceCandidate,
+  VariantRecipeAssignmentRecord,
 } from "./types";
+
+/** An effective-dated assignment row seeded into `FakeRecipeStore`. */
+export interface FakeRecipeAssignment {
+  readonly organizationId: string;
+  readonly productVariantId: string;
+  readonly locationId: string;
+  readonly recipeVersionId: string;
+  readonly effectiveFrom: Date;
+  readonly effectiveTo: Date | null;
+}
 
 /**
  * In-memory `RecipeStore` for the unit suite. It mirrors the observable contract
@@ -35,6 +47,7 @@ export class FakeRecipeStore implements RecipeStore {
   readonly allergenDeclarations: NewRecipeAllergenRecord[] = [];
   readonly subRecipeEdges: RecipeSubRecipeEdge[] = [];
   readonly conversions: ConversionEdge[] = [];
+  readonly variantRecipeAssignments: FakeRecipeAssignment[] = [];
   readonly supplierPrices = new Map<string, SupplierPriceCandidate[]>();
   readonly observations = new Map<string, RawCostObservation[]>();
   readonly audits: AuditInput[] = [];
@@ -109,6 +122,26 @@ export class FakeRecipeStore implements RecipeStore {
     const record: RecipeVersionRecord = { id: this.nextId("recipe-version"), ...input };
     this.versions.push(record);
     return Promise.resolve(record);
+  }
+
+  addVariantRecipeAssignment(input: FakeRecipeAssignment): void {
+    this.variantRecipeAssignments.push(input);
+  }
+
+  findVariantRecipeAssignment(
+    query: FindVariantRecipeAssignmentQuery,
+  ): Promise<VariantRecipeAssignmentRecord | undefined> {
+    const match = this.variantRecipeAssignments.find(
+      (row) =>
+        row.organizationId === query.organizationId &&
+        row.productVariantId === query.productVariantId &&
+        row.locationId === query.locationId &&
+        row.effectiveFrom.getTime() <= query.asOf.getTime() &&
+        (row.effectiveTo === null || query.asOf.getTime() < row.effectiveTo.getTime()),
+    );
+    return Promise.resolve(
+      match === undefined ? undefined : { recipeVersionId: match.recipeVersionId },
+    );
   }
 
   listRecipeLines(recipeVersionId: string): Promise<readonly RecipeLineRecord[]> {

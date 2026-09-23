@@ -18,6 +18,15 @@ function isNodeDatabase(db: Database): db is NodeDatabase {
   return typeof (db as NodeDatabase).transaction === "function";
 }
 
+/**
+ * The relational `query` API is present on both the pool database and a
+ * transaction, so this narrows the union for the `product_recipe_assignment`
+ * read that has no repository accessor.
+ */
+function relational(db: Database): NodeDatabase {
+  return db as NodeDatabase;
+}
+
 /** The DB `check` constraints restrict this to `unit_dimension`. */
 function toDimension(value: string): UnitDimension {
   return value as UnitDimension;
@@ -153,6 +162,27 @@ export function createPostgresRecipeStore(db: Database): RecipeStore {
       (await repo.listRecipeVersions(db, recipeId)).map(toRecipeVersion),
     createRecipeVersion: async (input) =>
       toRecipeVersion(await repo.createRecipeVersion(db, input)),
+    findVariantRecipeAssignment: async (query) => {
+      const variant = await relational(db).query.productVariant.findFirst({
+        columns: { id: true, organizationId: true },
+        where: (fields, { eq }) => eq(fields.id, query.productVariantId),
+      });
+      if (variant === undefined || variant.organizationId !== query.organizationId) {
+        return undefined;
+      }
+      // Half-open `[effectiveFrom, effectiveTo)`: the same predicate the sales
+      // store's `findVariantRecipe` uses (mirrors `findEffectivePriceVersion`).
+      const assignment = await relational(db).query.productRecipeAssignment.findFirst({
+        where: (fields, { and, eq, gt, isNull, lte, or }) =>
+          and(
+            eq(fields.productVariantId, query.productVariantId),
+            eq(fields.locationId, query.locationId),
+            lte(fields.effectiveFrom, query.asOf),
+            or(isNull(fields.effectiveTo), gt(fields.effectiveTo, query.asOf)),
+          ),
+      });
+      return assignment === undefined ? undefined : { recipeVersionId: assignment.recipeVersionId };
+    },
     listRecipeLines: async (recipeVersionId) =>
       (await repo.listRecipeLines(db, recipeVersionId)).map(toRecipeLine),
     createRecipeLine: async (input) => toRecipeLine(await repo.createRecipeLine(db, input)),

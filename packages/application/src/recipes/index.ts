@@ -47,6 +47,7 @@ export type {
 } from "./select-base-unit-cost";
 export type {
   AllergenRecord,
+  FindVariantRecipeAssignmentQuery,
   ListRecipesQuery,
   NewAllergenRecord,
   NewRecipeAllergenRecord,
@@ -63,4 +64,5 @@ export type {
   RecipeUnit,
   RecipeVersionRecord,
   SupplierPriceCandidate,
+  VariantRecipeAssignmentRecord,
 } from "./types";

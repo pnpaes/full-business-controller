@@ -27,6 +27,24 @@ export interface RecipeItemRecord {
   readonly currentCost: string | null;
 }
 
+export interface FindVariantRecipeAssignmentQuery {
+  readonly organizationId: string;
+  readonly productVariantId: string;
+  readonly locationId: string;
+  readonly asOf: Date;
+}
+
+/**
+ * The effective variant→recipe resolution for one location and instant. Only the
+ * assigned version id is exposed here; the recipe-cost assembler re-costs that
+ * version through `computeRecipeCost`. `product_recipe_assignment` has no
+ * repository accessor, so the Postgres adapter reads it through the
+ * relational-query client (the sales-store `findVariantRecipe` precedent).
+ */
+export interface VariantRecipeAssignmentRecord {
+  readonly recipeVersionId: string;
+}
+
 /** Filters for the recipe list read. `limit`/`offset` are applied by the store. */
 export interface ListRecipesQuery {
   readonly search?: string;
@@ -172,6 +190,16 @@ export interface RecipeStore {
   findRecipeVersion(recipeVersionId: string): Promise<RecipeVersionRecord | undefined>;
   listRecipeVersions(recipeId: string): Promise<readonly RecipeVersionRecord[]>;
   createRecipeVersion(input: NewRecipeVersionRecord): Promise<RecipeVersionRecord>;
+  /**
+   * The effective `product_recipe_assignment.recipe_version_id` for
+   * `(productVariantId, locationId)` at `asOf` (half-open
+   * `[effectiveFrom, effectiveTo)`), or `undefined` when the variant is not
+   * recipe-assigned at that location/instant. The variant is checked against the
+   * organization first, so a foreign variant reads as `undefined`.
+   */
+  findVariantRecipeAssignment(
+    query: FindVariantRecipeAssignmentQuery,
+  ): Promise<VariantRecipeAssignmentRecord | undefined>;
   listRecipeLines(recipeVersionId: string): Promise<readonly RecipeLineRecord[]>;
   createRecipeLine(input: NewRecipeLineRecord): Promise<RecipeLineRecord>;
   /** Every sub-recipe edge in the organization, for cycle detection (COST-002). */
