@@ -1,5 +1,27 @@
 # Reversibility log
 
+- **2026-09-23 settlement reconciliation nets line-level reversals
+  (`DEC-118`; 4 commits incl. the `docs(decisions)` commit; nothing pushed)**:
+  1. `docs(decisions)` (`DEC-118`); 2. `feat(persistence)` (the new read-only
+   `sumSalesLineGrossForChannelPeriod` aggregate + tests in
+   `packages/persistence/src/repositories/sales.ts`/
+   `sales.postgres.test.ts`); 3. `feat(application)` (`sumSalesForChannelPeriod`
+   delegating to it, the widened `reconcileSettlement` re-run patch + the
+   forwarded `updatedBy`, across `packages/application/src/reconciliation/**`);
+   4. this `docs(context)` update — each independently revertible with
+   `git revert <sha>`. **No migration, no schema change and no data written by
+   the slice** (migrations stay through `0062`; **89 tables**): the change is a
+   read change plus one new read-only aggregate over existing columns
+   (`sales_line.gross_amount`, `option_kind`, the transaction header's
+   `channel_id`/`currency`/`occurred_at`). **No posted fact is edited** — a
+   re-run changes only the re-derived reconciliation values
+   (`status`/`expected_amount`/`actual_amount`/`tolerance`/`difference`,
+   preserving `resolution_note`) and only on an explicit operator re-run
+   (the only caller is a `POST` route). Reverting the code restores the
+   header-basis read (a re-run would then re-derive the old figures); the
+   persistence and application layers revert independently. **No backfill and
+   no automatic historical re-evaluation.** `db:migrate` is a no-op on re-run
+   through `0062`. Nothing applied to DigitalOcean.
 - **2026-09-23 downstream-reconciliation reversal gate (`DEC-117`; 5 commits
   incl. the `docs(decisions)` commit; nothing pushed)**: 1. `docs(decisions)`
   (`DEC-117`); 2. `feat(domain)` (`packages/domain/src/reversal-gate.ts` +
