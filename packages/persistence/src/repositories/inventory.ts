@@ -1,4 +1,5 @@
-import { and, asc, eq, gte, isNull, lte, sql, type SQL } from "drizzle-orm";
+import { and, asc, eq, gte, isNull, lte, notExists, sql, type SQL } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 
 import type { Database } from "../client";
 import {
@@ -185,6 +186,17 @@ export interface ListStockMovementsQuery {
   readonly storageAreaId?: string;
   /** Absent = no filter; `null` = match only the no-lot movements. */
   readonly lotId?: string | null;
+  /** Filters `source_type`; pair with `sourceId` for one posted source (`DEC-116`). */
+  readonly sourceType?: string;
+  /** Filters `source_id`; the ledger cost nets by this key (`DEC-116`). */
+  readonly sourceId?: string;
+  /**
+   * Keep only originals that are not already reversed (`DEC-116`): excludes a
+   * movement that is itself a reversal (`reversal_of_id IS NOT NULL`) and one
+   * that already has a reversal (another movement whose `reversal_of_id` is its
+   * id). Absent = no filter; the generic read is unchanged.
+   */
+  readonly onlyReversible?: boolean;
   /** Filters `occurred_at >= occurredFrom` (the economic/booking date). */
   readonly occurredFrom?: Date;
   /** Filters `occurred_at <= asOf` (the economic/booking date, not `posted_at`). */
@@ -195,9 +207,9 @@ export interface ListStockMovementsQuery {
 
 /**
  * Movements in ledger order (`occurred_at`, then `posted_at`, then `id`), with
- * optional item/location/storage-area/lot filters, an `occurred_at` window and
- * limit/offset paging. Paging is applied after the ledger ordering, so page `n`
- * is a stable, contiguous slice of the ledger.
+ * optional item/location/storage-area/lot/source filters, an `occurred_at`
+ * window and limit/offset paging. Paging is applied after the ledger ordering,
+ * so page `n` is a stable, contiguous slice of the ledger.
  */
 export async function listStockMovements(
   db: Database,
@@ -209,6 +221,22 @@ export async function listStockMovements(
       : query.lotId === null
         ? isNull(stockMovement.lotId)
         : eq(stockMovement.lotId, query.lotId);
+  // `onlyReversible` (`DEC-116`): the movement is an original (not itself a
+  // reversal) and nothing reverses it, so a partially-reversed source lists only
+  // the still-correctable originals.
+  const reversal = alias(stockMovement, "reversal_movement");
+  const reversibleFilter =
+    query.onlyReversible === true
+      ? and(
+          isNull(stockMovement.reversalOfId),
+          notExists(
+            db
+              .select({ one: sql`1` })
+              .from(reversal)
+              .where(eq(reversal.reversalOfId, stockMovement.id)),
+          ),
+        )
+      : undefined;
   const statement = db
     .select()
     .from(stockMovement)
@@ -221,6 +249,9 @@ export async function listStockMovements(
           ? undefined
           : eq(stockMovement.storageAreaId, query.storageAreaId),
         lotFilter,
+        query.sourceType === undefined ? undefined : eq(stockMovement.sourceType, query.sourceType),
+        query.sourceId === undefined ? undefined : eq(stockMovement.sourceId, query.sourceId),
+        reversibleFilter,
         query.occurredFrom === undefined
           ? undefined
           : gte(stockMovement.occurredAt, query.occurredFrom),

@@ -1,4 +1,5 @@
 import { eq } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createDb, type DbClient } from "../client";
@@ -7,6 +8,8 @@ import {
   item,
   location,
   organization,
+  salesLine,
+  salesTransaction,
   stockBalance,
   stockLot,
   stockMovement,
@@ -331,6 +334,105 @@ describe.skipIf(!databaseUrl)("inventory repository", () => {
       expect(
         await listStockMovements(tx, { organizationId: orgId, itemId, locationId }),
       ).toHaveLength(2);
+    });
+  });
+
+  it("filters movements by source type and id (DEC-116)", async () => {
+    await inRollback(client.db, async (tx) => {
+      const area = await createTestStorageArea(tx, orgId, locationId);
+      const refs = { itemId, locationId, storageAreaId: area.id, unitId };
+      // `adjustment`/`correction` are the guard's no-op source types, so the
+      // filter is exercised without needing a real source row.
+      const firstSourceId = randomUUID();
+      const secondSourceId = randomUUID();
+      const first = await createTestStockMovement(tx, orgId, refs, {
+        sourceType: "adjustment",
+        sourceId: firstSourceId,
+      });
+      const second = await createTestStockMovement(tx, orgId, refs, {
+        sourceType: "adjustment",
+        sourceId: secondSourceId,
+      });
+      const third = await createTestStockMovement(tx, orgId, refs, {
+        sourceType: "correction",
+        sourceId: firstSourceId,
+      });
+
+      const bySource = await listStockMovements(tx, {
+        organizationId: orgId,
+        sourceType: "adjustment",
+        sourceId: firstSourceId,
+      });
+      expect(bySource.map((row) => row.id)).toEqual([first.id]);
+
+      const byType = await listStockMovements(tx, {
+        organizationId: orgId,
+        sourceType: "adjustment",
+      });
+      expect(byType.map((row) => row.id).sort()).toEqual([first.id, second.id].sort());
+
+      const byId = await listStockMovements(tx, {
+        organizationId: orgId,
+        sourceId: firstSourceId,
+      });
+      expect(byId.map((row) => row.id).sort()).toEqual([first.id, third.id].sort());
+    });
+  });
+
+  it("lists only un-reversed originals for a source with onlyReversible (DEC-116)", async () => {
+    await inRollback(client.db, async (tx) => {
+      const area = await createTestStorageArea(tx, orgId, locationId);
+      const refs = { itemId, locationId, storageAreaId: area.id, unitId };
+      // A real `sales_line` so the `sales_line` source guard accepts the
+      // movements (unlike `adjustment`/`correction`, which are guard no-ops).
+      const transactionRows = await tx
+        .insert(salesTransaction)
+        .values({
+          organizationId: orgId,
+          locationId,
+          sourceSystem: "frontline",
+          externalTransactionId: uniqueName("txn"),
+          occurredAt: at("2026-03-01T00:00:00.000Z"),
+          currency: "NOK",
+        })
+        .returning();
+      const lineRows = await tx
+        .insert(salesLine)
+        .values({
+          organizationId: orgId,
+          salesTransactionId: transactionRows[0]!.id,
+          quantity: "1",
+        })
+        .returning();
+      const source = { sourceType: "sales_line", sourceId: lineRows[0]!.id };
+
+      const unreversed = await createTestStockMovement(tx, orgId, refs, source);
+      const reversedOriginal = await createTestStockMovement(tx, orgId, refs, source);
+      // A movement that is itself a reversal: its `reversal_of_id` is set, so it
+      // must be excluded even though it copies the original's source.
+      await createTestStockMovement(tx, orgId, refs, {
+        ...source,
+        movementType: "correction",
+        quantityDelta: "-1",
+        reversalOfId: reversedOriginal.id,
+      });
+
+      const all = await listStockMovements(tx, {
+        organizationId: orgId,
+        sourceType: "sales_line",
+        sourceId: lineRows[0]!.id,
+      });
+      expect(all).toHaveLength(3);
+
+      const reversible = await listStockMovements(tx, {
+        organizationId: orgId,
+        sourceType: "sales_line",
+        sourceId: lineRows[0]!.id,
+        onlyReversible: true,
+      });
+      // The un-reversed original only: the reversed original is excluded (it has
+      // a reversal) and its reversal is excluded (it is itself a reversal).
+      expect(reversible.map((row) => row.id)).toEqual([unreversed.id]);
     });
   });
 
