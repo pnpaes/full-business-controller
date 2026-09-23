@@ -82,7 +82,7 @@ interface Area {
   readonly icon: ReactNode;
 }
 
-/** The ten primary areas in §8.1 order, with a simple line glyph each. */
+/** The §8.1 primary areas plus the `DEC-119` Close register, each with a line glyph. */
 const AREAS: readonly Area[] = [
   {
     href: "/",
@@ -171,6 +171,16 @@ const AREAS: readonly Area[] = [
     ),
   },
   {
+    href: "/close",
+    label: "Close",
+    icon: (
+      <Glyph>
+        <rect x="5" y="11" width="14" height="9" rx="2" />
+        <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+      </Glyph>
+    ),
+  },
+  {
     href: "/tasks",
     label: "Tasks",
     icon: (
@@ -214,7 +224,7 @@ function isActive(pathname: string, href: string): boolean {
 /* -------------------------------- Shell nav -------------------------------- */
 
 /**
- * The ten §8.1 areas as a `NavList`. Rendered by the desktop sidebar and, for
+ * The primary areas as a `NavList`. Rendered by the desktop sidebar and, for
  * smaller screens, inside the drawer. `onNavigate` lets the drawer close itself.
  */
 export function ShellNav({ onNavigate }: { onNavigate?: () => void }) {
