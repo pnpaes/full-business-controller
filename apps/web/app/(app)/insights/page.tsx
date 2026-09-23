@@ -59,6 +59,15 @@ export default function InsightsPage() {
           computed median thresholds, with waste annotations and a drill-down to its sales lines.
         </p>
       </SectionCard>
+      <SectionCard title="Operations" meta="RPT-004 · live data">
+        <p style={{ margin: 0, color: color.text.secondary, fontSize: typography.fontSize.md }}>
+          <a href="/insights/operations" style={backLink}>
+            Open report
+          </a>{" "}
+          — stock value and variance, production yield and waste by stage, each with its definition
+          and a drill-down to the underlying records.
+        </p>
+      </SectionCard>
       <SectionCard title="Planned screens" meta="08_UI_UX.md §8.3">
         <ul style={checklist}>
           {plannedScreens.map((screen) => (

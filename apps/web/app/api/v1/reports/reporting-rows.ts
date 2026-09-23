@@ -1,6 +1,9 @@
 import {
+  DEFAULT_OPERATIONS_REPORT_RECORD_LIMIT,
   DEFAULT_SALES_REPORT_RECORD_LIMIT,
+  OPERATIONS_REPORT_SECTIONS,
   SALES_REPORT_GROUP_BYS,
+  type OperationsReportSection,
   type SalesReportGroupBy,
 } from "@aquarela/application";
 import { SALES_REPORT_GRAINS, type SalesReportGrain } from "@aquarela/domain";
@@ -302,6 +305,153 @@ export function parseMenuEngineeringQuery(
       grain: grain as SalesReportGrain,
       ...(locationId === undefined ? {} : { locationId }),
       ...(channelId === undefined ? {} : { channelId }),
+    },
+  };
+}
+
+export interface OperationsReportQuery {
+  readonly from: string;
+  readonly to: string;
+  readonly grain: SalesReportGrain;
+  readonly locationId?: string;
+}
+
+export type ParsedOperationsReportQuery =
+  { readonly ok: true; readonly query: OperationsReportQuery } | { readonly ok: false };
+
+/**
+ * Parses the operational-report query (`RPT-004`): the required `from`/`to` ISO
+ * instants (`from <= to`; the flow windows are half-open `[from, to)`, the
+ * stock value is point-in-time), `grain` and the optional `locationId` filter.
+ * There is no `groupBy` (the sections are fixed) and no `asOf` (the stock-value
+ * valuation instant defaults to now in the application).
+ */
+export function parseOperationsReportQuery(
+  searchParams: URLSearchParams,
+): ParsedOperationsReportQuery {
+  const from = readOptionalText(searchParams, "from");
+  const to = readOptionalText(searchParams, "to");
+  if (
+    from === undefined ||
+    from === "invalid" ||
+    to === undefined ||
+    to === "invalid" ||
+    !isIsoInstant(from) ||
+    !isIsoInstant(to) ||
+    Date.parse(from) > Date.parse(to)
+  ) {
+    return { ok: false };
+  }
+  const grain = readOptionalVocab(searchParams, "grain", SALES_REPORT_GRAINS);
+  if (grain === undefined || grain === "invalid") {
+    return { ok: false };
+  }
+  const locationId = readOptionalUuid(searchParams, "locationId");
+  if (locationId === "invalid") {
+    return { ok: false };
+  }
+  return {
+    ok: true,
+    query: {
+      from,
+      to,
+      grain: grain as SalesReportGrain,
+      ...(locationId === undefined ? {} : { locationId }),
+    },
+  };
+}
+
+export interface OperationsReportRecordsQuery {
+  readonly section: OperationsReportSection;
+  readonly from: string;
+  readonly to: string;
+  readonly grain: SalesReportGrain;
+  readonly locationId?: string;
+  /**
+   * The stock-value valuation instant, echoed from the report's
+   * `stockValue.asOf` so the drill-down agrees with the summary; absent = the
+   * current instant. Ignored for the flow sections. An ISO instant.
+   */
+  readonly asOf?: string;
+  /**
+   * The caller's location scope as a comma-separated UUID list, so a
+   * multi-location caller can drill into the same scope the report was read
+   * with. Narrower than the caller's scope? It must be a subset.
+   */
+  readonly locationIds?: readonly string[];
+  readonly limit: number;
+  readonly offset: number;
+}
+
+export type ParsedOperationsReportRecordsQuery =
+  { readonly ok: true; readonly query: OperationsReportRecordsQuery } | { readonly ok: false };
+
+/**
+ * Parses the operational drill-down query: the required `section` and
+ * `from`/`to` ISO instants (`from <= to`; the flow sections use the half-open
+ * `[from, to)` window), `grain`, the optional `locationId` / `locationIds`
+ * scope and `asOf` (the stock-value valuation instant, echoed from the report),
+ * and bounded `limit`/`offset`. `section` must be one of
+ * `OPERATIONS_REPORT_SECTIONS`, so an unknown section is a 400 rather than an
+ * empty page.
+ */
+export function parseOperationsReportRecordsQuery(
+  searchParams: URLSearchParams,
+): ParsedOperationsReportRecordsQuery {
+  const from = readOptionalText(searchParams, "from");
+  const to = readOptionalText(searchParams, "to");
+  if (
+    from === undefined ||
+    from === "invalid" ||
+    to === undefined ||
+    to === "invalid" ||
+    !isIsoInstant(from) ||
+    !isIsoInstant(to) ||
+    Date.parse(from) > Date.parse(to)
+  ) {
+    return { ok: false };
+  }
+  const grain = readOptionalVocab(searchParams, "grain", SALES_REPORT_GRAINS);
+  if (grain === undefined || grain === "invalid") {
+    return { ok: false };
+  }
+  const section = readOptionalVocab(searchParams, "section", OPERATIONS_REPORT_SECTIONS);
+  if (section === undefined || section === "invalid") {
+    return { ok: false };
+  }
+  const locationId = readOptionalUuid(searchParams, "locationId");
+  const locationIds = readOptionalUuidList(searchParams, "locationIds");
+  const asOf = readOptionalText(searchParams, "asOf");
+  if (
+    locationId === "invalid" ||
+    locationIds === "invalid" ||
+    asOf === "invalid" ||
+    (asOf !== undefined && !isIsoInstant(asOf))
+  ) {
+    return { ok: false };
+  }
+  const limit = readPositiveInteger(searchParams.get("limit"));
+  const offset = readPositiveInteger(searchParams.get("offset"));
+  if (
+    limit === "invalid" ||
+    offset === "invalid" ||
+    (limit !== undefined && (limit < 1 || limit > MAX_LIMIT)) ||
+    (offset !== undefined && offset > MAX_OFFSET)
+  ) {
+    return { ok: false };
+  }
+  return {
+    ok: true,
+    query: {
+      section: section as OperationsReportSection,
+      from,
+      to,
+      grain: grain as SalesReportGrain,
+      ...(locationId === undefined ? {} : { locationId }),
+      ...(locationIds === undefined ? {} : { locationIds }),
+      ...(asOf === undefined ? {} : { asOf }),
+      limit: limit ?? DEFAULT_OPERATIONS_REPORT_RECORD_LIMIT,
+      offset: offset ?? 0,
     },
   };
 }

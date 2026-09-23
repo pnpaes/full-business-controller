@@ -1,8 +1,4 @@
-import {
-  SALES_REPORT_GROUP_BYS,
-  type SalesReportGroupBy,
-  type SalesReportScope,
-} from "@aquarela/application";
+import { SALES_REPORT_GROUP_BYS, type SalesReportGroupBy } from "@aquarela/application";
 import {
   MONEY_SCALE,
   QUANTITY_SCALE,
@@ -114,8 +110,14 @@ export function formatAsOf(iso: string): string {
   return `${iso.slice(0, 16).replace("T", " ")} UTC`;
 }
 
+/** The minimal location scope the report meta line needs (sales and operational reports). */
+export interface ReportScopeLocationIds {
+  /** `null` = organization-wide. */
+  readonly locationIds: readonly string[] | null;
+}
+
 /** The echoed scope as a short label: "All locations" or "N locations". */
-export function scopeLabel(scope: SalesReportScope): string {
+export function scopeLabel(scope: ReportScopeLocationIds): string {
   if (scope.locationIds === null) {
     return "All locations";
   }
@@ -123,7 +125,11 @@ export function scopeLabel(scope: SalesReportScope): string {
 }
 
 /** The `FND-006` meta line: period · scope · freshness. */
-export function metaLine(period: ReportPeriod, scope: SalesReportScope, asOf: string): string {
+export function metaLine(
+  period: ReportPeriod,
+  scope: ReportScopeLocationIds,
+  asOf: string,
+): string {
   return `${period.label} · ${scopeLabel(scope)} · as of ${formatAsOf(asOf)}`;
 }
 
