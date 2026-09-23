@@ -1,4 +1,5 @@
 import {
+  costCenter,
   createDb,
   createPriceVersion,
   item,
@@ -7,6 +8,8 @@ import {
   product,
   productRecipeAssignment,
   productVariant,
+  salesLine,
+  salesTransaction,
   unit,
   type DatabaseTransaction,
   type DbClient,
@@ -21,6 +24,10 @@ import { calculateCostCard } from "./cost-card";
 import { createPostgresCostCardStore } from "./cost-card-postgres-store";
 import { createPostgresCostCardCompositionStore } from "./cost-card-composition-postgres-store";
 import { assembleCostCardComposition } from "./assemble-cost-card-composition";
+import { createPostgresCostingStore } from "./postgres-store";
+import { registerAllocationRule } from "./register-allocation-rule";
+import { registerCostPool } from "./register-cost-pool";
+import { registerOperatingCost } from "./register-operating-cost";
 
 const databaseUrl = process.env.DATABASE_URL;
 const suffix = randomUUID().replace(/-/g, "").slice(0, 12);
@@ -245,6 +252,91 @@ describe.skipIf(!databaseUrl)("cost-card composition assembler against PostgreSQ
           asOf: new Date("2024-01-01T00:00:00Z"),
         }),
       ).rejects.toThrow(/no product recipe assignment is effective/);
+    });
+  });
+
+  it("allocates an operating-cost pool by the period revenue (DEC-114)", async () => {
+    await inRollback(client.db, async (tx) => {
+      await seed(tx);
+      const actorId = randomUUID();
+
+      const costCenterRows = await tx
+        .insert(costCenter)
+        .values({ organizationId: orgId, code: `cc_${suffix}`, name: "Kitchen", kind: "kitchen" })
+        .returning();
+      const costCenterId = costCenterRows[0]!.id;
+
+      const costing = createPostgresCostingStore(tx);
+      const { costPoolId } = await registerCostPool(costing, {
+        organizationId: orgId,
+        actorId,
+        code: `POOL_${suffix}`,
+        name: "Shared Overhead",
+        effectiveFrom: "2026-01-01",
+      });
+      await registerAllocationRule(costing, {
+        organizationId: orgId,
+        actorId,
+        costPoolId,
+        driver: "production_hours",
+        scopeType: "location",
+        denominatorSource: "revenue",
+        effectiveFrom: "2026-01-01",
+      });
+      await registerOperatingCost(costing, {
+        organizationId: orgId,
+        actorId,
+        costCenterId,
+        locationId,
+        costPoolId,
+        amount: "500",
+        recurrence: "monthly",
+        behavior: "fixed",
+        taxBasis: "exclusive",
+        effectiveFrom: "2026-01-01",
+      });
+
+      // Two June-2026 transactions whose net sales total 1000.0000.
+      for (const [occurredAt, netAmount] of [
+        ["2026-06-10T12:00:00Z", "600.0000"],
+        ["2026-06-20T12:00:00Z", "400.0000"],
+      ] as const) {
+        const txn = await tx
+          .insert(salesTransaction)
+          .values({
+            organizationId: orgId,
+            locationId,
+            sourceSystem: "frontline",
+            externalTransactionId: `txn_${randomUUID()}`,
+            occurredAt: new Date(occurredAt),
+            currency: "NOK",
+          })
+          .returning();
+        await tx.insert(salesLine).values({
+          organizationId: orgId,
+          salesTransactionId: txn[0]!.id,
+          quantity: "1",
+          grossAmount: netAmount,
+          netAmount,
+        });
+      }
+
+      const store = createPostgresCostCardCompositionStore(tx);
+      const assembled = await assembleCostCardComposition(store, {
+        organizationId: orgId,
+        productVariantId: variantId,
+        locationId,
+        asOf: AS_OF,
+        costPoolId,
+      });
+
+      // pool 500.0000 / revenue 1000.0000 = 0.5000
+      expect(assembled.composition.allocatedUnitOverhead).toBe("0.5000");
+      expect(assembled.provenance.resolved.allocatedUnitOverhead).toBe(true);
+      const overheadComponent = assembled.components.find(
+        (component) => component.componentKind === "allocated_overhead",
+      );
+      expect(overheadComponent?.provenance?.sourceType).toBe("operating_cost_pool");
     });
   });
 });

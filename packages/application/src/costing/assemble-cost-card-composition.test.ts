@@ -76,6 +76,14 @@ class FakeCompositionStore extends FakeRecipeStore implements CostCardComponentS
   countEligibleProducts(): Promise<number> {
     return Promise.resolve(this.eligibleProductCount);
   }
+
+  sumSalesVolume(): Promise<{
+    readonly revenue: string;
+    readonly transactions: string;
+    readonly units: string;
+  }> {
+    return Promise.resolve({ revenue: "0.0000", transactions: "0", units: "0.000000" });
+  }
 }
 
 function priceVersion(overrides: Partial<PriceVersionRecord> = {}): PriceVersionRecord {

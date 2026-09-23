@@ -39,5 +39,12 @@ export function createPostgresCostCardCompositionStore(db: Database): CostCardCo
     listEffectiveOperatingCosts: costing.listEffectiveOperatingCosts,
     listEffectiveAllocationRules: costing.listEffectiveAllocationRules,
     countEligibleProducts: (query) => repo.countEligibleProducts(db, query),
+    sumSalesVolume: (query) =>
+      repo.sumSalesVolume(db, {
+        organizationId: query.organizationId,
+        from: query.from,
+        to: query.to,
+        locationIds: [query.locationId],
+      }),
   };
 }

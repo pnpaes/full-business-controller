@@ -92,6 +92,13 @@ export interface CostCardComponentStore extends CostCardCompositionStore {
     readonly locationId: string;
     readonly asOf: Date;
   }): Promise<number>;
+  /** `DEC-114`: the half-open `[from, to)` period sales volume for one location. */
+  sumSalesVolume(query: {
+    readonly organizationId: string;
+    readonly locationId: string;
+    readonly from: string;
+    readonly to: string;
+  }): Promise<{ readonly revenue: string; readonly transactions: string; readonly units: string }>;
 }
 
 export interface AssembleCostCardCompositionInput {

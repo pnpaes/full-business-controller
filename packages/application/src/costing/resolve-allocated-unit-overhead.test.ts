@@ -47,11 +47,34 @@ function store(input: {
   readonly costs?: readonly OperatingCostRecord[];
   readonly rules?: readonly AllocationRuleRecord[];
   readonly count?: number;
+  readonly volume?: {
+    readonly revenue: string;
+    readonly transactions: string;
+    readonly units: string;
+  };
 }) {
+  const volumeQueries: {
+    organizationId: string;
+    locationId: string;
+    from: string;
+    to: string;
+  }[] = [];
   return {
+    volumeQueries,
     listEffectiveOperatingCosts: () => Promise.resolve(input.costs ?? []),
     listEffectiveAllocationRules: () => Promise.resolve(input.rules ?? [rule()]),
     countEligibleProducts: () => Promise.resolve(input.count ?? 0),
+    sumSalesVolume: (query: {
+      readonly organizationId: string;
+      readonly locationId: string;
+      readonly from: string;
+      readonly to: string;
+    }) => {
+      volumeQueries.push({ ...query });
+      return Promise.resolve(
+        input.volume ?? { revenue: "0.0000", transactions: "0", units: "0.000000" },
+      );
+    },
   };
 }
 
@@ -138,7 +161,7 @@ describe("resolveAllocatedUnitOverhead", () => {
       resolveAllocatedUnitOverhead(
         store({
           costs: [cost()],
-          rules: [rule({ denominatorSource: "revenue" })],
+          rules: [rule({ denominatorSource: "production_hours" })],
         }),
         baseInput(),
       ),
@@ -154,5 +177,82 @@ describe("resolveAllocatedUnitOverhead", () => {
         baseInput(),
       ),
     ).rejects.toThrow(/eligibleEntityCount is required and positive/);
+  });
+
+  it("divides the pool by the period revenue for a revenue denominator", async () => {
+    const fake = store({
+      costs: [cost({ amount: "500.0000" })],
+      rules: [rule({ denominatorSource: "revenue" })],
+      volume: { revenue: "1000.0000", transactions: "0", units: "0.000000" },
+    });
+    const result = await resolveAllocatedUnitOverhead(fake, baseInput());
+
+    expect(result).toEqual({
+      perUnitOverhead: "0.5000",
+      poolAmount: "500.0000",
+      totalDriverVolume: "1000.0000",
+      denominatorSource: "revenue",
+      fallbackUsed: "stop",
+      operatingCostIds: ["oc-1"],
+    });
+    // The read is scoped to the resolver's location and the default June period.
+    expect(fake.volumeQueries).toEqual([
+      {
+        organizationId: ORG,
+        locationId: LOCATION,
+        from: "2026-06-01T00:00:00.000Z",
+        to: "2026-07-01T00:00:00.000Z",
+      },
+    ]);
+  });
+
+  it("divides the pool by the transaction count for a transactions denominator", async () => {
+    const result = await resolveAllocatedUnitOverhead(
+      store({
+        costs: [cost({ amount: "500.0000" })],
+        rules: [rule({ denominatorSource: "transactions" })],
+        volume: { revenue: "0.0000", transactions: "25", units: "0.000000" },
+      }),
+      baseInput(),
+    );
+    expect(result?.perUnitOverhead).toBe("20.0000");
+    expect(result?.totalDriverVolume).toBe("25");
+  });
+
+  it("divides the pool by the unit volume for a sales_units denominator", async () => {
+    const result = await resolveAllocatedUnitOverhead(
+      store({
+        costs: [cost({ amount: "500.0000" })],
+        rules: [rule({ denominatorSource: "sales_units" })],
+        volume: { revenue: "0.0000", transactions: "0", units: "50.000000" },
+      }),
+      baseInput(),
+    );
+    expect(result?.perUnitOverhead).toBe("10.0000");
+    expect(result?.totalDriverVolume).toBe("50.000000");
+  });
+
+  it("fails closed on a zero or negative volume denominator", async () => {
+    await expect(
+      resolveAllocatedUnitOverhead(
+        store({
+          costs: [cost()],
+          rules: [rule({ denominatorSource: "revenue" })],
+          volume: { revenue: "0.0000", transactions: "0", units: "0.000000" },
+        }),
+        baseInput(),
+      ),
+    ).rejects.toThrow(/no revenue denominator for allocation rule/);
+
+    await expect(
+      resolveAllocatedUnitOverhead(
+        store({
+          costs: [cost()],
+          rules: [rule({ denominatorSource: "sales_units" })],
+          volume: { revenue: "0.0000", transactions: "0", units: "-3.000000" },
+        }),
+        baseInput(),
+      ),
+    ).rejects.toThrow(/no sales_units denominator for allocation rule/);
   });
 });

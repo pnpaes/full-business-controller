@@ -5,6 +5,7 @@ import {
   formatDecimal,
   MONEY_SCALE,
   parseDecimal,
+  QUANTITY_SCALE,
 } from "@aquarela/domain";
 
 import type { AllocationRuleRecord, OperatingCostRecord } from "./types";
@@ -25,8 +26,17 @@ import type { AllocationRuleRecord, OperatingCostRecord } from "./types";
  * owner/FIN still to define both). The `denominator_source` vocabulary is closed:
  * `explicit` uses the caller's volume, `eligible_products` counts the products
  * with an effective `price_version` at the location, and `equal_share` spreads
- * across that count. The volume-based sources (`revenue`, `transactions`,
- * `sales_units`, `production_*`) are **deferred** and fail closed.
+ * across that count. The period-scoped sales volume supplies `revenue`
+ * (Σ net sales), `transactions` (distinct transaction count) and `sales_units`
+ * (Σ line quantity) via `sumSalesVolume` (`DEC-114`). The production/time sources
+ * (`production_hours`, `production_minutes`, `recorded_time`, `operating_hours`)
+ * are **deferred** and fail closed.
+ *
+ * A volume denominator always forces `stop` semantics: `equal_share` needs an
+ * eligible-entity set that a volume driver does not define, so the rule's
+ * `fallback_behavior` is ignored for `revenue`/`transactions`/`sales_units`
+ * (rejecting the combination at registration is the deferred alternative,
+ * `DEC-114`).
  *
  * No effective rule = not resolved (`undefined`); more than one is ambiguous and
  * rejected. For `explicit`/`eligible_products` the entity and eligible volumes
@@ -84,6 +94,17 @@ export async function resolveAllocatedUnitOverhead(
       readonly locationId: string;
       readonly asOf: Date;
     }): Promise<number>;
+    /** `DEC-114`: the half-open `[from, to)` period sales volume for one location. */
+    sumSalesVolume(query: {
+      readonly organizationId: string;
+      readonly locationId: string;
+      readonly from: string;
+      readonly to: string;
+    }): Promise<{
+      readonly revenue: string;
+      readonly transactions: string;
+      readonly units: string;
+    }>;
   },
   input: ResolveAllocatedUnitOverheadInput,
 ): Promise<ResolvedAllocatedUnitOverhead | undefined> {
@@ -192,8 +213,44 @@ export async function resolveAllocatedUnitOverhead(
       });
       break;
     }
+    case "revenue":
+    case "transactions":
+    case "sales_units": {
+      const volume = await store.sumSalesVolume({
+        organizationId: input.organizationId,
+        locationId: input.locationId,
+        from: periodFrom.toISOString(),
+        to: periodTo.toISOString(),
+      });
+      // `equal_share` needs an eligible-entity set a volume driver does not
+      // define, so a volume denominator always forces `stop` semantics rather
+      // than the rule's `fallback_behavior` (DEC-114); rejecting the
+      // combination at registration is the deferred alternative.
+      const raw =
+        denominatorSource === "revenue"
+          ? volume.revenue
+          : denominatorSource === "transactions"
+            ? volume.transactions
+            : volume.units;
+      // ponytail: every volume is validated at QUANTITY_SCALE (6 dp) ≥ the money scale, so the guard
+      // is permissive rather than exact. The only producer, `sumSalesVolume`, casts to numeric(19,4)
+      // / integer, so the ceiling is unreachable today; a non-cast producer must validate `revenue`
+      // at MONEY_SCALE, `transactions` at scale 0 and `sales_units` at QUANTITY_SCALE.
+      if (parseDecimal(raw, QUANTITY_SCALE) <= 0n) {
+        throw new DomainError(
+          `no ${denominatorSource} denominator for allocation rule "${rule.id}" (DEC-114)`,
+        );
+      }
+      totalDriverVolume = raw;
+      fallbackUsed = "stop";
+      perUnitOverhead = allocatedUnitOverhead(poolAmount, totalDriverVolume, {
+        fallback: "stop",
+      });
+      break;
+    }
     default:
-      // Volume-based sources are deferred (DEC-112): fail closed rather than guess.
+      // Production/time sources are deferred (DEC-112/DEC-114): fail closed
+      // rather than guess.
       throw new DomainError(`unknown denominator_source "${rule.denominatorSource}" (DEC-112)`);
   }
 

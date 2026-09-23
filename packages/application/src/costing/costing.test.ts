@@ -541,6 +541,28 @@ describe("registerAllocationRule", () => {
     ).rejects.toThrow(/denominatorSource must be one of/);
   });
 
+  it("accepts the DEC-114 volume denominator sources", async () => {
+    const store = new FakeCostingStore();
+    seedPool(store, "pool-1");
+    for (const denominatorSource of ["revenue", "transactions", "sales_units"]) {
+      const result = await registerAllocationRule(store, {
+        organizationId: ORG,
+        actorId: ACTOR,
+        costPoolId: "pool-1",
+        driver: "production_hours",
+        scopeType: "location",
+        denominatorSource,
+        effectiveFrom: JAN,
+      });
+      expect(result.allocationRuleId).toBeDefined();
+    }
+    expect(store.allocationRules.map((rule) => rule.denominatorSource)).toEqual([
+      "revenue",
+      "transactions",
+      "sales_units",
+    ]);
+  });
+
   it("rejects a cost pool from another organization", async () => {
     const store = new FakeCostingStore();
     store.costPools.set("pool-other", {
