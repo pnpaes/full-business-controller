@@ -9,6 +9,7 @@ import {
   includedTax,
   isEffectiveAt,
   netFromGross,
+  perUnitFixedFee,
   presentedMoney,
   priceVersionWindowsOverlap,
   requiredNetPrice,
@@ -137,6 +138,38 @@ describe("channelVariableCost", () => {
         fixedOrderFeePerUnit: "-1",
       }),
     ).toThrow(/fixedOrderFeePerUnit must not be negative/);
+  });
+});
+
+describe("perUnitFixedFee", () => {
+  it("allocates a fixed per-order fee across the order units (DEC-112)", () => {
+    // Derivation (worked example): f = 120000 (12.0000), u = 8000000 (8 units).
+    //   value         = (f/10^4)/(u/10^6) = f·10^2/u = 1.5
+    //   result_scaled = 10^4 × value = f·10^6/u = 15000 → "1.5000".
+    expect(perUnitFixedFee("12.0000", "8.000000")).toBe("1.5000");
+  });
+
+  it("rounds HALF_UP at 4 dp", () => {
+    // 10/6 = 1.6666… → 1.6667.
+    expect(perUnitFixedFee("10.0000", "6.000000")).toBe("1.6667");
+  });
+
+  it("rounds an exact half up", () => {
+    // 100.0004/8 = 12.50005 → 12.5001 (the scaled remainder is exactly half).
+    expect(perUnitFixedFee("100.0004", "8.000000")).toBe("12.5001");
+  });
+
+  it("is zero for a zero fixed amount", () => {
+    expect(perUnitFixedFee("0", "8.000000")).toBe("0.0000");
+  });
+
+  it("rejects a negative fixed amount", () => {
+    expect(() => perUnitFixedFee("-1", "8.000000")).toThrow(/fixedAmount must not be negative/);
+  });
+
+  it("rejects a non-positive units per order (never divides silently, §12.6)", () => {
+    expect(() => perUnitFixedFee("12.0000", "0")).toThrow(/unitsPerOrder must be positive/);
+    expect(() => perUnitFixedFee("12.0000", "-1")).toThrow(DomainError);
   });
 });
 

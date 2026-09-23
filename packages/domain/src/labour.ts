@@ -137,6 +137,48 @@ export function directLaborCost(productiveMinutes: string, loadedHourlyRate: str
   return formatDecimal(divideRoundHalfUp(minutes * rate, 600_000n), MONEY_SCALE);
 }
 
+/**
+ * `unit_direct_labor_cost = round(productive_minutes / 60 × loaded_hourly_rate / approved_usable_output, 4 dp, HALF_UP)`
+ * (`DEC-112`, B3). `productiveMinutes` is the **per-batch** direct-labour
+ * minutes (the `DEC-112` semantics of `recipe_version.preparation_minutes`);
+ * dividing the batch labour by the batch's approved usable output spreads it
+ * across the usable units — that division is the B3 boundary.
+ *
+ * The rounding happens **exactly once**: with scaled bigints `m` (minutes,
+ * 6 dp), `r` (rate, 2 dp) and `o` (output, 6 dp),
+ *
+ * ```
+ * value         = (m/10^6) / 60 × (r/10^2) / (o/10^6) = m·r / (6000·o)
+ * result_scaled = 10^4 × value = m·r·10 / (6·o)
+ * ```
+ *
+ * so the 4 dp result is `divideRoundHalfUp(m * r * 10n, 6n * o)`. Reusing
+ * `directLaborCost` and then dividing would round twice.
+ *
+ * Rejects a non-positive `approvedUsableOutput` (§12.2, mirroring
+ * `usableYieldRate`), a negative minute count and a negative rate. Zero minutes
+ * is valid and yields `"0.0000"`.
+ */
+export function unitDirectLaborCost(
+  productiveMinutes: string,
+  loadedHourlyRate: string,
+  approvedUsableOutput: string,
+): string {
+  const minutes = parseDecimal(productiveMinutes, QUANTITY_SCALE);
+  const rate = parseDecimal(loadedHourlyRate, LOADED_RATE_SCALE);
+  const output = parseDecimal(approvedUsableOutput, QUANTITY_SCALE);
+  if (minutes < 0n) {
+    throw new DomainError("productiveMinutes must not be negative");
+  }
+  if (rate < 0n) {
+    throw new DomainError("loadedHourlyRate must not be negative");
+  }
+  if (output <= 0n) {
+    throw new DomainError("approvedUsableOutput must be positive (CALCULATION_CONTRACT §12.2)");
+  }
+  return formatDecimal(divideRoundHalfUp(minutes * rate * 10n, 6n * output), MONEY_SCALE);
+}
+
 export interface LabourCostViewsInput {
   readonly paidDirectLabor: string;
   /** Imputed owner production labour (DEC-048); excluded from the cash view. */

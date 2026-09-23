@@ -21,6 +21,7 @@ export {
   contributionBeforeAndAfterDirectLabor,
   directLaborCost,
   labourCostViews,
+  unitDirectLaborCost,
 } from "./labour";
 export type {
   ComputeLoadedRateInput,
@@ -61,6 +62,7 @@ export {
   includedTax,
   isEffectiveAt,
   netFromGross,
+  perUnitFixedFee,
   presentedMoney,
   priceVersionWindowsOverlap,
   requiredNetPrice,

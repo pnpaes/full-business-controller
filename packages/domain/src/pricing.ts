@@ -145,6 +145,38 @@ export function channelVariableCost(input: ChannelVariableCostInput): string {
   return formatDecimal(divideRoundHalfUp(rate * basis, ONE) + fixed, MONEY_SCALE);
 }
 
+/**
+ * `per_unit_fixed_fee = round(fixed_amount / units_per_order, 4 dp, HALF_UP)`
+ * (`DEC-112`). Allocates a fixed per-order channel fee (`fixed_per_order`,
+ * `delivery_subsidy`, `discount_funding`) across an explicit `unitsPerOrder`;
+ * the order-size allocation is a recorded `[PROPOSED]` in `DEC-112`.
+ *
+ * With scaled bigints `f` (fixed, 4 dp) and `u` (units, 6 dp),
+ *
+ * ```
+ * value         = (f/10^4) / (u/10^6) = f·10^2 / u
+ * result_scaled = 10^4 × value = f·10^6 / u
+ * ```
+ *
+ * so the 4 dp result is `divideRoundHalfUp(f * 10^6, u)`. Rejects a negative
+ * `fixedAmount` and a non-positive `unitsPerOrder` — the code never divides
+ * silently (§12.6).
+ */
+export function perUnitFixedFee(fixedAmount: string, unitsPerOrder: string): string {
+  const fixed = parseDecimal(fixedAmount, MONEY_SCALE);
+  const units = parseDecimal(unitsPerOrder, QUANTITY_SCALE);
+  if (fixed < 0n) {
+    throw new DomainError("fixedAmount must not be negative");
+  }
+  if (units <= 0n) {
+    throw new DomainError("unitsPerOrder must be positive");
+  }
+  return formatDecimal(
+    divideRoundHalfUp(fixed * 10n ** BigInt(QUANTITY_SCALE), units),
+    MONEY_SCALE,
+  );
+}
+
 export interface UnitVariableCostInput {
   readonly ingredientCost: string;
   readonly packagingCost: string;

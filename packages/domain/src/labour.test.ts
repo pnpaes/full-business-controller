@@ -8,6 +8,7 @@ import {
   contributionBeforeAndAfterDirectLabor,
   directLaborCost,
   labourCostViews,
+  unitDirectLaborCost,
 } from "./labour";
 import { unitContribution } from "./pricing";
 
@@ -125,6 +126,47 @@ describe("directLaborCost", () => {
   it("rounds HALF_UP where the 5th decimal decides", () => {
     // 1 min at 306.57/h = 5.1095 exactly at 4 dp.
     expect(directLaborCost("1.000000", "306.57")).toBe("5.1095");
+  });
+});
+
+describe("unitDirectLaborCost", () => {
+  it("computes the per-unit labour cost from the batch minutes and usable output (DEC-112)", () => {
+    // Derivation (worked example): m = 500000 (0.5 min), r = 30657 (306.57),
+    // o = 1000000 (1 unit).
+    //   value         = (m/10^6)/60 × (r/10^2) / (o/10^6) = m·r/(6000·o) = 2.55475
+    //   result_scaled = 10^4 × value = m·r·10/(6·o) = 25547.5
+    // HALF_UP → 25548 → "2.5548" — the golden fixture labour at one usable unit.
+    expect(unitDirectLaborCost("0.500000", "306.57", "1.000000")).toBe("2.5548");
+  });
+
+  it("spreads the batch labour across the approved usable output (B3)", () => {
+    // 1 min at 306.57/h over 5 units: 1/60 × 306.57 / 5 = 1.0219 exactly.
+    expect(unitDirectLaborCost("1.000000", "306.57", "5.000000")).toBe("1.0219");
+  });
+
+  it("rounds HALF_UP at 4 dp", () => {
+    // 1/60 × 306.57 / 3 = 1.703166… → 1.7032.
+    expect(unitDirectLaborCost("1.000000", "306.57", "3.000000")).toBe("1.7032");
+  });
+
+  it("is zero for zero productive minutes", () => {
+    expect(unitDirectLaborCost("0", "306.57", "5.000000")).toBe("0.0000");
+  });
+
+  it("rejects a non-positive approved usable output (§12.2)", () => {
+    expect(() => unitDirectLaborCost("1.000000", "306.57", "0")).toThrow(
+      /approvedUsableOutput must be positive/,
+    );
+    expect(() => unitDirectLaborCost("1.000000", "306.57", "-1")).toThrow(DomainError);
+  });
+
+  it("rejects negative minutes or a negative rate", () => {
+    expect(() => unitDirectLaborCost("-1", "306.57", "5")).toThrow(
+      /productiveMinutes must not be negative/,
+    );
+    expect(() => unitDirectLaborCost("1", "-1", "5")).toThrow(
+      /loadedHourlyRate must not be negative/,
+    );
   });
 });
 
