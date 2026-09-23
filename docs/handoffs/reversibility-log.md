@@ -1,5 +1,24 @@
 # Reversibility log
 
+- **2026-09-23 row-11 sales-import mapping writer (`DEC-113`; 4 commits incl.
+  the `docs(decisions)` commit; nothing pushed)**: 1. `fd277ff`
+  `docs(decisions)` (`DEC-113`); 2. `c0fc7de` `feat(persistence)`; 3.
+  `7d96270` `feat(application)`; 4. `cba124a` `feat(web)` — each independently
+  revertible with `git revert <sha>`. **No migration and no schema change**
+  (migrations stay through `0062`; **89 tables**): the write is a purely
+  additive read-method set plus an additive write of
+  `normalized.product_variant_id` on staging rows the writer already owns.
+  Reverting the code leaves existing rows untouched — a reverted writer simply
+  stops populating the key and the poster reads `null`, so the line stays
+  unposted (no data loss). The `feat(web)` layer reverts independently.
+  Historical `sales_line` backfill is **not** done (the recorded `DEC-113`
+  posture). `db:migrate` is a no-op on re-run through `0062`. Nothing applied
+  to DigitalOcean. A follow-up review closed the same stale-key hole on the
+  **mapped** branch (a remap that changes the resolution path, e.g. variant →
+  item): the matched branch now strips the previous mapping keys before re-adding
+  the fresh ones. Purely an application-layer guard plus one extra test — no
+  schema or migration impact, so the four commits remain independently
+  revertible with `git revert <sha>`.
 - **2026-09-23 cost-card component resolvers (`DEC-112`; 5 commits incl. the
   `docs(decisions)` commit; nothing pushed)**: 1. `8cf86c9`
   `docs(decisions)` (`DEC-112`); 2. `bfb1a07` `feat(domain)`; 3. `fb081ef`
