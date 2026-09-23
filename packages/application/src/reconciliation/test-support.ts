@@ -9,6 +9,7 @@ import type {
   NewReconciliationToleranceRecord,
   ReconciliationPatch,
   ReconciliationRecord,
+  ReconciliationStatusRecord,
   ReconciliationStore,
   ReconciliationToleranceRecord,
   SettlementRecord,
@@ -241,6 +242,24 @@ export class FakeReconciliationStore implements ReconciliationStore {
       rows = rows.slice(0, query.limit);
     }
     return rows;
+  }
+
+  async findReconciliationsCoveringDate(query: {
+    readonly organizationId: string;
+    readonly at: string;
+    readonly scopeTypes?: readonly string[];
+  }): Promise<readonly ReconciliationStatusRecord[]> {
+    return [...this.reconciliations.values()]
+      .filter(
+        (row) =>
+          row.organizationId === query.organizationId &&
+          row.periodStart <= query.at &&
+          row.periodEnd >= query.at &&
+          (query.scopeTypes === undefined ||
+            query.scopeTypes.length === 0 ||
+            query.scopeTypes.includes(row.scopeType)),
+      )
+      .map((row) => ({ status: row.status }));
   }
 
   async createReconciliation(input: NewReconciliationRecord): Promise<ReconciliationRecord> {

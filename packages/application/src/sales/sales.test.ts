@@ -23,6 +23,8 @@ import {
   FakeSalesStore,
   seedConsumptionFixture,
   seedImportRun,
+  seedLockedPeriodCloseCover,
+  seedReconciliationCover,
   seedSalesLine,
   stagingRow,
 } from "./test-support";
@@ -1175,9 +1177,11 @@ describe("reverseSalesLine", () => {
 describe("correctSalesLine", () => {
   async function seedCorrectableLine(
     store: FakeCorrectSalesLineStore,
-    options: { readonly movements?: number } = {},
+    options: { readonly movements?: number; readonly locationId?: string | null } = {},
   ): Promise<{ line: SalesLineRecord; movementIds: string[] }> {
-    const transaction = await store.createSalesTransaction(transactionInput("txn-1", OCCURRED_AT));
+    const transaction = await store.createSalesTransaction(
+      transactionInput("txn-1", OCCURRED_AT, { locationId: options.locationId ?? null }),
+    );
     const line = await store.createSalesLine(lineInput(transaction.id, "line-1"));
     const movementIds: string[] = [];
     const count = options.movements ?? 2;
@@ -1205,6 +1209,25 @@ describe("correctSalesLine", () => {
       movementIds.push(movement.id);
     }
     return { line, movementIds };
+  }
+
+  /** A blocked reversal writes nothing: no line, no movement reversal, no audit. */
+  function assertNothingPosted(
+    store: FakeCorrectSalesLineStore,
+    line: SalesLineRecord,
+    movementIds: readonly string[],
+  ): void {
+    expect(store.salesLines.size).toBe(1);
+    expect(store.salesLines.has(line.id)).toBe(true);
+    expect(store.inventory.stockMovements.size).toBe(movementIds.length);
+    for (const movementId of movementIds) {
+      expect(
+        [...store.inventory.stockMovements.values()].filter(
+          (movement) => movement.reversalOfId === movementId,
+        ),
+      ).toHaveLength(0);
+    }
+    expect(store.auditEvents).toHaveLength(0);
   }
 
   it("reverses the line and each of its sales_line movements exactly once (DEC-116)", async () => {
@@ -1383,5 +1406,155 @@ describe("correctSalesLine", () => {
     ).rejects.toThrow(/sales line not found in organization/);
     expect(store.salesLines.size).toBe(1);
     expect(store.inventory.stockMovements.size).toBe(2);
+  });
+
+  it("blocks a reversal covered by a reconciled reconciliation and posts nothing (DEC-117)", async () => {
+    const store = new FakeCorrectSalesLineStore();
+    const { line, movementIds } = await seedCorrectableLine(store);
+    seedReconciliationCover(store, {
+      organizationId: ORG,
+      periodStart: "2026-02-01",
+      periodEnd: "2026-02-28",
+      status: "within_tolerance",
+    });
+
+    await expect(
+      correctSalesLine(store, {
+        organizationId: ORG,
+        actorId: ACTOR,
+        salesLineId: line.id,
+        reasonCode: "customer-refund",
+      }),
+    ).rejects.toThrow(/reconciled period/);
+
+    assertNothingPosted(store, line, movementIds);
+  });
+
+  it.each(["pending", "exception"])(
+    "allows a reversal when the covering reconciliation is %s (DEC-117)",
+    async (status) => {
+      const store = new FakeCorrectSalesLineStore();
+      const { line } = await seedCorrectableLine(store);
+      seedReconciliationCover(store, {
+        organizationId: ORG,
+        periodStart: "2026-02-01",
+        periodEnd: "2026-02-28",
+        status,
+      });
+
+      const result = await correctSalesLine(store, {
+        organizationId: ORG,
+        actorId: ACTOR,
+        salesLineId: line.id,
+        reasonCode: "customer-refund",
+      });
+      expect(store.salesLines.get(result.reversalSalesLineId)?.reversalOfId).toBe(line.id);
+    },
+  );
+
+  it("allows a reversal when the reconciliation does not cover the day (DEC-117)", async () => {
+    const store = new FakeCorrectSalesLineStore();
+    const { line } = await seedCorrectableLine(store);
+    // One period ends the day before; another starts the day after.
+    seedReconciliationCover(store, {
+      organizationId: ORG,
+      periodStart: "2026-01-01",
+      periodEnd: "2026-01-31",
+      status: "approved",
+    });
+    seedReconciliationCover(store, {
+      organizationId: ORG,
+      periodStart: "2026-02-02",
+      periodEnd: "2026-02-28",
+      status: "approved",
+    });
+
+    const result = await correctSalesLine(store, {
+      organizationId: ORG,
+      actorId: ACTOR,
+      salesLineId: line.id,
+      reasonCode: "customer-refund",
+    });
+    expect(store.salesLines.get(result.reversalSalesLineId)?.reversalOfId).toBe(line.id);
+  });
+
+  it("blocks a reversal when the transaction's day is location-locked (DEC-117)", async () => {
+    const store = new FakeCorrectSalesLineStore();
+    const { line, movementIds } = await seedCorrectableLine(store, { locationId: "loc-1" });
+    seedLockedPeriodCloseCover(store, {
+      organizationId: ORG,
+      scopeType: "location",
+      scopeId: "loc-1",
+      periodStart: "2026-02-01",
+    });
+
+    await expect(
+      correctSalesLine(store, {
+        organizationId: ORG,
+        actorId: ACTOR,
+        salesLineId: line.id,
+        reasonCode: "customer-refund",
+      }),
+    ).rejects.toThrow(/locked for its location/);
+
+    assertNothingPosted(store, line, movementIds);
+  });
+
+  it("blocks a reversal when the month is company-locked (DEC-117)", async () => {
+    const store = new FakeCorrectSalesLineStore();
+    const { line, movementIds } = await seedCorrectableLine(store);
+    seedLockedPeriodCloseCover(store, {
+      organizationId: ORG,
+      scopeType: "company",
+      scopeId: ORG,
+      periodStart: "2026-02-01",
+      periodEnd: "2026-02-28",
+    });
+
+    await expect(
+      correctSalesLine(store, {
+        organizationId: ORG,
+        actorId: ACTOR,
+        salesLineId: line.id,
+        reasonCode: "customer-refund",
+      }),
+    ).rejects.toThrow(/locked for the company/);
+
+    assertNothingPosted(store, line, movementIds);
+  });
+
+  it("allows a reversal when the lock is on another scope or date (DEC-117)", async () => {
+    const store = new FakeCorrectSalesLineStore();
+    const { line } = await seedCorrectableLine(store, { locationId: "loc-1" });
+    // A lock for another location, the same day.
+    seedLockedPeriodCloseCover(store, {
+      organizationId: ORG,
+      scopeType: "location",
+      scopeId: "other-loc",
+      periodStart: "2026-02-01",
+    });
+    // A lock for the right location, a different day.
+    seedLockedPeriodCloseCover(store, {
+      organizationId: ORG,
+      scopeType: "location",
+      scopeId: "loc-1",
+      periodStart: "2026-02-02",
+    });
+    // A company lock in another organization.
+    seedLockedPeriodCloseCover(store, {
+      organizationId: OTHER_ORG,
+      scopeType: "company",
+      scopeId: OTHER_ORG,
+      periodStart: "2026-02-01",
+      periodEnd: "2026-02-28",
+    });
+
+    const result = await correctSalesLine(store, {
+      organizationId: ORG,
+      actorId: ACTOR,
+      salesLineId: line.id,
+      reasonCode: "customer-refund",
+    });
+    expect(store.salesLines.get(result.reversalSalesLineId)?.reversalOfId).toBe(line.id);
   });
 });

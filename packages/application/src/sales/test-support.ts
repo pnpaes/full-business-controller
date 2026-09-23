@@ -8,6 +8,8 @@ import type {
   ReverseStockMovementResult,
   StockMovementRecord,
 } from "../inventory";
+import type { PeriodCloseRecord, PeriodCloseScopeType } from "../close";
+import type { ReconciliationStatusRecord } from "../reconciliation";
 
 import type {
   ConsumptionSalesLineRecord,
@@ -148,10 +150,14 @@ export class FakeSalesStore extends FakeImportStore implements SalesStore {
  * In-memory `CorrectSalesLineStore` for the unit suite (`DEC-116`): the sales
  * fake plus an embedded `FakeInventoryStore` for the source-scoped movement read
  * and the movement-reversal primitive, so `correctSalesLine` runs against the
- * same `reverseStockMovement` path the real adapter composes.
+ * same `reverseStockMovement` path the real adapter composes. The `DEC-117`
+ * reversal gate reads seedable state: `reconciliations` (covering periods and
+ * statuses) and `periodCloses` (`locked` closes for a scope and period).
  */
 export class FakeCorrectSalesLineStore extends FakeSalesStore implements CorrectSalesLineStore {
   readonly inventory = new FakeInventoryStore();
+  readonly reconciliations: FakeReconciliationCover[] = [];
+  readonly periodCloses: PeriodCloseRecord[] = [];
 
   override async withTransaction<T>(fn: (store: CorrectSalesLineStore) => Promise<T>): Promise<T> {
     return fn(this);
@@ -171,6 +177,109 @@ export class FakeCorrectSalesLineStore extends FakeSalesStore implements Correct
   reverseStockMovement(input: ReverseStockMovementInput): Promise<ReverseStockMovementResult> {
     return reverseStockMovement(this.inventory, input);
   }
+
+  async findReconciliationsCoveringDate(query: {
+    readonly organizationId: string;
+    readonly at: string;
+    readonly scopeTypes?: readonly string[];
+  }): Promise<readonly ReconciliationStatusRecord[]> {
+    return this.reconciliations
+      .filter(
+        (row) =>
+          row.organizationId === query.organizationId &&
+          row.periodStart <= query.at &&
+          row.periodEnd >= query.at &&
+          (query.scopeTypes === undefined ||
+            query.scopeTypes.length === 0 ||
+            query.scopeTypes.includes(row.scopeType)),
+      )
+      .map((row) => ({ status: row.status }));
+  }
+
+  async findLockedPeriodCloseCoveringDate(query: {
+    readonly organizationId: string;
+    readonly scopeType: PeriodCloseScopeType;
+    readonly scopeId: string;
+    readonly at: string;
+  }): Promise<PeriodCloseRecord | undefined> {
+    return this.periodCloses.find(
+      (close) =>
+        close.organizationId === query.organizationId &&
+        close.scopeType === query.scopeType &&
+        close.scopeId === query.scopeId &&
+        close.status === "locked" &&
+        close.periodStart <= query.at &&
+        close.periodEnd >= query.at,
+    );
+  }
+}
+
+/** The seedable covering-reconciliation state of `FakeCorrectSalesLineStore`. */
+export interface FakeReconciliationCover {
+  readonly organizationId: string;
+  readonly scopeType: string;
+  readonly periodStart: string;
+  readonly periodEnd: string;
+  readonly status: string;
+}
+
+/** Seeds one covering reconciliation into the fake store (`DEC-117`). */
+export function seedReconciliationCover(
+  store: FakeCorrectSalesLineStore,
+  input: {
+    readonly organizationId: string;
+    readonly periodStart: string;
+    readonly periodEnd: string;
+    readonly status: string;
+    readonly scopeType?: string;
+  },
+): void {
+  store.reconciliations.push({
+    organizationId: input.organizationId,
+    scopeType: input.scopeType ?? "sales_source",
+    periodStart: input.periodStart,
+    periodEnd: input.periodEnd,
+    status: input.status,
+  });
+}
+
+/**
+ * Seeds one `locked` `period_close` into the fake store (`DEC-117`). A `location`
+ * scope defaults to a single day; a `company` scope takes its month bounds from
+ * the caller.
+ */
+export function seedLockedPeriodCloseCover(
+  store: FakeCorrectSalesLineStore,
+  input: {
+    readonly organizationId: string;
+    readonly scopeType: PeriodCloseScopeType;
+    readonly scopeId: string;
+    readonly periodStart: string;
+    readonly periodEnd?: string;
+    readonly status?: string;
+  },
+): PeriodCloseRecord {
+  const record: PeriodCloseRecord = {
+    id: `period-close-${store.periodCloses.length + 1}`,
+    organizationId: input.organizationId,
+    scopeType: input.scopeType,
+    scopeId: input.scopeId,
+    periodStart: input.periodStart,
+    periodEnd: input.periodEnd ?? input.periodStart,
+    status: input.status ?? "locked",
+    checklist: [],
+    snapshot: null,
+    correctionPolicy: null,
+    lockedBy: "actor-1",
+    lockedAt: "2026-02-01T00:00:00.000Z",
+    reopenedBy: null,
+    reopenedAt: null,
+    reopenReason: null,
+    createdAt: "2026-02-01T00:00:00.000Z",
+    updatedAt: null,
+  };
+  store.periodCloses.push(record);
+  return record;
 }
 
 /**

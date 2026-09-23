@@ -1,4 +1,5 @@
 import type { AuditInput } from "../auth";
+import type { PeriodCloseRecord, PeriodCloseScopeType } from "../close";
 import type { ImportStore } from "../imports";
 import type {
   InventoryStore,
@@ -6,6 +7,7 @@ import type {
   ReverseStockMovementResult,
   StockMovementRecord,
 } from "../inventory";
+import type { ReconciliationStatusRecord } from "../reconciliation";
 
 /**
  * Application-level ports and DTOs for row 12 — **sales + settlements +
@@ -327,4 +329,27 @@ export interface CorrectSalesLineStore extends SalesStore {
   ): Promise<readonly StockMovementRecord[]>;
   /** Reverses one posted movement exactly (`DEC-028`) against this store's ledger. */
   reverseStockMovement(input: ReverseStockMovementInput): Promise<ReverseStockMovementResult>;
+  /**
+   * The organization reconciliations whose period covers the day (`DEC-117`),
+   * organization-wide by period (no location/channel join). The gate reads only
+   * the statuses.
+   */
+  findReconciliationsCoveringDate(query: {
+    readonly organizationId: string;
+    /** `date`, `YYYY-MM-DD`. */
+    readonly at: string;
+    readonly scopeTypes?: readonly string[];
+  }): Promise<readonly ReconciliationStatusRecord[]>;
+  /**
+   * The `locked` close whose period contains `at` for a scope (`DEC-117`),
+   * organization- and scope-scoped, or `undefined`. Mirrors the
+   * `PeriodCloseStore` member.
+   */
+  findLockedPeriodCloseCoveringDate(query: {
+    readonly organizationId: string;
+    readonly scopeType: PeriodCloseScopeType;
+    readonly scopeId: string;
+    /** `date`, `YYYY-MM-DD`. */
+    readonly at: string;
+  }): Promise<PeriodCloseRecord | undefined>;
 }

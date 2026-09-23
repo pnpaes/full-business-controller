@@ -1,4 +1,4 @@
-import { DomainError } from "@aquarela/domain";
+import { DomainError, evaluateReversalGate } from "@aquarela/domain";
 
 import { isBlank } from "../imports/validation";
 
@@ -55,6 +55,16 @@ export interface CorrectSalesLineResult {
  *
  * `reasonCode` is mandatory and recorded in the line audit and every movement
  * audit. There is no approval workflow and no `adjustment_period` linkage.
+ *
+ * **Downstream-reconciliation gate (`DEC-117`, `DEC-028`):** inside the
+ * transaction and **before** any write, the parent transaction's day
+ * (`occurred_at` date part) is read, the organization-wide covering
+ * reconciliations are read for that day and the `locked` closes covering it for
+ * the transaction's `location_id` and for the organization are read. When
+ * `evaluateReversalGate` denies — a covering reconciliation in
+ * `within_tolerance`/`resolved`/`approved`, or a locked location/company period
+ * — the command throws a message-only `DomainError` and posts **nothing**: no
+ * reversal line, no movement reversal, no audit. There is no override path.
  */
 export async function correctSalesLine(
   store: CorrectSalesLineStore,
@@ -69,6 +79,55 @@ export async function correctSalesLine(
   const salesLineId = input.salesLineId.trim();
 
   return store.withTransaction(async (tx) => {
+    // The reversal gate (`DEC-117`): read the line and its parent transaction,
+    // then the covering reconciliations and the two close locks, all inside the
+    // transaction. A denial throws before any write, so a blocked reversal is a
+    // no-op.
+    const line = await tx.findSalesLine({
+      organizationId: input.organizationId,
+      salesLineId,
+    });
+    if (line === undefined || line.organizationId !== input.organizationId) {
+      throw new DomainError("sales line not found in organization");
+    }
+    const transaction = await tx.findSalesTransaction({
+      organizationId: input.organizationId,
+      salesTransactionId: line.salesTransactionId,
+    });
+    if (transaction === undefined) {
+      throw new DomainError("sales transaction not found in organization");
+    }
+    const day = transaction.occurredAt.slice(0, 10);
+
+    const covering = await tx.findReconciliationsCoveringDate({
+      organizationId: input.organizationId,
+      at: day,
+    });
+    const locationClose =
+      transaction.locationId === null
+        ? undefined
+        : await tx.findLockedPeriodCloseCoveringDate({
+            organizationId: input.organizationId,
+            scopeType: "location",
+            scopeId: transaction.locationId,
+            at: day,
+          });
+    const companyClose = await tx.findLockedPeriodCloseCoveringDate({
+      organizationId: input.organizationId,
+      scopeType: "company",
+      scopeId: input.organizationId,
+      at: day,
+    });
+
+    const decision = evaluateReversalGate({
+      coveringReconciliationStatuses: covering.map((row) => row.status),
+      locationLocked: locationClose !== undefined,
+      companyLocked: companyClose !== undefined,
+    });
+    if (!decision.allowed) {
+      throw new DomainError(decision.reason ?? "reversal blocked by a locked or reconciled period");
+    }
+
     // (a) The line-level primitive validates existence, organization ownership,
     // that the line is not itself a reversal and that it is not already
     // reversed; it posts no stock.

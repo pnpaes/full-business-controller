@@ -150,6 +150,14 @@ export function createPostgresReconciliationStore(db: Database): ReconciliationS
           ...(query.offset === undefined ? {} : { offset: query.offset }),
         })
       ).map(toReconciliation),
+    findReconciliationsCoveringDate: async (query) =>
+      (
+        await repo.findReconciliationsCoveringDate(db, {
+          organizationId: query.organizationId,
+          at: query.at,
+          ...(query.scopeTypes === undefined ? {} : { scopeTypes: query.scopeTypes }),
+        })
+      ).map((row) => ({ status: row.status })),
     findReconciliationTolerance: async (query) => {
       const row = await repo.findReconciliationTolerance(db, query);
       return row === undefined ? undefined : toTolerance(row);

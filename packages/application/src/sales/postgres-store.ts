@@ -5,6 +5,8 @@ import type { Database, NodeDatabase } from "@aquarela/persistence";
 import { createPostgresImportStore } from "../imports";
 import { createPostgresInventoryStore, reverseStockMovement } from "../inventory";
 import { createPostgresProductionStore, resolvePlannedSnapshot } from "../production";
+import { createPostgresPeriodCloseStore } from "../close";
+import { createPostgresReconciliationStore } from "../reconciliation";
 
 import type {
   ConsumptionStore,
@@ -317,17 +319,21 @@ export function createPostgresConsumptionStore(db: Database): ConsumptionStore {
 
 /**
  * Adapts the row-12 sales writes plus the slice-8 inventory ledger to the
- * `CorrectSalesLineStore` port (`DEC-116`). The sales adapter is composed in for
- * the line reversal; the inventory adapter supplies the source-scoped movement
- * read and the reversal primitive. `withTransaction` is the single runner that
- * binds both to one transaction, so `correctSalesLine`'s line and movement
- * reversals commit or roll back together (the composed adapters' own
- * `withTransaction` then nests as savepoints).
+ * `CorrectSalesLineStore` port (`DEC-116`), and composes the reconciliation and
+ * period-close stores for the `DEC-117` reversal gate. The sales adapter is
+ * composed in for the line reversal; the inventory adapter supplies the
+ * source-scoped movement read and the reversal primitive. `withTransaction` is
+ * the single runner that binds every composed store to one transaction, so
+ * `correctSalesLine`'s gate reads, line reversal and movement reversals commit
+ * or roll back together (the composed adapters' own `withTransaction` then nests
+ * as savepoints).
  */
 export function createPostgresCorrectSalesLineStore(db: Database): CorrectSalesLineStore {
   const inventory = createPostgresInventoryStore(db);
   return {
     ...createPostgresSalesStore(db),
+    ...createPostgresReconciliationStore(db),
+    ...createPostgresPeriodCloseStore(db),
     withTransaction: async (fn) => {
       if (!isNodeDatabase(db)) {
         return fn(createPostgresCorrectSalesLineStore(db));

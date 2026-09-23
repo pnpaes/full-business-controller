@@ -134,6 +134,14 @@ export interface FindReconciliationQuery {
   readonly reconciliationId: string;
 }
 
+/**
+ * A covering reconciliation reduced to its `status` — the only field the
+ * `DEC-117` reversal gate reads.
+ */
+export interface ReconciliationStatusRecord {
+  readonly status: string;
+}
+
 export interface FindReconciliationByScopeQuery {
   readonly organizationId: string;
   readonly scopeType: string;
@@ -186,6 +194,17 @@ export interface ReconciliationStore extends Omit<ImportStore, "withTransaction"
     query: FindReconciliationByScopeQuery,
   ): Promise<ReconciliationRecord | undefined>;
   listReconciliations(query: ListReconciliationsQuery): Promise<readonly ReconciliationRecord[]>;
+  /**
+   * The organization's reconciliations whose `[periodStart, periodEnd]` contains
+   * `at` (both bounds inclusive), with an optional `scope_type` filter
+   * (`DEC-117`). Only the statuses are returned; the caller decides which block.
+   */
+  findReconciliationsCoveringDate(query: {
+    readonly organizationId: string;
+    /** `date` (`yyyy-mm-dd`). */
+    readonly at: string;
+    readonly scopeTypes?: readonly string[];
+  }): Promise<readonly ReconciliationStatusRecord[]>;
   createReconciliation(input: NewReconciliationRecord): Promise<ReconciliationRecord>;
   updateReconciliation(
     query: FindReconciliationQuery,

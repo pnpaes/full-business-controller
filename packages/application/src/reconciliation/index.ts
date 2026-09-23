@@ -26,6 +26,7 @@ export type {
   NewReconciliationToleranceRecord,
   ReconciliationPatch,
   ReconciliationRecord,
+  ReconciliationStatusRecord,
   ReconciliationStore,
   ReconciliationToleranceRecord,
   SettlementRecord,
