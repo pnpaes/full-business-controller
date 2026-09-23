@@ -11,12 +11,15 @@ import {
   findItemBySku,
   findItemWithUnitById,
   findUnitByCode,
+  findVariantBySku,
   listItems,
   listSupplierItemsForItem,
 } from "./master-data";
 import {
   createTestItem,
   createTestOrganization,
+  createTestProduct,
+  createTestProductVariant,
   createTestUnit,
   inRollback,
   uniqueName,
@@ -142,6 +145,29 @@ describe.skipIf(!databaseUrl)("catalog read repository", () => {
       expect((await findItemBySku(tx, orgId, created.sku))?.id).toBe(created.id);
       expect(
         await findItemWithUnitById(tx, "00000000-0000-0000-0000-000000000000"),
+      ).toBeUndefined();
+    });
+  });
+
+  it("finds a product variant by its organization SKU, and only within that organization", async () => {
+    await inRollback(client.db, async (tx) => {
+      const product = await createTestProduct(tx, orgId);
+      const sku = uniqueName("vsku");
+      const variant = await createTestProductVariant(tx, orgId, product.id, { sku });
+
+      expect((await findVariantBySku(tx, { organizationId: orgId, sku }))?.id).toBe(variant.id);
+
+      // An unknown SKU resolves to undefined.
+      expect(
+        await findVariantBySku(tx, { organizationId: orgId, sku: uniqueName("missing") }),
+      ).toBeUndefined();
+
+      // Another organization's SKU is invisible at this scope.
+      const otherOrgId = await createTestOrganization(tx, uniqueSuffix());
+      const otherProduct = await createTestProduct(tx, otherOrgId);
+      const otherVariant = await createTestProductVariant(tx, otherOrgId, otherProduct.id);
+      expect(
+        await findVariantBySku(tx, { organizationId: orgId, sku: otherVariant.sku }),
       ).toBeUndefined();
     });
   });

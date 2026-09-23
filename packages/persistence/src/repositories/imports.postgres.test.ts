@@ -354,6 +354,52 @@ describe.skipIf(!databaseUrl)("imports repository", () => {
     });
   });
 
+  it("filters mappings by internal entity type without changing the external type filter", async () => {
+    await inRollback(client.db, async (tx) => {
+      const variantMapping = await createTestExternalMapping(tx, orgId, {
+        externalId: uniqueName("ext"),
+        internalEntityType: "product_variant",
+      });
+      const itemMapping = await createTestExternalMapping(tx, orgId, {
+        externalId: uniqueName("ext"),
+        internalEntityType: "item",
+      });
+
+      // The new filter selects only the matching internal type.
+      const variants = await listExternalMappings(tx, {
+        organizationId: orgId,
+        internalEntityType: "product_variant",
+      });
+      expect(variants.map((row) => row.id)).toEqual([variantMapping.id]);
+
+      // An absent filter does not narrow: both rows are returned.
+      const unfiltered = await listExternalMappings(tx, { organizationId: orgId });
+      expect(unfiltered.map((row) => row.id)).toEqual(
+        expect.arrayContaining([variantMapping.id, itemMapping.id]),
+      );
+
+      // The existing `entityType` (external type) filter is unchanged.
+      const byExternalType = await listExternalMappings(tx, {
+        organizationId: orgId,
+        entityType: "product",
+      });
+      expect(byExternalType.map((row) => row.id)).toEqual(
+        expect.arrayContaining([variantMapping.id, itemMapping.id]),
+      );
+      expect(
+        await listExternalMappings(tx, { organizationId: orgId, entityType: "sale" }),
+      ).toHaveLength(0);
+
+      // Both filters together narrow to their intersection.
+      const intersected = await listExternalMappings(tx, {
+        organizationId: orgId,
+        entityType: "product",
+        internalEntityType: "item",
+      });
+      expect(intersected.map((row) => row.id)).toEqual([itemMapping.id]);
+    });
+  });
+
   it("keeps another organization's mappings invisible", async () => {
     await inRollback(client.db, async (tx) => {
       const otherOrgId = await createTestOrganization(tx, uniqueSuffix());

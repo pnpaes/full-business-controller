@@ -399,17 +399,21 @@ export async function findExternalMapping(
 export interface ListExternalMappingsQuery {
   readonly organizationId: string;
   readonly sourceSystem?: string;
+  /** The external source's entity type; distinct from `internalEntityType`. */
   readonly entityType?: string;
   readonly externalId?: string;
+  /** The mapped internal entity type (e.g. `product_variant`, `item`). */
+  readonly internalEntityType?: string;
   readonly limit?: number;
   readonly offset?: number;
 }
 
 /**
  * Mappings for one organization, newest effective window first
- * (`effective_from`, then `id`), with optional source/entity/external-id
- * filters. Every filter is optional except the organization, so the caller
- * never sees another tenant's rows. Paging is applied after the ordering.
+ * (`effective_from`, then `id`), with optional source/entity/external-id/
+ * internal-entity-type filters. Every filter is optional except the
+ * organization, so the caller never sees another tenant's rows. Paging is
+ * applied after the ordering.
  */
 export async function listExternalMappings(
   db: Database,
@@ -430,6 +434,9 @@ export async function listExternalMappings(
         query.externalId === undefined
           ? undefined
           : eq(externalMapping.externalId, query.externalId),
+        query.internalEntityType === undefined
+          ? undefined
+          : eq(externalMapping.internalEntityType, query.internalEntityType),
       ),
     )
     .orderBy(desc(externalMapping.effectiveFrom), desc(externalMapping.id))

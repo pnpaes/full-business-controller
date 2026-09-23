@@ -2,7 +2,15 @@ import { and, asc, eq, gt, ilike, isNull, lte, or, sql, type SQL } from "drizzle
 import { alias } from "drizzle-orm/pg-core";
 
 import type { Database } from "../client";
-import { costCenter, item, supplier, supplierItem, unit, unitConversion } from "../schema";
+import {
+  costCenter,
+  item,
+  productVariant,
+  supplier,
+  supplierItem,
+  unit,
+  unitConversion,
+} from "../schema";
 
 export type Item = typeof item.$inferSelect;
 export type NewItem = typeof item.$inferInsert;
@@ -75,6 +83,24 @@ export async function findItemBySku(
     .select()
     .from(item)
     .where(and(eq(item.organizationId, organizationId), eq(item.sku, sku)))
+    .limit(1);
+  return rows[0];
+}
+
+/** `product_variant.sku` is unique per organization (`product_variant_organization_id_sku_key`). */
+export async function findVariantBySku(
+  db: Database,
+  query: { readonly organizationId: string; readonly sku: string },
+): Promise<{ readonly id: string } | undefined> {
+  const rows = await db
+    .select({ id: productVariant.id })
+    .from(productVariant)
+    .where(
+      and(
+        eq(productVariant.organizationId, query.organizationId),
+        eq(productVariant.sku, query.sku),
+      ),
+    )
     .limit(1);
   return rows[0];
 }
