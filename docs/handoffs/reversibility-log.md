@@ -1,5 +1,18 @@
 # Reversibility log
 
+- **2026-09-23 cost-card component resolvers (`DEC-112`; 5 commits incl. the
+  `docs(decisions)` commit; nothing pushed)**: 1. `8cf86c9`
+  `docs(decisions)` (`DEC-112`); 2. `bfb1a07` `feat(domain)`; 3. `fb081ef`
+  `feat(persistence)`; 4. `7748969` `feat(application)`; 5. `8bf8c71`
+  `feat(web)` — each independently revertible with `git revert <sha>`.
+  Migrations **`0060`** (resolver columns + `ALLOCATION_DENOMINATOR_SOURCE`
+  vocabulary), **`0061`** (cross-org guard triggers) and **`0062`**
+  (`channel_fee_rule` lookup index) are additive — nullable columns, no new
+  table, no backfill; the rehearsed down-path order is **`0061` down → `0062`
+  down → `0060` down** (drop the cross-org guards, drop the lookup index, drop
+  the resolver columns). Schema stays **89 tables**;
+  `db:migrate` is a no-op on re-run through `0062`. Nothing applied to
+  DigitalOcean.
 - **2026-09-23 cost-card composition assembler (`DEC-111`; 4 commits incl. this
   docs commit; nothing pushed)**: 1. `182342b` `feat(application)`; 2. `0ee79f7`
   `feat(web)`; 3. the `docs(decisions)` commit (`DEC-111`); 4. this
