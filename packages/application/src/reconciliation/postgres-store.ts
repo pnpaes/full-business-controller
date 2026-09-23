@@ -1,4 +1,4 @@
-import { MONEY_SCALE, formatDecimal, parseDecimal, type ToleranceKind } from "@aquarela/domain";
+import { type ToleranceKind } from "@aquarela/domain";
 import * as repo from "@aquarela/persistence";
 import type { Database, NodeDatabase } from "@aquarela/persistence";
 
@@ -75,10 +75,14 @@ function toTolerance(row: repo.ReconciliationTolerance): ReconciliationTolerance
  *
  * Repository gaps bridged here (recorded, not resolved — this slice must not
  * edit persistence):
- * - there is no settlement sales-total aggregate, so `sumSalesForChannelPeriod`
- *   reads the organization's transactions and sums them in the adapter;
  * - there is no reconciliation lookup by scope, so the adapter matches over the
  *   organization/scope page.
+ *
+ * `sumSalesForChannelPeriod` is re-derived from `sales_line.gross_amount` through
+ * `sumSalesLineGrossForChannelPeriod` (`DEC-118`), excluding `included` lines and
+ * netting a line-level `DEC-073` reversal as a negated line — so the settlement
+ * reconciliation agrees with the sales reports (formerly the adapter summed the
+ * append-only transaction header, where a reversal never netted).
  */
 export function createPostgresReconciliationStore(db: Database): ReconciliationStore {
   const imports = createPostgresImportStore(db);
@@ -104,28 +108,14 @@ export function createPostgresReconciliationStore(db: Database): ReconciliationS
           ...(query.offset === undefined ? {} : { offset: query.offset }),
         })
       ).map(toSettlement),
-    sumSalesForChannelPeriod: async (query) => {
-      const transactions = await repo.listSalesTransactions(db, {
+    sumSalesForChannelPeriod: (query) =>
+      repo.sumSalesLineGrossForChannelPeriod(db, {
         organizationId: query.organizationId,
-      });
-      let total = 0n;
-      for (const transaction of transactions) {
-        const day = transaction.occurredAt.toISOString().slice(0, 10);
-        if (day < query.periodStart || day > query.periodEnd) {
-          continue;
-        }
-        if (transaction.currency !== query.currency) {
-          continue;
-        }
-        if (query.channelId !== null && transaction.channelId !== query.channelId) {
-          continue;
-        }
-        if (transaction.grossAmount !== null) {
-          total += parseDecimal(transaction.grossAmount, MONEY_SCALE);
-        }
-      }
-      return formatDecimal(total, MONEY_SCALE);
-    },
+        channelId: query.channelId,
+        periodStart: query.periodStart,
+        periodEnd: query.periodEnd,
+        currency: query.currency,
+      }),
     findReconciliation: async (query) => {
       const row = await repo.findReconciliation(db, query);
       return row === undefined ? undefined : toReconciliation(row);
@@ -187,9 +177,14 @@ export function createPostgresReconciliationStore(db: Database): ReconciliationS
     updateReconciliation: async (query, patch: ReconciliationPatch) => {
       const values: repo.ReconciliationPatch = {
         ...(patch.status === undefined ? {} : { status: patch.status }),
+        ...(patch.expectedAmount === undefined ? {} : { expectedAmount: patch.expectedAmount }),
+        ...(patch.actualAmount === undefined ? {} : { actualAmount: patch.actualAmount }),
+        ...(patch.tolerance === undefined ? {} : { tolerance: patch.tolerance }),
+        ...(patch.difference === undefined ? {} : { difference: patch.difference }),
         ...(patch.resolutionNote === undefined ? {} : { resolutionNote: patch.resolutionNote }),
         ...(patch.ownerId === undefined ? {} : { ownerId: patch.ownerId }),
         ...(patch.dueDate === undefined ? {} : { dueDate: patch.dueDate }),
+        ...(patch.updatedBy === undefined ? {} : { updatedBy: patch.updatedBy }),
       };
       const row = await repo.updateReconciliation(db, query, values);
       return row === undefined ? undefined : toReconciliation(row);

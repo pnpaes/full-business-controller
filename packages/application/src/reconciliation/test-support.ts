@@ -1,4 +1,4 @@
-import type { ToleranceKind } from "@aquarela/domain";
+import { MONEY_SCALE, formatDecimal, parseDecimal, type ToleranceKind } from "@aquarela/domain";
 
 import type { AuditInput } from "../auth";
 import { FakeImportStore } from "../imports/test-support";
@@ -15,24 +15,31 @@ import type {
   SettlementRecord,
 } from "./types";
 
-/** Key for the fake settlement-vs-sales total map. */
-export function salesTotalKey(input: {
+/**
+ * One seeded sales line for the fake settlement-vs-sales read. The fake mirrors
+ * `sumSalesLineGrossForChannelPeriod` (`DEC-118`): it filters on the
+ * **transaction's** channel/currency and the inclusive UTC-day window, excludes
+ * `included`, and sums `grossAmount` — so a reversal line (a negative
+ * `grossAmount` in the original's transaction) nets.
+ */
+export interface FakeSalesLineSeed {
+  readonly organizationId: string;
   readonly channelId: string | null;
-  readonly periodStart: string;
-  readonly periodEnd: string;
   readonly currency: string;
-}): string {
-  return [input.channelId ?? "*", input.periodStart, input.periodEnd, input.currency].join(
-    "\u0000",
-  );
+  /** ISO instant; the fake derives the UTC day like the adapter. */
+  readonly occurredAt: string;
+  readonly grossAmount: string | null;
+  /** Defaults to `standalone`. */
+  readonly optionKind?: string;
 }
 
 /**
  * In-memory `ReconciliationStore` for the unit suite. The row-11 import reads
  * are delegated to a `FakeImportStore`, so a run and its staging rows are seeded
- * exactly as in the import tests; settlement-vs-sales totals are supplied
- * through `salesTotals`. `reconciliation.postgres.test.ts` covers the real
- * adapter under `DATABASE_URL`.
+ * exactly as in the import tests; the settlement-vs-sales read is modelled over
+ * a seeded {@link FakeSalesLineSeed} list (`seedSalesLine`), so a reversal line
+ * nets and an `included` line is excluded. The real adapter is covered under
+ * `DATABASE_URL` by `reconciliation.postgres.test.ts`.
  */
 export class FakeReconciliationStore implements ReconciliationStore {
   readonly imports = new FakeImportStore();
@@ -40,8 +47,8 @@ export class FakeReconciliationStore implements ReconciliationStore {
   readonly reconciliations = new Map<string, ReconciliationRecord>();
   /** `DEC-072` tolerance config rows, keyed by id. */
   readonly tolerances = new Map<string, ReconciliationToleranceRecord>();
-  /** Settlement-vs-sales totals, keyed by `salesTotalKey`. */
-  readonly salesTotals = new Map<string, string>();
+  /** Seeded sales lines for `sumSalesForChannelPeriod` (see the class doc). */
+  readonly salesLines: FakeSalesLineSeed[] = [];
   readonly auditEvents: AuditInput[] = [];
   private sequence = 0;
 
@@ -86,6 +93,11 @@ export class FakeReconciliationStore implements ReconciliationStore {
     };
     this.tolerances.set(record.id, record);
     return record;
+  }
+
+  /** Seeds one sales line for the fake settlement-vs-sales read. */
+  seedSalesLine(seed: FakeSalesLineSeed): void {
+    this.salesLines.push(seed);
   }
 
   async withTransaction<T>(fn: (store: ReconciliationStore) => Promise<T>): Promise<T> {
@@ -192,7 +204,29 @@ export class FakeReconciliationStore implements ReconciliationStore {
     readonly periodEnd: string;
     readonly currency: string;
   }): Promise<string> {
-    return this.salesTotals.get(salesTotalKey(query)) ?? "0.0000";
+    let total = 0n;
+    for (const line of this.salesLines) {
+      if (line.organizationId !== query.organizationId) {
+        continue;
+      }
+      const day = line.occurredAt.slice(0, 10);
+      if (day < query.periodStart || day > query.periodEnd) {
+        continue;
+      }
+      if (line.currency !== query.currency) {
+        continue;
+      }
+      if (query.channelId !== null && line.channelId !== query.channelId) {
+        continue;
+      }
+      if (line.optionKind === "included") {
+        continue;
+      }
+      if (line.grossAmount !== null) {
+        total += parseDecimal(line.grossAmount, MONEY_SCALE);
+      }
+    }
+    return formatDecimal(total, MONEY_SCALE);
   }
 
   async findReconciliation(
@@ -285,6 +319,10 @@ export class FakeReconciliationStore implements ReconciliationStore {
     const record: ReconciliationRecord = {
       ...existing,
       ...(patch.status === undefined ? {} : { status: patch.status }),
+      ...(patch.expectedAmount === undefined ? {} : { expectedAmount: patch.expectedAmount }),
+      ...(patch.actualAmount === undefined ? {} : { actualAmount: patch.actualAmount }),
+      ...(patch.tolerance === undefined ? {} : { tolerance: patch.tolerance }),
+      ...(patch.difference === undefined ? {} : { difference: patch.difference }),
       ...(patch.resolutionNote === undefined ? {} : { resolutionNote: patch.resolutionNote }),
       ...(patch.ownerId === undefined ? {} : { ownerId: patch.ownerId }),
       ...(patch.dueDate === undefined ? {} : { dueDate: patch.dueDate }),

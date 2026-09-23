@@ -8,7 +8,7 @@ import { reconcileImportRun } from "./reconcile-import-run";
 import { reconcileSettlement } from "./reconcile-settlement";
 import { registerReconciliationTolerance } from "./register-reconciliation-tolerance";
 import { resolveReconciliation } from "./resolve-reconciliation";
-import { FakeReconciliationStore, salesTotalKey, seedReconciliationFixture } from "./test-support";
+import { FakeReconciliationStore, seedReconciliationFixture } from "./test-support";
 import type { ReconciliationRecord } from "./types";
 import { resolveEffectiveTolerance, resolveTolerance } from "./validation";
 
@@ -359,15 +359,13 @@ describe("reconcileSettlement", () => {
   } {
     const store = new FakeReconciliationStore();
     const fixture = seedReconciliationFixture(store);
-    store.salesTotals.set(
-      salesTotalKey({
-        channelId: fixture.channelId,
-        periodStart: "2026-01-01",
-        periodEnd: "2026-01-31",
-        currency: "NOK",
-      }),
-      actual,
-    );
+    store.seedSalesLine({
+      organizationId: ORG,
+      channelId: fixture.channelId,
+      currency: "NOK",
+      occurredAt: "2026-01-15T12:00:00.000Z",
+      grossAmount: actual,
+    });
     return { store, settlementId: fixture.settlementId };
   }
 
@@ -513,6 +511,162 @@ describe("reconcileSettlement", () => {
       }),
     ).rejects.toThrow(/unknown reconciliation scope_type/);
     expect(rejected.store.reconciliations.size).toBe(0);
+  });
+
+  it("nets a line-level reversal into the settlement actual (DEC-118)", async () => {
+    const store = new FakeReconciliationStore();
+    const fixture = seedReconciliationFixture(store);
+    // expected = 10000.0000; the DEC-026 config tolerance is
+    // max(0.5% x 10000, 5) = 50.0000.
+    store.seedSalesLine({
+      organizationId: ORG,
+      channelId: fixture.channelId,
+      currency: "NOK",
+      occurredAt: "2026-01-10T12:00:00.000Z",
+      grossAmount: "10050.0000",
+    });
+
+    const before = await reconcileSettlement(store, {
+      organizationId: ORG,
+      actorId: ACTOR,
+      settlementId: fixture.settlementId,
+      useDecisionDefaultTolerance: true,
+    });
+    expect(before).toMatchObject({
+      status: "within_tolerance",
+      expected: "10000.0000",
+      actual: "10050.0000",
+      difference: "50.0000",
+    });
+
+    // A `DEC-073` reversal is a negated line in the original's transaction, so
+    // it nets into the settlement actual without a special case.
+    store.seedSalesLine({
+      organizationId: ORG,
+      channelId: fixture.channelId,
+      currency: "NOK",
+      occurredAt: "2026-01-10T12:00:00.000Z",
+      grossAmount: "-250.0000",
+    });
+
+    const after = await reconcileSettlement(store, {
+      organizationId: ORG,
+      actorId: ACTOR,
+      settlementId: fixture.settlementId,
+      useDecisionDefaultTolerance: true,
+    });
+    expect(after).toMatchObject({
+      reconciliationId: before.reconciliationId,
+      status: "exception",
+      actual: "9800.0000",
+      difference: "-200.0000",
+      created: false,
+    });
+  });
+
+  it("excludes an included line from the settlement actual (DEC-118)", async () => {
+    const store = new FakeReconciliationStore();
+    const fixture = seedReconciliationFixture(store);
+    store.seedSalesLine({
+      organizationId: ORG,
+      channelId: fixture.channelId,
+      currency: "NOK",
+      occurredAt: "2026-01-10T12:00:00.000Z",
+      grossAmount: "10000.0000",
+    });
+    store.seedSalesLine({
+      organizationId: ORG,
+      channelId: fixture.channelId,
+      currency: "NOK",
+      occurredAt: "2026-01-10T12:00:00.000Z",
+      grossAmount: "500.0000",
+      optionKind: "included",
+    });
+
+    const result = await reconcileSettlement(store, {
+      organizationId: ORG,
+      actorId: ACTOR,
+      settlementId: fixture.settlementId,
+      useDecisionDefaultTolerance: true,
+    });
+    expect(result).toMatchObject({
+      status: "within_tolerance",
+      actual: "10000.0000",
+      difference: "0.0000",
+    });
+  });
+
+  it("refreshes the amounts on a re-run and preserves resolution_note (DEC-118)", async () => {
+    const store = new FakeReconciliationStore();
+    const fixture = seedReconciliationFixture(store);
+    store.seedSalesLine({
+      organizationId: ORG,
+      channelId: fixture.channelId,
+      currency: "NOK",
+      occurredAt: "2026-01-10T12:00:00.000Z",
+      grossAmount: "10050.0000",
+    });
+
+    const first = await reconcileSettlement(store, {
+      organizationId: ORG,
+      actorId: ACTOR,
+      settlementId: fixture.settlementId,
+      useDecisionDefaultTolerance: true,
+    });
+    await store.updateReconciliation(
+      { organizationId: ORG, reconciliationId: first.reconciliationId },
+      { resolutionNote: "operator note" },
+    );
+
+    store.seedSalesLine({
+      organizationId: ORG,
+      channelId: fixture.channelId,
+      currency: "NOK",
+      occurredAt: "2026-01-10T12:00:00.000Z",
+      grossAmount: "-250.0000",
+    });
+    const second = await reconcileSettlement(store, {
+      organizationId: ORG,
+      actorId: ACTOR,
+      settlementId: fixture.settlementId,
+      useDecisionDefaultTolerance: true,
+    });
+
+    expect(second).toMatchObject({
+      reconciliationId: first.reconciliationId,
+      status: "exception",
+      expected: "10000.0000",
+      actual: "9800.0000",
+      tolerance: "50.0000",
+      difference: "-200.0000",
+      created: false,
+    });
+    const stored = store.reconciliations.get(first.reconciliationId)!;
+    expect(stored).toMatchObject({
+      status: "exception",
+      actualAmount: "9800.0000",
+      difference: "-200.0000",
+      // A patch without `resolutionNote` leaves it untouched.
+      resolutionNote: "operator note",
+    });
+  });
+
+  it("leaves the previous behaviour unchanged when there is no reversal (DEC-118)", async () => {
+    const { store, settlementId } = storeWithSalesTotal("10050.0000");
+
+    const result = await reconcileSettlement(store, {
+      organizationId: ORG,
+      actorId: ACTOR,
+      settlementId,
+      useDecisionDefaultTolerance: true,
+    });
+    expect(result).toMatchObject({
+      status: "within_tolerance",
+      expected: "10000.0000",
+      actual: "10050.0000",
+      tolerance: "50.0000",
+      difference: "50.0000",
+    });
   });
 });
 

@@ -91,8 +91,18 @@ export interface NewReconciliationRecord {
   readonly createdBy: string;
 }
 
+/**
+ * A partial reconciliation update. Only the supplied keys are written, so an
+ * absent `resolutionNote` stays untouched. The derived amount fields are
+ * refreshed by a `reconcileSettlement` re-run (`DEC-118`); the period stays a
+ * creation-time fact.
+ */
 export interface ReconciliationPatch {
   readonly status?: string;
+  readonly expectedAmount?: string;
+  readonly actualAmount?: string;
+  readonly tolerance?: string;
+  readonly difference?: string;
   readonly resolutionNote?: string | null;
   readonly ownerId?: string | null;
   readonly dueDate?: string | null;
@@ -166,7 +176,10 @@ export interface FindSettlementQuery {
 /**
  * The posted sales total for a channel over a period, at money scale, used by
  * `reconcileSettlement` as the "sales" side of settlement-vs-sales. `channelId`
- * null sums every channel (the settlement carries no channel).
+ * null sums every channel (the settlement carries no channel). Since `DEC-118`
+ * it is a **gross line-level** sum (`sales_line.gross_amount`, `included`
+ * excluded), so a `DEC-073` reversal line nets; the channel and UTC day are the
+ * parent transaction's.
  */
 export interface SumSalesForChannelPeriodQuery {
   readonly organizationId: string;

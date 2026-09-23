@@ -60,6 +60,14 @@ export interface ReconcileSettlementResult {
  * constrained to the `SETTLEMENT_STATUS` vocabulary (`DEC-078` (a),
  * `settlement_status_check`, migration `0028`); the reconciliation remains the
  * judgement. An unknown `scopeType` is rejected (`DEC-078` (b)).
+ *
+ * `actual` is re-derived from the gross line total
+ * (`sumSalesLineGrossForChannelPeriod`, `DEC-118`), so a `DEC-073` reversal line
+ * nets. A re-run (an existing reconciliation for the same scope) refreshes
+ * `expected`/`actual`/`tolerance`/`difference` alongside `status` and preserves
+ * `resolution_note`; this supersedes the "amounts are creation-time facts"
+ * convention for this command. Existing rows change only when an operator
+ * re-runs: there is no backfill and no historical re-evaluation.
  */
 export async function reconcileSettlement(
   store: ReconciliationStore,
@@ -121,6 +129,14 @@ export async function reconcileSettlement(
         { organizationId: input.organizationId, reconciliationId: existing.id },
         {
           status,
+          // A re-run re-derives the amounts (`DEC-118`), so a stored status can
+          // never sit beside stale figures after a reversal nets into `actual`.
+          // `resolution_note` is left out, so it is preserved; `owner_id`/
+          // `due_date` change only when supplied.
+          expectedAmount: expected,
+          actualAmount: actual,
+          tolerance,
+          difference: evaluation.difference,
           updatedBy: input.actorId,
           ...(input.ownerId === undefined ? {} : { ownerId: input.ownerId }),
           ...(input.dueDate === undefined ? {} : { dueDate: input.dueDate }),
