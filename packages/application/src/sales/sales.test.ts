@@ -158,6 +158,36 @@ describe("postImportRun", () => {
     expect(store.auditEvents.map((event) => event.action)).toContain("sales.import_run.posted");
   });
 
+  it("persists product_variant_id from the staging row's normalized jsonb (DEC-113)", async () => {
+    const store = new FakeSalesStore();
+    const { importRunId, rowIds } = await seedImportRun(
+      store,
+      { organizationId: ORG },
+      {
+        rows: [
+          {
+            sourceRowNo: 1,
+            normalized: normalized({ product_variant_id: "variant-1" }),
+          },
+          { sourceRowNo: 2, normalized: normalized({ external_line_id: "line-2" }) },
+        ],
+      },
+    );
+
+    const result = await postImportRun(store, { organizationId: ORG, actorId: ACTOR, importRunId });
+    expect(result).toMatchObject({ status: "posted", postedCount: 2 });
+
+    const lines = [...store.salesLines.values()];
+    const withVariant = lines.find((line) => line.externalLineId === "line-1")!;
+    const withoutVariant = lines.find((line) => line.externalLineId === "line-2")!;
+    expect(withVariant.productVariantId).toBe("variant-1");
+    expect(withoutVariant.productVariantId).toBeNull();
+    // Both rows still post and link, variant or not.
+    for (const rowId of rowIds) {
+      expect(stagingRow(store, rowId).linkedSalesLineId).not.toBeNull();
+    }
+  });
+
   it("marks a run partially_posted when some staged rows cannot post (DEC-025)", async () => {
     const store = new FakeSalesStore();
     const { importRunId, rowIds } = await seedImportRun(

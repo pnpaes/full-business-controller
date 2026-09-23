@@ -1,6 +1,9 @@
 import {
   createDb,
+  externalMapping,
   item,
+  product,
+  productVariant,
   unit,
   type DatabaseTransaction,
   type DbClient,
@@ -59,6 +62,28 @@ async function seedItem(tx: DatabaseTransaction, orgId: string, sku: string): Pr
     })
     .returning();
   return stocked[0]!.id;
+}
+
+async function seedProductVariant(
+  tx: DatabaseTransaction,
+  orgId: string,
+  sku: string,
+): Promise<string> {
+  const created = await tx
+    .insert(product)
+    .values({ organizationId: orgId, code: `prod_${suffix}`, name: "Import variant product" })
+    .returning();
+  const variant = await tx
+    .insert(productVariant)
+    .values({
+      organizationId: orgId,
+      productId: created[0]!.id,
+      code: `variant_${suffix}`,
+      sku,
+      name: "Import variant",
+    })
+    .returning();
+  return variant[0]!.id;
 }
 
 describe.skipIf(!databaseUrl)("imports against PostgreSQL", () => {
@@ -233,6 +258,167 @@ describe.skipIf(!databaseUrl)("imports against PostgreSQL", () => {
 
       const found = await store.findImportProfile({ organizationId: orgId, source });
       expect(found?.id).toBe(profile.id);
+    });
+  });
+
+  it("maps a sales row to a product variant by SKU and writes product_variant_id (DEC-113)", async () => {
+    await inRollback(client.db, async (tx) => {
+      const sku = `IMP_VAR_SKU_${suffix}`;
+      const variantId = await seedProductVariant(tx, orgId, sku);
+      const store = createPostgresImportStore(tx);
+      const actorId = randomUUID();
+
+      const run = await createImportRun(store, {
+        organizationId: orgId,
+        actorId,
+        source: "frontline-export",
+        profileVersion: "profile-v1",
+        fileHash: `hash-variant-${suffix}`,
+        periodStart: PERIOD_START,
+        periodEnd: PERIOD_END,
+      });
+
+      await stageImportRows(store, {
+        organizationId: orgId,
+        actorId,
+        importRunId: run.importRunId,
+        rows: [
+          {
+            sourceRowNo: 1,
+            raw: { sku },
+            normalized: {
+              sku,
+              occurred_at: "2026-01-15T10:00:00.000Z",
+              currency: "NOK",
+              gross_amount: "12.0000",
+            },
+          },
+        ],
+      });
+
+      await validateImportRun(store, {
+        organizationId: orgId,
+        actorId,
+        importRunId: run.importRunId,
+        rules: { expectedCurrency: "NOK" },
+      });
+
+      const mapped = await mapImportRows(store, {
+        organizationId: orgId,
+        actorId,
+        importRunId: run.importRunId,
+        internalEntityType: "product_variant",
+      });
+      expect(mapped).toMatchObject({ mappedCount: 1, unmappedCount: 0, status: "validated" });
+
+      const detail = await getImportRun(store, {
+        organizationId: orgId,
+        importRunId: run.importRunId,
+      });
+      expect(detail?.rows[0]?.normalized).toMatchObject({
+        mapped_internal_entity_id: variantId,
+        product_variant_id: variantId,
+      });
+    });
+  });
+
+  it("resolves a variant through an effective external mapping inside the occurred_at window (DEC-113)", async () => {
+    await inRollback(client.db, async (tx) => {
+      const sku = `IMP_WIN_SKU_${suffix}`;
+      const variantId = await seedProductVariant(tx, orgId, sku);
+      const store = createPostgresImportStore(tx);
+      const actorId = randomUUID();
+      const occurredAt = "2026-01-15T10:00:00.000Z";
+
+      await tx.insert(externalMapping).values([
+        {
+          organizationId: orgId,
+          sourceSystem: "frontline",
+          entityType: "product",
+          externalId: `ext-var-in-${suffix}`,
+          sku: null,
+          internalEntityType: "product_variant",
+          internalEntityId: variantId,
+          effectiveFrom: new Date("2026-01-01T00:00:00.000Z"),
+          effectiveTo: null,
+        },
+        {
+          organizationId: orgId,
+          sourceSystem: "frontline",
+          entityType: "product",
+          externalId: `ext-var-out-${suffix}`,
+          sku: null,
+          internalEntityType: "product_variant",
+          internalEntityId: variantId,
+          effectiveFrom: new Date("2026-03-01T00:00:00.000Z"),
+          effectiveTo: null,
+        },
+      ]);
+
+      const run = await createImportRun(store, {
+        organizationId: orgId,
+        actorId,
+        source: "frontline-export",
+        profileVersion: "profile-v1",
+        fileHash: `hash-variant-window-${suffix}`,
+        periodStart: PERIOD_START,
+        periodEnd: PERIOD_END,
+      });
+
+      await stageImportRows(store, {
+        organizationId: orgId,
+        actorId,
+        importRunId: run.importRunId,
+        rows: [
+          {
+            sourceRowNo: 1,
+            raw: {},
+            normalized: {
+              external_id: `ext-var-in-${suffix}`,
+              occurred_at: occurredAt,
+              currency: "NOK",
+              gross_amount: "8.0000",
+            },
+          },
+          {
+            sourceRowNo: 2,
+            raw: {},
+            normalized: {
+              external_id: `ext-var-out-${suffix}`,
+              occurred_at: occurredAt,
+              currency: "NOK",
+              gross_amount: "3.0000",
+            },
+          },
+        ],
+      });
+
+      await validateImportRun(store, {
+        organizationId: orgId,
+        actorId,
+        importRunId: run.importRunId,
+        rules: { expectedCurrency: "NOK" },
+      });
+
+      const mapped = await mapImportRows(store, {
+        organizationId: orgId,
+        actorId,
+        importRunId: run.importRunId,
+        internalEntityType: "product_variant",
+      });
+      expect(mapped).toMatchObject({ mappedCount: 1, unmappedCount: 1, status: "needs_review" });
+
+      const detail = await getImportRun(store, {
+        organizationId: orgId,
+        importRunId: run.importRunId,
+      });
+      expect(detail?.rows[0]?.mappingState).toBe("mapped");
+      expect(detail?.rows[0]?.normalized).toMatchObject({
+        mapped_internal_entity_id: variantId,
+        product_variant_id: variantId,
+      });
+      expect(detail?.rows[1]?.mappingState).toBe("unmapped");
+      expect(detail?.rows[1]?.normalized).not.toHaveProperty("product_variant_id");
     });
   });
 });

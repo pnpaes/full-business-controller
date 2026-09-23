@@ -349,6 +349,8 @@ describe("mapImportRows", () => {
       mapped_internal_entity_id: fixture.itemId,
       mapping_match: "sku",
     });
+    // The item path never writes the variant key (`DEC-113`).
+    expect(detail?.rows[0]?.normalized).not.toHaveProperty("product_variant_id");
   });
 
   it("falls back to the external mapping when no SKU is present", async () => {
@@ -455,6 +457,275 @@ describe("mapImportRows", () => {
       outcome: "conflict",
       kind: "internal_to_many_externals",
     });
+  });
+
+  it("resolves a product variant by SKU and writes product_variant_id (DEC-113)", async () => {
+    const store = new FakeImportStore();
+    const fixture = seedImportFixture(store);
+    const importRunId = await stageAndValidate(store, fixture, [
+      row(1, { sku: fixture.variantSku, occurred_at: EFFECTIVE_FROM }),
+    ]);
+
+    const result = await mapImportRows(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      importRunId,
+      internalEntityType: "product_variant",
+    });
+
+    expect(result).toMatchObject({ status: "validated", mappedCount: 1 });
+    expect(result.rows[0]).toMatchObject({
+      outcome: "mapped",
+      internalEntityId: fixture.variantId,
+      match: "sku",
+    });
+    const detail = await getImportRun(store, {
+      organizationId: fixture.organizationId,
+      importRunId,
+    });
+    expect(detail?.rows[0]?.normalized).toMatchObject({
+      mapped_internal_entity_id: fixture.variantId,
+      mapping_match: "sku",
+      product_variant_id: fixture.variantId,
+    });
+  });
+
+  it("resolves a variant through an effective mapping within the occurred_at window (DEC-113)", async () => {
+    const store = new FakeImportStore();
+    const fixture = seedImportFixture(store);
+    const importRunId = await stageAndValidate(store, fixture, [
+      row(1, { external_id: fixture.variantExternalId, occurred_at: EFFECTIVE_FROM }),
+    ]);
+
+    const result = await mapImportRows(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      importRunId,
+      internalEntityType: "product_variant",
+    });
+
+    expect(result.rows[0]).toMatchObject({
+      outcome: "mapped",
+      internalEntityId: fixture.variantId,
+      match: "external_id",
+    });
+    const detail = await getImportRun(store, {
+      organizationId: fixture.organizationId,
+      importRunId,
+    });
+    expect(detail?.rows[0]?.normalized).toMatchObject({
+      mapped_internal_entity_id: fixture.variantId,
+      product_variant_id: fixture.variantId,
+    });
+  });
+
+  it("does not match a variant mapping outside the occurred_at window (DEC-113)", async () => {
+    const store = new FakeImportStore();
+    const fixture = seedImportFixture(store);
+    // A variant mapping that only becomes effective after the row's instant;
+    // the row stays inside the run period so validation does not skip it.
+    store.externalMappings.set("map-var-future", {
+      id: "map-var-future",
+      organizationId: fixture.organizationId,
+      sourceSystem: fixture.sourceSystem,
+      entityType: "product",
+      externalId: "ext-var-future",
+      sku: null,
+      internalEntityType: "product_variant",
+      internalEntityId: "variant-future",
+      effectiveFrom: "2026-01-15T00:00:00.000Z",
+      effectiveTo: null,
+    });
+    const importRunId = await stageAndValidate(store, fixture, [
+      row(1, { external_id: "ext-var-future", occurred_at: "2026-01-10T00:00:00.000Z" }),
+    ]);
+
+    const result = await mapImportRows(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      importRunId,
+      internalEntityType: "product_variant",
+    });
+
+    expect(result).toMatchObject({ status: "needs_review", unmappedCount: 1, skippedCount: 0 });
+    expect(result.rows[0]).toMatchObject({
+      outcome: "unmapped",
+      reason: "external_id_not_found",
+    });
+    const detail = await getImportRun(store, {
+      organizationId: fixture.organizationId,
+      importRunId,
+    });
+    expect(detail?.rows[0]).toMatchObject({ mappingState: "unmapped", errorCode: null });
+    expect(detail?.rows[0]?.normalized).not.toHaveProperty("product_variant_id");
+  });
+
+  it("leaves a variant miss unmapped with no product_variant_id (DEC-113)", async () => {
+    const store = new FakeImportStore();
+    const fixture = seedImportFixture(store);
+    const importRunId = await stageAndValidate(store, fixture, [
+      row(1, { external_id: "ext-nope", occurred_at: EFFECTIVE_FROM }),
+    ]);
+
+    const result = await mapImportRows(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      importRunId,
+      internalEntityType: "product_variant",
+    });
+
+    expect(result).toMatchObject({ status: "needs_review", unmappedCount: 1 });
+    const detail = await getImportRun(store, {
+      organizationId: fixture.organizationId,
+      importRunId,
+    });
+    expect(detail?.rows[0]?.mappingState).toBe("unmapped");
+    expect(detail?.rows[0]?.normalized).not.toHaveProperty("product_variant_id");
+  });
+
+  it("flags one external id resolving to two variants and writes no variant id (DEC-113)", async () => {
+    const store = new FakeImportStore();
+    const fixture = seedImportFixture(store);
+    const base = {
+      organizationId: fixture.organizationId,
+      sourceSystem: fixture.sourceSystem,
+      entityType: "product",
+      sku: null,
+      internalEntityType: "product_variant",
+      effectiveFrom: EFFECTIVE_FROM,
+      effectiveTo: null,
+    } as const;
+    store.externalMappings.set("map-var-dup-1", {
+      ...base,
+      id: "map-var-dup-1",
+      externalId: "ext-dup-var",
+      internalEntityId: "variant-dup-1",
+    });
+    store.externalMappings.set("map-var-dup-2", {
+      ...base,
+      id: "map-var-dup-2",
+      externalId: "ext-dup-var",
+      internalEntityId: "variant-dup-2",
+    });
+    const importRunId = await stageAndValidate(store, fixture, [
+      row(1, { external_id: "ext-dup-var", occurred_at: EFFECTIVE_FROM }),
+    ]);
+
+    const result = await mapImportRows(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      importRunId,
+      internalEntityType: "product_variant",
+    });
+
+    expect(result).toMatchObject({ status: "needs_review", conflictCount: 1 });
+    expect(result.rows[0]).toMatchObject({
+      outcome: "conflict",
+      kind: "external_id_to_many_internals",
+    });
+    const detail = await getImportRun(store, {
+      organizationId: fixture.organizationId,
+      importRunId,
+    });
+    expect(detail?.rows[0]).toMatchObject({
+      mappingState: "conflict",
+      errorCode: "mapping_conflict",
+    });
+    expect(detail?.rows[0]?.normalized).not.toHaveProperty("product_variant_id");
+    expect(detail?.conflicts).toHaveLength(1);
+  });
+
+  it("clears a stale variant id when a mapped row is re-mapped to unmapped (DEC-113)", async () => {
+    const store = new FakeImportStore();
+    const fixture = seedImportFixture(store);
+    const importRunId = await stageAndValidate(store, fixture, [
+      row(1, { external_id: fixture.variantExternalId, occurred_at: EFFECTIVE_FROM }),
+    ]);
+
+    await mapImportRows(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      importRunId,
+      internalEntityType: "product_variant",
+    });
+    const first = await getImportRun(store, {
+      organizationId: fixture.organizationId,
+      importRunId,
+    });
+    expect(first?.rows[0]?.normalized).toMatchObject({
+      product_variant_id: fixture.variantId,
+      mapped_internal_entity_id: fixture.variantId,
+      mapping_match: "external_id",
+    });
+
+    // The mapping is withdrawn, so the re-map no longer resolves the row.
+    store.externalMappings.delete("map-var-1");
+
+    const result = await mapImportRows(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      importRunId,
+      internalEntityType: "product_variant",
+    });
+
+    expect(result).toMatchObject({ status: "needs_review", unmappedCount: 1 });
+    const detail = await getImportRun(store, {
+      organizationId: fixture.organizationId,
+      importRunId,
+    });
+    expect(detail?.rows[0]?.mappingState).toBe("unmapped");
+    expect(detail?.rows[0]?.normalized).not.toHaveProperty("product_variant_id");
+    expect(detail?.rows[0]?.normalized).not.toHaveProperty("mapped_internal_entity_id");
+    expect(detail?.rows[0]?.normalized).not.toHaveProperty("mapping_match");
+  });
+
+  it("clears a stale variant id when a mapped row is re-mapped to conflict (DEC-113)", async () => {
+    const store = new FakeImportStore();
+    const fixture = seedImportFixture(store);
+    const importRunId = await stageAndValidate(store, fixture, [
+      row(1, { external_id: fixture.variantExternalId, occurred_at: EFFECTIVE_FROM }),
+    ]);
+
+    await mapImportRows(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      importRunId,
+      internalEntityType: "product_variant",
+    });
+
+    // A second variant now claims the same external id, so the re-map conflicts.
+    store.externalMappings.set("map-var-conflict", {
+      id: "map-var-conflict",
+      organizationId: fixture.organizationId,
+      sourceSystem: fixture.sourceSystem,
+      entityType: "product",
+      externalId: fixture.variantExternalId,
+      sku: null,
+      internalEntityType: "product_variant",
+      internalEntityId: "variant-conflict",
+      effectiveFrom: EFFECTIVE_FROM,
+      effectiveTo: null,
+    });
+
+    const result = await mapImportRows(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      importRunId,
+      internalEntityType: "product_variant",
+    });
+
+    expect(result).toMatchObject({ status: "needs_review", conflictCount: 1 });
+    const detail = await getImportRun(store, {
+      organizationId: fixture.organizationId,
+      importRunId,
+    });
+    expect(detail?.rows[0]).toMatchObject({
+      mappingState: "conflict",
+      errorCode: "mapping_conflict",
+    });
+    expect(detail?.rows[0]?.normalized).not.toHaveProperty("product_variant_id");
+    expect(detail?.rows[0]?.normalized).not.toHaveProperty("mapped_internal_entity_id");
+    expect(detail?.rows[0]?.normalized).not.toHaveProperty("mapping_match");
   });
 
   it("never remaps a row that already carries a disposition", async () => {

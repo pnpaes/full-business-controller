@@ -214,7 +214,10 @@ export interface ListImportRunsQuery {
 export interface ListExternalMappingsQuery {
   readonly organizationId: string;
   readonly sourceSystem?: string;
+  /** The external source's own entity type; distinct from `internalEntityType`. */
   readonly entityType?: string;
+  /** The mapped internal entity type (e.g. `product_variant`, `item`). */
+  readonly internalEntityType?: string;
 }
 
 export interface ImportStore {
@@ -264,9 +267,9 @@ export interface ImportStore {
   listExternalMappings(query: ListExternalMappingsQuery): Promise<readonly ExternalMappingRecord[]>;
   /**
    * The internal entity for a platform-owned SKU (`DEC-041`), organization- and
-   * entity-type-scoped, or `undefined`. The persistence layer exposes an item
-   * lookup today; other entity types resolve to `undefined` until a repository
-   * lookup exists (recorded open point).
+   * entity-type-scoped, or `undefined`. `item` and `product_variant` have
+   * repository SKU lookups; other entity types resolve to `undefined` until a
+   * repository lookup exists (recorded open point).
    */
   findEntityBySku(query: {
     readonly organizationId: string;

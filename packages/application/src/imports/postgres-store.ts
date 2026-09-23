@@ -295,11 +295,22 @@ export function createPostgresImportStore(db: Database): ImportStore {
           organizationId: query.organizationId,
           ...(query.sourceSystem === undefined ? {} : { sourceSystem: query.sourceSystem }),
           ...(query.entityType === undefined ? {} : { entityType: query.entityType }),
+          ...(query.internalEntityType === undefined
+            ? {}
+            : { internalEntityType: query.internalEntityType }),
         })
       ).map(toExternalMapping),
     findEntityBySku: async (query) => {
-      // Only `item` has a repository SKU lookup today (recorded open point);
-      // product variants and other entity types resolve to `undefined`.
+      // `item` and `product_variant` have repository SKU lookups (`DEC-113` for
+      // the variant branch); other entity types resolve to `undefined` until a
+      // repository lookup exists (recorded open point).
+      if (query.entityType === "product_variant") {
+        const variant = await repo.findVariantBySku(db, {
+          organizationId: query.organizationId,
+          sku: query.sku,
+        });
+        return variant === undefined ? undefined : { internalEntityId: variant.id };
+      }
       if (query.entityType !== "item") {
         return undefined;
       }

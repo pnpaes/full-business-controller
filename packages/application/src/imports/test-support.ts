@@ -272,6 +272,11 @@ export class FakeImportStore implements ImportStore {
       )
       .filter(
         (mapping) => query.entityType === undefined || mapping.entityType === query.entityType,
+      )
+      .filter(
+        (mapping) =>
+          query.internalEntityType === undefined ||
+          mapping.internalEntityType === query.internalEntityType,
       );
   }
 
@@ -302,12 +307,19 @@ export interface ImportFixture {
   readonly secondItemId: string;
   readonly catalogueSku: string;
   readonly catalogueItemId: string;
+  /** A product variant resolved by SKU or by its variant external mapping (`DEC-113`). */
+  readonly variantSku: string;
+  readonly variantId: string;
+  readonly variantExternalId: string;
+  readonly effectiveFrom: string;
 }
 
 /**
- * Seeds two mapped items and one catalogue-only SKU: enough to exercise SKU
- * matching, external-id fallback and the unmapped path. Conflict fixtures are
- * added per test so the resolver's directions stay explicit.
+ * Seeds two mapped items, one catalogue-only SKU and one product variant
+ * (SKU-hit plus an effective variant external mapping): enough to exercise SKU
+ * matching, external-id fallback, the variant branch and the unmapped path.
+ * Conflict fixtures are added per test so the resolver's directions stay
+ * explicit.
  */
 export function seedImportFixture(store: FakeImportStore): ImportFixture {
   const fixture: ImportFixture = {
@@ -322,9 +334,13 @@ export function seedImportFixture(store: FakeImportStore): ImportFixture {
     secondItemId: "item-tea",
     catalogueSku: "NEW-01",
     catalogueItemId: "item-new",
+    variantSku: "VAR-01",
+    variantId: "variant-1",
+    variantExternalId: "ext-var",
+    effectiveFrom: "2026-01-01T00:00:00.000Z",
   };
 
-  const effectiveFrom = "2026-01-01T00:00:00.000Z";
+  const effectiveFrom = fixture.effectiveFrom;
   store.externalMappings.set("map-1", {
     id: "map-1",
     organizationId: fixture.organizationId,
@@ -358,6 +374,22 @@ export function seedImportFixture(store: FakeImportStore): ImportFixture {
   store.internalEntitiesBySku.set(skuKey(fixture.organizationId, "item", fixture.catalogueSku), {
     internalEntityId: fixture.catalogueItemId,
   });
+  store.externalMappings.set("map-var-1", {
+    id: "map-var-1",
+    organizationId: fixture.organizationId,
+    sourceSystem: fixture.sourceSystem,
+    entityType: "product",
+    externalId: fixture.variantExternalId,
+    sku: fixture.variantSku,
+    internalEntityType: "product_variant",
+    internalEntityId: fixture.variantId,
+    effectiveFrom,
+    effectiveTo: null,
+  });
+  store.internalEntitiesBySku.set(
+    skuKey(fixture.organizationId, "product_variant", fixture.variantSku),
+    { internalEntityId: fixture.variantId },
+  );
 
   return fixture;
 }
