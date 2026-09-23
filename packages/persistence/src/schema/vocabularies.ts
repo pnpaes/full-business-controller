@@ -204,14 +204,20 @@ export const ALLOCATION_DRIVER = [
 
 export const ALLOCATION_FALLBACK = ["stop", "equal_share"] as const;
 
-// `DEC-112`: where an allocation driver's denominator quantity comes from —
-// `explicit` (a supplied quantity), `eligible_products` (derived from the
-// eligible product set) or `equal_share` (an even split). From
+// `DEC-112`/`DEC-114`: where an allocation driver's denominator quantity comes
+// from — `explicit` (a supplied quantity), `eligible_products` (derived from the
+// eligible product set), `equal_share` (an even split), or the period-scoped
+// sales volume as `revenue` (Σ net sales), `transactions` (distinct transaction
+// count) or `sales_units` (Σ line quantity). `sales_units` is a denominator
+// source only; it is deliberately absent from `ALLOCATION_DRIVER`. From
 // `schemas/domain-enums.yaml` (`allocation_denominator_source`).
 export const ALLOCATION_DENOMINATOR_SOURCE = [
   "explicit",
   "eligible_products",
   "equal_share",
+  "revenue",
+  "transactions",
+  "sales_units",
 ] as const;
 
 // Slice 9 (counts + transfers + waste), from `schemas/domain-enums.yaml`: the

@@ -284,6 +284,21 @@ function lineCostExpression(): SQL<string> {
 }
 
 /**
+ * The net sales of one `sales_line`: `net_amount` when present, else
+ * `gross − tax − discount − refund`, each null coalesced to zero. Mirrors the
+ * domain `netSalesFromLine` source preference (`packages/domain/src/reporting.ts`).
+ * Shared by `summarizeSales` and `sumSalesVolume` so the two reads cannot drift
+ * (`DEC-114`).
+ *
+ * SQL `coalesce` collapses a NULL `net_amount` only; the domain also treats a
+ * blank as absent. A `numeric` column cannot hold a blank, so the two agree on
+ * all stored data (see the module header).
+ */
+function netSalesExpression(): SQL<string> {
+  return sql<string>`coalesce(${salesLine.netAmount}, coalesce(${salesLine.grossAmount}, 0) - coalesce(${salesLine.taxAmount}, 0) - coalesce(${salesLine.discountAmount}, 0) - coalesce(${salesLine.refundAmount}, 0))`;
+}
+
+/**
  * Groups the window's sales lines by one dimension (`RPT-001`) and returns the
  * raw measures as decimal strings, one row per group key. `period` groups by the
  * grain bucket of `occurred_at`; every other dimension groups by its column and
@@ -377,10 +392,7 @@ export async function summarizeSales(
       transactions: sql<string>`count(distinct ${salesTransaction.id})::text`,
       units: sql<string>`sum(${salesLine.quantity})::text`,
       grossSales: sql<string>`sum(coalesce(${salesLine.grossAmount}, 0))::text`,
-      // SQL `coalesce` collapses a NULL `net_amount` only; the domain
-      // `netSalesFromLine` also treats a blank as absent. A `numeric` column
-      // cannot hold a blank, so the two agree on all stored data.
-      netSales: sql<string>`sum(coalesce(${salesLine.netAmount}, coalesce(${salesLine.grossAmount}, 0) - coalesce(${salesLine.taxAmount}, 0) - coalesce(${salesLine.discountAmount}, 0) - coalesce(${salesLine.refundAmount}, 0)))::text`,
+      netSales: sql<string>`sum(${netSalesExpression()})::text`,
       taxAmount: sql<string>`sum(coalesce(${salesLine.taxAmount}, 0))::text`,
       discountAmount: sql<string>`sum(coalesce(${salesLine.discountAmount}, 0))::text`,
       refundAmount: sql<string>`sum(coalesce(${salesLine.refundAmount}, 0))::text`,
@@ -421,6 +433,65 @@ export async function countSalesTransactions(
     .where(and(...filterConditions(query)));
 
   return rows[0]?.count ?? "0";
+}
+
+/** The half-open `occurred_at` window a sales-volume read shares (`DEC-114`). */
+export interface SumSalesVolumeQuery extends OperationsScopeFilters {
+  /** Inclusive lower bound on `sales_transaction.occurred_at`; an ISO instant. */
+  readonly from: string;
+  /** Exclusive upper bound on `sales_transaction.occurred_at`; an ISO instant. */
+  readonly to: string;
+}
+
+/** The window's sales volume as decimal/count text (`DEC-114`). */
+export interface SalesVolumeAggregate {
+  /** numeric(19,4) text; Σ net sales over the window. */
+  readonly revenue: string;
+  /** Distinct transactions in the window; a count as text. */
+  readonly transactions: string;
+  /** numeric(19,6) text; Σ `sales_line.quantity`. */
+  readonly units: string;
+}
+
+/**
+ * The period-scoped sales volume (`DEC-114`): the denominator for the
+ * `revenue`/`transactions`/`sales_units` allocation sources. One un-grouped
+ * aggregate over `sales_line` inner-joined to `sales_transaction`, org-scoped on
+ * both sides, over the **half-open** `[from, to)` `occurred_at` window, with the
+ * `SALE-011` included-line exclusion and the optional location filter.
+ *
+ * Deliberately distinct from `summarizeSales`: that read uses an **inclusive**
+ * upper bound and groups by a dimension, while an allocation denominator needs
+ * one period total. The variant chain is **not** joined — an unmapped line still
+ * carries revenue and units and is counted. Reversal lines carry a negative
+ * `quantity` and a negative net amount, so a plain sum nets them. Null sums
+ * coalesce to zero; the casts match the column precision (money `numeric(19,4)`,
+ * quantity `numeric(19,6)`).
+ */
+export async function sumSalesVolume(
+  db: Database,
+  query: SumSalesVolumeQuery,
+): Promise<SalesVolumeAggregate> {
+  const conditions: SQL[] = [
+    eq(salesLine.organizationId, query.organizationId),
+    eq(salesTransaction.organizationId, query.organizationId),
+    ne(salesLine.optionKind, "included"),
+    gte(salesTransaction.occurredAt, new Date(query.from)),
+    lt(salesTransaction.occurredAt, new Date(query.to)),
+  ];
+  pushLocationFilter(conditions, salesTransaction.locationId, query.locationIds);
+
+  const rows = await db
+    .select({
+      revenue: sql<string>`cast(coalesce(sum(${netSalesExpression()}), 0) as numeric(19, 4))::text`,
+      transactions: sql<string>`count(distinct ${salesTransaction.id})::text`,
+      units: sql<string>`cast(coalesce(sum(${salesLine.quantity}), 0) as numeric(19, 6))::text`,
+    })
+    .from(salesLine)
+    .innerJoin(salesTransaction, eq(salesLine.salesTransactionId, salesTransaction.id))
+    .where(and(...conditions));
+
+  return rows[0] ?? { revenue: "0.0000", transactions: "0", units: "0.000000" };
 }
 
 export interface SalesLineRecordPage {
