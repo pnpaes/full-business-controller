@@ -104,6 +104,8 @@ export type {
 } from "./recipe";
 export { normaliseRecurringCostsToPeriod, recurringCostContributesToPeriod } from "./recurrence";
 export type { RecurringCostToNormalise } from "./recurrence";
+export { RECONCILED_RECONCILIATION_STATUSES, evaluateReversalGate } from "./reversal-gate";
+export type { ReversalGateDecision, ReversalGateInput } from "./reversal-gate";
 export {
   SALES_REPORT_GRAINS,
   contributionBeforeLabour,
