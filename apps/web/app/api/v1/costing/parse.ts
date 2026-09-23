@@ -24,6 +24,15 @@ export function readOptionalString(body: Record<string, unknown>, key: string): 
   return readRequiredString(body, key);
 }
 
+/**
+ * True when `key` is present but its value is not a string. The costing money
+ * fields default to `"0.0000"` when *absent*, so a present-but-malformed value
+ * (a JSON number or bool) must be a 400 rather than silently defaulting.
+ */
+export function isPresentNonString(body: Record<string, unknown>, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(body, key) && typeof body[key] !== "string";
+}
+
 /** Parses a JSON object body, or undefined when it is not one. */
 export async function readJsonObject(
   request: Request,
