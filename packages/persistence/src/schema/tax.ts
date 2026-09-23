@@ -4,6 +4,7 @@ import {
   char,
   check,
   date,
+  index,
   numeric,
   pgTable,
   text,
@@ -91,6 +92,7 @@ export const channelFeeRule = pgTable(
     ),
     // channel_fee_rule_no_overlap (exclusion constraint) is emitted in the raw
     // `invariants` migration: drizzle-kit 0.30 cannot express exclusion constraints.
+    index("channel_fee_rule_lookup_idx").on(t.organizationId, t.channelId, t.effectiveFrom),
   ],
 );
 

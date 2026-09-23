@@ -1,10 +1,12 @@
 import { and, desc, eq, gt, isNull, lte, or } from "drizzle-orm";
 
 import type { Database } from "../client";
-import { allocationRule, costPool, laborRate, operatingCost } from "../schema";
+import { allocationRule, channelFeeRule, costPool, laborRate, operatingCost } from "../schema";
 
 export type OperatingCost = typeof operatingCost.$inferSelect;
 export type NewOperatingCost = typeof operatingCost.$inferInsert;
+export type ChannelFeeRule = typeof channelFeeRule.$inferSelect;
+export type NewChannelFeeRule = typeof channelFeeRule.$inferInsert;
 export type LaborRate = typeof laborRate.$inferSelect;
 export type NewLaborRate = typeof laborRate.$inferInsert;
 export type CostPool = typeof costPool.$inferSelect;
@@ -48,12 +50,14 @@ export interface EffectiveOperatingCostQuery {
   readonly asOf: Date;
   readonly locationId?: string | null;
   readonly costCenterId?: string | null;
+  readonly costPoolId?: string | null;
 }
 
 /**
- * Operating costs effective at `asOf` (half-open window). `locationId` and
- * `costCenterId` are optional filters: passing null or absent does not narrow
- * the set (a null location means a company-shared cost, not "no location").
+ * Operating costs effective at `asOf` (half-open window). `locationId`,
+ * `costCenterId` and `costPoolId` are optional filters: passing null or absent
+ * does not narrow the set (a null location means a company-shared cost, not
+ * "no location"; a null pool means a cost with no shared-pool link).
  */
 export async function listEffectiveOperatingCosts(
   db: Database,
@@ -68,6 +72,10 @@ export async function listEffectiveOperatingCosts(
     query.costCenterId === undefined || query.costCenterId === null
       ? undefined
       : eq(operatingCost.costCenterId, query.costCenterId);
+  const costPoolFilter =
+    query.costPoolId === undefined || query.costPoolId === null
+      ? undefined
+      : eq(operatingCost.costPoolId, query.costPoolId);
   return db
     .select()
     .from(operatingCost)
@@ -78,6 +86,7 @@ export async function listEffectiveOperatingCosts(
         or(isNull(operatingCost.effectiveTo), gt(operatingCost.effectiveTo, asOf)),
         locationFilter,
         costCenterFilter,
+        costPoolFilter,
       ),
     )
     .orderBy(desc(operatingCost.effectiveFrom));
@@ -171,6 +180,44 @@ export async function listCostPools(db: Database, organizationId: string): Promi
     .from(costPool)
     .where(eq(costPool.organizationId, organizationId))
     .orderBy(costPool.code, desc(costPool.effectiveFrom));
+}
+
+export interface EffectiveChannelFeeRuleQuery {
+  readonly organizationId: string;
+  readonly channelId: string;
+  readonly asOf: Date;
+}
+
+/**
+ * Channel fee rules effective at `asOf` for one organization + channel, newest
+ * effective window first. `effective_from`/`effective_to` are `tstz` columns
+ * here (unlike `operating_cost`), so the half-open `[effective_from,
+ * effective_to)` window is evaluated against the `asOf` timestamp itself.
+ */
+export async function listEffectiveChannelFeeRules(
+  db: Database,
+  query: EffectiveChannelFeeRuleQuery,
+): Promise<ChannelFeeRule[]> {
+  return db
+    .select()
+    .from(channelFeeRule)
+    .where(
+      and(
+        eq(channelFeeRule.organizationId, query.organizationId),
+        eq(channelFeeRule.channelId, query.channelId),
+        lte(channelFeeRule.effectiveFrom, query.asOf),
+        or(isNull(channelFeeRule.effectiveTo), gt(channelFeeRule.effectiveTo, query.asOf)),
+      ),
+    )
+    .orderBy(desc(channelFeeRule.effectiveFrom));
+}
+
+export async function createChannelFeeRule(
+  db: Database,
+  input: NewChannelFeeRule,
+): Promise<ChannelFeeRule> {
+  const rows = await db.insert(channelFeeRule).values(input).returning();
+  return rows[0]!;
 }
 
 export async function createAllocationRule(

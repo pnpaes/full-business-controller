@@ -1,7 +1,7 @@
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, countDistinct, desc, eq, gt, inArray, isNull, lte, or } from "drizzle-orm";
 
 import type { Database } from "../client";
-import { priceScenario } from "../schema";
+import { priceScenario, priceVersion } from "../schema";
 
 export type PriceScenario = typeof priceScenario.$inferSelect;
 
@@ -87,6 +87,39 @@ export interface ApprovePriceScenarioQuery {
  * Returns the updated row, or `undefined` when the scenario is unknown, foreign,
  * or already `approved`/`rejected`.
  */
+export interface CountEligibleProductsQuery {
+  readonly organizationId: string;
+  readonly locationId: string;
+  readonly asOf: Date;
+}
+
+/**
+ * `DEC-112` (`eligible_products` allocation denominator): the number of distinct
+ * product variants with an effective `price_version` at one location and instant.
+ * Exact scope only — `location_id = $2` (the `DEC-077` exact-scope-only rule, no
+ * wildcard fallback), and the half-open `[effective_from, effective_to)` window
+ * is compared directly against the `asOf` timestamp (the
+ * `findEffectivePriceVersion` precedent). A variant priced at two channels at
+ * this location counts once.
+ */
+export async function countEligibleProducts(
+  db: Database,
+  query: CountEligibleProductsQuery,
+): Promise<number> {
+  const rows = await db
+    .select({ value: countDistinct(priceVersion.productVariantId) })
+    .from(priceVersion)
+    .where(
+      and(
+        eq(priceVersion.organizationId, query.organizationId),
+        eq(priceVersion.locationId, query.locationId),
+        lte(priceVersion.effectiveFrom, query.asOf),
+        or(isNull(priceVersion.effectiveTo), gt(priceVersion.effectiveTo, query.asOf)),
+      ),
+    );
+  return Number(rows[0]?.value ?? 0);
+}
+
 export async function approvePriceScenarioIfApprovable(
   db: Database,
   query: ApprovePriceScenarioQuery,

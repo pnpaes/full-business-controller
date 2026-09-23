@@ -1,0 +1,1 @@
+CREATE INDEX "channel_fee_rule_lookup_idx" ON "channel_fee_rule" USING btree ("organization_id","channel_id","effective_from");

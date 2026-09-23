@@ -44,7 +44,10 @@ const tables = Object.values(schema).filter((value) => is(value, PgTable));
  * (`payroll_report`), and the `REC-003`/`REC-006`/`DEC-027` period close/lock
  * slice (`period_close`), and the `REC-006`/`DEC-027` adjustment-period slice
  * (`adjustment_period`), from
- * `schemas/phase1_2_draft.sql` / `DATA_DICTIONARY`. */
+ * `schemas/phase1_2_draft.sql` / `DATA_DICTIONARY`. The `DEC-112` cost-card
+ * component-resolver slice adds only nullable columns — `recipe_version`'s
+ * `labor_cost_center_id`/`labor_role_code` and `operating_cost.cost_pool_id` —
+ * so the table count stays at 89. */
 const EXPECTED_TABLES = [
   "addon_applicability",
   "adjustment_period",

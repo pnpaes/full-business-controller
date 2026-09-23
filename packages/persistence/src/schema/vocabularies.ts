@@ -204,6 +204,16 @@ export const ALLOCATION_DRIVER = [
 
 export const ALLOCATION_FALLBACK = ["stop", "equal_share"] as const;
 
+// `DEC-112`: where an allocation driver's denominator quantity comes from —
+// `explicit` (a supplied quantity), `eligible_products` (derived from the
+// eligible product set) or `equal_share` (an even split). From
+// `schemas/domain-enums.yaml` (`allocation_denominator_source`).
+export const ALLOCATION_DENOMINATOR_SOURCE = [
+  "explicit",
+  "eligible_products",
+  "equal_share",
+] as const;
+
 // Slice 9 (counts + transfers + waste), from `schemas/domain-enums.yaml`: the
 // stock-count workflow state, the transfer workflow state, the nine
 // blame-free waste stages (DEC-018) and the waste valuation method. These were

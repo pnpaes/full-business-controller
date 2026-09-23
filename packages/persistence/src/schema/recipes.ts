@@ -23,8 +23,8 @@ import {
   tstz,
   uuidPk,
 } from "./columns";
-import { organization } from "./organization";
-import { ALLERGEN_SOURCE, DOCUMENT_STATUS, RECIPE_COMPONENT_KIND } from "./vocabularies";
+import { costCenter, organization } from "./organization";
+import { ALLERGEN_SOURCE, DOCUMENT_STATUS, RECIPE_COMPONENT_KIND, ROLE_CODE } from "./vocabularies";
 
 export const recipe = pgTable(
   "recipe",
@@ -57,6 +57,11 @@ export const recipeVersion = pgTable(
     approvedBy: uuid("approved_by"),
     approvedAt: tstz("approved_at"),
     notes: text("notes"),
+    // `DEC-112`: the per-version direct-labour mapping. Both columns are
+    // nullable and all-or-nothing (`recipe_version_labor_mapping_check`): a
+    // version either names a cost centre + role or carries no labour mapping.
+    laborCostCenterId: uuid("labor_cost_center_id").references(() => costCenter.id),
+    laborRoleCode: text("labor_role_code"),
   },
   (t) => [
     check("recipe_version_state_check", enumCheck(t.state, DOCUMENT_STATUS)),
@@ -70,6 +75,12 @@ export const recipeVersion = pgTable(
     ),
     check("recipe_version_effective_range_check", rangeCheck(t.effectiveFrom, t.effectiveTo)),
     check("recipe_version_approval_check", approvalCheck(t.state, t.approvedBy, t.approvedAt)),
+    check("recipe_version_labor_role_code_check", enumCheck(t.laborRoleCode, ROLE_CODE)),
+    check(
+      "recipe_version_labor_mapping_check",
+      sql`(${t.laborCostCenterId} is null) = (${t.laborRoleCode} is null)`,
+    ),
+    index("recipe_version_labor_idx").on(t.laborCostCenterId, t.laborRoleCode),
     unique("recipe_version_recipe_id_version_no_key").on(t.recipeId, t.versionNo),
     // recipe_version_no_overlap (exclusion constraint) is emitted in the raw
     // `invariants` migration: drizzle-kit 0.30 cannot express exclusion constraints.

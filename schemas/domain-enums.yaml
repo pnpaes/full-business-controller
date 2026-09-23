@@ -85,6 +85,8 @@ allocation_driver:
   - eligible_products
   - equal_share
 allocation_fallback: [stop, equal_share]
+# DEC-112: where an allocation driver's denominator quantity comes from.
+allocation_denominator_source: [explicit, eligible_products, equal_share]
 snapshot_component_kind: [ingredient, packaging, direct_labor, channel_variable, other_variable, allocated_overhead]
 adjustment_reason:
   - count_variance

@@ -231,6 +231,10 @@ export const operatingCost = pgTable(
     costCenterId: uuid("cost_center_id")
       .notNull()
       .references(() => costCenter.id),
+    // `DEC-112`: an operating cost may feed a shared `cost_pool` for allocation.
+    // Nullable — a cost with no pool is a direct cost. `costPool` is defined
+    // later in this module; the lazy reference is resolved at build time.
+    costPoolId: uuid("cost_pool_id").references(() => costPool.id),
     amount: money("amount").notNull(),
     currency: currency().notNull(),
     recurrence: text("recurrence").notNull(),
@@ -250,6 +254,7 @@ export const operatingCost = pgTable(
     check("operating_cost_amount_check", sql`${t.amount} >= 0`),
     check("operating_cost_effective_range_check", rangeCheck(t.effectiveFrom, t.effectiveTo)),
     index("operating_cost_lookup_idx").on(t.organizationId, t.costCenterId, t.effectiveFrom),
+    index("operating_cost_pool_idx").on(t.organizationId, t.costPoolId, t.effectiveFrom),
   ],
 );
 
