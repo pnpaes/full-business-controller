@@ -268,7 +268,7 @@ export function RunActions({ runId, status, sourceSystem }: RunActionProps) {
                 value={mapInternalEntityType}
                 onChange={(event) => setMapInternalEntityType(event.target.value)}
                 placeholder="product_variant"
-                help="Optional; a sales import sets `product_variant` so each row resolves to a product variant (SKU-first, then the effective external mapping). Leave blank for the item path."
+                help="Optional; a sales import sets `product_variant` so each row resolves to a product variant (SKU-first, then the effective external mapping). Leave blank for the item path. The Entity type field must name the matching external type (for variant mappings, normally `product`) or be cleared, otherwise the external-mapping fallback finds nothing."
               />
             </div>
             <div>
