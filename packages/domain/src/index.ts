@@ -76,6 +76,7 @@ export type {
   UnitNetSalesInput,
   UnitVariableCostInput,
 } from "./pricing";
+export { yieldRatio, yieldVariancePctFromTotals } from "./operational-reporting";
 export { outputUnitCost, yieldRate, yieldVariancePct } from "./production";
 export { WORKED_HOURS_SCALE, deriveAssignmentHours, sumWorkedHoursByEmployee } from "./scheduling";
 export type { WorkedHoursInput, WorkedHoursRow, WorkedHoursSummaryRow } from "./scheduling";
