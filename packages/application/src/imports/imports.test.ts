@@ -728,6 +728,67 @@ describe("mapImportRows", () => {
     expect(detail?.rows[0]?.normalized).not.toHaveProperty("mapping_match");
   });
 
+  it("clears a stale variant id when a remap changes the resolution path to an item (DEC-113)", async () => {
+    const store = new FakeImportStore();
+    const fixture = seedImportFixture(store);
+    // A variant mapping keyed on the item's SKU, so the first (variant) map
+    // resolves that SKU to a variant.
+    store.externalMappings.set("map-var-item-sku", {
+      id: "map-var-item-sku",
+      organizationId: fixture.organizationId,
+      sourceSystem: fixture.sourceSystem,
+      entityType: "product",
+      externalId: "ext-item-cof-var",
+      sku: fixture.itemSku,
+      internalEntityType: "product_variant",
+      internalEntityId: fixture.variantId,
+      effectiveFrom: EFFECTIVE_FROM,
+      effectiveTo: null,
+    });
+    const importRunId = await stageAndValidate(store, fixture, [
+      row(1, { sku: fixture.itemSku, occurred_at: EFFECTIVE_FROM }),
+    ]);
+
+    const first = await mapImportRows(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      importRunId,
+      internalEntityType: "product_variant",
+    });
+    expect(first).toMatchObject({ mappedCount: 1 });
+    const afterVariant = await getImportRun(store, {
+      organizationId: fixture.organizationId,
+      importRunId,
+    });
+    expect(afterVariant?.rows[0]?.normalized).toMatchObject({
+      product_variant_id: fixture.variantId,
+      mapped_internal_entity_id: fixture.variantId,
+      mapping_match: "sku",
+    });
+
+    // The variant mapping is withdrawn, so on the item path the same SKU
+    // resolves to the item instead.
+    store.externalMappings.delete("map-var-item-sku");
+
+    const result = await mapImportRows(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      importRunId,
+    });
+
+    expect(result).toMatchObject({ status: "validated", mappedCount: 1 });
+    const detail = await getImportRun(store, {
+      organizationId: fixture.organizationId,
+      importRunId,
+    });
+    expect(detail?.rows[0]?.mappingState).toBe("mapped");
+    expect(detail?.rows[0]?.normalized).toMatchObject({
+      mapped_internal_entity_id: fixture.itemId,
+      mapping_match: "sku",
+    });
+    expect(detail?.rows[0]?.normalized).not.toHaveProperty("product_variant_id");
+  });
+
   it("never remaps a row that already carries a disposition", async () => {
     const store = new FakeImportStore();
     const fixture = seedImportFixture(store);

@@ -196,8 +196,12 @@ export async function mapImportRows(
       const resolution = resolveExternalEntity({ sku, externalId, candidates });
 
       if (resolution.status === "matched") {
+        // `DEC-113`: strip any keys a previous match wrote before re-adding the
+        // fresh ones. A remap that changes the resolution path (variant -> item)
+        // would otherwise keep a stale `product_variant_id`, which
+        // `postImportRun` reads into `sales_line.product_variant_id`.
         const normalized: Record<string, unknown> = {
-          ...row.normalized,
+          ...withoutMappingKeys(row.normalized),
           mapped_internal_entity_id: resolution.internalEntityId,
           mapping_match: resolution.match,
         };
