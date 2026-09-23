@@ -1,5 +1,26 @@
 # Reversibility log
 
+- **2026-09-23 correction/reversal posting wiring (`DEC-116`; 5 commits incl.
+  the `docs(decisions)` commit; nothing pushed)**: 1. `docs(decisions)`
+  (`DEC-116`); 2. `feat(persistence)` (the source-scoped `onlyReversible`
+  movement read + tests in `packages/persistence/src/repositories/
+  inventory.ts`/`inventory.test.ts`); 3. `feat(application)`
+  (`correctSalesLine` + the port/store wiring + tests across
+  `packages/application/src/sales/**` and `inventory/**`); 4. `feat(web)`
+  (`POST /api/v1/sales/lines/[id]/reverse` + route test, the
+  `reverseSalesLine` limiter, `sales-rows.ts`, the `ReverseLine` action,
+  `run-actions.tsx`); 5. this `docs(context)` update — each independently
+  revertible with `git revert <sha>`. **No migration, no schema change and no
+  data migration** (migrations stay through `0062`; **89 tables**): the wiring
+  rides on the existing `sales_line.reversal_of_id` partial unique index and
+  the `stock_movement.reversal_of_id`/idempotency columns. **Append-only:**
+  nothing is deleted or edited — a reversal writes new rows (a negated
+  `sales_line` and new reversal `stock_movement` rows), so reverting the code
+  leaves existing reversal rows intact and the ledger balanced, and the
+  persistence filter, the application command and the web layer revert
+  independently. **No backfill** (reversals are neither computed nor
+  rewritten). `db:migrate` is a no-op on re-run through `0062`. Nothing
+  applied to DigitalOcean.
 - **2026-09-23 allocation pool recurrence→period normalisation (`DEC-115`; 4
   commits incl. the `docs(decisions)` commit; nothing pushed)**: 1.
   `docs(decisions)` (`DEC-115`); 2. `feat(domain)`
