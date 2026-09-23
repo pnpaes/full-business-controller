@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, isNull, lte, or } from "drizzle-orm";
+import { and, desc, eq, gt, gte, inArray, isNull, lte, or } from "drizzle-orm";
 
 import type { Database } from "../client";
 import { reconciliation, reconciliationTolerance } from "../schema";
@@ -94,6 +94,41 @@ export async function listReconciliations(
     statement.offset(query.offset);
   }
   return statement;
+}
+
+export interface FindReconciliationsCoveringDateQuery {
+  readonly organizationId: string;
+  /** `date`, `yyyy-mm-dd`; matched inclusively against `[period_start, period_end]`. */
+  readonly at: string;
+  /** Optional `scope_type` filter; omitted (or empty) matches every scope. */
+  readonly scopeTypes?: readonly string[];
+}
+
+/**
+ * The organization's reconciliations whose `[period_start, period_end]` contains
+ * `at` (both bounds inclusive), newest period first, with an optional
+ * `scope_type` filter (`DEC-117`). Organization-scoped (`DEC-061`); the reversal
+ * gate is organization-wide by period, so there is no location/channel join. The
+ * full rows are returned and the caller decides which statuses block.
+ */
+export async function findReconciliationsCoveringDate(
+  db: Database,
+  query: FindReconciliationsCoveringDateQuery,
+): Promise<Reconciliation[]> {
+  return db
+    .select()
+    .from(reconciliation)
+    .where(
+      and(
+        eq(reconciliation.organizationId, query.organizationId),
+        lte(reconciliation.periodStart, query.at),
+        gte(reconciliation.periodEnd, query.at),
+        query.scopeTypes === undefined || query.scopeTypes.length === 0
+          ? undefined
+          : inArray(reconciliation.scopeType, [...query.scopeTypes]),
+      ),
+    )
+    .orderBy(desc(reconciliation.periodStart), desc(reconciliation.id));
 }
 
 export interface ReconciliationPatch {

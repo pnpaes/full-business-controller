@@ -8,6 +8,7 @@ import {
   createReconciliationTolerance,
   findReconciliation,
   findReconciliationTolerance,
+  findReconciliationsCoveringDate,
   listReconciliationTolerances,
   listReconciliations,
   updateReconciliation,
@@ -111,6 +112,102 @@ describe.skipIf(!databaseUrl)("reconciliation repository", () => {
         offset: 1,
       });
       expect(paged.map((row) => row.id)).toEqual([february.id]);
+    });
+  });
+
+  it("finds reconciliations covering a date inclusively, org-scoped, with a scope filter (DEC-117)", async () => {
+    await inRollback(client.db, async (tx) => {
+      const march = await createTestReconciliation(tx, orgId, {
+        periodStart: "2026-03-01",
+        periodEnd: "2026-03-31",
+      });
+      const settlement = await createTestReconciliation(tx, orgId, {
+        periodStart: "2026-03-01",
+        periodEnd: "2026-03-31",
+        scopeType: "settlement",
+      });
+      const february = await createTestReconciliation(tx, orgId, {
+        periodStart: "2026-02-01",
+        periodEnd: "2026-02-28",
+      });
+      const april = await createTestReconciliation(tx, orgId, {
+        periodStart: "2026-04-01",
+        periodEnd: "2026-04-30",
+      });
+
+      // A day inside the March period matches both March rows (any order).
+      expect(
+        new Set(
+          (
+            await findReconciliationsCoveringDate(tx, { organizationId: orgId, at: "2026-03-15" })
+          ).map((row) => row.id),
+        ),
+      ).toEqual(new Set([march.id, settlement.id]));
+
+      // Both bounds are inclusive: the first and last day of the period match.
+      expect(
+        new Set(
+          (
+            await findReconciliationsCoveringDate(tx, { organizationId: orgId, at: "2026-03-01" })
+          ).map((row) => row.id),
+        ),
+      ).toEqual(new Set([march.id, settlement.id]));
+      expect(
+        new Set(
+          (
+            await findReconciliationsCoveringDate(tx, { organizationId: orgId, at: "2026-03-31" })
+          ).map((row) => row.id),
+        ),
+      ).toEqual(new Set([march.id, settlement.id]));
+
+      // The day after a period ends, and the day before one starts, are excluded.
+      expect(
+        (
+          await findReconciliationsCoveringDate(tx, { organizationId: orgId, at: "2026-02-28" })
+        ).map((row) => row.id),
+      ).toEqual([february.id]);
+      expect(
+        (
+          await findReconciliationsCoveringDate(tx, { organizationId: orgId, at: "2026-04-01" })
+        ).map((row) => row.id),
+      ).toEqual([april.id]);
+
+      // A day inside no period matches nothing.
+      expect(
+        await findReconciliationsCoveringDate(tx, { organizationId: orgId, at: "2026-01-15" }),
+      ).toEqual([]);
+
+      // The optional scope filter narrows to one scope type.
+      expect(
+        (
+          await findReconciliationsCoveringDate(tx, {
+            organizationId: orgId,
+            at: "2026-03-15",
+            scopeTypes: ["settlement"],
+          })
+        ).map((row) => row.id),
+      ).toEqual([settlement.id]);
+      expect(
+        await findReconciliationsCoveringDate(tx, {
+          organizationId: orgId,
+          at: "2026-03-15",
+          scopeTypes: ["import_run"],
+        }),
+      ).toEqual([]);
+
+      // Another organization's covering row stays invisible.
+      const otherOrgId = await createTestOrganization(tx, uniqueSuffix());
+      await createTestReconciliation(tx, otherOrgId, {
+        periodStart: "2026-03-01",
+        periodEnd: "2026-03-31",
+      });
+      expect(
+        new Set(
+          (
+            await findReconciliationsCoveringDate(tx, { organizationId: orgId, at: "2026-03-15" })
+          ).map((row) => row.id),
+        ),
+      ).toEqual(new Set([march.id, settlement.id]));
     });
   });
 
