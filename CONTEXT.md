@@ -12,81 +12,92 @@ orientation and the next step. See "Handover archive" and "Update protocol".
 ## Resume here (next session)
 
 **Say "resume the work" and start here.** A fresh session must be able to
-continue from this section alone. (Rewritten by the 2026-09-23 reversal-wiring
+continue from this section alone. (Rewritten by the 2026-09-23 reversal-gate
 docs session.)
 
-**State:** `main`; HEAD before this docs commit is **`c4014ba`** (the `DEC-115`
-docs commit). The `DEC-116` slice landed as the `docs(decisions)`,
-`feat(persistence)`, `feat(application)` and `feat(web)` commits — plus this
-`docs(context)` handoff (the docs layers may be uncommitted at handoff time;
-the orchestrator commits them). Nothing pushed; nothing applied to
-DigitalOcean. Schema: migrations through **`0062`**; **89 tables** (no new
-table, no migration); next free decision id **`DEC-117`** (`DEC-116` is
-recorded and implemented). Baseline with `DATABASE_URL`: **3604/3604 tests**
-(236 files). Handoff: `docs/handoffs/075-…md`. **The correction/reversal
-posting wiring (`DEC-116`) is delivered**: `correctSalesLine` reverses a
-posted sales line **and** every un-reversed, non-reversal
-`source_type='sales_line'` stock movement of the original in **one database
-transaction** (the reversal movements copy the original's
-`source_type`/`source_id`, so `lineCostExpression` nets the line's ingredient
-cost to zero and the reversal line carries zero cost); idempotency is
-rejection-not-replay; a mandatory `reason_code` is audited;
-`POST /api/v1/sales/lines/[id]/reverse` and a `ReverseLine` action expose it;
-append-only holds. Deferred (recorded in `DEC-116`): the `DEC-028`
-downstream-reconciliation reversal gate and any period-lock gate,
-partial/delta corrections, a persisted reason or `adjustment_period` link,
-and the settlement-reconciliation header divergence.
+**State:** `main`; HEAD before this docs commit is **`be524f7`** (the
+`DEC-116` docs commit). The `DEC-117` slice landed as the `docs(decisions)`,
+`feat(domain)`, `feat(persistence)` and `feat(application)` commits — plus
+this `docs(context)` handoff (the docs layers may be uncommitted at handoff
+time; the orchestrator commits them). No `feat(web)` layer was needed. Nothing
+pushed; nothing applied to DigitalOcean. Schema: migrations through **`0062`**;
+**89 tables** (no new table, no migration); next free decision id **`DEC-118`**
+(`DEC-117` is recorded and implemented). Baseline with `DATABASE_URL`:
+**3630/3630 tests** (238 files). Handoff: `docs/handoffs/076-…md`. **The
+`DEC-028` downstream-reconciliation reversal gate (`DEC-117`) is delivered**:
+a read-only, no-migration gate (`evaluateReversalGate`, a pure domain
+predicate) is evaluated inside `correctSalesLine`'s transaction, **before any
+write**, with the reconciliation and period-close stores bound to the same
+transaction client; a reversal is blocked (message-only `DomainError`,
+nothing posted — no reversal line, no movement reversal, no audit) when a
+**`locked` `period_close`** covers the parent transaction's `occurred_at`
+date for the `location` scope (transaction `location_id`, that day) or the
+`company` scope (organization id, that day), or when a `reconciliation` row
+covering that date has status `within_tolerance`/`resolved`/`approved`
+(`pending`/`exception` do not block; a null `location_id` means only the
+company scope is evaluated); no override/approval path and no
+`adjustment_period` requirement. Review: `reviewer-qwen` + `reviewer-glm` —
+both independently found the corrupted `DEC-116` decision row (repaired —
+now byte-identical to `HEAD`); three minors declined with reasons.
+Deferred (recorded in `DEC-117`): the approval/override path and
+channel-precise reconciliation matching; `DEC-116`'s deferrals (partial/delta
+corrections, a persisted reason or `adjustment_period` link, gating the
+exported `reverseSalesLine`, and the settlement-reconciliation header
+divergence) also stand.
 
-**Next task — `DEC-117`: the `DEC-028` downstream-reconciliation reversal
-gate.** Objective: `DEC-028` requires that an automatic reversal be
-**blocked** when reconciled downstream sales depend on the original,
-requiring an explicit approved correction with a reason. `DEC-116` explicitly
-deferred that gate — today an operator can reverse a line inside a
-reconciled (or locked) period and silently break the settlement match.
-Decide and implement the gate — **or record a posture that keeps it
-deferred, with the reason** — and record it as **`DEC-117` in both tables of
-`12_OPEN_DECISIONS.md` before or with the implementation** (Rule 3; next
-free id).
+**Next task — `DEC-118`: net the line-level reversals into the settlement
+reconciliation (or record a header-authoritative posture).** Objective:
+`DEC-116` and `DEC-117` both recorded that `sumSalesForChannelPeriod`
+(`packages/application/src/reconciliation/postgres-store.ts`) sums the
+append-only `sales_transaction.gross_amount` header, so a line-level reversal
+never nets there — the settlement reconciliation and the sales reporting
+(`summarizeSales`, `sumSalesVolume`) therefore disagree after any reversal,
+and the `DEC-117` gate cannot fix that. Decide and implement either
+(a) net the line-level reversal rows into the reconciliation sales read (so
+the settlement comparison agrees with the reports), or (b) record a posture
+explaining why the append-only header is authoritative — and record it as
+**`DEC-118` in both tables of `12_OPEN_DECISIONS.md` before or with the
+implementation** (Rule 3; next free id).
 
-**Scope (do):** read this file; `DEC-028`/`DEC-073` and
-`DEC-106`/`DEC-107` in `12_OPEN_DECISIONS.md`; the reconciliation reads
-(`packages/application/src/reconciliation/**`,
-`packages/persistence/src/repositories/reporting.ts` and
-`packages/persistence/src/repositories/reconciliation/**`); the period-lock
-state (`packages/application/src/close/**`, `is-period-locked`); and the
-reversal command (`packages/application/src/sales/correct-sales-line.ts`);
-keep it additive and reversible, append-only — never edit a posted fact —
-with a `.test.ts` per branch; commit in layers with the rollback approach in
-the body (Rule 2).
+**Scope (do):** read this file; `DEC-072`, `DEC-073`, `DEC-108`,
+`DEC-116`/`DEC-117` in `12_OPEN_DECISIONS.md`; the reconciliation reads
+(`packages/application/src/reconciliation/**`, especially
+`sumSalesForChannelPeriod` in `postgres-store.ts`), the reporting reads
+(`packages/persistence/src/repositories/reporting.ts` — `summarizeSales`,
+`sumSalesVolume`) and `sales_line.reversal_of_id`; and the reversal command
+(`packages/application/src/sales/correct-sales-line.ts`); keep it additive
+and reversible, append-only — never edit a posted fact — with a `.test.ts`
+per branch; commit in layers with the rollback approach in the body (Rule 2).
 
 **Scope (do not):** do not rewrite posted facts; do not add a migration
 unless the decision needs one; do not resolve recorded open inputs silently
-(do not silently decide the settlement-reconciliation header divergence, I11,
-the OPS policy or `DEC-077`); do not deploy or write externally
-(`DEC-015`).
+(do not silently decide the row-11 backfill posture, I11, the OPS policy or
+`DEC-077`); do not deploy or write externally (`DEC-015`).
 
 **Acceptance / verification:** `export NVM_DIR="$HOME/.nvm"; . "$NVM_DIR/nvm.sh";
 nvm use 22`; then `npm run typecheck`, `npm run lint`, `npm run test` (with
-`DATABASE_URL` — current baseline **3604/3604**, 236 files), `npm run build`,
+`DATABASE_URL` — current baseline **3630/3630**, 238 files), `npm run build`,
 `npm run format:check`, `npm audit --omit=dev` = 0; `db:migrate` a no-op
-(expected: no migration unless the `DEC-117` decision needs one). Commit in
+(expected: no migration unless the `DEC-118` decision needs one). Commit in
 layers with the rollback approach in the body (Rule 2).
 
-**Open decisions/inputs that shape it:** the gate posture must be recorded
-(`DEC-117`) before or with the implementation; the sibling divergence
-`DEC-116` recorded is the recorded alternative — the settlement
-reconciliation sums the append-only transaction header
-(`sumSalesForChannelPeriod`), so a line-level reversal does not net there,
-which a pure lock-gate alone would not fix; no approval workflow exists for
-corrections (`DEC-116` recorded "no approval workflow"); do not resolve I11,
-the OPS policy, `DEC-077` or any other recorded open input silently.
+**Open decisions/inputs that shape it:** the tension to record: changing the
+read alters a **reconciliation outcome** — an already-`within_tolerance`
+settlement could flip to `exception` — so the `DEC-118` posture must say
+whether historical reconciliations are re-evaluated or only future ones;
+note how the reconciliation reads can identify reversal rows for their
+window (`sales_line.reversal_of_id`) and whether a period-precise net is
+possible against the header-grain `gross_amount`; do not resolve I11, the
+OPS policy, `DEC-077` or any other recorded open input silently.
 
-**Step after:** the remaining close-outs (the `denominator_source` DB CHECK,
-per-channel packaging, the cost-card version chain, the per-item override,
-`behavior` filtering, partial-window proration), partial/delta corrections,
-a persisted reversal reason or `adjustment_period` link, the row-11 backfill
-posture, `daily_close`, and the test-deployment rehearsal /
-golden-fixture sign-off (parked on owner inputs).
+**Step after:** the `DEC-116` follow-ups (partial/delta corrections, a
+persisted reversal reason or `adjustment_period` link, gating the exported
+`reverseSalesLine`); the `DEC-117` follow-ups (an approval/override path,
+channel-precise reconciliation matching); the remaining close-outs
+(`denominator_source` DB CHECK, per-channel packaging, the cost-card version
+chain, the per-item override, `behavior` filtering, partial-window
+proration); the row-11 backfill posture; `daily_close`; and the
+test-deployment rehearsal / golden-fixture sign-off (parked on owner inputs).
 
 **Programme direction (standing user instruction):** proceed autonomously, in
 continuous sequence — parallel background agents → adversarial review + fixes →
@@ -120,8 +131,8 @@ Per-slice detail, commits and reconciliation are in `docs/handoffs/`.
 
 - `00_README.md` … `13_AGENT_BUILD_BRIEF.md` — the specification package
   (inputs, rarely edited). Start with `00_README.md`.
-- **`12_OPEN_DECISIONS.md` — the accepted decisions (`DEC-001`…`DEC-116`); the
-  authority. New decisions are appended here (next free id `DEC-117`).**
+- **`12_OPEN_DECISIONS.md` — the accepted decisions (`DEC-001`…`DEC-117`); the
+  authority. New decisions are appended here (next free id `DEC-118`).**
 - `docs/phase0/` — close-out plan, calculation contract, data dictionary, golden
   fixtures, source-data request, notes. See
   `docs/phase0/CALCULATION_CONTRACT.md`.
@@ -142,11 +153,13 @@ Per-slice detail, commits and reconciliation are in `docs/handoffs/`.
 
 ## Current status
 
-- **As of:** 2026-09-23 — branch `main`; the correction/reversal posting-wiring
-  slice (`DEC-116`) is implemented and reviewed, with its docs layers landing
-  as the `docs(decisions)`, `feat(persistence)`, `feat(application)`,
-  `feat(web)` and this `docs(context)` handoff. Lineage and full per-slice
-  detail: `docs/handoffs/README.md` and the files it lists.
+- **As of:** 2026-09-23 — branch `main`; HEAD before this docs commit is
+  **`be524f7`** (the `DEC-116` docs commit); the downstream-reconciliation
+  reversal-gate slice (`DEC-117`) is implemented and reviewed, with its docs
+  layers landing as the `docs(decisions)`, `feat(domain)`,
+  `feat(persistence)`, `feat(application)` and this `docs(context)` handoff.
+  Lineage and full per-slice detail: `docs/handoffs/README.md` and the files
+  it lists.
 - **Correction/reversal posting wiring is delivered (`DEC-116`):** the new
   orchestrating command `correctSalesLine`
   (`packages/application/src/sales/correct-sales-line.ts`) reverses the line
@@ -167,8 +180,7 @@ Per-slice detail, commits and reconciliation are in `docs/handoffs/`.
   reversal, or already has one, is excluded) keeps a partially-reversed line
   correctable and never double-reversed. **No migration** (existing
   `reversal_of_id`/idempotency columns); append-only — the original line and
-  its movements are never edited. Deferred (recorded): the `DEC-028`
-  downstream-reconciliation gate and any period-lock gate, partial/delta
+  its movements are never edited. Deferred (recorded): partial/delta
   corrections, a persisted reason or `adjustment_period` link, and the
   settlement-reconciliation header divergence
   (`sumSalesForChannelPeriod` sums the append-only transaction header, so a
@@ -177,6 +189,33 @@ Per-slice detail, commits and reconciliation are in `docs/handoffs/`.
   fails-pre-fix rollback test; qwen's double-reverse finding fixed via
   `onlyReversible`; three minors declined with reasons. Handoff:
   `docs/handoffs/075-…md`.
+- **The `DEC-028` downstream-reconciliation reversal gate is delivered
+  (`DEC-117`):** a read-only, no-migration gate (`evaluateReversalGate`,
+  `packages/domain/src/reversal-gate.ts`, a pure domain predicate + test) is
+  evaluated inside `correctSalesLine`'s transaction (`packages/application/
+src/sales/correct-sales-line.ts`) **before any write**, with the
+  reconciliation store reads (`packages/persistence/src/repositories/
+reconciliation.ts` + Postgres tests) and period-close reads bound to the
+  **same transaction client** as the writes (no race). A reversal is blocked
+  when a **`locked` `period_close`** covers the parent transaction's
+  `occurred_at` date for the `location` scope (the transaction's
+  `location_id`, that day) or the `company` scope (the organization id, that
+  day), or when a **`reconciliation`** row whose `[period_start, period_end]`
+  covers that date has status ∈ {`within_tolerance`, `resolved`,
+  `approved`} — `pending`/`exception` do **not** block (they are the close
+  prerequisites, `DEC-107`); a null `location_id` means only the company
+  scope is evaluated. A blocked reversal throws a message-only
+  `DomainError` and posts **nothing** (no reversal line, no movement
+  reversal, no audit); no override/approval path and no `adjustment_period`
+  requirement; the reconciliation match is organization-wide by period
+  (`reconciliation` has no location or channel). No web change — the route
+  already maps `DomainError` → 400. **No migration** (two read-only reads
+  over existing columns); append-only holds on both paths. Deferred
+  (recorded in `DEC-117`): an approval/override path and channel-precise
+  reconciliation matching. Review: `reviewer-qwen` + `reviewer-glm` — both
+  independently found the corrupted `DEC-116` decision row (repaired;
+  byte-identical to `HEAD`); three minors declined with reasons. Handoff:
+  `docs/handoffs/076-…md`.
 - **Allocation pool recurrence→period normalisation is delivered (`DEC-115`):**
   each linked `operating_cost.amount` is a **per-recurrence-unit** amount,
   scaled to the half-open `[periodFrom, periodTo)` UTC allocation period by the
@@ -298,8 +337,9 @@ sales_units}` in `schemas/domain-enums.yaml` and
   `DEC-107`) and `adjustment_period` (`REC-006`, `DEC-106`, migration `0059`),
   API under `/api/v1/adjustment-periods/**`. The row-13a create-race recovery was
   fixed in `c903954` (fresh-transaction recovery). Three reviewers per
-  workstream (qwen/minimax/glm) → no blockers after fixes. `daily_close` and
-  the `DEC-028` downstream-reconciliation reversal gate stay deferred.
+  workstream (qwen/minimax/glm) → no blockers after fixes. `daily_close`
+  stays deferred; the `DEC-028` downstream-reconciliation reversal gate is
+  now delivered (`DEC-117`).
 - **Row 14 (workforce/scheduling) is complete:** 14a `shift` +
   `shift_assignment` (`DEC-102`, migrations `0051`/`0052`); 14b-1
   `shift_adjustment` + the worked-hours derivation/report (`DEC-103`, migrations
@@ -312,11 +352,11 @@ sales_units}` in `schemas/domain-enums.yaml` and
   first versioned entity); the workflow platform (`DEC-094`/`DEC-101`,
   schema-only). The `job`/worker/outbox layer stays gated on `ADR-0004`.
 - **Schema:** migrations through **`0062`**; **89 tables** (all additive, tested
-  down paths). Next free decision id **`DEC-117`** (`DEC-108`–`DEC-116` are
-  recorded; `DEC-114`–`DEC-116` are implemented).
-- **Verification (2026-09-23, at the `DEC-116` tree):** `typecheck`, `lint`,
-  `format:check`, `build` clean; **3604/3604 tests with `DATABASE_URL`**
-  (236 files); `npm audit --omit=dev` = 0; `db:migrate` through `0062` a no-op
+  down paths). Next free decision id **`DEC-118`** (`DEC-108`–`DEC-117` are
+  recorded; `DEC-114`–`DEC-117` are implemented).
+- **Verification (2026-09-23, at the `DEC-117` tree):** `typecheck`, `lint`,
+  `format:check`, `build` clean; **3630/3630 tests with `DATABASE_URL`**
+  (238 files); `npm audit --omit=dev` = 0; `db:migrate` through `0062` a no-op
   on re-run; 89 public base tables. (One full-suite run mid-session failed a single
   test that did not reproduce across three subsequent runs; recorded in
   `docs/handoffs/069-…md` for CI watchfulness.)
@@ -328,11 +368,12 @@ sales_units}` in `schemas/domain-enums.yaml` and
   cost-selection override; the period-overlap operating-cost read;
   `behavior` filtering; partial-window proration); the org-wide
   volume scope for `organization`/`company_wide` allocation rules (`DEC-114`
-  recorded gap); the deferred `daily_close`, the `DEC-028`
-  downstream-reconciliation reversal gate (`DEC-117`, the recorded alternative
-  being the settlement-reconciliation header divergence), partial/delta
-  corrections and a persisted reversal reason or `adjustment_period` link; the
-  receipt→ledger wiring
+  recorded gap); the deferred `daily_close`, partial/delta corrections, a
+  persisted reversal reason or `adjustment_period` link, an approval/override
+  path for a gated reversal and channel-precise reconciliation matching (the
+  `DEC-117` recorded follow-ups), the `DEC-118` settlement-reconciliation
+  header divergence (see `Next up`), gating the exported `reverseSalesLine`
+  primitive, the row-11 backfill posture, the receipt→ledger wiring
   (gated on the OPS destination `storage_area_id` policy) and rows 15–18
   (blocked: data / `ADR-0009`–`0011`). The deferred file FKs
   (`goods_receipt.evidence_file_id`, `cost_observation.receipt_file_id`,
@@ -354,18 +395,22 @@ sales_units}` in `schemas/domain-enums.yaml` and
 `docs/BUILD_ROADMAP.md` is the ordered execution tracker; §5 carries the
 open-point lists. Per-slice detail is in `docs/handoffs/`.
 
-1. **Next: `DEC-117` — the `DEC-028` downstream-reconciliation reversal gate.**
-   `DEC-028` requires that an automatic reversal be **blocked** when reconciled
-   downstream sales depend on the original, requiring an explicit approved
-   correction with a reason; `DEC-116` explicitly deferred that gate, so today
-   an operator can reverse a line inside a reconciled (or locked) period and
-   silently break the settlement match. Decide and implement the gate — or
-   record a posture that keeps it deferred, with the reason — and record it as
-   `DEC-117` in both tables of `12_OPEN_DECISIONS.md` before or with the
-   implementation; keep it additive and append-only. The recorded alternative
-   is the sibling divergence `DEC-116` recorded: the settlement reconciliation
-   sums the append-only transaction header, so a line-level reversal does not
-   net there.
+1. **Next: `DEC-118` — net the line-level reversals into the settlement
+   reconciliation (or record a header-authoritative posture).** `DEC-116`
+   and `DEC-117` both recorded that `sumSalesForChannelPeriod`
+   (`packages/application/src/reconciliation/postgres-store.ts`) sums the
+   append-only `sales_transaction.gross_amount` header, so a line-level
+   reversal never nets there — the settlement reconciliation and the sales
+   reporting (`summarizeSales`, `sumSalesVolume`) disagree after any
+   reversal, and the `DEC-117` gate cannot fix that. Decide either (a) net
+   the line-level reversal rows into the reconciliation sales read (so the
+   settlement comparison agrees with the reports), or (b) record a posture
+   explaining why the append-only header is authoritative — and record it as
+   `DEC-118` in both tables of `12_OPEN_DECISIONS.md` before or with the
+   implementation; keep it additive and append-only. The posture must say
+   whether historical reconciliations are re-evaluated or only future ones
+   (changing the read can flip an already-`within_tolerance` settlement to
+   `exception`).
 2. **Row 13 — close + dashboards + menu engineering — COMPLETE.** The close
    half: 13a `period_close` (`REC-003`, `REC-006`, `DEC-027`, `DEC-105`,
    migrations `0057`/`0058`) and 13b prerequisites + `adjustment_period`
@@ -383,11 +428,14 @@ open-point lists. Per-slice detail is in `docs/handoffs/`.
    delivered** (`DEC-114` — `revenue`/`transactions`/`sales_units`, no
    migration) **and the allocation pool recurrence→period normalisation is
    delivered** (`DEC-115`, no migration). **The correction/reversal posting
-   wiring is delivered** (`DEC-116`, no migration). Then the remaining
-   deferred `DEC-112`/`DEC-114`/`DEC-115` close-outs, the `DEC-028`
-   downstream-reconciliation reversal gate (`DEC-117`, listed first above),
-   partial/delta corrections and a persisted reversal reason or
-   `adjustment_period` link, and the deferred `daily_close`.
+   wiring is delivered** (`DEC-116`, no migration) **and the `DEC-028`
+   downstream-reconciliation reversal gate is delivered** (`DEC-117`,
+   no migration). Then the `DEC-118` settlement-reconciliation divergence
+   (listed first above), the remaining deferred `DEC-112`/`DEC-114`/`DEC-115`
+   close-outs, partial/delta corrections, a persisted reversal reason or
+   `adjustment_period` link, the `DEC-116`/`DEC-117` review follow-ups
+   (gating the exported `reverseSalesLine`, an approval/override path,
+   channel-precise reconciliation matching), and the deferred `daily_close`.
 3. **Receipt→ledger wiring — the lead item, gated:** on the **OPS receipt
    destination `storage_area_id` policy** (a recorded owner input). If it has
    not landed it stays blocked; do not resolve the policy silently
@@ -424,18 +472,22 @@ Full detail for each item lives in its slice's handoff file and in
   override/force path; the snapshot is `schemaVersion: 2`. `DEC-106` (13b) —
   `adjustment_period` has one open window per organization, no reopen, and
   `daily_close` is **deferred**; the correction-posting wiring has since been
-  delivered (`DEC-116`) with the `DEC-028` downstream-reconciliation gate
-  still open (the `DEC-117` next step). The `DEC-027` interaction with
+  delivered (`DEC-116`) together with the `DEC-028`
+  downstream-reconciliation gate (`DEC-117`). The `DEC-027` interaction with
   reversal/payroll regeneration stays open.
 - **Correction/reversal posting (provisional, awaiting owner/FIN):** `DEC-116`
   — full negation only (no partial/delta correction); reversal is
   rejection-not-replay; no approval workflow and no `adjustment_period` link
-  (persisting a reason or period link would need a migration); the `DEC-028`
-  "blocked when reconciled downstream" gate and any period-lock gate are
-  **deferred** (next: `DEC-117`) — an operator can today reverse a line inside
-  a reconciled or locked period; and `sumSalesForChannelPeriod` sums the
-  append-only transaction header, so a line-level reversal does not net in the
-  settlement reconciliation.
+  (persisting a reason or period link would need a migration); gating the
+  exported `reverseSalesLine` primitive is a recorded follow-up. `DEC-117` —
+  the gate blocks outright with no override/approval path, only when a
+  `locked` period close or a `within_tolerance`/`resolved`/`approved`
+  reconciliation covers the parent transaction's date (`pending`/`exception`
+  do not block), organization-wide by period because `reconciliation` has
+  no location or channel (channel-precise matching and the override path are
+  recorded follow-ups). And `sumSalesForChannelPeriod` sums the append-only
+  transaction header, so a line-level reversal does not net in the
+  settlement reconciliation (the `DEC-118` next step).
 - **Row 13c/13d reporting (provisional, awaiting owner/OPS):** `DEC-108` (13c) —
   reporting is **on-demand, not materialized** (`ADR-0007`'s MV-vs-incremental
   and the 15-minute refresh stay open, the job layer gated on `ADR-0004`); net
@@ -574,7 +626,9 @@ cost` (the `DEC-067`/`DEC-008` valuation is asymmetric); the waste reasons axis
   (`DEC-028`, stock variant not implemented); receipts not wired to the ledger;
   `DEC-009` daily theoretical consumption not implemented.
 - **Slice-8 stock ledger:** per-source reversal semantics not enumerated; the
-  `DEC-028` "reversal blocked when reconciled downstream" gate deferred;
+  sales-line side of the `DEC-028` "reversal blocked when reconciled
+  downstream" gate is delivered (`DEC-117`); the stock-variant reversal
+  remains unimplemented;
   `stock_balance` written directly while the runbook calls it a rebuildable
   projection (confirm the writer policy before multi-instance use); no
   application surface creates `location` rows; the `DEC-010` negative-override
@@ -668,7 +722,7 @@ created out of band first (see `docs/runbooks/deployment.md`).
 - `README.md` — the index of all per-slice handovers, newest first.
 - `NNN-YYYY-MM-DD-*.md` — one verbatim work-log entry per slice (commits,
   verification, review reconciliation), numbered chronologically (`001` oldest).
-  Newest: `075-2026-09-23-correction-reversal-posting-wiring-dec-116.md`.
+  Newest: `076-2026-09-23-downstream-reconciliation-reversal-gate-dec-117.md`.
 - `reversibility-log.md` — the per-slice commit list, migration down paths and
   ledger-row rollback notes.
 - `context-sections-archive-2026-09-22.md` — the pre-refactor `Resume here`,

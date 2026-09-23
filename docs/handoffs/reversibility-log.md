@@ -1,5 +1,27 @@
 # Reversibility log
 
+- **2026-09-23 downstream-reconciliation reversal gate (`DEC-117`; 5 commits
+  incl. the `docs(decisions)` commit; nothing pushed)**: 1. `docs(decisions)`
+  (`DEC-117`); 2. `feat(domain)` (`packages/domain/src/reversal-gate.ts` +
+  `reversal-gate.test.ts` + the `packages/domain/src/index.ts` barrel line);
+  3. `feat(persistence)` (the read-only gate reads + tests in
+  `packages/persistence/src/repositories/reconciliation.ts`/
+  `reconciliation.postgres.test.ts`); 4. `feat(application)` (the gate
+  evaluated inside `correctSalesLine`'s transaction + the
+  reconciliation/sales port, store and test wiring across
+  `packages/application/src/reconciliation/**` and `sales/**`); 5. this
+  `docs(context)` update — each independently revertible with
+  `git revert <sha>`. **No migration, no schema change and no data written**
+  (migrations stay through `0062`; **89 tables**): the gate is a pure
+  predicate plus two read-only reads over the existing `period_close` and
+  `reconciliation` columns, and the only command change is evaluating it
+  before any write. Reverting the code restores the ungated reversal (the
+  `DEC-116` behaviour); the domain, persistence and application layers
+  revert independently. **Append-only holds on both paths** — a blocked
+  reversal posts nothing (no reversal line, no movement reversal, no
+  audit); an allowed reversal writes only new rows. **No backfill.**
+  `db:migrate` is a no-op on re-run through `0062`. Nothing applied to
+  DigitalOcean.
 - **2026-09-23 correction/reversal posting wiring (`DEC-116`; 5 commits incl.
   the `docs(decisions)` commit; nothing pushed)**: 1. `docs(decisions)`
   (`DEC-116`); 2. `feat(persistence)` (the source-scoped `onlyReversible`
