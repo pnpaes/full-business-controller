@@ -61,6 +61,9 @@ export async function POST(
         importRunId: id,
         ...(parsed.input.sourceSystem === null ? {} : { sourceSystem: parsed.input.sourceSystem }),
         ...(parsed.input.entityType === null ? {} : { entityType: parsed.input.entityType }),
+        ...(parsed.input.internalEntityType === null
+          ? {}
+          : { internalEntityType: parsed.input.internalEntityType }),
       });
     } catch (error) {
       if (error instanceof DomainError) {

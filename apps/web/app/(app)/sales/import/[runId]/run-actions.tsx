@@ -47,8 +47,11 @@ interface RunActionProps {
  * Validation rules are **caller-supplied** here because there is no
  * import-profile table to look them up in (recorded open point): the form
  * exposes the rule set the profile would otherwise provide. Mapping narrows the
- * external mappings to the run's source system and the `item` entity type
- * (`DEC-041`, SKU-first).
+ * external mappings to the run's source system and entity type (`DEC-041`,
+ * SKU-first); the optional **Internal entity type** (`DEC-113`) lets a sales
+ * import set `product_variant` so each row resolves to a product variant
+ * (SKU-first, then the effective external mapping), while a blank value keeps
+ * the item path unchanged.
  *
  * Neither action posts anything; posting a validated run is the separate
  * `PostRunForm` below.
@@ -67,6 +70,7 @@ export function RunActions({ runId, status, sourceSystem }: RunActionProps) {
 
   const [mapSource, setMapSource] = useState(sourceSystem);
   const [mapEntityType, setMapEntityType] = useState("item");
+  const [mapInternalEntityType, setMapInternalEntityType] = useState("");
 
   const canValidate = status === "parsed";
   const canMap = status === "parsed" || status === "needs_review" || status === "validated";
@@ -124,6 +128,9 @@ export function RunActions({ runId, status, sourceSystem }: RunActionProps) {
       }
       if (mapEntityType.trim().length > 0) {
         body.entityType = mapEntityType.trim();
+      }
+      if (mapInternalEntityType.trim().length > 0) {
+        body.internalEntityType = mapInternalEntityType.trim();
       }
       const response = await fetch(`/api/v1/imports/runs/${runId}/map`, {
         method: "POST",
@@ -253,7 +260,15 @@ export function RunActions({ runId, status, sourceSystem }: RunActionProps) {
                 label="Entity type"
                 value={mapEntityType}
                 onChange={(event) => setMapEntityType(event.target.value)}
-                help="Only `item` has a SKU lookup today (recorded open point)."
+                help="Narrows the external mappings by their external entity type."
+              />
+              <TextField
+                name="mapInternalEntityType"
+                label="Internal entity type"
+                value={mapInternalEntityType}
+                onChange={(event) => setMapInternalEntityType(event.target.value)}
+                placeholder="product_variant"
+                help="Optional; a sales import sets `product_variant` so each row resolves to a product variant (SKU-first, then the effective external mapping). Leave blank for the item path."
               />
             </div>
             <div>

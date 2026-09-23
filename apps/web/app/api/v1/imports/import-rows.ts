@@ -374,6 +374,12 @@ export function parseValidateImportRunBody(
 export interface MapImportRowsBody {
   readonly sourceSystem: string | null;
   readonly entityType: string | null;
+  /**
+   * Optional internal entity type (`DEC-113`): a sales import passes
+   * `product_variant` so the mapper window-checks the variant mappings and
+   * writes `normalized.product_variant_id`; omitted means the item path.
+   */
+  readonly internalEntityType: string | null;
 }
 
 export type ParsedMapImportRows =
@@ -384,14 +390,22 @@ export function parseMapImportRowsBody(
   body: Record<string, unknown> | undefined,
 ): ParsedMapImportRows {
   if (body === undefined) {
-    return { ok: true, input: { sourceSystem: null, entityType: null } };
+    return { ok: true, input: { sourceSystem: null, entityType: null, internalEntityType: null } };
   }
   const sourceSystem = readOptionalBodyText(body, "sourceSystem");
   const entityType = readOptionalBodyText(body, "entityType");
-  if (!sourceSystem.ok || !entityType.ok) {
+  const internalEntityType = readOptionalBodyText(body, "internalEntityType");
+  if (!sourceSystem.ok || !entityType.ok || !internalEntityType.ok) {
     return { ok: false };
   }
-  return { ok: true, input: { sourceSystem: sourceSystem.value, entityType: entityType.value } };
+  return {
+    ok: true,
+    input: {
+      sourceSystem: sourceSystem.value,
+      entityType: entityType.value,
+      internalEntityType: internalEntityType.value,
+    },
+  };
 }
 
 export interface DisposeStagingRowBody {

@@ -241,16 +241,32 @@ describe("parseMapImportRowsBody", () => {
   it("treats an absent body as no narrowing", () => {
     expect(parseMapImportRowsBody(undefined)).toEqual({
       ok: true,
-      input: { sourceSystem: null, entityType: null },
+      input: { sourceSystem: null, entityType: null, internalEntityType: null },
     });
   });
 
   it("accepts source and entity type and rejects a non-string", () => {
     expect(parseMapImportRowsBody({ sourceSystem: "zettle", entityType: "item" })).toEqual({
       ok: true,
-      input: { sourceSystem: "zettle", entityType: "item" },
+      input: { sourceSystem: "zettle", entityType: "item", internalEntityType: null },
     });
     expect(parseMapImportRowsBody({ sourceSystem: 4 }).ok).toBe(false);
+  });
+
+  it("defaults internalEntityType to null when absent and passes a present value (DEC-113)", () => {
+    expect(parseMapImportRowsBody({ sourceSystem: "zettle" })).toEqual({
+      ok: true,
+      input: { sourceSystem: "zettle", entityType: null, internalEntityType: null },
+    });
+    expect(parseMapImportRowsBody({ internalEntityType: "product_variant" })).toEqual({
+      ok: true,
+      input: { sourceSystem: null, entityType: null, internalEntityType: "product_variant" },
+    });
+  });
+
+  it("rejects a malformed internalEntityType", () => {
+    expect(parseMapImportRowsBody({ internalEntityType: 4 }).ok).toBe(false);
+    expect(parseMapImportRowsBody({ internalEntityType: "x".repeat(201) }).ok).toBe(false);
   });
 });
 
