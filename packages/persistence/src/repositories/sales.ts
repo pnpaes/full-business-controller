@@ -1,4 +1,4 @@
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, gte, lt, ne, sql, type SQL } from "drizzle-orm";
 
 import type { Database } from "../client";
 import { salesLine, salesTransaction } from "../schema";
@@ -181,4 +181,73 @@ export async function listSalesLines(
     statement.offset(query.offset);
   }
   return statement;
+}
+
+export interface SumSalesLineGrossForChannelPeriodQuery {
+  readonly organizationId: string;
+  /** The **transaction's** channel; `null` sums every channel. */
+  readonly channelId: string | null;
+  /** `date` (`yyyy-mm-dd`), inclusive (UTC day). */
+  readonly periodStart: string;
+  /** `date` (`yyyy-mm-dd`), inclusive (UTC day). */
+  readonly periodEnd: string;
+  readonly currency: string;
+}
+
+/**
+ * The gross line total for a **(channel, inclusive UTC-day window)** (`DEC-118`):
+ * `sum(sales_line.gross_amount)` over the lines of the organization's
+ * transactions, org-scoped on both sides (`DEC-061`), excluding
+ * `option_kind = 'included'` (the same `SALE-011` predicate as `summarizeSales`
+ * and `sumSalesVolume`), with the transaction's currency equal and, when
+ * `channelId` is not `null`, the **transaction's** channel equal to it.
+ *
+ * **Reversals net here.** `DEC-073` posts a reversal as a negated line in the
+ * same transaction, so a plain gross sum nets it without a special case; the
+ * reversal is attributed by its parent transaction's channel and `occurred_at`
+ * (there is no reporting `coalesce(line.channel_id, transaction.channel_id)`
+ * fallback). This is the reconciliation `actual` (`sumSalesForChannelPeriod`),
+ * deliberately on the **gross** basis, not `netSalesExpression`.
+ *
+ * **Inclusive UTC-day window on a `timestamptz`.** The stored `period_start`/
+ * `period_end` are `date`s and the adapter compared the transaction's UTC day
+ * (`toISOString().slice(0, 10)`) lexically `>= periodStart` and `<= periodEnd`.
+ * On the `timestamptz` column that is the half-open instant range
+ * `[periodStart 00:00 UTC, periodEnd + 1 day 00:00 UTC)` — so both boundary days
+ * are included and no instant shifts across a non-UTC offset or DST.
+ *
+ * Returns a money string at `numeric(19,4)` scale, `"0.0000"` when nothing
+ * matches. One un-grouped query (no per-transaction loop).
+ */
+export async function sumSalesLineGrossForChannelPeriod(
+  db: Database,
+  query: SumSalesLineGrossForChannelPeriodQuery,
+): Promise<string> {
+  const conditions: SQL[] = [
+    eq(salesLine.organizationId, query.organizationId),
+    eq(salesTransaction.organizationId, query.organizationId),
+    ne(salesLine.optionKind, "included"),
+    eq(salesTransaction.currency, query.currency),
+    gte(
+      salesTransaction.occurredAt,
+      sql`(${query.periodStart}::date)::timestamp at time zone 'UTC'`,
+    ),
+    lt(
+      salesTransaction.occurredAt,
+      sql`((${query.periodEnd}::date) + 1)::timestamp at time zone 'UTC'`,
+    ),
+  ];
+  if (query.channelId !== null) {
+    conditions.push(eq(salesTransaction.channelId, query.channelId));
+  }
+
+  const rows = await db
+    .select({
+      total: sql<string>`cast(coalesce(sum(coalesce(${salesLine.grossAmount}, 0)), 0) as numeric(19, 4))::text`,
+    })
+    .from(salesLine)
+    .innerJoin(salesTransaction, eq(salesLine.salesTransactionId, salesTransaction.id))
+    .where(and(...conditions));
+
+  return rows[0]?.total ?? "0.0000";
 }

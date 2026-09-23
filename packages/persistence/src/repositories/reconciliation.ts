@@ -20,8 +20,9 @@ export type NewReconciliationTolerance = typeof reconciliationTolerance.$inferIn
  * close on a missing tolerance are application concerns, not enforced in this
  * module. `scope_type` is checked against `RECONCILIATION_SCOPE_TYPE`
  * (`DEC-078` (b), migration `0028`) and `scope_id` is a polymorphic plain uuid.
- * Only the status/resolution trail is mutable; the
- * amounts and period are creation-time facts.
+ * The status/resolution trail and the derived amounts are mutable — a
+ * `reconcileSettlement` re-run refreshes the amounts alongside the status
+ * (`DEC-118`) — while the period remains a creation-time fact.
  */
 
 export async function createReconciliation(
@@ -133,17 +134,28 @@ export async function findReconciliationsCoveringDate(
 
 export interface ReconciliationPatch {
   status?: string;
+  expectedAmount?: string;
+  actualAmount?: string;
+  tolerance?: string;
+  difference?: string;
   resolutionNote?: string | null;
   ownerId?: string | null;
   dueDate?: string | null;
+  updatedBy?: string;
   updatedAt?: Date;
 }
 
 /**
  * Narrow, org-scoped update for the reconciliation lifecycle: status plus the
- * resolution trail (`resolution_note`, `owner_id`, `due_date`). The schema's
- * `reconciliation_status_check` still governs which statuses are legal. The
- * `organizationId` is part of the WHERE clause, so another tenant's row can
+ * resolution trail (`resolution_note`, `owner_id`, `due_date`). The derived
+ * amounts (`expected_amount`, `actual_amount`, `tolerance`, `difference`) are
+ * also writable so a `reconcileSettlement` re-run can refresh them alongside the
+ * status (`DEC-118`); the period stays a creation-time fact. `updated_by` is
+ * written when supplied so the audit trail records the acting operator, never
+ * clobbering it on a patch that omits it. Only the supplied keys are written, so
+ * a patch without `resolutionNote` leaves it untouched. The schema's
+ * `reconciliation_status_check` still governs which statuses are legal.
+ * The `organizationId` is part of the WHERE clause, so another tenant's row can
  * never be patched.
  */
 export async function updateReconciliation(

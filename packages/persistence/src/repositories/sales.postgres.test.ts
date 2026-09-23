@@ -9,8 +9,10 @@ import {
   findSalesTransaction,
   listSalesLines,
   listSalesTransactions,
+  sumSalesLineGrossForChannelPeriod,
 } from "./sales";
 import {
+  createTestChannel,
   createTestItem,
   createTestLocation,
   createTestOrganization,
@@ -309,5 +311,115 @@ describe.skipIf(!databaseUrl)("sales repository", () => {
   it("exposes the sales_transaction and sales_line tables", () => {
     expect(salesTransaction).toBeDefined();
     expect(salesLine).toBeDefined();
+  });
+
+  describe("sumSalesLineGrossForChannelPeriod (DEC-118)", () => {
+    it("sums gross lines over the inclusive UTC-day window, nets a reversal and excludes included", async () => {
+      await inRollback(client.db, async (tx) => {
+        const chan = await createTestChannel(tx, orgId);
+        const txn = await createTestSalesTransaction(tx, orgId, {
+          channelId: chan.id,
+          occurredAt: at("2026-03-15T12:00:00.000Z"),
+          currency: "NOK",
+        });
+        const original = await createTestSalesLine(tx, orgId, txn.id, { grossAmount: "100.0000" });
+        // An included option is retained for consumption but is not a sale
+        // (SALE-011), so it is excluded from the total; it needs a parent line.
+        await createTestSalesLine(tx, orgId, txn.id, {
+          grossAmount: "500.0000",
+          optionKind: "included",
+          parentLineId: original.id,
+        });
+        // A `DEC-073` reversal is a negated line in the same transaction.
+        await createTestSalesLine(tx, orgId, txn.id, {
+          grossAmount: "-40.0000",
+          reversalOfId: original.id,
+        });
+
+        const total = await sumSalesLineGrossForChannelPeriod(tx, {
+          organizationId: orgId,
+          channelId: chan.id,
+          periodStart: "2026-03-01",
+          periodEnd: "2026-03-31",
+          currency: "NOK",
+        });
+        // 100.0000 - 40.0000; the included 500.0000 does not contribute.
+        expect(total).toBe("60.0000");
+      });
+    });
+
+    it("includes both boundary UTC days and excludes the adjacent days", async () => {
+      await inRollback(client.db, async (tx) => {
+        const chan = await createTestChannel(tx, orgId);
+        const seedAt = async (occurredAt: string, grossAmount: string): Promise<void> => {
+          const txn = await createTestSalesTransaction(tx, orgId, {
+            channelId: chan.id,
+            occurredAt: at(occurredAt),
+            currency: "NOK",
+          });
+          await createTestSalesLine(tx, orgId, txn.id, { grossAmount });
+        };
+        await seedAt("2026-03-01T00:00:00.000Z", "10.0000"); // first boundary day
+        await seedAt("2026-03-31T23:59:59.000Z", "20.0000"); // last boundary day
+        await seedAt("2026-02-28T23:59:59.000Z", "100.0000"); // the day before
+        await seedAt("2026-04-01T00:00:00.000Z", "200.0000"); // the day after
+
+        const total = await sumSalesLineGrossForChannelPeriod(tx, {
+          organizationId: orgId,
+          channelId: chan.id,
+          periodStart: "2026-03-01",
+          periodEnd: "2026-03-31",
+          currency: "NOK",
+        });
+        expect(total).toBe("30.0000");
+      });
+    });
+
+    it("filters by the transaction channel and currency, and is organization-scoped", async () => {
+      await inRollback(client.db, async (tx) => {
+        const chanA = await createTestChannel(tx, orgId);
+        const chanB = await createTestChannel(tx, orgId);
+        const seedAt = async (
+          channelId: string,
+          currency: string,
+          grossAmount: string,
+        ): Promise<void> => {
+          const txn = await createTestSalesTransaction(tx, orgId, {
+            channelId,
+            occurredAt: at("2026-03-15T12:00:00.000Z"),
+            currency,
+          });
+          await createTestSalesLine(tx, orgId, txn.id, { grossAmount });
+        };
+        await seedAt(chanA.id, "NOK", "100.0000");
+        await seedAt(chanB.id, "NOK", "500.0000");
+        await seedAt(chanA.id, "USD", "900.0000");
+
+        const sum = (channelId: string | null, currency: string): Promise<string> =>
+          sumSalesLineGrossForChannelPeriod(tx, {
+            organizationId: orgId,
+            channelId,
+            periodStart: "2026-03-01",
+            periodEnd: "2026-03-31",
+            currency,
+          });
+
+        expect(await sum(chanA.id, "NOK")).toBe("100.0000");
+        // `null` channel sums every channel (the settlement carries no channel).
+        expect(await sum(null, "NOK")).toBe("600.0000");
+        expect(await sum(chanA.id, "USD")).toBe("900.0000");
+        expect(await sum("00000000-0000-0000-0000-000000000000", "NOK")).toBe("0.0000");
+
+        // A line in another organization is invisible to the org-scoped read.
+        const otherOrgId = await createTestOrganization(tx, uniqueSuffix());
+        const otherTxn = await createTestSalesTransaction(tx, otherOrgId, {
+          channelId: chanA.id,
+          occurredAt: at("2026-03-15T12:00:00.000Z"),
+          currency: "NOK",
+        });
+        await createTestSalesLine(tx, otherOrgId, otherTxn.id, { grossAmount: "777.0000" });
+        expect(await sum(chanA.id, "NOK")).toBe("100.0000");
+      });
+    });
   });
 });
