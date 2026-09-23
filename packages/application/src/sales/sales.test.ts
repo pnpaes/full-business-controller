@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { DomainError } from "@aquarela/domain";
 
+import { beginPeriodClose, lockPeriodClose } from "../close";
 import {
   createImportRun,
   disposeStagingRow,
@@ -1487,6 +1488,40 @@ describe("correctSalesLine", () => {
       scopeId: "loc-1",
       periodStart: "2026-02-01",
     });
+
+    await expect(
+      correctSalesLine(store, {
+        organizationId: ORG,
+        actorId: ACTOR,
+        salesLineId: line.id,
+        reasonCode: "customer-refund",
+      }),
+    ).rejects.toThrow(/locked for its location/);
+
+    assertNothingPosted(store, line, movementIds);
+  });
+
+  it("blocks a reversal when the location close is created and locked through the real commands (DEC-119)", async () => {
+    const store = new FakeCorrectSalesLineStore();
+    const { line, movementIds } = await seedCorrectableLine(store, { locationId: "loc-1" });
+
+    // The lock is produced by the real two-step close against the delegated
+    // close fake, not hand-seeded: begin (creates `closing`) → lock.
+    const opened = await beginPeriodClose(store.closeStore, {
+      organizationId: ORG,
+      actorId: ACTOR,
+      scopeType: "location",
+      scopeId: "loc-1",
+      periodStart: OCCURRED_AT.slice(0, 10),
+      checklist: [],
+    });
+    expect(opened.status).toBe("closing");
+    const locked = await lockPeriodClose(store.closeStore, {
+      organizationId: ORG,
+      actorId: ACTOR,
+      periodCloseId: opened.id,
+    });
+    expect(locked).toMatchObject({ status: "locked", lockedBy: ACTOR });
 
     await expect(
       correctSalesLine(store, {

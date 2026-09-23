@@ -9,6 +9,7 @@ import type {
   StockMovementRecord,
 } from "../inventory";
 import type { PeriodCloseRecord, PeriodCloseScopeType } from "../close";
+import { FakePeriodCloseStore } from "../close/test-support";
 import type { ReconciliationStatusRecord } from "../reconciliation";
 
 import type {
@@ -152,12 +153,14 @@ export class FakeSalesStore extends FakeImportStore implements SalesStore {
  * and the movement-reversal primitive, so `correctSalesLine` runs against the
  * same `reverseStockMovement` path the real adapter composes. The `DEC-117`
  * reversal gate reads seedable state: `reconciliations` (covering periods and
- * statuses) and `periodCloses` (`locked` closes for a scope and period).
+ * statuses) and `closeStore` (a real `FakePeriodCloseStore` the lock read is
+ * delegated to, so a test can seed a row or produce it through the real
+ * `beginPeriodClose` → `lockPeriodClose` commands — `DEC-119`).
  */
 export class FakeCorrectSalesLineStore extends FakeSalesStore implements CorrectSalesLineStore {
   readonly inventory = new FakeInventoryStore();
   readonly reconciliations: FakeReconciliationCover[] = [];
-  readonly periodCloses: PeriodCloseRecord[] = [];
+  readonly closeStore = new FakePeriodCloseStore();
 
   override async withTransaction<T>(fn: (store: CorrectSalesLineStore) => Promise<T>): Promise<T> {
     return fn(this);
@@ -202,15 +205,7 @@ export class FakeCorrectSalesLineStore extends FakeSalesStore implements Correct
     readonly scopeId: string;
     readonly at: string;
   }): Promise<PeriodCloseRecord | undefined> {
-    return this.periodCloses.find(
-      (close) =>
-        close.organizationId === query.organizationId &&
-        close.scopeType === query.scopeType &&
-        close.scopeId === query.scopeId &&
-        close.status === "locked" &&
-        close.periodStart <= query.at &&
-        close.periodEnd >= query.at,
-    );
+    return this.closeStore.findLockedPeriodCloseCoveringDate(query);
   }
 }
 
@@ -260,7 +255,7 @@ export function seedLockedPeriodCloseCover(
   },
 ): PeriodCloseRecord {
   const record: PeriodCloseRecord = {
-    id: `period-close-${store.periodCloses.length + 1}`,
+    id: `period-close-${store.closeStore.periodCloses.size + 1}`,
     organizationId: input.organizationId,
     scopeType: input.scopeType,
     scopeId: input.scopeId,
@@ -278,7 +273,7 @@ export function seedLockedPeriodCloseCover(
     createdAt: "2026-02-01T00:00:00.000Z",
     updatedAt: null,
   };
-  store.periodCloses.push(record);
+  store.closeStore.periodCloses.set(record.id, record);
   return record;
 }
 

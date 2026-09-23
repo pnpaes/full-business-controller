@@ -15,6 +15,8 @@ import {
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import { beginPeriodClose, createPostgresPeriodCloseStore, lockPeriodClose } from "../close";
+
 import { correctSalesLine } from "./correct-sales-line";
 import { createPostgresCorrectSalesLineStore } from "./postgres-store";
 
@@ -87,6 +89,38 @@ async function hasReversal(
   lineId: string,
 ): Promise<boolean> {
   return (await findSalesLineReversal(tx, { organizationId, salesLineId: lineId })) !== undefined;
+}
+
+/** Seeds a second location (same organization) with its own transaction + line. */
+async function seedLineAtAnotherLocation(
+  tx: DatabaseTransaction,
+  fixture: Fixture,
+  occurredAt: string,
+): Promise<string> {
+  const loc = await tx
+    .insert(location)
+    .values({ organizationId: fixture.orgId, code: `gate2_${suffix}`, name: "Reversal gate IT 2" })
+    .returning();
+  const transaction = await tx
+    .insert(salesTransaction)
+    .values({
+      organizationId: fixture.orgId,
+      locationId: loc[0]!.id,
+      sourceSystem: "frontline",
+      externalTransactionId: `txn-${randomUUID()}`,
+      occurredAt: new Date(occurredAt),
+      currency: "NOK",
+    })
+    .returning();
+  const line = await tx
+    .insert(salesLine)
+    .values({
+      organizationId: fixture.orgId,
+      salesTransactionId: transaction[0]!.id,
+      quantity: "1",
+    })
+    .returning();
+  return line[0]!.id;
 }
 
 describe.skipIf(!databaseUrl)("correctSalesLine reversal gate against PostgreSQL (DEC-117)", () => {
@@ -187,6 +221,59 @@ describe.skipIf(!databaseUrl)("correctSalesLine reversal gate against PostgreSQL
       ).rejects.toThrow(/locked for its location/);
 
       expect(await hasReversal(tx, fixture.orgId, fixture.lineId)).toBe(false);
+    });
+  });
+
+  it("blocks a reversal covered by a location close created and locked through the real commands (DEC-119)", async () => {
+    await inRollback(client.db, async (tx) => {
+      const fixture = await seedFixture(tx, "2026-03-15T10:00:00.000Z");
+      const actorId = randomUUID();
+
+      // Drive the real two-step close against the harness transaction: begin
+      // (creates a `closing` row) then lock. Nothing is hand-seeded.
+      const closeStore = createPostgresPeriodCloseStore(tx);
+      const opened = await beginPeriodClose(closeStore, {
+        organizationId: fixture.orgId,
+        actorId,
+        scopeType: "location",
+        scopeId: fixture.locationId,
+        periodStart: "2026-03-15",
+        checklist: [],
+      });
+      expect(opened.status).toBe("closing");
+      const locked = await lockPeriodClose(closeStore, {
+        organizationId: fixture.orgId,
+        actorId,
+        periodCloseId: opened.id,
+      });
+      expect(locked).toMatchObject({
+        status: "locked",
+        scopeType: "location",
+        scopeId: fixture.locationId,
+      });
+
+      // A line at a second location on the same day is not covered by the lock.
+      const otherLineId = await seedLineAtAnotherLocation(tx, fixture, "2026-03-15T12:00:00.000Z");
+
+      const store = createPostgresCorrectSalesLineStore(tx);
+      await expect(
+        correctSalesLine(store, {
+          organizationId: fixture.orgId,
+          actorId: randomUUID(),
+          salesLineId: fixture.lineId,
+          reasonCode: "customer-refund",
+        }),
+      ).rejects.toThrow(/locked for its location/);
+      expect(await hasReversal(tx, fixture.orgId, fixture.lineId)).toBe(false);
+
+      const allowed = await correctSalesLine(store, {
+        organizationId: fixture.orgId,
+        actorId: randomUUID(),
+        salesLineId: otherLineId,
+        reasonCode: "customer-refund",
+      });
+      expect(allowed.reversalSalesLineId).toBeTruthy();
+      expect(await hasReversal(tx, fixture.orgId, otherLineId)).toBe(true);
     });
   });
 
