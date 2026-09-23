@@ -1,5 +1,20 @@
 # Reversibility log
 
+- **2026-09-23 allocation pool recurrence→period normalisation (`DEC-115`; 4
+  commits incl. the `docs(decisions)` commit; nothing pushed)**: 1.
+  `docs(decisions)` (`DEC-115`); 2. `feat(domain)`
+  (`packages/domain/src/recurrence.ts` + `recurrence.test.ts` + the
+  `packages/domain/src/index.ts` barrel line); 3. `feat(application)` (the
+  resolver's pool sum + the `operatingCostIds` contributor filter + the
+  resolver tests); 4. this `docs(context)` update — each independently
+  revertible with `git revert <sha>`. **No migration, no schema change and no
+  data written** (migrations stay through `0062`; **89 tables**): the
+  normalisation is a pure computation over the existing
+  `operating_cost.amount`/`recurrence`/`effective_from` columns. The domain
+  module and the resolver change revert independently — reverting the resolver
+  restores the previous face-value sum, which is the `DEC-112` behaviour.
+  **No backfill** (the pool amount is derived at query time). `db:migrate` is
+  a no-op on re-run through `0062`. Nothing applied to DigitalOcean.
 - **2026-09-23 volume-based allocation denominators (`DEC-114`; 4 commits incl.
   the `docs(decisions)` commit; nothing pushed)**: 1. `docs(decisions)`
   (`DEC-114`); 2. `feat(persistence)` (`schemas/domain-enums.yaml`,
