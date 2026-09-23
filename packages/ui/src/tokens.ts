@@ -1,81 +1,127 @@
 /**
- * Design tokens for the Aquarela Business Controller (08_UI_UX.md §8.7).
- * Framework-agnostic values only: no components, no CSS, no fonts downloaded.
+ * Design tokens for the Aquarela Business Controller.
+ *
+ * Direction: `designer-agent-modern-saas-ui-brief.md` (modern editorial SaaS),
+ * superseding 08_UI_UX.md §8.7 (recorded as DEC-120). Framework-agnostic
+ * values only: no components, no CSS, no fonts downloaded.
+ *
+ * Legacy names (`color.brand.*`, `color.background.*`, `color.text.*`,
+ * `color.border.*`, `color.navigation.*`, `color.status.*`, `color.dataViz.*`)
+ * remain exported because ~86 files consume them. Their values have been
+ * re-tuned to the new palette; where the legacy name would be dishonest
+ * (e.g. `brand.cream` is no longer cream) the name aliases the new semantic
+ * token instead of keeping a stale value.
  */
 
-/** Brand palette: cream background, dark navy navigation, berry for
- * commercial/important data, green for healthy state, muted gold for review. */
+/** Semantic surface tiers (brief §3, §7): airy neutral canvas, tonal
+ * surfaces, and inset wells — no decorative gradients. */
 export const color = {
+  surface: {
+    /** Page canvas. */
+    canvas: "#F5F6F4",
+    /** Default card/panel surface, one step above the canvas. */
+    base: "#FAFAF8",
+    /** Strongest surface (popovers, elevated panels). */
+    strong: "#FFFFFF",
+    /** Muted tonal surface for zebra rows and secondary zones. */
+    muted: "#ECEFEC",
+    /** Inset wells (inputs, code, table headers). */
+    well: "#E7EBE8",
+  },
+  /** Text tiers (brief §3). */
+  ink: {
+    primary: "#171918",
+    secondary: "#656A67",
+    /** Non-essential metadata only; meets 3:1, not AA body text. */
+    tertiary: "#878C88",
+  },
+  /** One acid/lime accent family used sparingly (brief §3, §22 item 6),
+   * plus at most one secondary accent (pale blue). `accent`/`soft` are
+   * surfaces and marks only — never text. `deep` is the text-safe accent
+   * (AA on canvas/surface/strong); `ink` is legible on the accent. */
+  accent: {
+    accent: "#DFFF55",
+    soft: "#F0F8C9",
+    ink: "#20240F",
+    deep: "#5A6B0A",
+    secondary: "#A8CBE4",
+    secondaryDeep: "#2E5E80",
+  },
   brand: {
-    /** Page background cream (§8.7). */
-    cream: "#faf6ef",
-    /** Dark navy for navigation and high-contrast text (§8.7). */
-    navy: "#16243d",
-    /** Deeper navy for pressed/hover states on navigation. */
-    navyDeep: "#0e1830",
-    /** Berry for commercial/important data (§8.7). */
-    berry: "#8e2a4f",
-    /** Green for healthy operational state (§8.7). */
-    green: "#134e30",
-    /** Muted gold for review/attention (§8.7) — text-safe dark gold. */
-    gold: "#8c6421",
+    /** Legacy name, now an alias of the warm-neutral canvas (§3 `--bg`). */
+    cream: "#F5F6F4",
+    /** Legacy name, now the dark neutral ink used for navigation and
+     * high-contrast text (§3 `--text-primary`). */
+    navy: "#171918",
+    /** Deeper neutral for pressed/hover states on navigation. */
+    navyDeep: "#0D0F0E",
+    /** Muted berry for commercial/important data. */
+    berry: "#8E2A4F",
+    /** Muted green for healthy operational state. */
+    green: "#134E30",
+    /** Muted gold for review/attention — text-safe dark gold. */
+    gold: "#8C6421",
     /** Lighter gold for accents, badges and backgrounds only (not text). */
-    goldSoft: "#b07c1f",
+    goldSoft: "#B07C1F",
   },
   background: {
-    page: "#faf6ef",
-    surface: "#ffffff",
+    page: "#F5F6F4",
+    surface: "#FAFAF8",
     /** Alternate surface for zebra rows and secondary cards. */
-    surfaceAlt: "#f3ede1",
+    surfaceAlt: "#ECEFEC",
     /** Inset wells (inputs, code, table headers). */
-    inset: "#efe8db",
+    inset: "#E7EBE8",
   },
   navigation: {
-    background: "#16243d",
-    backgroundHover: "#0e1830",
-    text: "#faf6ef",
-    textMuted: "#b9c3d6",
-    active: "#b07c1f",
+    background: "#171918",
+    backgroundHover: "#0D0F0E",
+    text: "#F5F6F4",
+    textMuted: "#A8B0AB",
+    /** Selected navigation accent: the lime accent on dark neutral. */
+    active: "#DFFF55",
   },
   text: {
-    primary: "#212b36",
-    secondary: "#4a5568",
-    muted: "#6b7280",
-    onNavy: "#faf6ef",
-    onNavyMuted: "#b9c3d6",
-    inverse: "#ffffff",
+    primary: "#171918",
+    secondary: "#656A67",
+    muted: "#6B706C",
+    onNavy: "#F5F6F4",
+    onNavyMuted: "#A8B0AB",
+    inverse: "#FFFFFF",
   },
+  /** Thin subtle separators, no thick borders (brief §3, §7). */
   border: {
-    subtle: "#e5ddcd",
-    default: "#d3c9b6",
-    strong: "#a89c86",
-    focus: "#1d5fa8",
+    subtle: "#E4E8E5",
+    default: "#D6DAD7",
+    strong: "#C3C9C5",
+    focus: "#2E6FA3",
   },
-  /** Semantic status mapped onto the brand colours (§8.7: green healthy,
-   * muted gold review, plus danger and info). Foregrounds meet AA as text
-   * on cream and white; backgrounds are tinted washes. */
+  /** Semantic status: muted tints and small indicators, never saturated
+   * blocks (brief §3). Structure `{fg,bg,border}` is load-bearing for
+   * StatusPill. */
   status: {
     success: { fg: "#134e30", bg: "#e2f0e7", border: "#134e30" },
     warning: { fg: "#8c6421", bg: "#f6ecd4", border: "#b07c1f" },
     danger: { fg: "#620f17", bg: "#f9e3e1", border: "#620f17" },
     info: { fg: "#215a8b", bg: "#e2ecf7", border: "#215a8b" },
   },
-  /** Data-visualization palettes. Categorical colours are each ≥3:1 against
-   * white (WCAG non-text contrast for chart elements) and pairwise
-   * distinguishable. Sequential ramps are monotonic in luminance. */
+  /** Data-visualization palettes (brief §10): muted, staggered in
+   * luminance, no rainbow. Categorical colours are each ≥3:1 against the
+   * surfaces (WCAG 1.4.11) and pairwise distinguishable. Sequential ramps
+   * are monotonic in luminance. */
   dataViz: {
     categorical: [
-      "#16243d", // navy
-      "#8e2a4f", // berry
-      "#134e30", // green
-      "#b07c1f", // gold
-      "#083a3a", // deep teal
-      "#7a57b5", // plum
+      "#1E2321", // dark neutral
+      "#083A3A", // deep teal
+      "#134E30", // green
+      "#8E2A4F", // berry
+      "#8F4A18", // muted terracotta
+      "#7A5CA8", // muted plum
       "#647995", // slate blue
-      "#944507", // burnt orange
+      "#B07C1F", // muted gold
     ],
     sequential: {
-      navy: ["#e8eef7", "#b9cbe4", "#7c9cc6", "#43689b", "#1b3a63"],
+      /** Neutral ink ramp. */
+      navy: ["#E9EBEA", "#C2C7C4", "#989E9A", "#676D69", "#343836"],
       berry: ["#f6e4ea", "#dca9b8", "#bc6e8b", "#93365c", "#5c1b36"],
     },
   },
@@ -98,15 +144,36 @@ export const spacing = {
   24: 96,
 } as const;
 
-/** Typography. Expressive serif for page titles, readable sans for
- * controls/tables (§8.7). System stacks only — no font downloads. */
+/**
+ * Typography (brief §4): one geometric/humanist sans for everything,
+ * hierarchy from size/position/spacing rather than heavy bold.
+ *
+ * Font decision: the sans stack is a system stack in this wave. The brief's
+ * webfont (e.g. Outfit/Manrope via `next/font`) must be exposed as a CSS
+ * variable by the app layout — a later wave. The ready-to-flip stack is
+ * kept in `fontFamily.sansVar`; switching `sans` to it before the app
+ * defines `--font-sans` would make every `font-family` declaration
+ * invalid-at-computed-value time (undefined var) and silently fall back to
+ * the browser default, so the flip happens together with the layout change:
+ *
+ *   // apps/web/app/layout.tsx (later wave)
+ *   import { Outfit } from "next/font/google";
+ *   const sans = Outfit({ subsets: ["latin"], variable: "--font-sans" });
+ *   <html className={sans.variable}>
+ */
 export const typography = {
   fontFamily: {
-    display: 'Georgia, "Iowan Old Style", "Palatino Linotype", "Times New Roman", serif',
+    display: 'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
     sans: 'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
     mono: 'ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace',
+    /** Webfont-ready stack: the app layout defines `--font-sans` via
+     * `next/font` (see the file comment). No URL, so it stays
+     * download-free at the token level. */
+    sansVar:
+      '"var(--font-sans)", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
   },
   fontSize: {
+    "2xs": 11,
     xs: 12,
     sm: 13,
     md: 14,
@@ -114,37 +181,100 @@ export const typography = {
     xl: 20,
     "2xl": 24,
     "3xl": 30,
-    "4xl": 38,
+    "4xl": 40,
+    "5xl": 48,
+    "6xl": 56,
   },
   fontWeight: {
+    light: 300,
     regular: 400,
     medium: 500,
     semibold: 600,
     bold: 700,
   },
   lineHeight: {
+    /** Tight display line-height for large statements (brief §4). */
+    display: 1.1,
     tight: 1.2,
     normal: 1.5,
     relaxed: 1.65,
   },
+  /** Tabular-numeric affordance for figures (KPIs, tables). */
+  fontVariantNumeric: {
+    tabular: "tabular-nums",
+  },
 } as const;
 
-/** Corner radius scale in pixels. */
+/** Corner radius scale in pixels (brief §7: 16–24px modules). */
 export const radius = {
   none: 0,
   sm: 4,
   md: 8,
   lg: 12,
   xl: 16,
+  "2xl": 20,
+  "3xl": 24,
   pill: 999,
 } as const;
 
-/** Elevation shadows, tuned for cream surfaces. */
+/** Border widths (brief §7: thin, subtle). */
+export const borderWidth = {
+  none: 0,
+  hairline: 1,
+  medium: 2,
+} as const;
+
+/** Elevation: none or extremely soft (brief §7). */
 export const elevation = {
   none: "none",
-  sm: "0 1px 2px rgba(22, 36, 61, 0.08)",
-  md: "0 2px 6px rgba(22, 36, 61, 0.10), 0 1px 2px rgba(22, 36, 61, 0.06)",
-  lg: "0 8px 24px rgba(22, 36, 61, 0.14), 0 2px 6px rgba(22, 36, 61, 0.08)",
+  sm: "0 1px 2px rgba(23, 25, 24, 0.06)",
+  /** Extremely soft panel elevation for feature modules. */
+  panel: "0 1px 2px rgba(23, 25, 24, 0.05), 0 2px 8px rgba(23, 25, 24, 0.04)",
+  md: "0 2px 6px rgba(23, 25, 24, 0.08), 0 1px 2px rgba(23, 25, 24, 0.05)",
+  lg: "0 8px 24px rgba(23, 25, 24, 0.12), 0 2px 6px rgba(23, 25, 24, 0.06)",
+} as const;
+
+/** Icon sizes (brief §20: mostly 16–20px in UI). */
+export const iconSize = {
+  xs: 16,
+  sm: 18,
+  md: 20,
+  lg: 24,
+} as const;
+
+/** Container widths (brief §5). */
+export const containerWidth = {
+  /** Narrow form/working width. */
+  narrow: 760,
+  /** Default desktop working width. */
+  default: 1440,
+  /** Wide analytical width. */
+  wide: 1600,
+} as const;
+
+/** 12-column grid definition (brief §5). */
+export const grid = {
+  columns: 12,
+  gutter: 24,
+  margin: 32,
+} as const;
+
+/** Responsive breakpoints (brief §18). */
+export const breakpoint = {
+  mobile: 375,
+  tablet: 768,
+  desktop: 1280,
+  large: 1600,
+} as const;
+
+/** Animation timing (brief §19: 120–220 ms, restrained). */
+export const motion = {
+  duration: {
+    fast: 120,
+    base: 160,
+    slow: 220,
+  },
+  easing: "cubic-bezier(0.2, 0, 0, 1)",
 } as const;
 
 /** The full token set. */
@@ -153,5 +283,11 @@ export const TOKENS = {
   spacing,
   typography,
   radius,
+  borderWidth,
   elevation,
+  iconSize,
+  containerWidth,
+  grid,
+  breakpoint,
+  motion,
 } as const;

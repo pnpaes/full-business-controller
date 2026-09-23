@@ -1,6 +1,18 @@
 import { describe, expect, it } from "vitest";
 import { contrastRatio, relativeLuminance } from "./contrast";
-import { TOKENS, color, elevation, radius, spacing, typography } from "./tokens";
+import {
+  TOKENS,
+  breakpoint,
+  borderWidth,
+  color,
+  containerWidth,
+  elevation,
+  iconSize,
+  motion,
+  radius,
+  spacing,
+  typography,
+} from "./tokens";
 
 const AA_NORMAL = 4.5;
 const AA_LARGE_OR_UI = 3;
@@ -121,6 +133,45 @@ const textPairs: Array<{
     bg: color.background.surface,
     min: AA_NORMAL,
   },
+  // New semantic tiers (brief §3): ink on the surface tiers, accent pairings.
+  ...(["canvas", "base", "strong"] as const).flatMap((tier) => [
+    {
+      name: `ink primary on surface.${tier}`,
+      fg: color.ink.primary,
+      bg: color.surface[tier],
+      min: AA_NORMAL,
+    },
+    {
+      name: `ink secondary on surface.${tier}`,
+      fg: color.ink.secondary,
+      bg: color.surface[tier],
+      min: AA_NORMAL,
+    },
+  ]),
+  {
+    name: "ink tertiary on strong surface (metadata, 3:1)",
+    fg: color.ink.tertiary,
+    bg: color.surface.strong,
+    min: AA_LARGE_OR_UI,
+  },
+  {
+    name: "accent ink on accent",
+    fg: color.accent.ink,
+    bg: color.accent.accent,
+    min: AA_NORMAL,
+  },
+  ...(["canvas", "base", "strong", "soft"] as const).map((tier) => ({
+    name: `accent deep (text-safe accent) on surface.${tier}`,
+    fg: color.accent.deep,
+    bg: tier === "soft" ? color.accent.soft : color.surface[tier],
+    min: AA_NORMAL,
+  })),
+  {
+    name: "accent secondaryDeep on strong surface",
+    fg: color.accent.secondaryDeep,
+    bg: color.surface.strong,
+    min: AA_NORMAL,
+  },
 ];
 
 /** Non-text UI elements (status borders, chart marks) against the surfaces
@@ -148,6 +199,16 @@ const nonTextPairs: Array<{ name: string; fg: string; bg: string }> = [
     fg: c,
     bg: color.background.page,
   })),
+  {
+    name: "accent mark on strong surface",
+    fg: color.accent.deep,
+    bg: color.surface.strong,
+  },
+  {
+    name: "focus border on strong surface",
+    fg: color.border.focus,
+    bg: color.surface.strong,
+  },
 ];
 
 describe("color tokens: WCAG AA text contrast", () => {
@@ -241,13 +302,54 @@ describe("structural token scales", () => {
     expect(elevation.sm.length).toBeLessThan(elevation.md.length);
     expect(elevation.md.length).toBeLessThan(elevation.lg.length);
   });
+
+  it("icon sizes ascend across the scale", () => {
+    const sizes = Object.values(iconSize);
+    for (let i = 1; i < sizes.length; i++) {
+      expect(sizes[i]).toBeGreaterThan(sizes[i - 1]!);
+    }
+  });
+
+  it("container widths are strictly increasing", () => {
+    const widths = Object.values(containerWidth);
+    for (let i = 1; i < widths.length; i++) {
+      expect(widths[i]).toBeGreaterThan(widths[i - 1]!);
+    }
+  });
+
+  it("breakpoints are strictly increasing", () => {
+    const points = Object.values(breakpoint);
+    for (let i = 1; i < points.length; i++) {
+      expect(points[i]).toBeGreaterThan(points[i - 1]!);
+    }
+  });
+
+  it("motion durations stay within the 120–220 ms band (brief §19)", () => {
+    for (const duration of Object.values(motion.duration)) {
+      expect(duration).toBeGreaterThanOrEqual(120);
+      expect(duration).toBeLessThanOrEqual(220);
+    }
+  });
+
+  it("border widths are positive and non-decreasing", () => {
+    const widths = Object.values(borderWidth);
+    for (let i = 1; i < widths.length; i++) {
+      expect(widths[i]).toBeGreaterThanOrEqual(widths[i - 1]!);
+    }
+  });
 });
 
 describe("TOKENS aggregate", () => {
   it("exposes every scale", () => {
     expect(Object.keys(TOKENS).sort()).toEqual([
+      "borderWidth",
+      "breakpoint",
       "color",
+      "containerWidth",
       "elevation",
+      "grid",
+      "iconSize",
+      "motion",
       "radius",
       "spacing",
       "typography",
@@ -260,5 +362,10 @@ describe("TOKENS aggregate", () => {
     expect(TOKENS.typography).toBe(typography);
     expect(TOKENS.radius).toBe(radius);
     expect(TOKENS.elevation).toBe(elevation);
+    expect(TOKENS.borderWidth).toBe(borderWidth);
+    expect(TOKENS.iconSize).toBe(iconSize);
+    expect(TOKENS.containerWidth).toBe(containerWidth);
+    expect(TOKENS.breakpoint).toBe(breakpoint);
+    expect(TOKENS.motion).toBe(motion);
   });
 });
