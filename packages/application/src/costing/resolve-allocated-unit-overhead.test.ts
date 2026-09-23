@@ -123,6 +123,59 @@ describe("resolveAllocatedUnitOverhead", () => {
     });
   });
 
+  it("scales mixed-recurrence pool costs to the period (DEC-115)", async () => {
+    const result = await resolveAllocatedUnitOverhead(
+      store({
+        costs: [
+          cost({ id: "oc-monthly", amount: "1000.0000", recurrence: "monthly" }),
+          cost({ id: "oc-annual", amount: "1200.0000", recurrence: "annual" }),
+        ],
+      }),
+      baseInput({ explicitTotalDriverVolume: "2" }),
+    );
+
+    // monthly 1000 + annual 1200 × 30/365 (June 2026, 30 days) = 1098.6301369… → 1098.6301.
+    expect(result?.poolAmount).toBe("1098.6301");
+    expect(result?.operatingCostIds).toEqual(["oc-monthly", "oc-annual"]);
+    expect(result?.perUnitOverhead).toBe("549.3151");
+  });
+
+  it("counts a one_off once in its period and excludes it elsewhere (DEC-115)", async () => {
+    const costs = [
+      cost({
+        id: "oc-in",
+        amount: "500.0000",
+        recurrence: "one_off",
+        effectiveFrom: "2026-06-15",
+      }),
+      cost({
+        id: "oc-out",
+        amount: "700.0000",
+        recurrence: "one_off",
+        effectiveFrom: "2025-01-01",
+      }),
+    ];
+
+    const june = await resolveAllocatedUnitOverhead(
+      store({ costs }),
+      baseInput({ explicitTotalDriverVolume: "1" }),
+    );
+    expect(june?.poolAmount).toBe("500.0000");
+    expect(june?.operatingCostIds).toEqual(["oc-in"]);
+
+    // Its open-ended window still overlaps July, but it must not repeat.
+    const july = await resolveAllocatedUnitOverhead(
+      store({ costs }),
+      baseInput({
+        explicitTotalDriverVolume: "1",
+        periodFrom: new Date("2026-07-01T00:00:00Z"),
+        periodTo: new Date("2026-08-01T00:00:00Z"),
+      }),
+    );
+    expect(july?.poolAmount).toBe("0.0000");
+    expect(july?.operatingCostIds).toEqual([]);
+  });
+
   it("fails closed when an explicit denominator source has no volume", async () => {
     await expect(
       resolveAllocatedUnitOverhead(store({ costs: [cost()] }), baseInput()),

@@ -2,10 +2,10 @@ import {
   allocatedUnitOverhead,
   type AllocationFallback,
   DomainError,
-  formatDecimal,
-  MONEY_SCALE,
+  normaliseRecurringCostsToPeriod,
   parseDecimal,
   QUANTITY_SCALE,
+  recurringCostContributesToPeriod,
 } from "@aquarela/domain";
 
 import type { AllocationRuleRecord, OperatingCostRecord } from "./types";
@@ -18,12 +18,18 @@ import type { AllocationRuleRecord, OperatingCostRecord } from "./types";
  * divides:
  *
  * ```
- * pool_amount         = Σ linked operating_cost.amount                         # B-money, 4 dp
+ * pool_amount         = Σ normaliseRecurringCostsToPeriod(linked costs, [from, to))  # B-money, 4 dp
  * allocated_unit_overhead = allocatedUnitOverhead(pool_amount, total_driver_volume, {fallback})
  * ```
  *
- * `recurrence` is **not** scaled and `behavior` is **not** filtered (`DEC-112` —
- * owner/FIN still to define both). The `denominator_source` vocabulary is closed:
+ * Each linked cost's `amount` is a per-recurrence-unit amount, so it is scaled
+ * to the allocation period by `periodDays / nominalDays` (calendar-anchored at
+ * `periodFrom`), summed exactly and rounded **once** at the pool boundary
+ * (`DEC-115`); a `one_off` counts once, only in the period containing its
+ * `effectiveFrom`. `behavior` is still **not** filtered and partial-window
+ * proration is still deferred (`DEC-115` supersedes the `DEC-112`
+ * "recurrence unscaled" note for the pool amount). The `denominator_source`
+ * vocabulary is closed:
  * `explicit` uses the caller's volume, `eligible_products` counts the products
  * with an effective `price_version` at the location, and `equal_share` spreads
  * across that count. The period-scoped sales volume supplies `revenue`
@@ -62,6 +68,12 @@ export interface ResolvedAllocatedUnitOverhead {
   readonly totalDriverVolume: string;
   readonly denominatorSource: string;
   readonly fallbackUsed: string;
+  /**
+   * The linked costs that **contributed** to the pool, not every linked cost:
+   * a cost whose period-scaled contribution is zero (a `one_off` outside
+   * `[periodFrom, periodTo)`, or a zero amount) is excluded. `poolAmount` is the
+   * period-scaled sum of the same set (`DEC-115`).
+   */
   readonly operatingCostIds: readonly string[];
 }
 
@@ -150,11 +162,24 @@ export async function resolveAllocatedUnitOverhead(
       (cost.effectiveTo === null || cost.effectiveTo > fromDate) && cost.effectiveFrom < toDate,
   );
 
-  let pool = 0n;
-  for (const cost of linked) {
-    pool += parseDecimal(cost.amount, MONEY_SCALE);
-  }
-  const poolAmount = formatDecimal(pool, MONEY_SCALE);
+  const poolCosts = linked.map((cost) => ({
+    cost,
+    normalisable: {
+      amount: cost.amount,
+      recurrence: cost.recurrence,
+      effectiveFrom: cost.effectiveFrom,
+    },
+  }));
+  const poolAmount = normaliseRecurringCostsToPeriod({
+    costs: poolCosts.map((entry) => entry.normalisable),
+    periodFrom: fromDate,
+    periodTo: toDate,
+  });
+  // Only a cost with a non-zero scaled contribution is a pool member: a
+  // `one_off` outside its period scales to 0 and is excluded (DEC-115).
+  const operatingCostIds = poolCosts
+    .filter((entry) => recurringCostContributesToPeriod(entry.normalisable, fromDate, toDate))
+    .map((entry) => entry.cost.id);
 
   const denominatorSource = rule.denominatorSource.trim();
   let totalDriverVolume: string;
@@ -260,6 +285,6 @@ export async function resolveAllocatedUnitOverhead(
     totalDriverVolume,
     denominatorSource,
     fallbackUsed,
-    operatingCostIds: linked.map((cost) => cost.id),
+    operatingCostIds,
   };
 }
