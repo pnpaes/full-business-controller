@@ -1,13 +1,34 @@
-import { and, asc, eq, gte, inArray, isNotNull, lte, ne, sql, type SQL } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gte,
+  inArray,
+  isNotNull,
+  lt,
+  lte,
+  ne,
+  sql,
+  type AnyColumn,
+  type SQL,
+} from "drizzle-orm";
 
 import type { Database } from "../client";
 import {
   channel,
+  item,
   location,
   product,
   productVariant,
+  productionBatch,
+  recipe,
+  recipeVersion,
   salesLine,
   salesTransaction,
+  stockCount,
+  stockCountLine,
+  stockMovement,
   wasteEvent,
 } from "../schema";
 
@@ -533,4 +554,626 @@ export async function sumWasteByProductVariant(
     .orderBy(asc(wasteEvent.productVariantId));
 
   return rows as readonly WasteByProductVariantAggregate[];
+}
+
+/*
+ * RPT-004 operational reporting reads (rows 13e/13f, `DEC-110`).
+ *
+ * On-demand, organization-scoped SQL over the canonical facts (`DEC-061`), like
+ * the sales reads above: no aggregate table and no materialized view. Every
+ * measure is a plain `numeric` sum returned as text, so nothing is ever a float;
+ * the application read model shapes, labels and caps it.
+ *
+ * The frozen contract is `DEC-110`:
+ * - **Stock value** is point-in-time Σ `stock_movement.value_delta` where
+ *   `occurred_at <= asOf`, grouped by location — the ledger semantics, **not**
+ *   the `stock_balance` projection.
+ * - **Stock variance quantity** is `counted − expected` as stored on
+ *   `stock_count_line.variance_qty`, over the count's `cutoff` (half-open),
+ *   approved counts only. **Stock variance value is the booked adjustment
+ *   value** = Σ `stock_movement.value_delta` where `source_type = 'stock_count'`
+ *   and the movement's source count is in the same window — the ledger truth,
+ *   **not** `variance_qty × unit_cost` (the valuation is asymmetric, `DEC-067`/
+ *   `DEC-008`, and no count-line value column exists).
+ * - **Production yield** is over `production_batch.actual_finish` (half-open),
+ *   completed batches; `inputValue` is the magnitude of the batch's
+ *   `production_consumption` ledger value and `outputValue` the batch's
+ *   `production_output` ledger value (both `source_type = 'production_batch'`).
+ * - **Waste** is over `occurred_at`, grouped by the `DEC-018` `stage` axis;
+ *   the value is `moving_average`-only (`DEC-068`) while `events`/`quantity`
+ *   cover every event, item-only events included, and the quantity sum is
+ *   unit-blind.
+ */
+
+/** The organization + optional location scope every operational read shares. */
+export interface OperationsScopeFilters {
+  readonly organizationId: string;
+  /** Empty/undefined = organization-wide (the repo convention). */
+  readonly locationIds?: readonly string[];
+}
+
+/** Appends the optional `locationIds` predicate (empty = no restriction). */
+function pushLocationFilter(
+  conditions: SQL[],
+  column: AnyColumn,
+  locationIds: readonly string[] | undefined,
+): void {
+  if (locationIds !== undefined && locationIds.length > 0) {
+    conditions.push(inArray(column, [...locationIds]));
+  }
+}
+
+export interface SumStockValueByLocationAsOfQuery extends OperationsScopeFilters {
+  readonly asOf: Date;
+}
+
+export interface StockValueByLocationAggregate {
+  readonly locationId: string;
+  readonly locationName: string | null;
+  /** numeric(19,4) text. */
+  readonly valueOnHand: string;
+}
+
+/**
+ * Point-in-time stock value by location (`DEC-110` item 1): Σ
+ * `stock_movement.value_delta` at `occurred_at <= asOf`, org- and
+ * location-scoped. A location with no movement in the window has no row (the
+ * application's total is still the sum of the returned rows).
+ */
+export async function sumStockValueByLocationAsOf(
+  db: Database,
+  query: SumStockValueByLocationAsOfQuery,
+): Promise<readonly StockValueByLocationAggregate[]> {
+  const conditions: SQL[] = [
+    eq(stockMovement.organizationId, query.organizationId),
+    lte(stockMovement.occurredAt, query.asOf),
+  ];
+  pushLocationFilter(conditions, stockMovement.locationId, query.locationIds);
+
+  const rows = await db
+    .select({
+      locationId: sql<string>`${stockMovement.locationId}::text`,
+      locationName: sql<string | null>`${location.name}`,
+      valueOnHand: sql<string>`cast(coalesce(sum(${stockMovement.valueDelta}), 0) as numeric(19, 4))::text`,
+    })
+    .from(stockMovement)
+    .leftJoin(location, eq(stockMovement.locationId, location.id))
+    .where(and(...conditions))
+    .groupBy(sql`${stockMovement.locationId}`, sql`${location.name}`)
+    .orderBy(sql`${location.name}`, sql`${stockMovement.locationId}`);
+
+  return rows as readonly StockValueByLocationAggregate[];
+}
+
+export interface SumStockCountVarianceQuery extends OperationsScopeFilters {
+  /** Inclusive lower bound on `stock_count.cutoff`; an ISO instant. */
+  readonly from: string;
+  /** Exclusive upper bound on `stock_count.cutoff`; an ISO instant. */
+  readonly to: string;
+}
+
+export interface StockCountVarianceAggregate {
+  readonly locationId: string;
+  readonly locationName: string | null;
+  /** The approved counts in the window at this location, as text. */
+  readonly counts: string;
+  /** numeric(19,6) text. */
+  readonly varianceQty: string;
+  /** numeric(19,4) text; the booked count-adjustment ledger value. */
+  readonly adjustmentValue: string;
+}
+
+/**
+ * The booked count-adjustment value per outer location: the `stock_count`-
+ * sourced ledger movements whose source count is approved, whose `cutoff`
+ * falls in the same half-open `[from, to)` window **and which sits at the same
+ * location as its source count** (`sc2.location_id = sm.location_id`), so a
+ * movement cannot be attributed to a count's location while posted elsewhere.
+ * Correlated on the outer `stock_count.location_id` so it groups with the count
+ * aggregate without a second join that would multiply the count lines.
+ */
+function countAdjustmentValueExpression(query: SumStockCountVarianceQuery): SQL<string> {
+  return sql<string>`(
+    select cast(coalesce(sum(sm."value_delta"), 0) as numeric(19, 4))::text
+    from "stock_movement" sm
+    where sm."organization_id" = ${query.organizationId}
+      and sm."source_type" = 'stock_count'
+      and sm."location_id" = ${stockCount.locationId}
+      and exists (
+        select 1
+        from "stock_count" sc2
+        where sc2."id" = sm."source_id"
+          and sc2."organization_id" = ${query.organizationId}
+          and sc2."location_id" = sm."location_id"
+          and sc2."status" = 'approved'
+          and sc2."cutoff" >= ${new Date(query.from)}
+          and sc2."cutoff" < ${new Date(query.to)}
+      )
+  )`;
+}
+
+/**
+ * Stock-count variance by location (`DEC-110` items 2/3): approved counts whose
+ * `cutoff` falls in the half-open `[from, to)` window, per location —
+ * `counts`, Σ `variance_qty` and the booked adjustment value. The quantity is
+ * `counted − expected` as stored; the value is the ledger adjustment, never
+ * `variance_qty × cost`.
+ */
+export async function sumStockCountVariance(
+  db: Database,
+  query: SumStockCountVarianceQuery,
+): Promise<readonly StockCountVarianceAggregate[]> {
+  const conditions: SQL[] = [
+    eq(stockCount.organizationId, query.organizationId),
+    eq(stockCount.status, "approved"),
+    gte(stockCount.cutoff, new Date(query.from)),
+    lt(stockCount.cutoff, new Date(query.to)),
+  ];
+  pushLocationFilter(conditions, stockCount.locationId, query.locationIds);
+
+  const rows = await db
+    .select({
+      locationId: sql<string>`${stockCount.locationId}::text`,
+      locationName: sql<string | null>`${location.name}`,
+      counts: sql<string>`count(distinct ${stockCount.id})::text`,
+      varianceQty: sql<string>`cast(coalesce(sum(${stockCountLine.varianceQty}), 0) as numeric(19, 6))::text`,
+      adjustmentValue: countAdjustmentValueExpression(query),
+    })
+    .from(stockCount)
+    .leftJoin(stockCountLine, eq(stockCountLine.stockCountId, stockCount.id))
+    .leftJoin(location, eq(stockCount.locationId, location.id))
+    .where(and(...conditions))
+    .groupBy(sql`${stockCount.locationId}`, sql`${location.name}`)
+    .orderBy(sql`${location.name}`, sql`${stockCount.locationId}`);
+
+  return rows as readonly StockCountVarianceAggregate[];
+}
+
+export interface SumProductionYieldQuery extends OperationsScopeFilters {
+  /** Inclusive lower bound on `production_batch.actual_finish`; an ISO instant. */
+  readonly from: string;
+  /** Exclusive upper bound on `production_batch.actual_finish`; an ISO instant. */
+  readonly to: string;
+}
+
+export interface ProductionYieldAggregate {
+  readonly locationId: string;
+  readonly locationName: string | null;
+  readonly recipeVersionId: string;
+  readonly recipeName: string | null;
+  readonly batches: string;
+  readonly plannedOutput: string;
+  readonly actualOutput: string;
+  /** numeric(19,4) text; Σ|`production_consumption.value_delta`| (`DEC-110` item 5). */
+  readonly inputValue: string;
+  /** numeric(19,4) text; the batch's `production_output` ledger value. */
+  readonly outputValue: string;
+}
+
+/**
+ * One batch's ledger value for a movement type, as a correlated scalar. With
+ * `absolute` the movements are summed as Σ|`value_delta`| (the production input
+ * value, `DEC-110` item 5: consumption is always a cost, so a mixed-sign or
+ * reversed consumption movement still adds value); otherwise the net sum.
+ */
+function batchMovementValueExpression(movementType: string, absolute = false): SQL<string> {
+  const term = absolute ? sql`abs(sm."value_delta")` : sql`sm."value_delta"`;
+  return sql<string>`(
+    select coalesce(sum(${term}), 0)
+    from "stock_movement" sm
+    where sm."organization_id" = ${productionBatch.organizationId}
+      and sm."source_type" = 'production_batch'
+      and sm."source_id" = ${productionBatch.id}
+      and sm."movement_type" = ${movementType}
+  )`;
+}
+
+/**
+ * Production yield by location and recipe version (`DEC-110` item 5): completed
+ * batches whose `actual_finish` falls in the half-open `[from, to)` window, with
+ * the planned/actual output totals and the input/output ledger values. The yield
+ * figures are derived by the application from the totals (`yieldRatio`,
+ * `yieldVariancePctFromTotals`), not stored here.
+ */
+export async function sumProductionYield(
+  db: Database,
+  query: SumProductionYieldQuery,
+): Promise<readonly ProductionYieldAggregate[]> {
+  const conditions: SQL[] = [
+    eq(productionBatch.organizationId, query.organizationId),
+    eq(productionBatch.status, "completed"),
+    gte(productionBatch.actualFinish, new Date(query.from)),
+    lt(productionBatch.actualFinish, new Date(query.to)),
+  ];
+  pushLocationFilter(conditions, productionBatch.locationId, query.locationIds);
+
+  const rows = await db
+    .select({
+      locationId: sql<string>`${productionBatch.locationId}::text`,
+      locationName: sql<string | null>`${location.name}`,
+      recipeVersionId: sql<string>`${productionBatch.recipeVersionId}::text`,
+      recipeName: sql<string | null>`${recipe.name}`,
+      batches: sql<string>`count(distinct ${productionBatch.id})::text`,
+      plannedOutput: sql<string>`cast(coalesce(sum(${productionBatch.plannedOutputQty}), 0) as numeric(19, 6))::text`,
+      actualOutput: sql<string>`cast(coalesce(sum(${productionBatch.actualOutputQty}), 0) as numeric(19, 6))::text`,
+      inputValue: sql<string>`cast(coalesce(sum(${batchMovementValueExpression("production_consumption", true)}), 0) as numeric(19, 4))::text`,
+      outputValue: sql<string>`cast(coalesce(sum(${batchMovementValueExpression("production_output")}), 0) as numeric(19, 4))::text`,
+    })
+    .from(productionBatch)
+    .innerJoin(recipeVersion, eq(productionBatch.recipeVersionId, recipeVersion.id))
+    .innerJoin(recipe, eq(recipeVersion.recipeId, recipe.id))
+    .leftJoin(location, eq(productionBatch.locationId, location.id))
+    .where(and(...conditions))
+    .groupBy(
+      sql`${productionBatch.locationId}`,
+      sql`${location.name}`,
+      sql`${productionBatch.recipeVersionId}`,
+      sql`${recipe.name}`,
+    )
+    .orderBy(sql`${location.name}`, sql`${recipe.name}`, sql`${productionBatch.recipeVersionId}`);
+
+  return rows as readonly ProductionYieldAggregate[];
+}
+
+export interface SumWasteByStageQuery extends OperationsScopeFilters {
+  /** Inclusive lower bound on `waste_event.occurred_at`; an ISO instant. */
+  readonly from: string;
+  /** Exclusive upper bound on `waste_event.occurred_at`; an ISO instant. */
+  readonly to: string;
+}
+
+export interface WasteByStageAggregate {
+  readonly stage: string;
+  readonly events: string;
+  /** numeric(19,6) text, summed unit-blind (a recorded ceiling). */
+  readonly quantity: string;
+  /** numeric(19,4) text summed over moving-average events; null when none. */
+  readonly value: string | null;
+}
+
+/**
+ * Waste by the `DEC-018` `stage` axis (`DEC-110` item 4): every event in the
+ * half-open `[from, to)` `occurred_at` window, org- and location-scoped,
+ * item-only events included. `events`/`quantity` cover every event; `value` is summed only over
+ * `value_method = 'moving_average'` rows (`DEC-068`) via a conditional sum, so a
+ * non-moving-average event is never blended in yet still counts as an event.
+ * `value` is null when no moving-average event in the group carried one.
+ */
+export async function sumWasteByStage(
+  db: Database,
+  query: SumWasteByStageQuery,
+): Promise<readonly WasteByStageAggregate[]> {
+  const conditions: SQL[] = [
+    eq(wasteEvent.organizationId, query.organizationId),
+    gte(wasteEvent.occurredAt, new Date(query.from)),
+    lt(wasteEvent.occurredAt, new Date(query.to)),
+  ];
+  pushLocationFilter(conditions, wasteEvent.locationId, query.locationIds);
+
+  const rows = await db
+    .select({
+      stage: sql<string>`${wasteEvent.stage}`,
+      events: sql<string>`count(*)::text`,
+      quantity: sql<string>`cast(coalesce(sum(${wasteEvent.quantity}), 0) as numeric(19, 6))::text`,
+      value: sql<
+        string | null
+      >`cast(sum(case when ${wasteEvent.valueMethod} = 'moving_average' then ${wasteEvent.value} else null end) as numeric(19, 4))::text`,
+    })
+    .from(wasteEvent)
+    .where(and(...conditions))
+    .groupBy(wasteEvent.stage)
+    .orderBy(asc(wasteEvent.stage));
+
+  return rows as readonly WasteByStageAggregate[];
+}
+
+/*
+ * RPT-002 drill-down reads (`DEC-110`, `DEC-108` item 7): the underlying records
+ * behind one operational section, org- and location-scoped, bounded by a
+ * conservative `limit + 1` probe. Each returns the canonical row plus the joined
+ * display label so the records route is self-describing.
+ */
+
+export interface OperationsRecordPage<T> {
+  readonly rows: readonly T[];
+  readonly truncated: boolean;
+}
+
+/** The as-of window a stock-value drill-down shares. */
+export interface ListStockValueRecordsQuery extends OperationsScopeFilters {
+  readonly asOf: Date;
+  readonly limit: number;
+  readonly offset: number;
+}
+
+/** One `stock_movement` row behind the stock-value section. */
+export interface StockValueRecord {
+  readonly id: string;
+  /** `timestamptz`, ISO. */
+  readonly occurredAt: string;
+  readonly locationId: string;
+  readonly locationName: string | null;
+  readonly itemId: string;
+  readonly itemCode: string | null;
+  readonly itemName: string | null;
+  readonly movementType: string;
+  /** numeric(19,6) text. */
+  readonly quantityDelta: string;
+  readonly unitId: string;
+  /** numeric(19,4) text; null when the movement carried no value. */
+  readonly valueDelta: string | null;
+  readonly currency: string | null;
+  readonly sourceType: string;
+  readonly sourceId: string;
+}
+
+/** Lists the as-of ledger movements behind the stock-value section. */
+export async function listStockValueRecords(
+  db: Database,
+  query: ListStockValueRecordsQuery,
+): Promise<OperationsRecordPage<StockValueRecord>> {
+  const conditions: SQL[] = [
+    eq(stockMovement.organizationId, query.organizationId),
+    lte(stockMovement.occurredAt, query.asOf),
+  ];
+  pushLocationFilter(conditions, stockMovement.locationId, query.locationIds);
+
+  const rows = await db
+    .select({
+      id: stockMovement.id,
+      occurredAt: stockMovement.occurredAt,
+      locationId: stockMovement.locationId,
+      locationName: location.name,
+      itemId: stockMovement.itemId,
+      itemCode: item.code,
+      itemName: item.name,
+      movementType: stockMovement.movementType,
+      quantityDelta: stockMovement.quantityDelta,
+      unitId: stockMovement.unitId,
+      valueDelta: stockMovement.valueDelta,
+      currency: stockMovement.currency,
+      sourceType: stockMovement.sourceType,
+      sourceId: stockMovement.sourceId,
+    })
+    .from(stockMovement)
+    .leftJoin(location, eq(stockMovement.locationId, location.id))
+    .leftJoin(item, eq(stockMovement.itemId, item.id))
+    .where(and(...conditions))
+    .orderBy(asc(stockMovement.occurredAt), asc(stockMovement.postedAt), asc(stockMovement.id))
+    .limit(query.limit + 1)
+    .offset(query.offset);
+
+  const truncated = rows.length > query.limit;
+  const page = truncated ? rows.slice(0, query.limit) : rows;
+  return {
+    rows: page.map((row) => ({ ...row, occurredAt: row.occurredAt.toISOString() })),
+    truncated,
+  };
+}
+
+/** The half-open cutoff window a stock-variance drill-down shares. */
+export interface ListStockCountVarianceRecordsQuery extends OperationsScopeFilters {
+  readonly from: string;
+  readonly to: string;
+  readonly limit: number;
+  readonly offset: number;
+}
+
+/** One approved `stock_count_line` behind the stock-variance section. */
+export interface StockCountVarianceRecord {
+  readonly id: string;
+  readonly stockCountId: string;
+  /** `stock_count.cutoff`, `timestamptz` ISO. */
+  readonly cutoff: string;
+  readonly locationId: string;
+  readonly locationName: string | null;
+  readonly itemId: string;
+  readonly itemCode: string | null;
+  readonly itemName: string | null;
+  readonly storageAreaId: string;
+  readonly lotId: string | null;
+  /** numeric(19,6) text. */
+  readonly expectedQty: string;
+  readonly countedQty: string | null;
+  readonly varianceQty: string | null;
+  readonly reasonCode: string | null;
+  readonly recount: boolean;
+}
+
+/** Lists the approved count lines behind the stock-variance section. */
+export async function listStockCountVarianceRecords(
+  db: Database,
+  query: ListStockCountVarianceRecordsQuery,
+): Promise<OperationsRecordPage<StockCountVarianceRecord>> {
+  const conditions: SQL[] = [
+    eq(stockCount.organizationId, query.organizationId),
+    eq(stockCount.status, "approved"),
+    gte(stockCount.cutoff, new Date(query.from)),
+    lt(stockCount.cutoff, new Date(query.to)),
+  ];
+  pushLocationFilter(conditions, stockCount.locationId, query.locationIds);
+
+  const rows = await db
+    .select({
+      id: stockCountLine.id,
+      stockCountId: stockCountLine.stockCountId,
+      cutoff: stockCount.cutoff,
+      locationId: stockCount.locationId,
+      locationName: location.name,
+      itemId: stockCountLine.itemId,
+      itemCode: item.code,
+      itemName: item.name,
+      storageAreaId: stockCountLine.storageAreaId,
+      lotId: stockCountLine.lotId,
+      expectedQty: stockCountLine.expectedQty,
+      countedQty: stockCountLine.countedQty,
+      varianceQty: stockCountLine.varianceQty,
+      reasonCode: stockCountLine.reasonCode,
+      recount: stockCountLine.recount,
+    })
+    .from(stockCountLine)
+    .innerJoin(stockCount, eq(stockCountLine.stockCountId, stockCount.id))
+    .leftJoin(location, eq(stockCount.locationId, location.id))
+    .leftJoin(item, eq(stockCountLine.itemId, item.id))
+    .where(and(...conditions))
+    .orderBy(desc(stockCount.cutoff), asc(stockCountLine.id))
+    .limit(query.limit + 1)
+    .offset(query.offset);
+
+  const truncated = rows.length > query.limit;
+  const page = truncated ? rows.slice(0, query.limit) : rows;
+  return {
+    rows: page.map((row) => ({ ...row, cutoff: row.cutoff.toISOString() })),
+    truncated,
+  };
+}
+
+/** The half-open finish window a production drill-down shares. */
+export interface ListProductionYieldRecordsQuery extends OperationsScopeFilters {
+  readonly from: string;
+  readonly to: string;
+  readonly limit: number;
+  readonly offset: number;
+}
+
+/** One completed `production_batch` behind the production section. */
+export interface ProductionYieldRecord {
+  readonly id: string;
+  readonly locationId: string;
+  readonly locationName: string | null;
+  readonly recipeVersionId: string;
+  readonly recipeName: string | null;
+  readonly status: string;
+  /** `timestamptz`, ISO; null while unstarted. */
+  readonly actualStart: string | null;
+  /** `timestamptz`, ISO; the window anchor. */
+  readonly actualFinish: string | null;
+  readonly plannedOutputQty: string | null;
+  readonly actualOutputQty: string | null;
+  /** numeric(9,6) text; the stored per-batch yield variance. */
+  readonly yieldVariancePct: string | null;
+}
+
+/** Lists the completed batches behind the production section. */
+export async function listProductionYieldRecords(
+  db: Database,
+  query: ListProductionYieldRecordsQuery,
+): Promise<OperationsRecordPage<ProductionYieldRecord>> {
+  const conditions: SQL[] = [
+    eq(productionBatch.organizationId, query.organizationId),
+    eq(productionBatch.status, "completed"),
+    gte(productionBatch.actualFinish, new Date(query.from)),
+    lt(productionBatch.actualFinish, new Date(query.to)),
+  ];
+  pushLocationFilter(conditions, productionBatch.locationId, query.locationIds);
+
+  const rows = await db
+    .select({
+      id: productionBatch.id,
+      locationId: productionBatch.locationId,
+      locationName: location.name,
+      recipeVersionId: productionBatch.recipeVersionId,
+      recipeName: recipe.name,
+      status: productionBatch.status,
+      actualStart: productionBatch.actualStart,
+      actualFinish: productionBatch.actualFinish,
+      plannedOutputQty: productionBatch.plannedOutputQty,
+      actualOutputQty: productionBatch.actualOutputQty,
+      yieldVariancePct: productionBatch.yieldVariancePct,
+    })
+    .from(productionBatch)
+    .innerJoin(recipeVersion, eq(productionBatch.recipeVersionId, recipeVersion.id))
+    .innerJoin(recipe, eq(recipeVersion.recipeId, recipe.id))
+    .leftJoin(location, eq(productionBatch.locationId, location.id))
+    .where(and(...conditions))
+    .orderBy(desc(productionBatch.actualFinish), asc(productionBatch.id))
+    .limit(query.limit + 1)
+    .offset(query.offset);
+
+  const truncated = rows.length > query.limit;
+  const page = truncated ? rows.slice(0, query.limit) : rows;
+  return {
+    rows: page.map((row) => ({
+      ...row,
+      actualStart: row.actualStart === null ? null : row.actualStart.toISOString(),
+      actualFinish: row.actualFinish === null ? null : row.actualFinish.toISOString(),
+    })),
+    truncated,
+  };
+}
+
+/** The half-open `[from, to)` `occurred_at` window a waste drill-down shares. */
+export interface ListWasteStageRecordsQuery extends OperationsScopeFilters {
+  readonly from: string;
+  readonly to: string;
+  readonly limit: number;
+  readonly offset: number;
+}
+
+/** One `waste_event` behind the waste section. */
+export interface WasteStageRecord {
+  readonly id: string;
+  /** `timestamptz`, ISO. */
+  readonly occurredAt: string;
+  readonly locationId: string;
+  readonly locationName: string | null;
+  readonly stage: string;
+  readonly reasonCode: string;
+  readonly itemId: string | null;
+  readonly itemCode: string | null;
+  readonly itemName: string | null;
+  readonly productVariantId: string | null;
+  /** numeric(19,6) text. */
+  readonly quantity: string;
+  readonly unitId: string;
+  readonly valueMethod: string;
+  /** numeric(19,4) text; null when unvalued. */
+  readonly value: string | null;
+  readonly currency: string | null;
+}
+
+/** Lists the waste events behind the waste section. */
+export async function listWasteStageRecords(
+  db: Database,
+  query: ListWasteStageRecordsQuery,
+): Promise<OperationsRecordPage<WasteStageRecord>> {
+  const conditions: SQL[] = [
+    eq(wasteEvent.organizationId, query.organizationId),
+    gte(wasteEvent.occurredAt, new Date(query.from)),
+    lt(wasteEvent.occurredAt, new Date(query.to)),
+  ];
+  pushLocationFilter(conditions, wasteEvent.locationId, query.locationIds);
+
+  const rows = await db
+    .select({
+      id: wasteEvent.id,
+      occurredAt: wasteEvent.occurredAt,
+      locationId: wasteEvent.locationId,
+      locationName: location.name,
+      stage: wasteEvent.stage,
+      reasonCode: wasteEvent.reasonCode,
+      itemId: wasteEvent.itemId,
+      itemCode: item.code,
+      itemName: item.name,
+      productVariantId: wasteEvent.productVariantId,
+      quantity: wasteEvent.quantity,
+      unitId: wasteEvent.unitId,
+      valueMethod: wasteEvent.valueMethod,
+      value: wasteEvent.value,
+      currency: wasteEvent.currency,
+    })
+    .from(wasteEvent)
+    .leftJoin(location, eq(wasteEvent.locationId, location.id))
+    .leftJoin(item, eq(wasteEvent.itemId, item.id))
+    .where(and(...conditions))
+    .orderBy(desc(wasteEvent.occurredAt), desc(wasteEvent.id))
+    .limit(query.limit + 1)
+    .offset(query.offset);
+
+  const truncated = rows.length > query.limit;
+  const page = truncated ? rows.slice(0, query.limit) : rows;
+  return {
+    rows: page.map((row) => ({ ...row, occurredAt: row.occurredAt.toISOString() })),
+    truncated,
+  };
 }
