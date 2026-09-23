@@ -21,6 +21,7 @@ import { loadSalesRefs } from "../../../../api/v1/sales/sales-refs";
 import { toSalesLineRows, toSalesTransactionRows } from "../../../../api/v1/sales/sales-rows";
 import { formatInstant, mappingStateView, orDash } from "../../import-labels";
 import { optionKindView } from "../../sales-labels";
+import { ReverseLine } from "./reverse-line";
 
 export const dynamic = "force-dynamic";
 
@@ -42,8 +43,10 @@ const contentColumn = {
  * kind (`DEC-043`) and the line's mapping state.
  *
  * Recorded, not resolved: `applied_tax_rate` is shown exactly as captured and
- * never re-derived (`DEC-045`; A4); a reversal (`DEC-028`) is not implemented,
- * so `reversalOfId` is shown as a stored fact and no reversal action is offered.
+ * never re-derived (`DEC-045`; A4). A posted line is reversed, never edited
+ * (`DEC-028`/`DEC-073`): `reversalOfId` is shown as a stored fact and a line that
+ * is neither a reversal nor already reversed offers the reversal action
+ * (`DEC-116`).
  */
 export default async function SalesTransactionDetailPage({
   params,
@@ -79,6 +82,10 @@ export default async function SalesTransactionDetailPage({
   if (header === undefined) {
     notFound();
   }
+
+  const reversedLineIds = new Set(
+    lines.map((line) => line.reversalOfId).filter((id): id is string => id !== null),
+  );
 
   const location =
     header.locationCode === null && header.locationName === null
@@ -187,7 +194,18 @@ export default async function SalesTransactionDetailPage({
                     <Td>
                       <StatusPill tone={mapping.tone}>{mapping.label}</StatusPill>
                     </Td>
-                    <Td>{line.reversalOfId === null ? "—" : line.reversalOfId}</Td>
+                    <Td>
+                      {line.reversalOfId === null ? null : (
+                        <span style={{ display: "block", opacity: 0.7 }}>
+                          reverses {line.reversalOfId}
+                        </span>
+                      )}
+                      <ReverseLine
+                        salesLineId={line.id}
+                        reversed={reversedLineIds.has(line.id)}
+                        isReversal={line.reversalOfId !== null}
+                      />
+                    </Td>
                   </tr>
                 );
               })}

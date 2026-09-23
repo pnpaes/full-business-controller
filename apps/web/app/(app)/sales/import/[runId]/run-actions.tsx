@@ -410,7 +410,8 @@ export function DispositionForm({
         </div>
         <p style={{ margin: 0, opacity: 0.8 }}>
           A disposition is an approval that the row will not be posted. A posted row cannot be
-          dispositioned — correcting it needs a reversal, which is not implemented (`DEC-028`).
+          dispositioned — correct it by reversing the posted sales line from the transaction detail
+          (`DEC-028`/`DEC-116`).
         </p>
       </form>
     </SectionCard>

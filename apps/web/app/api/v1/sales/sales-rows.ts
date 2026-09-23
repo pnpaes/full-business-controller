@@ -14,8 +14,9 @@ import type { SalesLineRecord, SalesTransactionRecord } from "@aquarela/applicat
  * (A4) `tax_code_id` vs `tax_rule_id` naming and the `applied_tax_rate`
  *      authority: the line row exposes `taxRuleId` and the captured
  *      `appliedTaxRate` verbatim, never re-deriving the rate (`DEC-045`);
- * (DEC-028) sales-line reversal is not implemented, so `reversalOfId` is
- *      surfaced as a stored fact and no reversal is offered;
+ * (DEC-028/DEC-116) a sales line is reversed, never edited: `reversalOfId` is
+ *      surfaced as a stored fact and the reversal action posts a new negated
+ *      line plus every reversal movement for the original (`correctSalesLine`);
  * the normalized staging-row shape is owned by row 11 (`NORMALIZED_SALES_FIELDS`)
  * and is only read by `postImportRun`, never by the web layer.
  */
@@ -214,6 +215,27 @@ export function parsePostTheoreticalConsumptionBody(
   };
 }
 
+export type ParsedReverseSalesLineBody =
+  { readonly ok: true; readonly reasonCode: string } | { readonly ok: false };
+
+/**
+ * `POST /lines/[id]/reverse` body (`DEC-116`): a non-blank `reasonCode` is
+ * mandatory and is recorded in the line and movement audits. Shape only — the
+ * command rejects a line that is itself a reversal or is already reversed.
+ */
+export function parseReverseSalesLineBody(
+  body: Record<string, unknown> | undefined,
+): ParsedReverseSalesLineBody {
+  if (body === undefined) {
+    return { ok: false };
+  }
+  const reasonCode = readText(body, "reasonCode", 200);
+  if (reasonCode === null) {
+    return { ok: false };
+  }
+  return { ok: true, reasonCode };
+}
+
 /* ------------------------------ response rows ----------------------------- */
 
 /** A resolved display label (location/channel) for a transaction row. */
@@ -316,7 +338,7 @@ export interface SalesLineRow {
   readonly parentLineId: string | null;
   readonly taxRuleId: string | null;
   readonly channelId: string | null;
-  /** `DEC-028` reversal self-reference; reversal posting is not implemented. */
+  /** `DEC-028` reversal self-reference; the original line it reverses, or null. */
   readonly reversalOfId: string | null;
 }
 

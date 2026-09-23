@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   parsePostImportRunBody,
   parsePostTheoreticalConsumptionBody,
+  parseReverseSalesLineBody,
   parseSalesTransactionListQuery,
   toSalesLineRows,
   toSalesTransactionRows,
@@ -169,6 +170,21 @@ describe("parsePostTheoreticalConsumptionBody", () => {
         allowNegativeOverride: "yes",
       }).ok,
     ).toBe(false);
+  });
+});
+
+describe("parseReverseSalesLineBody", () => {
+  it("trims a supplied reason", () => {
+    expect(parseReverseSalesLineBody({ reasonCode: " wrong entry " })).toEqual({
+      ok: true,
+      reasonCode: "wrong entry",
+    });
+  });
+
+  it("rejects an absent body, a blank reason and a non-string reason", () => {
+    expect(parseReverseSalesLineBody(undefined)).toEqual({ ok: false });
+    expect(parseReverseSalesLineBody({ reasonCode: "   " })).toEqual({ ok: false });
+    expect(parseReverseSalesLineBody({ reasonCode: 42 })).toEqual({ ok: false });
   });
 });
 
