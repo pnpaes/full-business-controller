@@ -68,6 +68,8 @@ function addVersion(
     approvedUsableOutput: overrides.approvedUsableOutput ?? "0.800000",
     yieldRate: "0.800000",
     preparationMinutes: null,
+    laborCostCenterId: null,
+    laborRoleCode: null,
     effectiveFrom: overrides.effectiveFrom ?? JAN,
     effectiveTo: null,
     approvedBy: ACTOR,

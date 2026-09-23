@@ -14,6 +14,15 @@ import type { RecipeStore } from "../recipes/types";
 
 import type { CostCardComponentInput } from "./cost-card";
 import type { PriceVersionRecord } from "./price-scenario-types";
+import { resolveAllocatedUnitOverhead } from "./resolve-allocated-unit-overhead";
+import { resolveChannelVariableCost } from "./resolve-channel-variable-cost";
+import { resolveDirectLaborCost } from "./resolve-direct-labor-cost";
+import type {
+  AllocationRuleRecord,
+  ChannelFeeRuleRecord,
+  LaborRateRecord,
+  OperatingCostRecord,
+} from "./types";
 
 /**
  * Assembles a `CostCardCompositionInput` for `calculateCostCard` from the reads
@@ -51,6 +60,40 @@ export interface CostCardCompositionStore extends RecipeStore {
   }): Promise<PriceVersionRecord | undefined>;
 }
 
+/**
+ * The assembler's store once the `DEC-112` component resolvers are wired in: the
+ * composition port plus the four costing reads the resolvers need. Composed by
+ * `createPostgresCostCardCompositionStore`.
+ */
+export interface CostCardComponentStore extends CostCardCompositionStore {
+  findEffectiveLaborRate(query: {
+    readonly organizationId: string;
+    readonly costCenterId: string;
+    readonly roleCode: string;
+    readonly asOf: Date;
+  }): Promise<LaborRateRecord | undefined>;
+  listEffectiveChannelFeeRules(query: {
+    readonly organizationId: string;
+    readonly channelId: string;
+    readonly asOf: Date;
+  }): Promise<readonly ChannelFeeRuleRecord[]>;
+  listEffectiveOperatingCosts(query: {
+    readonly organizationId: string;
+    readonly asOf: Date;
+    readonly costPoolId?: string | null;
+  }): Promise<readonly OperatingCostRecord[]>;
+  listEffectiveAllocationRules(query: {
+    readonly organizationId: string;
+    readonly asOf: Date;
+    readonly costPoolId?: string;
+  }): Promise<readonly AllocationRuleRecord[]>;
+  countEligibleProducts(query: {
+    readonly organizationId: string;
+    readonly locationId: string;
+    readonly asOf: Date;
+  }): Promise<number>;
+}
+
 export interface AssembleCostCardCompositionInput {
   readonly organizationId: string;
   readonly productVariantId: string;
@@ -69,9 +112,29 @@ export interface AssembleCostCardCompositionInput {
   readonly channelVariableCost?: string;
   readonly otherVariableCost?: string;
   readonly allocatedUnitOverhead?: string;
+  /**
+   * `DEC-112` resolver inputs. A resolved component wins over its explicit
+   * input above; the provenance records which was used.
+   */
+  readonly costPoolId?: string | null;
+  /** Units per order for a fixed per-order channel fee; defaults to `"1"`. */
+  readonly unitsPerOrder?: string;
+  /**
+   * The overhead allocation period (default: the UTC month containing `asOf`).
+   * Accepts an ISO instant or a parsed `Date`; an invalid value is rejected.
+   */
+  readonly periodFrom?: Date | string;
+  readonly periodTo?: Date | string;
   readonly taxRuleSnapshot?: Record<string, unknown>;
   readonly fxRateId?: string | null;
   readonly roundingScales?: Record<string, unknown>;
+}
+
+/** Which components a `DEC-112` resolver produced rather than the caller. */
+export interface CostCardResolvedComponents {
+  readonly directLaborCost: boolean;
+  readonly channelVariableCost: boolean;
+  readonly allocatedUnitOverhead: boolean;
 }
 
 /** Which composition parts were assembled from reads vs supplied by the caller. */
@@ -84,12 +147,15 @@ export interface CostCardCompositionProvenance {
     readonly packagingCost: string;
     readonly unitNetSales: string;
   };
+  /** The **effective** component values used (resolved where a resolver won). */
   readonly supplied: {
     readonly directLaborCost: string;
     readonly channelVariableCost: string;
     readonly otherVariableCost: string;
     readonly allocatedUnitOverhead: string;
   };
+  /** Which components a `DEC-112` resolver produced rather than the caller. */
+  readonly resolved: CostCardResolvedComponents;
   readonly notes: readonly string[];
 }
 
@@ -152,6 +218,29 @@ const SUPPLIED_COMPONENT_KINDS = [
   ["allocatedUnitOverhead", "allocated_overhead"],
 ] as const;
 
+type SuppliedComponentField = (typeof SUPPLIED_COMPONENT_KINDS)[number][0];
+
+/**
+ * The snapshot provenance `sourceType` for each component: the `DEC-112`
+ * resolver that produced it when resolved, else the caller's explicit input.
+ * `other_variable` has no resolver, so it is always `command_input`.
+ */
+function componentSourceType(
+  field: SuppliedComponentField,
+  resolved: CostCardResolvedComponents,
+): string {
+  switch (field) {
+    case "directLaborCost":
+      return resolved.directLaborCost ? "recipe_labour_rule" : "command_input";
+    case "channelVariableCost":
+      return resolved.channelVariableCost ? "channel_fee_rule" : "command_input";
+    case "allocatedUnitOverhead":
+      return resolved.allocatedUnitOverhead ? "operating_cost_pool" : "command_input";
+    default:
+      return "command_input";
+  }
+}
+
 function assertNonEmpty(value: string, field: string): void {
   if (value.trim().length === 0) {
     throw new DomainError(`${field} must not be empty`);
@@ -162,6 +251,18 @@ function assertValidDate(value: Date, field: string): void {
   if (!(value instanceof Date) || Number.isNaN(value.getTime())) {
     throw new DomainError(`${field} must be a valid Date`);
   }
+}
+
+/** Parses an optional ISO instant (or accepts a `Date`); rejects an invalid value. */
+function parseOptionalInstant(value: Date | string | undefined, field: string): Date | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  const parsed = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    throw new DomainError(`${field} must be an ISO-8601 instant`);
+  }
+  return parsed;
 }
 
 /** Parses one explicit money input, defaulting to `"0.0000"` and canonicalising. */
@@ -196,6 +297,7 @@ function bucketCostPerUnit(
 function buildComponents(
   recipeComponents: readonly RecipeCostComponent[],
   supplied: CostCardCompositionProvenance["supplied"],
+  resolved: CostCardResolvedComponents,
 ): CostCardComponentInput[] {
   const components: CostCardComponentInput[] = recipeComponents.map((component) => ({
     componentKind: recipeComponentSnapshotKind(component.componentKind),
@@ -225,7 +327,10 @@ function buildComponents(
       componentKind,
       amount,
       roundingBoundary: "B2",
-      provenance: { sourceType: "command_input", roundingBoundaries: { amount: "B2" } },
+      provenance: {
+        sourceType: componentSourceType(field, resolved),
+        roundingBoundaries: { amount: "B2" },
+      },
     });
   }
 
@@ -245,7 +350,7 @@ function buildComponents(
  * card without a price cannot show a contribution.
  */
 export async function assembleCostCardComposition(
-  store: CostCardCompositionStore,
+  store: CostCardComponentStore,
   input: AssembleCostCardCompositionInput,
 ): Promise<AssembleCostCardCompositionResult> {
   assertNonEmpty(input.organizationId, "organizationId");
@@ -254,7 +359,7 @@ export async function assembleCostCardComposition(
   assertValidDate(input.asOf, "asOf");
   const currency = normalizeCurrency(input.currency ?? "NOK");
 
-  const supplied = {
+  const explicit = {
     directLaborCost: readSuppliedMoney(input.directLaborCost, "directLaborCost"),
     channelVariableCost: readSuppliedMoney(input.channelVariableCost, "channelVariableCost"),
     otherVariableCost: readSuppliedMoney(input.otherVariableCost, "otherVariableCost"),
@@ -337,6 +442,57 @@ export async function assembleCostCardComposition(
     throw new DomainError("unitNetSales must not be negative");
   }
 
+  // DEC-112: a resolved component wins over the explicit input; a resolver that
+  // has nothing to resolve (`undefined`) leaves the explicit input in place.
+  const labor = await resolveDirectLaborCost(store, {
+    organizationId: input.organizationId,
+    asOf: input.asOf,
+    preparationMinutes: version.preparationMinutes,
+    laborCostCenterId: version.laborCostCenterId,
+    laborRoleCode: version.laborRoleCode,
+    approvedUsableOutput: version.approvedUsableOutput,
+  });
+
+  const channelId = input.channelId ?? null;
+  const channel =
+    channelId === null
+      ? undefined
+      : await resolveChannelVariableCost(store, {
+          organizationId: input.organizationId,
+          channelId,
+          asOf: input.asOf,
+          grossPrice: priceVersion.grossPrice,
+          netPrice: priceVersion.netPrice,
+          ...(input.unitsPerOrder === undefined ? {} : { unitsPerOrder: input.unitsPerOrder }),
+        });
+
+  const costPoolId = input.costPoolId ?? null;
+  const periodFrom = parseOptionalInstant(input.periodFrom, "periodFrom");
+  const periodTo = parseOptionalInstant(input.periodTo, "periodTo");
+  const overhead =
+    costPoolId === null
+      ? undefined
+      : await resolveAllocatedUnitOverhead(store, {
+          organizationId: input.organizationId,
+          costPoolId,
+          locationId: input.locationId,
+          asOf: input.asOf,
+          ...(periodFrom === undefined ? {} : { periodFrom }),
+          ...(periodTo === undefined ? {} : { periodTo }),
+        });
+
+  const supplied: CostCardCompositionProvenance["supplied"] = {
+    directLaborCost: labor?.perUnitCost ?? explicit.directLaborCost,
+    channelVariableCost: channel?.perUnitCost ?? explicit.channelVariableCost,
+    otherVariableCost: explicit.otherVariableCost,
+    allocatedUnitOverhead: overhead?.perUnitOverhead ?? explicit.allocatedUnitOverhead,
+  };
+  const resolved: CostCardResolvedComponents = {
+    directLaborCost: labor !== undefined,
+    channelVariableCost: channel !== undefined,
+    allocatedUnitOverhead: overhead !== undefined,
+  };
+
   const composition: CostCardCompositionInput = {
     currency,
     ingredientCost,
@@ -347,7 +503,7 @@ export async function assembleCostCardComposition(
 
   return {
     composition,
-    components: buildComponents(cost.components, supplied),
+    components: buildComponents(cost.components, supplied, resolved),
     recipeVersionId,
     snapshotOptions: {
       ...(input.taxRuleSnapshot === undefined ? {} : { taxRuleSnapshot: input.taxRuleSnapshot }),
@@ -360,9 +516,11 @@ export async function assembleCostCardComposition(
       priceVersionId: priceVersion.id,
       assembled: { ingredientCost, packagingCost, unitNetSales },
       supplied,
+      resolved,
       notes: [
         "ingredientCost, packagingCost and unitNetSales were assembled from the effective recipe assignment and price version",
-        "directLaborCost, channelVariableCost, otherVariableCost and allocatedUnitOverhead are explicit command inputs and are not resolved (DEC-111)",
+        "directLaborCost, channelVariableCost and allocatedUnitOverhead are resolved from the effective recipe labour mapping, channel fee rules and operating-cost pool where available, otherwise from the explicit command input (DEC-112)",
+        "otherVariableCost is an explicit command input and is not resolved (DEC-112)",
       ],
     },
   };

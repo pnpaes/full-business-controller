@@ -8,4 +8,5 @@ export const COSTING_AUDIT_ACTIONS = {
   operatingCostRegistered: "costing.operating_cost.registered",
   costPoolRegistered: "costing.cost_pool.registered",
   allocationRuleRegistered: "costing.allocation_rule.registered",
+  channelFeeRuleRegistered: "costing.channel_fee_rule.registered",
 } as const;

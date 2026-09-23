@@ -14,6 +14,8 @@ export interface RegisterOperatingCostInput {
   readonly actorId: string;
   readonly costCenterId: string;
   readonly locationId?: string | null;
+  /** `DEC-112`: links this cost to a shared `cost_pool` for allocation. */
+  readonly costPoolId?: string | null;
   readonly amount: string;
   /** Defaults to `NOK`. */
   readonly currency?: string;
@@ -56,6 +58,7 @@ export async function registerOperatingCost(
   const effectiveTo = input.effectiveTo ?? null;
   assertEffectiveRange(input.effectiveFrom, effectiveTo);
   const locationId = input.locationId ?? null;
+  const costPoolId = input.costPoolId ?? null;
 
   return store.withTransaction(async (tx) => {
     const costCenter = await tx.findCostCenter(input.costCenterId);
@@ -68,11 +71,18 @@ export async function registerOperatingCost(
         throw new DomainError("location not found in organization");
       }
     }
+    if (costPoolId !== null) {
+      const pool = await tx.findCostPool(costPoolId);
+      if (pool === undefined || pool.organizationId !== input.organizationId) {
+        throw new DomainError("cost pool not found in organization");
+      }
+    }
 
     const created = await tx.createOperatingCost({
       organizationId: input.organizationId,
       locationId,
       costCenterId: input.costCenterId,
+      costPoolId,
       amount: input.amount,
       currency,
       recurrence: input.recurrence,
@@ -93,6 +103,7 @@ export async function registerOperatingCost(
       after: {
         cost_center_id: input.costCenterId,
         location_id: locationId,
+        cost_pool_id: costPoolId,
         amount: input.amount,
         recurrence: input.recurrence,
         behavior: input.behavior,

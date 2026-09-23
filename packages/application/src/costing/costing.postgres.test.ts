@@ -131,9 +131,9 @@ describe.skipIf(!databaseUrl)("costing against PostgreSQL", () => {
         organizationId: orgId,
         actorId,
         costPoolId,
-        driver: "production_hours",
+        driver: "eligible_products",
         scopeType: "location",
-        denominatorSource: "production_hours",
+        denominatorSource: "eligible_products",
         effectiveFrom: FROM,
       });
       expect(
@@ -214,9 +214,9 @@ describe.skipIf(!databaseUrl)("costing against PostgreSQL", () => {
         organizationId: orgId,
         actorId,
         costPoolId,
-        driver: "production_hours",
+        driver: "eligible_products",
         scopeType: "location",
-        denominatorSource: "production_hours",
+        denominatorSource: "eligible_products",
         effectiveFrom: FROM,
       });
 
@@ -230,8 +230,8 @@ describe.skipIf(!databaseUrl)("costing against PostgreSQL", () => {
         eligibleDriverVolume: "25",
       });
       expect(allocation).toEqual({
-        driver: "production_hours",
-        denominatorSource: "production_hours",
+        driver: "eligible_products",
+        denominatorSource: "eligible_products",
         entityDriverShare: "0.500000",
         allocatedPoolAmount: "500.0000",
         allocatedUnitOverhead: "20.0000",

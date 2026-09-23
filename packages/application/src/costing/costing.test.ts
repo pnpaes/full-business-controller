@@ -328,6 +328,56 @@ describe("registerOperatingCost", () => {
       }),
     ).rejects.toThrow(/location not found in organization/);
   });
+
+  it("links the cost to a shared cost pool and audits it (DEC-112)", async () => {
+    const store = new FakeCostingStore();
+    seedCostCenter(store, "cc-1");
+    seedPool(store, "pool-1");
+
+    const result = await registerOperatingCost(store, {
+      organizationId: ORG,
+      actorId: ACTOR,
+      costCenterId: "cc-1",
+      costPoolId: "pool-1",
+      amount: "1200",
+      recurrence: "monthly",
+      behavior: "fixed",
+      taxBasis: "exclusive",
+      effectiveFrom: JAN,
+    });
+
+    expect(store.operatingCosts.at(-1)).toMatchObject({
+      id: result.operatingCostId,
+      costPoolId: "pool-1",
+    });
+    expect(store.audits.at(-1)?.after).toMatchObject({ cost_pool_id: "pool-1" });
+  });
+
+  it("rejects a cost pool from another organization (DEC-112)", async () => {
+    const store = new FakeCostingStore();
+    seedCostCenter(store, "cc-1");
+    store.costPools.set("pool-other", {
+      id: "pool-other",
+      organizationId: "org-2",
+      code: "P",
+      name: "P",
+      effectiveFrom: JAN,
+      effectiveTo: null,
+    });
+    await expect(
+      registerOperatingCost(store, {
+        organizationId: ORG,
+        actorId: ACTOR,
+        costCenterId: "cc-1",
+        costPoolId: "pool-other",
+        amount: "1000",
+        recurrence: "monthly",
+        behavior: "fixed",
+        taxBasis: "exclusive",
+        effectiveFrom: JAN,
+      }),
+    ).rejects.toThrow(/cost pool not found in organization/);
+  });
 });
 
 describe("registerCostPool", () => {
@@ -449,20 +499,20 @@ describe("registerAllocationRule", () => {
       costPoolId: "pool-1",
       driver: "production_hours",
       scopeType: "location",
-      denominatorSource: "  production_hours  ",
+      denominatorSource: "  eligible_products  ",
       effectiveFrom: JAN,
     });
     expect(store.allocationRules).toEqual([
       expect.objectContaining({
         id: result.allocationRuleId,
-        denominatorSource: "production_hours",
+        denominatorSource: "eligible_products",
         fallbackBehavior: "stop",
       }),
     ]);
     expect(store.audits.at(-1)?.action).toBe("costing.allocation_rule.registered");
   });
 
-  it("rejects bad vocabulary values and an empty denominator source", async () => {
+  it("rejects bad vocabulary values and an unknown denominator source", async () => {
     const store = new FakeCostingStore();
     seedPool(store, "pool-1");
     const base = {
@@ -471,7 +521,7 @@ describe("registerAllocationRule", () => {
       costPoolId: "pool-1",
       driver: "production_hours",
       scopeType: "location",
-      denominatorSource: "production_hours",
+      denominatorSource: "explicit",
       effectiveFrom: JAN,
     };
     await expect(registerAllocationRule(store, { ...base, driver: "vibes" })).rejects.toThrow(
@@ -485,7 +535,10 @@ describe("registerAllocationRule", () => {
     ).rejects.toThrow(/fallbackBehavior must be one of/);
     await expect(
       registerAllocationRule(store, { ...base, denominatorSource: "  " }),
-    ).rejects.toThrow(/denominatorSource must not be empty/);
+    ).rejects.toThrow(/denominatorSource must be one of/);
+    await expect(
+      registerAllocationRule(store, { ...base, denominatorSource: "production_hours" }),
+    ).rejects.toThrow(/denominatorSource must be one of/);
   });
 
   it("rejects a cost pool from another organization", async () => {
@@ -505,7 +558,7 @@ describe("registerAllocationRule", () => {
         costPoolId: "pool-other",
         driver: "production_hours",
         scopeType: "location",
-        denominatorSource: "production_hours",
+        denominatorSource: "explicit",
         effectiveFrom: JAN,
       }),
     ).rejects.toThrow(/cost pool not found in organization/);

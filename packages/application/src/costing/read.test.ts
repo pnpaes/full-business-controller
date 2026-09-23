@@ -101,6 +101,7 @@ function operatingCost(id: string, organizationId: string): OperatingCostRecord 
     organizationId,
     locationId: null,
     costCenterId: "cost-center",
+    costPoolId: null,
     amount: "10000.0000",
     currency: "NOK",
     recurrence: "monthly",

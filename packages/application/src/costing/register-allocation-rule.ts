@@ -1,5 +1,10 @@
 import { DomainError } from "@aquarela/domain";
-import { ALLOCATION_DRIVER, ALLOCATION_FALLBACK, SCOPE_TYPE } from "@aquarela/persistence";
+import {
+  ALLOCATION_DENOMINATOR_SOURCE,
+  ALLOCATION_DRIVER,
+  ALLOCATION_FALLBACK,
+  SCOPE_TYPE,
+} from "@aquarela/persistence";
 
 import { COSTING_AUDIT_ACTIONS } from "./actions";
 import type { CostingStore } from "./types";
@@ -8,6 +13,7 @@ import { assertEffectiveRange } from "./validation";
 const DRIVERS: readonly string[] = ALLOCATION_DRIVER;
 const SCOPE_TYPES: readonly string[] = SCOPE_TYPE;
 const FALLBACKS: readonly string[] = ALLOCATION_FALLBACK;
+const DENOMINATOR_SOURCES: readonly string[] = ALLOCATION_DENOMINATOR_SOURCE;
 
 export interface RegisterAllocationRuleInput {
   readonly organizationId: string;
@@ -47,8 +53,8 @@ export async function registerAllocationRule(
     throw new DomainError(`fallbackBehavior must be one of ${FALLBACKS.join(", ")}`);
   }
   const denominatorSource = input.denominatorSource.trim();
-  if (denominatorSource.length === 0) {
-    throw new DomainError("denominatorSource must not be empty");
+  if (!DENOMINATOR_SOURCES.includes(denominatorSource)) {
+    throw new DomainError(`denominatorSource must be one of ${DENOMINATOR_SOURCES.join(", ")}`);
   }
   const effectiveTo = input.effectiveTo ?? null;
   assertEffectiveRange(input.effectiveFrom, effectiveTo);

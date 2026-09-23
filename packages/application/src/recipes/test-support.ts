@@ -11,6 +11,7 @@ import type {
   NewRecipeVersionRecord,
   RawCostObservation,
   RecipeAllergenRecordView,
+  RecipeCostCenterRecord,
   RecipeItemRecord,
   RecipeLineRecord,
   RecipeRecord,
@@ -40,6 +41,7 @@ export interface FakeRecipeAssignment {
 export class FakeRecipeStore implements RecipeStore {
   readonly units = new Map<string, RecipeUnit>();
   readonly items = new Map<string, RecipeItemRecord>();
+  readonly costCenters = new Map<string, RecipeCostCenterRecord>();
   readonly recipes = new Map<string, RecipeRecord>();
   readonly versions: RecipeVersionRecord[] = [];
   readonly lines: RecipeLineRecord[] = [];
@@ -73,6 +75,10 @@ export class FakeRecipeStore implements RecipeStore {
 
   findItem(itemId: string): Promise<RecipeItemRecord | undefined> {
     return Promise.resolve(this.items.get(itemId));
+  }
+
+  findCostCenter(costCenterId: string): Promise<RecipeCostCenterRecord | undefined> {
+    return Promise.resolve(this.costCenters.get(costCenterId));
   }
 
   findRecipe(recipeId: string): Promise<RecipeRecord | undefined> {

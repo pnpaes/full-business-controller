@@ -1,12 +1,15 @@
 import type { AuditInput } from "../auth";
 import type {
   AllocationRuleRecord,
+  ChannelFeeRuleRecord,
+  ChannelRecord,
   CostCenterRecord,
   CostPoolRecord,
   CostingStore,
   LaborRateRecord,
   LocationRecord,
   NewAllocationRuleRecord,
+  NewChannelFeeRuleRecord,
   NewCostPoolRecord,
   NewLaborRateRecord,
   NewOperatingCostRecord,
@@ -28,10 +31,12 @@ const isEffective = (from: string, to: string | null, asOf: string): boolean =>
 export class FakeCostingStore implements CostingStore {
   readonly costCenters = new Map<string, CostCenterRecord>();
   readonly locations = new Map<string, LocationRecord>();
+  readonly channels = new Map<string, ChannelRecord>();
   readonly laborRates: LaborRateRecord[] = [];
   readonly operatingCosts: OperatingCostRecord[] = [];
   readonly costPools = new Map<string, CostPoolRecord>();
   readonly allocationRules: AllocationRuleRecord[] = [];
+  readonly channelFeeRules: ChannelFeeRuleRecord[] = [];
   readonly audits: AuditInput[] = [];
 
   private sequence = 0;
@@ -51,6 +56,10 @@ export class FakeCostingStore implements CostingStore {
 
   findLocation(locationId: string): Promise<LocationRecord | undefined> {
     return Promise.resolve(this.locations.get(locationId));
+  }
+
+  findChannel(channelId: string): Promise<ChannelRecord | undefined> {
+    return Promise.resolve(this.channels.get(channelId));
   }
 
   createLaborRate(input: NewLaborRateRecord): Promise<LaborRateRecord> {
@@ -94,6 +103,7 @@ export class FakeCostingStore implements CostingStore {
     readonly asOf: Date;
     readonly locationId?: string | null;
     readonly costCenterId?: string | null;
+    readonly costPoolId?: string | null;
   }): Promise<readonly OperatingCostRecord[]> {
     const asOf = asOfDate(query.asOf);
     return Promise.resolve(
@@ -111,6 +121,11 @@ export class FakeCostingStore implements CostingStore {
         }
         if (query.costCenterId !== undefined && query.costCenterId !== null) {
           if (cost.costCenterId !== query.costCenterId) {
+            return false;
+          }
+        }
+        if (query.costPoolId !== undefined && query.costPoolId !== null) {
+          if (cost.costPoolId !== query.costPoolId) {
             return false;
           }
         }
@@ -163,6 +178,39 @@ export class FakeCostingStore implements CostingStore {
         return isEffective(rule.effectiveFrom, rule.effectiveTo, asOf);
       }),
     );
+  }
+
+  listChannelFeeRulesByChannel(
+    organizationId: string,
+    channelId: string,
+  ): Promise<readonly ChannelFeeRuleRecord[]> {
+    return Promise.resolve(
+      this.channelFeeRules
+        .filter((rule) => rule.organizationId === organizationId && rule.channelId === channelId)
+        .sort((a, b) => b.effectiveFrom.getTime() - a.effectiveFrom.getTime()),
+    );
+  }
+
+  listEffectiveChannelFeeRules(query: {
+    readonly organizationId: string;
+    readonly channelId: string;
+    readonly asOf: Date;
+  }): Promise<readonly ChannelFeeRuleRecord[]> {
+    return Promise.resolve(
+      this.channelFeeRules.filter(
+        (rule) =>
+          rule.organizationId === query.organizationId &&
+          rule.channelId === query.channelId &&
+          rule.effectiveFrom.getTime() <= query.asOf.getTime() &&
+          (rule.effectiveTo === null || query.asOf.getTime() < rule.effectiveTo.getTime()),
+      ),
+    );
+  }
+
+  createChannelFeeRule(input: NewChannelFeeRuleRecord): Promise<ChannelFeeRuleRecord> {
+    const record: ChannelFeeRuleRecord = { id: this.nextId("channel-fee-rule"), ...input };
+    this.channelFeeRules.push(record);
+    return Promise.resolve(record);
   }
 
   writeAudit(input: AuditInput): Promise<void> {

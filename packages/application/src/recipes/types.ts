@@ -27,6 +27,16 @@ export interface RecipeItemRecord {
   readonly currentCost: string | null;
 }
 
+/**
+ * The org scope of a `cost_center` (mirrors `CostingStore.findCostCenter` but
+ * carries only what `registerRecipeVersion` needs to check the `DEC-112` labour
+ * mapping's organization).
+ */
+export interface RecipeCostCenterRecord {
+  readonly id: string;
+  readonly organizationId: string;
+}
+
 export interface FindVariantRecipeAssignmentQuery {
   readonly organizationId: string;
   readonly productVariantId: string;
@@ -70,6 +80,9 @@ export interface RecipeVersionRecord {
   readonly approvedUsableOutput: string;
   readonly yieldRate: string;
   readonly preparationMinutes: number | null;
+  /** `DEC-112`: the direct-labour mapping (all-or-nothing with `laborRoleCode`). */
+  readonly laborCostCenterId: string | null;
+  readonly laborRoleCode: string | null;
   readonly effectiveFrom: Date;
   readonly effectiveTo: Date | null;
   readonly approvedBy: string | null;
@@ -106,6 +119,8 @@ export interface NewRecipeVersionRecord {
   readonly approvedUsableOutput: string;
   readonly yieldRate: string;
   readonly preparationMinutes: number | null;
+  readonly laborCostCenterId: string | null;
+  readonly laborRoleCode: string | null;
   readonly effectiveFrom: Date;
   readonly effectiveTo: Date | null;
   readonly approvedBy: string | null;
@@ -182,6 +197,8 @@ export interface RecipeStore {
   withTransaction<T>(fn: (store: RecipeStore) => Promise<T>): Promise<T>;
   findUnit(unitId: string): Promise<RecipeUnit | undefined>;
   findItem(itemId: string): Promise<RecipeItemRecord | undefined>;
+  /** The org scope of a cost centre, for the `DEC-112` labour-mapping check. */
+  findCostCenter(costCenterId: string): Promise<RecipeCostCenterRecord | undefined>;
   findRecipe(recipeId: string): Promise<RecipeRecord | undefined>;
   findRecipeByCode(organizationId: string, code: string): Promise<RecipeRecord | undefined>;
   /** Organization-scoped recipe list with an optional search and bounded pagination. */

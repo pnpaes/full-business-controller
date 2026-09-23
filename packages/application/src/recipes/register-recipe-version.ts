@@ -10,7 +10,7 @@ import {
   Unit,
   usableYieldRate,
 } from "@aquarela/domain";
-import { ALLERGEN_SOURCE, RECIPE_COMPONENT_KIND } from "@aquarela/persistence";
+import { ALLERGEN_SOURCE, RECIPE_COMPONENT_KIND, ROLE_CODE } from "@aquarela/persistence";
 
 import { RECIPE_AUDIT_ACTIONS } from "./actions";
 import type { RecipeStore, RecipeUnit } from "./types";
@@ -20,6 +20,7 @@ const RATE_SCALE = 6;
 
 const COMPONENT_KINDS: readonly string[] = RECIPE_COMPONENT_KIND;
 const ALLERGEN_SOURCES: readonly string[] = ALLERGEN_SOURCE;
+const ROLE_CODES: readonly string[] = ROLE_CODE;
 
 export interface RegisterRecipeVersionLineInput {
   readonly componentKind: string;
@@ -55,6 +56,13 @@ export interface RegisterRecipeVersionInput {
   readonly approvedBy?: string | null;
   readonly approvedAt?: Date | null;
   readonly preparationMinutes?: number | null;
+  /**
+   * `DEC-112`: the direct-labour mapping for this version. `laborCostCenterId`
+   * and `laborRoleCode` are all-or-nothing; both null/absent means the version
+   * has no resolvable labour.
+   */
+  readonly laborCostCenterId?: string | null;
+  readonly laborRoleCode?: string | null;
   readonly notes?: string | null;
   readonly lines: readonly RegisterRecipeVersionLineInput[];
   readonly allergens?: readonly RegisterRecipeVersionAllergenInput[];
@@ -159,6 +167,17 @@ export async function registerRecipeVersion(
   if (!Number.isInteger(input.versionNo) || input.versionNo < 1) {
     throw new DomainError("versionNo must be a positive integer");
   }
+  // DEC-112: the labour mapping is all-or-nothing (`recipe_version_labor_mapping_check`).
+  const laborCostCenterId = input.laborCostCenterId ?? null;
+  const laborRoleCode = input.laborRoleCode ?? null;
+  if ((laborCostCenterId === null) !== (laborRoleCode === null)) {
+    throw new DomainError(
+      "laborCostCenterId and laborRoleCode must be provided together (DEC-112)",
+    );
+  }
+  if (laborRoleCode !== null && !ROLE_CODES.includes(laborRoleCode)) {
+    throw new DomainError(`laborRoleCode must be one of ${ROLE_CODES.join(", ")}`);
+  }
   if (input.lines.length === 0) {
     throw new DomainError("a recipe version requires at least one line");
   }
@@ -196,6 +215,13 @@ export async function registerRecipeVersion(
     const existingVersions = await tx.listRecipeVersions(input.recipeId);
     if (existingVersions.some((version) => version.versionNo === input.versionNo)) {
       throw new DomainError("versionNo already exists for this recipe");
+    }
+
+    if (laborCostCenterId !== null) {
+      const costCenter = await tx.findCostCenter(laborCostCenterId);
+      if (costCenter === undefined || costCenter.organizationId !== input.organizationId) {
+        throw new DomainError("cost center not found in organization");
+      }
     }
 
     // Resolve each line's target and validate unit compatibility against the
@@ -277,6 +303,8 @@ export async function registerRecipeVersion(
       approvedUsableOutput: input.approvedUsableOutput,
       yieldRate,
       preparationMinutes: input.preparationMinutes ?? null,
+      laborCostCenterId,
+      laborRoleCode,
       effectiveFrom,
       effectiveTo,
       approvedBy,
@@ -320,6 +348,8 @@ export async function registerRecipeVersion(
         yield_rate: yieldRate,
         line_count: lines.length,
         allergen_count: allergenInputs.length,
+        labor_cost_center_id: laborCostCenterId,
+        labor_role_code: laborRoleCode,
       },
     });
 

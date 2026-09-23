@@ -57,6 +57,8 @@ function makeVersion(
     approvedUsableOutput: overrides.approvedUsableOutput ?? "1.000000",
     yieldRate: "1.000000",
     preparationMinutes: null,
+    laborCostCenterId: null,
+    laborRoleCode: null,
     effectiveFrom: overrides.effectiveFrom ?? JAN,
     effectiveTo: overrides.effectiveTo ?? null,
     approvedBy: ACTOR,
@@ -367,6 +369,71 @@ describe("registerRecipeVersion", () => {
         lines: [{ componentKind: "sub_recipe", subRecipeId: c, quantity: "1", unitId: g }],
       }),
     ).rejects.toThrow(/without an approved version/);
+  });
+
+  it("stores an all-or-nothing direct-labour mapping and audits it (DEC-112)", async () => {
+    const { store, recipeId, g, flour } = await seeded();
+    store.costCenters.set("cc-1", { id: "cc-1", organizationId: ORG });
+
+    const result = await registerRecipeVersion(store, {
+      organizationId: ORG,
+      actorId: ACTOR,
+      recipeId,
+      versionNo: 1,
+      plannedInputQty: "1.000000",
+      plannedOutputQty: "1.000000",
+      approvedUsableOutput: "0.800000",
+      effectiveFrom: JAN,
+      preparationMinutes: 30,
+      laborCostCenterId: "cc-1",
+      laborRoleCode: "kitchen",
+      lines: [{ componentKind: "ingredient", itemId: flour, quantity: "0.500000", unitId: g }],
+    });
+
+    expect(await store.findRecipeVersion(result.recipeVersionId)).toMatchObject({
+      preparationMinutes: 30,
+      laborCostCenterId: "cc-1",
+      laborRoleCode: "kitchen",
+    });
+    expect(store.audits.at(-1)?.after).toMatchObject({
+      labor_cost_center_id: "cc-1",
+      labor_role_code: "kitchen",
+    });
+  });
+
+  it("rejects a one-sided labour mapping, an unknown role and a foreign cost centre", async () => {
+    const { store, recipeId, g, flour } = await seeded();
+    const base = {
+      organizationId: ORG,
+      actorId: ACTOR,
+      recipeId,
+      versionNo: 1,
+      plannedInputQty: "1.000000",
+      plannedOutputQty: "1.000000",
+      approvedUsableOutput: "0.800000",
+      effectiveFrom: JAN,
+      lines: [{ componentKind: "ingredient", itemId: flour, quantity: "0.500000", unitId: g }],
+    };
+
+    await expect(
+      registerRecipeVersion(store, { ...base, laborCostCenterId: "cc-1" }),
+    ).rejects.toThrow(/must be provided together/);
+    await expect(
+      registerRecipeVersion(store, {
+        ...base,
+        laborCostCenterId: "cc-1",
+        laborRoleCode: "wizard",
+      }),
+    ).rejects.toThrow(/laborRoleCode must be one of/);
+
+    store.costCenters.set("cc-other", { id: "cc-other", organizationId: "org-2" });
+    await expect(
+      registerRecipeVersion(store, {
+        ...base,
+        laborCostCenterId: "cc-other",
+        laborRoleCode: "kitchen",
+      }),
+    ).rejects.toThrow(/cost center not found in organization/);
   });
 });
 

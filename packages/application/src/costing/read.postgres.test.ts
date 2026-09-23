@@ -203,9 +203,9 @@ describe.skipIf(!databaseUrl)("costing reads against PostgreSQL", () => {
         organizationId: orgId,
         actorId,
         costPoolId,
-        driver: "production_hours",
+        driver: "eligible_products",
         scopeType: "location",
-        denominatorSource: "production_hours",
+        denominatorSource: "eligible_products",
         effectiveFrom: FROM,
       });
       const { operatingCostId } = await registerOperatingCost(store, {

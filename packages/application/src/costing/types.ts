@@ -28,6 +28,44 @@ export interface LocationRecord {
   readonly organizationId: string;
 }
 
+export interface ChannelRecord {
+  readonly id: string;
+  readonly organizationId: string;
+}
+
+/**
+ * A `channel_fee_rule` row (`DEC-112`): one fee effective for a channel over a
+ * half-open `[effectiveFrom, effectiveTo)` **timestamptz** window. A percentage
+ * kind (`commission_pct`/`processing_pct`) carries `percentageRate` and a null
+ * `fixedAmount`; a fixed kind (`fixed_per_order`/`delivery_subsidy`/
+ * `discount_funding`) carries `fixedAmount` and a null `percentageRate` (the DB
+ * `channel_fee_rule_amount_kind_check`).
+ */
+export interface ChannelFeeRuleRecord {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly channelId: string;
+  readonly feeKind: string;
+  readonly percentageRate: string | null;
+  readonly fixedAmount: string | null;
+  readonly feeBasis: string;
+  readonly taxRuleId: string | null;
+  readonly effectiveFrom: Date;
+  readonly effectiveTo: Date | null;
+}
+
+export interface NewChannelFeeRuleRecord {
+  readonly organizationId: string;
+  readonly channelId: string;
+  readonly feeKind: string;
+  readonly percentageRate: string | null;
+  readonly fixedAmount: string | null;
+  readonly feeBasis: string;
+  readonly taxRuleId: string | null;
+  readonly effectiveFrom: Date;
+  readonly effectiveTo: Date | null;
+}
+
 export interface LaborRateRecord {
   readonly id: string;
   readonly organizationId: string;
@@ -55,6 +93,7 @@ export interface OperatingCostRecord {
   readonly organizationId: string;
   readonly locationId: string | null;
   readonly costCenterId: string;
+  readonly costPoolId: string | null;
   readonly amount: string;
   readonly currency: string;
   readonly recurrence: string;
@@ -70,6 +109,7 @@ export interface NewOperatingCostRecord {
   readonly organizationId: string;
   readonly locationId: string | null;
   readonly costCenterId: string;
+  readonly costPoolId: string | null;
   readonly amount: string;
   readonly currency: string;
   readonly recurrence: string;
@@ -124,6 +164,7 @@ export interface CostingStore {
   withTransaction<T>(fn: (store: CostingStore) => Promise<T>): Promise<T>;
   findCostCenter(costCenterId: string): Promise<CostCenterRecord | undefined>;
   findLocation(locationId: string): Promise<LocationRecord | undefined>;
+  findChannel(channelId: string): Promise<ChannelRecord | undefined>;
   createLaborRate(input: NewLaborRateRecord): Promise<LaborRateRecord>;
   findEffectiveLaborRate(query: {
     readonly organizationId: string;
@@ -137,6 +178,7 @@ export interface CostingStore {
     readonly asOf: Date;
     readonly locationId?: string | null;
     readonly costCenterId?: string | null;
+    readonly costPoolId?: string | null;
   }): Promise<readonly OperatingCostRecord[]>;
   createCostPool(input: NewCostPoolRecord): Promise<CostPoolRecord>;
   findCostPool(costPoolId: string): Promise<CostPoolRecord | undefined>;
@@ -148,6 +190,22 @@ export interface CostingStore {
     readonly asOf: Date;
     readonly costPoolId?: string;
   }): Promise<readonly AllocationRuleRecord[]>;
+  /**
+   * Every `channel_fee_rule` for one channel (all windows, newest first) — the
+   * read-then-write overlap check behind `registerChannelFeeRule`; the
+   * `channel_fee_rule_no_overlap` exclusion constraint stays the authority.
+   */
+  listChannelFeeRulesByChannel(
+    organizationId: string,
+    channelId: string,
+  ): Promise<readonly ChannelFeeRuleRecord[]>;
+  /** Fee rules effective at `asOf` for one channel (half-open tstz window). */
+  listEffectiveChannelFeeRules(query: {
+    readonly organizationId: string;
+    readonly channelId: string;
+    readonly asOf: Date;
+  }): Promise<readonly ChannelFeeRuleRecord[]>;
+  createChannelFeeRule(input: NewChannelFeeRuleRecord): Promise<ChannelFeeRuleRecord>;
   /** Append-only audit fact; the caller must not pass secrets (ADR-0003 convention). */
   writeAudit(input: AuditInput): Promise<void>;
 }

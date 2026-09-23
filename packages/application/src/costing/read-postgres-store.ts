@@ -131,6 +131,7 @@ function toOperatingCost(row: repo.OperatingCost): OperatingCostRecord {
     organizationId: row.organizationId,
     locationId: row.locationId,
     costCenterId: row.costCenterId,
+    costPoolId: row.costPoolId,
     amount: row.amount,
     currency: row.currency,
     recurrence: row.recurrence,

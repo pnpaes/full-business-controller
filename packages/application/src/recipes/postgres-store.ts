@@ -73,6 +73,8 @@ function toRecipeVersion(row: repo.RecipeVersion): RecipeVersionRecord {
     approvedUsableOutput: row.approvedUsableOutput,
     yieldRate: row.yieldRate,
     preparationMinutes: row.preparationMinutes,
+    laborCostCenterId: row.laborCostCenterId,
+    laborRoleCode: row.laborRoleCode,
     effectiveFrom: row.effectiveFrom,
     effectiveTo: row.effectiveTo,
     approvedBy: row.approvedBy,
@@ -142,6 +144,13 @@ export function createPostgresRecipeStore(db: Database): RecipeStore {
             baseUnitId: row.baseUnitId,
             currentCost: row.currentCost,
           };
+    },
+    findCostCenter: async (costCenterId) => {
+      const row = await relational(db).query.costCenter.findFirst({
+        where: (table, { eq }) => eq(table.id, costCenterId),
+        columns: { id: true, organizationId: true },
+      });
+      return row === undefined ? undefined : { id: row.id, organizationId: row.organizationId };
     },
     findRecipe: async (recipeId) => {
       const row = await repo.findRecipeById(db, recipeId);

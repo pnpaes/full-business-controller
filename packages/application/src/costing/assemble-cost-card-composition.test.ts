@@ -5,17 +5,20 @@ import { FakeRecipeStore } from "../recipes/test-support";
 import type { PriceVersionRecord } from "./price-scenario-types";
 import {
   assembleCostCardComposition,
-  type CostCardCompositionStore,
+  type CostCardComponentStore,
 } from "./assemble-cost-card-composition";
+import { FakeCostingStore } from "./test-support";
 
 const ORG = "org-1";
 const VARIANT = "variant-1";
 const LOCATION = "location-1";
 const AS_OF = new Date("2026-06-01T00:00:00Z");
 
-/** `FakeRecipeStore` plus an in-memory effective price-version read. */
-class FakeCompositionStore extends FakeRecipeStore implements CostCardCompositionStore {
+/** `FakeRecipeStore` plus the effective price-version read and the `DEC-112` costing reads. */
+class FakeCompositionStore extends FakeRecipeStore implements CostCardComponentStore {
   readonly priceVersions: PriceVersionRecord[] = [];
+  readonly costing = new FakeCostingStore();
+  eligibleProductCount = 0;
 
   findEffectivePriceVersion(query: {
     readonly organizationId: string;
@@ -35,6 +38,43 @@ class FakeCompositionStore extends FakeRecipeStore implements CostCardCompositio
           query.asOf.getTime() < new Date(version.effectiveTo).getTime()),
     );
     return Promise.resolve(match);
+  }
+
+  findEffectiveLaborRate(query: {
+    readonly organizationId: string;
+    readonly costCenterId: string;
+    readonly roleCode: string;
+    readonly asOf: Date;
+  }) {
+    return this.costing.findEffectiveLaborRate(query);
+  }
+
+  listEffectiveChannelFeeRules(query: {
+    readonly organizationId: string;
+    readonly channelId: string;
+    readonly asOf: Date;
+  }) {
+    return this.costing.listEffectiveChannelFeeRules(query);
+  }
+
+  listEffectiveOperatingCosts(query: {
+    readonly organizationId: string;
+    readonly asOf: Date;
+    readonly costPoolId?: string | null;
+  }) {
+    return this.costing.listEffectiveOperatingCosts(query);
+  }
+
+  listEffectiveAllocationRules(query: {
+    readonly organizationId: string;
+    readonly asOf: Date;
+    readonly costPoolId?: string;
+  }) {
+    return this.costing.listEffectiveAllocationRules(query);
+  }
+
+  countEligibleProducts(): Promise<number> {
+    return Promise.resolve(this.eligibleProductCount);
   }
 }
 
@@ -147,6 +187,8 @@ function seedStore(): {
       approvedUsableOutput: "1000",
       yieldRate: "1.000000",
       preparationMinutes: null,
+      laborCostCenterId: null,
+      laborRoleCode: null,
       effectiveFrom: new Date("2026-01-01T00:00:00Z"),
       effectiveTo: null,
       approvedBy: "approver-1",
@@ -163,6 +205,8 @@ function seedStore(): {
       approvedUsableOutput: "1000",
       yieldRate: "1.000000",
       preparationMinutes: null,
+      laborCostCenterId: null,
+      laborRoleCode: null,
       effectiveFrom: new Date("2026-01-01T00:00:00Z"),
       effectiveTo: null,
       approvedBy: "approver-1",
@@ -490,5 +534,136 @@ describe("assembleCostCardComposition", () => {
     await expect(assembleCostCardComposition(seeded.store, baseInput())).rejects.toThrow(
       /unknown recipe componentKind "mystery"/,
     );
+  });
+
+  it("resolves a channel fee over the explicit channel variable cost (DEC-112)", async () => {
+    seeded.store.priceVersions[0] = priceVersion({ channelId: "chan-1" });
+    seeded.store.costing.channelFeeRules.push({
+      id: "fee-1",
+      organizationId: ORG,
+      channelId: "chan-1",
+      feeKind: "commission_pct",
+      percentageRate: "0.100000",
+      fixedAmount: null,
+      feeBasis: "net_price",
+      taxRuleId: null,
+      effectiveFrom: new Date("2026-01-01T00:00:00Z"),
+      effectiveTo: null,
+    });
+
+    const result = await assembleCostCardComposition(
+      seeded.store,
+      baseInput({ channelId: "chan-1", channelVariableCost: "9.9999" }),
+    );
+
+    // 10% of netPrice 33.9130 = 3.3913.
+    expect(result.composition.channelVariableCost).toBe("3.3913");
+    expect(result.provenance.supplied.channelVariableCost).toBe("3.3913");
+    expect(result.provenance.resolved?.channelVariableCost).toBe(true);
+    const component = result.components.find(
+      (candidate) => candidate.componentKind === "channel_variable",
+    );
+    expect(component?.amount).toBe("3.3913");
+    expect(component?.provenance?.["sourceType"]).toBe("channel_fee_rule");
+  });
+
+  it("resolves direct labour from the recipe labour mapping over the explicit input (DEC-112)", async () => {
+    seeded.store.versions[1] = {
+      ...seeded.store.versions[1]!,
+      preparationMinutes: 30,
+      laborCostCenterId: "cc-1",
+      laborRoleCode: "kitchen",
+    };
+    seeded.store.costing.laborRates.push({
+      id: "rate-1",
+      organizationId: ORG,
+      costCenterId: "cc-1",
+      roleCode: "kitchen",
+      loadedHourlyRate: "306.57",
+      productiveHoursPct: null,
+      effectiveFrom: "2026-01-01",
+      effectiveTo: null,
+    });
+
+    const result = await assembleCostCardComposition(
+      seeded.store,
+      baseInput({ directLaborCost: "9.9999" }),
+    );
+
+    // 30 min / 60 × 306.57 / 1000 = 0.153285 -> 0.1533 (B3 HALF_UP).
+    expect(result.composition.directLaborCost).toBe("0.1533");
+    expect(result.provenance.resolved?.directLaborCost).toBe(true);
+    const component = result.components.find(
+      (candidate) => candidate.componentKind === "direct_labor",
+    );
+    expect(component?.amount).toBe("0.1533");
+    expect(component?.provenance?.["sourceType"]).toBe("recipe_labour_rule");
+  });
+
+  it("resolves allocated overhead from the operating-cost pool over the explicit input (DEC-112)", async () => {
+    seeded.store.costing.costPools.set("pool-1", {
+      id: "pool-1",
+      organizationId: ORG,
+      code: "OVERHEAD",
+      name: "Overhead",
+      effectiveFrom: "2026-01-01",
+      effectiveTo: null,
+    });
+    seeded.store.costing.operatingCosts.push({
+      id: "oc-1",
+      organizationId: ORG,
+      locationId: null,
+      costCenterId: "cc-1",
+      costPoolId: "pool-1",
+      amount: "1200.0000",
+      currency: "NOK",
+      recurrence: "monthly",
+      behavior: "fixed",
+      taxBasis: "exclusive",
+      effectiveFrom: "2026-01-01",
+      effectiveTo: null,
+      vendor: null,
+      evidenceFileId: null,
+    });
+    seeded.store.costing.allocationRules.push({
+      id: "rule-1",
+      costPoolId: "pool-1",
+      driver: "eligible_products",
+      scopeType: "location",
+      denominatorSource: "eligible_products",
+      fallbackBehavior: "stop",
+      effectiveFrom: "2026-01-01",
+      effectiveTo: null,
+    });
+    seeded.store.eligibleProductCount = 2;
+
+    const result = await assembleCostCardComposition(
+      seeded.store,
+      baseInput({ costPoolId: "pool-1", allocatedUnitOverhead: "9.9999" }),
+    );
+
+    // 1200.0000 / 2 = 600.0000.
+    expect(result.composition.allocatedUnitOverhead).toBe("600.0000");
+    expect(result.provenance.resolved?.allocatedUnitOverhead).toBe(true);
+    const component = result.components.find(
+      (candidate) => candidate.componentKind === "allocated_overhead",
+    );
+    expect(component?.amount).toBe("600.0000");
+    expect(component?.provenance?.["sourceType"]).toBe("operating_cost_pool");
+  });
+
+  it("keeps the explicit input when a resolver has nothing to resolve (DEC-112)", async () => {
+    // A channel is supplied but no fee rule is effective for it.
+    seeded.store.priceVersions[0] = priceVersion({ channelId: "chan-1" });
+
+    const result = await assembleCostCardComposition(
+      seeded.store,
+      baseInput({ channelId: "chan-1", channelVariableCost: "0.5000" }),
+    );
+
+    expect(result.composition.channelVariableCost).toBe("0.5000");
+    expect(result.provenance.resolved?.channelVariableCost).toBe(false);
+    expect(result.provenance.resolved?.directLaborCost).toBe(false);
+    expect(result.provenance.resolved?.allocatedUnitOverhead).toBe(false);
   });
 });

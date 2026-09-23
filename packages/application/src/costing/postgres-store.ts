@@ -10,6 +10,7 @@ import type { Database, NodeDatabase } from "@aquarela/persistence";
 
 import type {
   AllocationRuleRecord,
+  ChannelFeeRuleRecord,
   CostCenterRecord,
   CostPoolRecord,
   CostingStore,
@@ -81,6 +82,7 @@ function toOperatingCost(row: repo.OperatingCost): OperatingCostRecord {
     organizationId: row.organizationId,
     locationId: row.locationId,
     costCenterId: row.costCenterId,
+    costPoolId: row.costPoolId,
     amount: row.amount,
     currency: row.currency,
     recurrence: row.recurrence,
@@ -90,6 +92,21 @@ function toOperatingCost(row: repo.OperatingCost): OperatingCostRecord {
     effectiveTo: row.effectiveTo,
     vendor: row.vendor,
     evidenceFileId: row.evidenceFileId,
+  };
+}
+
+function toChannelFeeRule(row: repo.ChannelFeeRule): ChannelFeeRuleRecord {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    channelId: row.channelId,
+    feeKind: row.feeKind,
+    percentageRate: row.percentageRate,
+    fixedAmount: row.fixedAmount,
+    feeBasis: row.feeBasis,
+    taxRuleId: row.taxRuleId,
+    effectiveFrom: row.effectiveFrom,
+    effectiveTo: row.effectiveTo,
   };
 }
 
@@ -148,6 +165,13 @@ export function createPostgresCostingStore(db: Database): CostingStore {
       });
       return row === undefined ? undefined : toLocation(row);
     },
+    findChannel: async (channelId) => {
+      const row = await relational(db).query.channel.findFirst({
+        where: (table, { eq }) => eq(table.id, channelId),
+        columns: { id: true, organizationId: true },
+      });
+      return row === undefined ? undefined : { id: row.id, organizationId: row.organizationId };
+    },
     createLaborRate: async (input) => toLaborRate(await repo.createLaborRate(db, input)),
     findEffectiveLaborRate: async (query) => {
       const row = await repo.findEffectiveLaborRate(db, query);
@@ -168,6 +192,18 @@ export function createPostgresCostingStore(db: Database): CostingStore {
       toAllocationRule(await repo.createAllocationRule(db, input)),
     listEffectiveAllocationRules: async (query) =>
       (await repo.listEffectiveAllocationRules(db, query)).map(toAllocationRule),
+    listChannelFeeRulesByChannel: async (organizationId, channelId) => {
+      const rows = await relational(db).query.channelFeeRule.findMany({
+        where: (fields, { and, eq }) =>
+          and(eq(fields.organizationId, organizationId), eq(fields.channelId, channelId)),
+        orderBy: (fields, { desc }) => [desc(fields.effectiveFrom)],
+      });
+      return rows.map(toChannelFeeRule);
+    },
+    listEffectiveChannelFeeRules: async (query) =>
+      (await repo.listEffectiveChannelFeeRules(db, query)).map(toChannelFeeRule),
+    createChannelFeeRule: async (input) =>
+      toChannelFeeRule(await repo.createChannelFeeRule(db, input)),
     writeAudit: async (input) => {
       await repo.writeAuditEvent(db, input);
     },
