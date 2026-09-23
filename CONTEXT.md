@@ -12,79 +12,68 @@ orientation and the next step. See "Handover archive" and "Update protocol".
 ## Resume here (next session)
 
 **Say "resume the work" and start here.** A fresh session must be able to
-continue from this section alone. (Rewritten by the 2026-09-23 sales-import
-mapping-writer session.)
+continue from this section alone. (Rewritten by the 2026-09-23
+volume-denominator docs session.)
 
-**State:** `main`; HEAD before the next docs commit is **`cba124a`** (the
-`feat(web)` commit of the row-11 mapping-writer slice). The slice landed as
-**`fd277ff`** `docs(decisions)`, **`c0fc7de`** `feat(persistence)`,
-**`7d96270`** `feat(application)`, **`cba124a`** `feat(web)` — plus this
-`docs(context)` handoff. Nothing pushed; nothing applied to DigitalOcean.
-Schema: migrations through **`0062`**; **89 tables** (no new table, no
-migration); next free decision id **`DEC-114`** (`DEC-113` is recorded and
-implemented). Baseline with `DATABASE_URL`: **3561/3561 tests** (233 files).
-Handoff: `docs/handoffs/072-…md`. **The row-11 sales-import mapping writer
-(`DEC-113`) is delivered**: `mapImportRows` resolves each sales-import row to
-a `product_variant` (SKU-first, then the effective `external_mapping` window at
-`occurred_at`) and writes `normalized.product_variant_id` for the poster, so
-`sales_line.product_variant_id` is populated at import time; unmappable rows
-stay null and keep resolving through the reporting `unmapped` bucket; no
-historical backfill (the recorded posture).
+**State:** `main`; HEAD before this docs commit is **`2c57259`** (the last code
+commit before the `DEC-114` docs layer). The `DEC-114` slice landed as the
+`docs(decisions)`, `feat(persistence)` and `feat(application)` commits — plus
+this `docs(context)` handoff (the docs layers may be uncommitted at handoff
+time; the orchestrator commits them). Nothing pushed; nothing applied to
+DigitalOcean. Schema: migrations through **`0062`**; **89 tables** (no new
+table, no migration); next free decision id **`DEC-115`** (`DEC-114` is
+recorded and implemented). Baseline with `DATABASE_URL`: **3571/3571 tests**
+(234 files). Handoff: `docs/handoffs/073-…md`. **The volume-based allocation
+denominators (`DEC-114`) are delivered**: the sales-derived `revenue`,
+`transactions` and `sales_units` denominators are implemented in
+`resolveAllocatedUnitOverhead` via a new half-open `sumSalesVolume` read,
+`allocation_denominator_source` is widened in lockstep (YAML + TS, no
+migration), and a missing/zero/negative volume fails closed; the
+`production_*`/time denominators remain deferred (no driver authority yet).
 
-**Next task — the deferred `DEC-112` volume-based allocation denominators
-(slice `DEC-114`).** `DEC-112` closed the `ALLOCATION_DENOMINATOR_SOURCE`
-vocabulary with only `explicit`, `eligible_products` and `equal_share`
-implemented; the volume-based denominators (`revenue`, `transactions`,
-`sales_units`, `production_*`) currently **fail closed** in
-`resolveAllocatedUnitOverhead` because the period-scoped read cannot supply the
-denominator. Implement those denominators for `resolveAllocatedUnitOverhead`
-(additively, decimal-only), each source read period-scoped and failing closed
-when it cannot supply a denominator; the `explicit`/`eligible_products`/
-`equal_share` paths already exist and must not change. Record the provisional
-decision as **`DEC-114`** in both tables of `12_OPEN_DECISIONS.md` before or
-with the implementation (Rule 3).
+**Next task — `DEC-115`: allocation pool period-scoping — recurrence→period
+normalisation.** `DEC-112` records that the pool amount is "Σ of the linked
+operating costs effective at `asOf` restricted to the period overlap
+(**recurrence unscaled**, `behavior` unfiltered)", which means a monthly and
+an annual recurring `operating_cost` are currently summed at face value for a
+one-month period. Decide and implement the recurrence→period scaling — or
+record a posture that keeps it unscaled, with the reason — and record it as
+**`DEC-115` in both tables of `12_OPEN_DECISIONS.md` before or with the
+implementation** (Rule 3; next free id).
 
-**Scope (do):** read this file, `docs/handoffs/071-…md` and `072-…md`,
-`DEC-112`, `docs/phase0/CALCULATION_CONTRACT.md` (the allocation/denominator
-section), `packages/application/src/costing/resolve-allocated-unit-overhead.ts`,
-the `ALLOCATION_DENOMINATOR_SOURCE` vocabulary in `packages/domain/**`, the
-`operating_cost` schema and its `cost_pool_id`, the
-`unit_overhead_allocation`/cost-pool tables, the period-scoped sales reads
-(`packages/persistence/src/repositories/reporting.ts` and the sales reads) and
-the production reads first; keep changes additive, decimal-only, keep the
-fail-closed behaviour, add a `.test.ts` for each denominator branch (hit and
-fail-closed miss) and commit in layers with the rollback approach in the body
+**Scope (do):** read this file, `docs/handoffs/072-…md` and `073-…md`,
+`DEC-112`/`DEC-114`,
+`packages/application/src/costing/resolve-allocated-unit-overhead.ts` (the
+pool-amount computation) and the `operating_cost` schema
+(`packages/persistence/src/schema/costing.ts`) for the recurrence column and
+its vocabulary first; keep it additive, decimal-only and fail-closed; add a
+`.test.ts` per branch; commit in layers with the rollback approach in the body
 (Rule 2).
 
-**Scope (do not):** do not change the already-shipped
-`explicit`/`eligible_products`/`equal_share` behaviour; do not add a migration
-unless the decision needs one; do not resolve recorded open inputs silently; do
-not deploy or write externally (`DEC-015`).
+**Scope (do not):** do not change the already-shipped `explicit`/
+`eligible_products`/`equal_share`/volume-denominator behaviour of
+`resolveAllocatedUnitOverhead` beyond the pool-amount computation; do not add
+a migration unless the decision needs one; do not resolve recorded open inputs
+silently; do not deploy or write externally (`DEC-015`).
 
 **Acceptance / verification:** `export NVM_DIR="$HOME/.nvm"; . "$NVM_DIR/nvm.sh";
 nvm use 22`; then `npm run typecheck`, `npm run lint`, `npm run test` (with
-`DATABASE_URL` — current baseline **3561/3561**, 233 files), `npm run build`,
+`DATABASE_URL` — current baseline **3571/3571**, 234 files), `npm run build`,
 `npm run format:check`, `npm audit --omit=dev` = 0; `db:migrate` a no-op
-(expected: no migration unless the `DEC-114` decision needs one). Commit in
+(expected: no migration unless the `DEC-115` decision needs one). Commit in
 layers with the rollback approach in the body (Rule 2).
 
-**Open decisions/inputs that shape it:** the volume-denominator read policy is
-provisional and must be recorded (`DEC-114`) before or with the
-implementation — including which production_* sources map to which production
-reads; `DEC-111`/`DEC-112` provenance semantics are unchanged. Do not resolve
-I11, the OPS policy, `DEC-077` or any other recorded open input silently.
+**Open decisions/inputs that shape it:** the recurrence-scaling posture is
+provisional and must be recorded (`DEC-115`) before or with the
+implementation; whether `behavior` filtering joins the same slice or stays
+deferred is part of that recording; `DEC-111`/`DEC-112`/`DEC-114` provenance
+semantics are unchanged. Do not resolve I11, the OPS policy, `DEC-077` or any
+other recorded open input silently.
 
-**Alternatives (named in the previous `Resume here`):** the remaining deferred
-`DEC-112` close-outs (`denominator_source` DB CHECK, per-channel packaging,
-the cost-card version chain, the per-item override, recurrence→period
-normalisation); the row-11 backfill posture once decided; the deferred close
-follow-ups (correction-posting wiring `DEC-028`/`DEC-073`, `daily_close`); the
-**receipt→ledger wiring** once the OPS `storage_area_id` policy lands.
-
-**Step after:** the remaining deferred `DEC-112` close-outs (`denominator_source`
-DB CHECK, per-channel packaging, the cost-card version chain, the per-item
-override, recurrence→period normalisation); the row-11 backfill posture once
-decided; the deferred close follow-ups (`DEC-028`/`DEC-073` correction wiring,
+**Step after:** the remaining `DEC-112`/`DEC-114` close-outs (the
+`denominator_source` DB CHECK, per-channel packaging, the cost-card version
+chain, the per-item override); the row-11 backfill posture once decided; the
+deferred close follow-ups (`DEC-028`/`DEC-073` correction wiring,
 `daily_close`); the test-deployment rehearsal and golden-fixture sign-off
 (both parked on owner inputs).
 
@@ -121,7 +110,7 @@ Per-slice detail, commits and reconciliation are in `docs/handoffs/`.
 - `00_README.md` … `13_AGENT_BUILD_BRIEF.md` — the specification package
   (inputs, rarely edited). Start with `00_README.md`.
 - `12_OPEN_DECISIONS.md` — the accepted decisions (`DEC-001`…`DEC-104`); the
-  authority. New decisions are appended here (next free id `DEC-114`).
+  authority. New decisions are appended here (next free id `DEC-115`).
 - `docs/phase0/` — close-out plan, calculation contract, data dictionary, golden
   fixtures, source-data request, notes. See
   `docs/phase0/CALCULATION_CONTRACT.md`.
@@ -142,10 +131,34 @@ Per-slice detail, commits and reconciliation are in `docs/handoffs/`.
 
 ## Current status
 
-- **As of:** 2026-09-23 — branch `main`; the row-11 sales-import
-  mapping-writer slice is committed (`fd277ff`…`cba124a`, plus this
-  `docs(context)` handoff). Lineage and full per-slice detail:
-  `docs/handoffs/README.md` and the files it lists.
+- **As of:** 2026-09-23 — branch `main`; the volume-based
+  allocation-denominators slice (`DEC-114`) is implemented and reviewed, with
+  its docs layers landing as the `docs(decisions)`, `feat(persistence)`,
+  `feat(application)` and this `docs(context)` handoff. Lineage and full
+  per-slice detail: `docs/handoffs/README.md` and the files it lists.
+- **Volume-based allocation denominators are delivered (`DEC-114`):** the
+  sales-derived denominators — `revenue`, `transactions`, `sales_units` — are
+  implemented in `resolveAllocatedUnitOverhead` via a new half-open
+  `sumSalesVolume` read (`packages/persistence/src/repositories/reporting.ts`:
+  org-scoped, `locationId`-scoped, `option_kind <> 'included'`, unmapped lines
+  included, reversals netted, empty window returns zeros; the
+  `netSalesExpression()` helper was extracted from `summarizeSales` with
+  byte-identical rendered SQL). The vocabulary
+  `allocation_denominator_source` widened to
+  `{explicit, eligible_products, equal_share, revenue, transactions,
+sales_units}` in `schemas/domain-enums.yaml` and
+  `packages/persistence/src/schema/vocabularies.ts` — **no migration** (the
+  column is free text with a non-empty CHECK only). A missing/zero/negative
+  volume **fails closed** with a message-only `DomainError`, and volume
+  branches force `stop` semantics; the port member is on
+  `CostCardComponentStore`, wired through
+  `cost-card-composition-postgres-store.ts`. Deferred with reasons:
+  `production_hours`/`production_minutes` (no driver authority yet),
+  `recorded_time`, `operating_hours`, the `denominator_source` DB CHECK, and
+  org-wide volume scope for `organization`/`company_wide` rules (the read is
+  single-location — a recorded gap). Review: `reviewer-qwen` +
+  `reviewer-glm` — no blockers, no majors; three minors declined with
+  reasons. Handoff: `docs/handoffs/073-…md`.
 - **Row-11 sales-import mapping writer is delivered (`DEC-113`):**
   `mapImportRows` resolves each sales-import row to a `product_variant` —
   SKU-first (`product_variant.sku` within the org), otherwise the effective
@@ -237,21 +250,23 @@ Per-slice detail, commits and reconciliation are in `docs/handoffs/`.
   first versioned entity); the workflow platform (`DEC-094`/`DEC-101`,
   schema-only). The `job`/worker/outbox layer stays gated on `ADR-0004`.
 - **Schema:** migrations through **`0062`**; **89 tables** (all additive, tested
-  down paths). Next free decision id **`DEC-114`** (`DEC-108`–`DEC-113` are
-  committed).
-- **Verification (2026-09-23, at the mapping-writer tree):** `typecheck`,
-  `lint`, `format:check`, `build` clean; **3561/3561 tests with `DATABASE_URL`**
-  (233 files); `npm audit --omit=dev` = 0; `db:migrate` through `0062` a no-op
+  down paths). Next free decision id **`DEC-115`** (`DEC-108`–`DEC-114` are
+  recorded; `DEC-114` is implemented).
+- **Verification (2026-09-23, at the `DEC-114` tree):** `typecheck`, `lint`,
+  `format:check`, `build` clean; **3571/3571 tests with `DATABASE_URL`**
+  (234 files); `npm audit --omit=dev` = 0; `db:migrate` through `0062` a no-op
   on re-run; 89 public base tables. (One full-suite run mid-session failed a single
   test that did not reproduce across three subsequent runs; recorded in
   `docs/handoffs/069-…md` for CI watchfulness.)
 - **Not yet built:** the deferred
-  `DEC-112` items (the `other_variable_cost` source; the volume-based
-  denominators `revenue`/`transactions`/`sales_units`/`production_*`, which
-  fail closed; a `denominator_source` DB CHECK; per-channel packaging; the
-  cost-card version chain; the per-item cost-selection override; the
-  period-overlap operating-cost read; recurrence→period normalisation and
-  `behavior` filtering); the deferred `daily_close` and
+  `DEC-112` items (the `other_variable_cost` source; the `production_*`/time
+  denominators `production_hours`/`production_minutes`/`recorded_time`/
+  `operating_hours`, which fail closed; a `denominator_source` DB CHECK;
+  per-channel packaging; the cost-card version chain; the per-item
+  cost-selection override; the period-overlap operating-cost read;
+  recurrence→period normalisation and `behavior` filtering); the org-wide
+  volume scope for `organization`/`company_wide` allocation rules (`DEC-114`
+  recorded gap); the deferred `daily_close` and
   the correction-posting wiring (`DEC-028`/`DEC-073`); the receipt→ledger wiring
   (gated on the OPS destination `storage_area_id` policy) and rows 15–18
   (blocked: data / `ADR-0009`–`0011`). The deferred file FKs
@@ -274,11 +289,13 @@ Per-slice detail, commits and reconciliation are in `docs/handoffs/`.
 `docs/BUILD_ROADMAP.md` is the ordered execution tracker; §5 carries the
 open-point lists. Per-slice detail is in `docs/handoffs/`.
 
-1. **Next: the deferred `DEC-112` volume-based allocation denominators**
-   (slice `DEC-114`) — implement `revenue`/`transactions`/`sales_units`/
-   `production_*` in `resolveAllocatedUnitOverhead`, period-scoped and
-   failing closed on a missing denominator; record `DEC-114` before or with
-   the implementation.
+1. **Next: `DEC-115` — allocation pool period-scoping (recurrence→period
+   normalisation).** `DEC-112` leaves the pool amount "recurrence unscaled,
+   `behavior` unfiltered", so a monthly and an annual recurring
+   `operating_cost` are summed at face value for a one-month period. Decide
+   and implement the scaling (or record a keep-unscaled posture with the
+   reason) and record `DEC-115` in both tables of `12_OPEN_DECISIONS.md`
+   before or with the implementation.
 2. **Row 13 — close + dashboards + menu engineering — COMPLETE.** The close
    half: 13a `period_close` (`REC-003`, `REC-006`, `DEC-027`, `DEC-105`,
    migrations `0057`/`0058`) and 13b prerequisites + `adjustment_period`
@@ -292,8 +309,10 @@ open-point lists. Per-slice detail is in `docs/handoffs/`.
    overhead now resolve from production data; `otherVariableCost` stays
    explicit. **The row-11 import mapping writer is delivered** (`DEC-113`,
    `fd277ff`…`cba124a` — `sales_line.product_variant_id` is populated at
-   import time). Then the remaining deferred `DEC-112` close-outs and the
-   deferred `daily_close`/correction wiring.
+   import time). **The sales-derived volume-based allocation denominators are
+   delivered** (`DEC-114` — `revenue`/`transactions`/`sales_units`, no
+   migration). Then the remaining deferred `DEC-112`/`DEC-114` close-outs and
+   the deferred `daily_close`/correction wiring.
 3. **Receipt→ledger wiring — the lead item, gated:** on the **OPS receipt
    destination `storage_area_id` policy** (a recorded owner input). If it has
    not landed it stays blocked; do not resolve the policy silently
@@ -375,15 +394,19 @@ cost` (the `DEC-067`/`DEC-008` valuation is asymmetric); the waste reasons axis
   `channel_fee_rule` percentage kinds on `gross_price`/`net_price` per
   `fee_basis`, fixed kinds via `perUnitFixedFee` (the order-size allocation a
   recorded `[PROPOSED]`); `ALLOCATION_DENOMINATOR_SOURCE` closes the
-  free-text denominator (`explicit`, `eligible_products`, `equal_share`) with
-  only those three implemented — the volume-based denominators
-  (`revenue`/`transactions`/`sales_units`/`production_*`) **fail closed**
-  pending implementation (the next slice, `DEC-114`, will implement them
-  period-scoped and fail closed). Still deferred: the
+  free-text denominator (`explicit`, `eligible_products`, `equal_share`,
+  `revenue`, `transactions`, `sales_units`); `explicit`/`eligible_products`/
+  `equal_share` and the three sales-derived volume denominators are
+  implemented (`DEC-114`) — the `production_*`/time denominators
+  (`production_hours`/`production_minutes`/`recorded_time`/`operating_hours`)
+  still **fail closed** (no driver authority yet), and the org-wide volume
+  scope for `organization`/`company_wide` rules is a recorded `DEC-114` gap.
+  Still deferred: the
   `other_variable_cost` source; a DB CHECK for `denominator_source`;
   per-channel packaging; the cost-card version chain; the per-item
   cost-selection override; the period-overlap operating-cost read; the
-  recurrence→period normalisation and `behavior` filtering; the
+  recurrence→period normalisation (`DEC-115`, the next slice) and
+  `behavior` filtering; the
   golden-fixture sign-off.
 - **Cost-card composition assembler (provisional, awaiting owner/OPS):**
   `DEC-111` — the recipe version is the effective `product_recipe_assignment`
@@ -560,7 +583,7 @@ created out of band first (see `docs/runbooks/deployment.md`).
 - `README.md` — the index of all per-slice handovers, newest first.
 - `NNN-YYYY-MM-DD-*.md` — one verbatim work-log entry per slice (commits,
   verification, review reconciliation), numbered chronologically (`001` oldest).
-  Newest: `072-2026-09-23-row-11-sales-import-mapping-writer-dec-113.md`.
+  Newest: `073-2026-09-23-volume-based-allocation-denominators-dec-114.md`.
 - `reversibility-log.md` — the per-slice commit list, migration down paths and
   ledger-row rollback notes.
 - `context-sections-archive-2026-09-22.md` — the pre-refactor `Resume here`,

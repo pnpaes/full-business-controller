@@ -1,5 +1,20 @@
 # Reversibility log
 
+- **2026-09-23 volume-based allocation denominators (`DEC-114`; 4 commits incl.
+  the `docs(decisions)` commit; nothing pushed)**: 1. `docs(decisions)`
+  (`DEC-114`); 2. `feat(persistence)` (`schemas/domain-enums.yaml`,
+  `packages/persistence/src/schema/vocabularies.ts`, `reporting.ts` + the new
+  `reporting.postgres.test.ts`); 3. `feat(application)` (the resolver branch,
+  the port member + store wiring, the tests); 4. this `docs(context)` update —
+  each independently revertible with `git revert <sha>`. **No migration, no
+  schema change and no data written** (migrations stay through `0062`; **89
+  tables**): `allocation_rule.denominator_source` is free text with a
+  non-empty CHECK only, so widening `allocation_denominator_source` is a
+  code-side lockstep change (YAML + TS) — reverting the vocabulary and
+  reverting the additive `sumSalesVolume` read are independent; the
+  application layer reverts as a unit. No backfill (the read is derived from
+  existing `sales_line` facts at query time). `db:migrate` is a no-op on
+  re-run through `0062`. Nothing applied to DigitalOcean.
 - **2026-09-23 row-11 sales-import mapping writer (`DEC-113`; 4 commits incl.
   the `docs(decisions)` commit; nothing pushed)**: 1. `fd277ff`
   `docs(decisions)` (`DEC-113`); 2. `c0fc7de` `feat(persistence)`; 3.
