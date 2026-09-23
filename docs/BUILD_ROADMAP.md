@@ -97,14 +97,16 @@ tables**; `/api/v1/period-closes/**`; the close/lock/reopen state machine with
 the locked-snapshot immutability and scope-coherence triggers).
 **Row 13b delivered** (close prerequisites + enriched snapshot, `DEC-107`;
 `adjustment_period`, `DEC-106`, migration `0059`, **89 tables**) and **rows 13c
-+ 13d delivered** (the sales & margin reporting read model + Management-home/
-Insights wiring, `RPT-001`–`RPT-003`/`FND-006`, `DEC-108`; and menu engineering,
-`RPT-005`, `DEC-109` — both on-demand over canonical facts, no migration).
-**Next: `RPT-004`** (stock value/variance, production yield, waste
-value/reasons) — the row-13 data gate (I11, history/grain quality) still applies,
-so build over synthetic fixtures; the receipt→ledger wiring is the other
-buildable candidate if the OPS destination `storage_area_id` policy lands; then
-the deployment rehearsal (owner inputs). Then the
++ 13d + 13e/13f delivered** (the sales & margin reporting read model +
+Management-home/Insights wiring, `RPT-001`–`RPT-003`/`FND-006`, `DEC-108`; menu
+engineering, `RPT-005`, `DEC-109`; and the operations report — stock
+value/variance, production yield, waste by stage — `RPT-004`, `DEC-110`; the
+reporting slices are on-demand over canonical facts, no migration). **Row 13 is
+complete.** **Next: the cost-card composition assembler** (real
+contribution/full cost), then the row-11 import mapping writer; the
+receipt→ledger wiring is the other buildable candidate if the OPS destination
+`storage_area_id` policy lands; then the deployment rehearsal (owner inputs).
+Then the
 programme
 build order (§4 rows 19–20). **New open points from the workforce-slice
 reviews (recorded, do not resolve silently):** `WF-007`'s audited
@@ -189,7 +191,7 @@ inputs; the receipt→ledger wiring needs the OPS destination
 history/grain quality (I11); rows 15–18 remain blocked (data /
 `ADR-0009`–`0011`); the deployment rehearsal is parked on the owner inputs;
 the golden fixtures are unsigned.
-Next free decision id `DEC-110`.
+Next free decision id `DEC-111`.
 
 ## 2. The execution loop (per slice)
 
@@ -290,7 +292,7 @@ sequence). Requirement IDs are from `11_REQUIREMENTS_CATALOG.md`; decision IDs f
 | 10 | Production planning + batches | P2 / epic 9 | `PROD-001`–`005`; `DEC-005`, `DEC-031`, `DEC-036`, `DEC-069`–`DEC-071` | 5, 8 | none | done (migration `0021`; domain `production.ts`; application `production/**` incl. atomic `completeProductionBatch`; web API + `/production` screens + seed; verified 1087/1087 with `DATABASE_URL` at the row-11 tree) |
 | 11 | Import framework + external mappings | P3 / epic 10 | `SALE-002`, `SALE-004`, `SALE-007`, `SALE-008`; `DEC-025`, `DEC-033`, `DEC-035`, `DEC-041`, `DEC-085`; `ADR-0008` (accepted 2026-09-20) | 3 | none — legacy I19 as reference; I1/I15 Frontline shapes gate real profiles | done (committed — migration `0022` (`import_run`/`import_staging_row`/`external_mapping`), vocabularies `IMPORT_STATUS`/`MAPPING_STATE`/`IMPORT_POSTING_POLICY`, domain `sales-mapping.ts` (`resolveExternalEntity`, SKU-first then external id, both `DEC-033` conflict directions), application `imports/**` (create/stage/validate/map/dispose/preview + list/get), web `/api/v1/imports/**` + `(app)/sales/**` + `seed-imports.ts`; row 11 **complete** 2026-09-21 — the `DEC-085` `file_object` table (migrations `0035`/`0036`) closed the last open point; verified 1383/1383 with `DATABASE_URL`) |
 | 12 | Sales + settlements + reconciliation | P3 / epic 11 | `SALE-001`–`011`, `PRICE-006`, `REC-001`–`006`; `DEC-026`, `DEC-035`, `DEC-040`, `DEC-042`, `DEC-043`, `DEC-045`; `ADR-0008` (**Accepted** 2026-09-20) | 8, 11 | none — `ADR-0008` accepted 2026-09-20 (inputs: I1 channel/SKU) | done (committed — migration `0023` (`sales_transaction`/`sales_line`/`settlement`/`reconciliation` + the `sales_line` branch in `stock_movement_source_guard`), vocabularies `RECONCILIATION_STATUS`/`OPTION_KIND`, domain `sales-consumption.ts` (recipe explosion + the `DEC-026` tolerance evaluator), application `sales/**` (`postImportRun`, `postTheoreticalConsumption`, list/get) + `reconciliation/**` (`reconcileImportRun`, `reconcileSettlement`, `resolveReconciliation`, list, `resolveTolerance`), web `/api/v1/sales/**` + `/api/v1/reconciliations/**` + `(app)/sales/**` screens (landing, transactions list/detail, reconciliation with resolve) + `seed-sales.ts`; verified 1186/1186 with `DATABASE_URL`) |
-| 13 | Close + dashboards + menu engineering | P3 / epic 12 | `REC-003`, `REC-006`, `RPT-001`–`005`; `DEC-027`, `DEC-032`; `ADR-0007` (**Accepted** 2026-09-20) | 12 | data — history/grain quality (I11) | in progress — 13a `period_close` (`DEC-105`, `0057`/`0058`); 13b close prerequisites + `adjustment_period` (`DEC-106`/`DEC-107`, `0059`); 13c sales & margin reporting + Management home (`RPT-001`–`003`, `FND-006`, `DEC-108`); 13d menu engineering (`RPT-005`, `DEC-109`) — all no-migration except 13a/13b; remaining: `RPT-004` stock/production/waste reporting — data-gated (synthetic fixtures) |
+| 13 | Close + dashboards + menu engineering | P3 / epic 12 | `REC-003`, `REC-006`, `RPT-001`–`005`; `DEC-027`, `DEC-032`; `ADR-0007` (**Accepted** 2026-09-20) | 12 | data — history/grain quality (I11) | **complete** — 13a `period_close` (`DEC-105`, `0057`/`0058`); 13b close prerequisites + `adjustment_period` (`DEC-106`/`DEC-107`, `0059`); 13c sales & margin (`RPT-001`–`003`, `DEC-108`); 13d menu engineering (`RPT-005`, `DEC-109`); 13e/13f `RPT-004` operations (`DEC-110`) — reporting slices no-migration |
 | 14 | Workforce: employees, shifts, worked hours, payroll-input report | P3 / epics 13–15 | `WF-001`–`007`; `DEC-012`, `DEC-037`, `DEC-038`, `DEC-087`, `DEC-102`; `SEC-003` | 1, row 20a (the `employee` entity, `DEC-087`) | none — the privacy review / access matrix was approved 2026-09-21 (Phase A); the **WF-003 self-assignment login model** (must a self-assigning employee hold an `app_user` login?) and the retention periods per file class remain open inputs | **done (complete: 14a + 14b-1 + 14b-2).** **14a: done** — shift planning, rota and manager assignment (`WF-002`/`WF-003`, `DEC-037`/`DEC-038`/`DEC-102`) delivered 2026-09-22 (migrations `0051`/`0052`, **85 tables**; `shift` + `shift_assignment` with the `shift_state` machine and the manager-assignment path of `shift_assignment_state`, `/api/v1/workforce/shifts/**` and `/shift-assignments/**`; provisional clarifications recorded as `DEC-102`; self-assignment deferred pending the WF-003 login model). **14b-1: done** — `shift_adjustment` + worked hours (`WF-004`, `DEC-037`/`DEC-038`/`DEC-103`) delivered 2026-09-22 (migrations `0053`/`0054`, **86 tables**; `shift_adjustment` append-only override history, `/api/v1/workforce/shift-assignments/[id]/adjustments` and `/api/v1/workforce/worked-hours`; the adjustment-override + HALF_UP-at-2dp worked-hours derivation; payroll-input read roles — `analyst`/`kitchen`/`front_of_house`/`purchasing` excluded; the worked-hours report **not persisted**, `DEC-103` item 7; provisional clarifications recorded as `DEC-103`). **14b-2: done** — `payroll_report` (`WF-005`, the monthly payroll-input report, `DEC-037`/`DEC-104`) delivered 2026-09-22 (migrations `0055`/`0056`, **87 tables**; `/api/v1/workforce/payroll-reports/**`; the frozen versioned snapshot + the partial-unique supersede (`payroll_report_org_period_key`); on-demand generation with `ADR-0004` still gating the ~3-days-before-month-end scheduler; provisional clarifications recorded as `DEC-104`) |
 | 15 | Forecasts / budgets / planning | P4 / epic 16 | `FCST-001`–`003`, `PLAN-001`–`003`; `DEC-011`, `DEC-019` | 12, 13 | clean history / grain measured (I11, `DEC-011`) | blocked (data) |
 | 16 | Publishing integrations | P3 / epic 17 | `INTG-001`–`003`; `DEC-002`, `DEC-015`, `DEC-041`, `DEC-044`; `ADR-0011` (**Proposed**), `ADR-0008` | 3, 7, 12 | `ADR-0011` acceptance; per-source approval + named credentials owner (I18) | blocked (owner) |

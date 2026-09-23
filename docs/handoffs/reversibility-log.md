@@ -1,5 +1,13 @@
 # Reversibility log
 
+- **2026-09-23 row-13e/13f `RPT-004` operations report (`DEC-110`; 6 commits incl.
+  this docs commit; nothing pushed)**: 1. `fdf7dc0` `feat(domain)`; 2. `353c0bc`
+  `feat(persistence)`; 3. `fa7cfe2` `feat(application)`; 4. `ae2352f`
+  `feat(web)`; 5. the `docs(decisions)` commit (`DEC-110`); 6. this
+  `docs(context)` update — each independently revertible with
+  `git revert <sha>`. **No migration and no data written** (on-demand reads over
+  the canonical facts); schema stays **89 tables / `0059`**; `db:migrate` is a
+  no-op. Nothing applied to DigitalOcean.
 - **2026-09-22 row-13d menu engineering (`RPT-005`, `DEC-109`; 5 commits incl.
   this docs commit; nothing pushed)**: 1. `af2b81c` `feat(domain)`; 2. `b360c82`
   `feat(persistence)`; 3. `eb6dbb6` `feat(application)`; 4. `7f7dfc7`
