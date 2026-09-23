@@ -1,6 +1,11 @@
 import { MONEY_SCALE, QUANTITY_SCALE, formatDecimal, parseDecimal } from "@aquarela/domain";
 
 import type {
+  ProductionYieldQuery,
+  ProductionYieldRecordPage,
+  ProductionYieldRecordRow,
+  ProductionYieldRecordsQuery,
+  ProductionYieldRow,
   ReportingStore,
   SalesGroupRow,
   SalesLineQuery,
@@ -8,8 +13,23 @@ import type {
   SalesReportLineRowPage,
   SalesSummary,
   SalesSummaryQuery,
+  StockCountVarianceQuery,
+  StockCountVarianceRecordPage,
+  StockCountVarianceRecordRow,
+  StockCountVarianceRecordsQuery,
+  StockCountVarianceRow,
+  StockValueByLocationQuery,
+  StockValueByLocationRow,
+  StockValueRecordPage,
+  StockValueRecordRow,
+  StockValueRecordsQuery,
   WasteByProductVariantQuery,
   WasteByProductVariantRow,
+  WasteByStageQuery,
+  WasteByStageRow,
+  WasteStageRecordPage,
+  WasteStageRecordRow,
+  WasteStageRecordsQuery,
 } from "./types";
 
 /**
@@ -52,6 +72,78 @@ interface SeededWaste {
   readonly row: WasteByProductVariantRow;
 }
 
+/*
+ * RPT-004 operational-reporting seeds (`DEC-110`). As with the sales seeds, the
+ * aggregate sections are seeded **pre-aggregated** and the drill records are
+ * seeded raw with their own window key. The fake filters the aggregates by
+ * organization **and location scope** only — it cannot apply the half-open
+ * window to a pre-aggregated row, so the window rule is not exercised here; the
+ * raw drill records do carry their own window key and are filtered by the
+ * half-open `[from, to)` window. The fake never re-derives an aggregate from raw
+ * records (`operations-report.postgres.test.ts` covers the real SQL).
+ */
+interface SeededStockValue {
+  readonly organizationId: string;
+  readonly row: StockValueByLocationRow;
+}
+
+interface SeededStockVariance {
+  readonly organizationId: string;
+  readonly row: StockCountVarianceRow;
+}
+
+interface SeededProductionYield {
+  readonly organizationId: string;
+  readonly row: ProductionYieldRow;
+}
+
+interface SeededWasteStage {
+  readonly organizationId: string;
+  readonly locationId: string;
+  readonly row: WasteByStageRow;
+}
+
+interface SeededStockValueRecord {
+  readonly organizationId: string;
+  readonly asOf: string;
+  readonly row: StockValueRecordRow;
+}
+
+interface SeededStockVarianceRecord {
+  readonly organizationId: string;
+  readonly cutoff: string;
+  readonly row: StockCountVarianceRecordRow;
+}
+
+interface SeededProductionRecord {
+  readonly organizationId: string;
+  readonly actualFinish: string;
+  readonly row: ProductionYieldRecordRow;
+}
+
+interface SeededWasteStageRecord {
+  readonly organizationId: string;
+  readonly occurredAt: string;
+  readonly row: WasteStageRecordRow;
+}
+
+/** True when a location-scoped row passes an empty/undefined scope. */
+function inLocationScope(locationIds: readonly string[] | undefined, locationId: string): boolean {
+  return locationIds === undefined || locationIds.length === 0 || locationIds.includes(locationId);
+}
+
+/** Pages a sorted record list with the adapter's conservative truncation flag. */
+function pageRecords<T>(
+  rows: readonly T[],
+  limit: number,
+  offset: number,
+): {
+  readonly rows: readonly T[];
+  readonly truncated: boolean;
+} {
+  return { rows: rows.slice(offset, offset + limit), truncated: rows.length > offset + limit };
+}
+
 /**
  * The adapter's `product`-group ordering: `order by product_variant.name,
  * resolvedVariantId` — a null resolved variant (the unmapped bucket) sorts last,
@@ -83,6 +175,14 @@ export class FakeReportingStore implements ReportingStore {
   readonly groups: SeededGroup[] = [];
   readonly lines: SeededLine[] = [];
   readonly waste: SeededWaste[] = [];
+  readonly stockValues: SeededStockValue[] = [];
+  readonly stockVariances: SeededStockVariance[] = [];
+  readonly productionYields: SeededProductionYield[] = [];
+  readonly wasteStages: SeededWasteStage[] = [];
+  readonly stockValueRecords: SeededStockValueRecord[] = [];
+  readonly stockVarianceRecords: SeededStockVarianceRecord[] = [];
+  readonly productionRecords: SeededProductionRecord[] = [];
+  readonly wasteStageRecords: SeededWasteStageRecord[] = [];
 
   /** Seeds one pre-aggregated group row for `organizationId`. */
   seedGroup(organizationId: string, row: SalesGroupRow): void {
@@ -102,6 +202,54 @@ export class FakeReportingStore implements ReportingStore {
     row: WasteByProductVariantRow,
   ): void {
     this.waste.push({ organizationId, locationId, occurredAt, row });
+  }
+
+  /** Seeds one pre-aggregated stock-value row (`DEC-110` item 1). */
+  seedStockValue(organizationId: string, row: StockValueByLocationRow): void {
+    this.stockValues.push({ organizationId, row });
+  }
+
+  /** Seeds one pre-aggregated stock-count variance row (`DEC-110` items 2/3). */
+  seedStockVariance(organizationId: string, row: StockCountVarianceRow): void {
+    this.stockVariances.push({ organizationId, row });
+  }
+
+  /** Seeds one pre-aggregated production-yield row (`DEC-110` item 5). */
+  seedProductionYield(organizationId: string, row: ProductionYieldRow): void {
+    this.productionYields.push({ organizationId, row });
+  }
+
+  /** Seeds one pre-aggregated waste-by-stage row at a location (`DEC-110` item 4). */
+  seedWasteStage(organizationId: string, locationId: string, row: WasteByStageRow): void {
+    this.wasteStages.push({ organizationId, locationId, row });
+  }
+
+  /** Seeds one stock-value drill record, anchored at its as-of instant. */
+  seedStockValueRecord(organizationId: string, asOf: string, row: StockValueRecordRow): void {
+    this.stockValueRecords.push({ organizationId, asOf, row });
+  }
+
+  /** Seeds one stock-variance drill record, anchored at its count cutoff. */
+  seedStockCountVarianceRecord(
+    organizationId: string,
+    cutoff: string,
+    row: StockCountVarianceRecordRow,
+  ): void {
+    this.stockVarianceRecords.push({ organizationId, cutoff, row });
+  }
+
+  /** Seeds one production drill record, anchored at its actual finish. */
+  seedProductionYieldRecord(
+    organizationId: string,
+    actualFinish: string,
+    row: ProductionYieldRecordRow,
+  ): void {
+    this.productionRecords.push({ organizationId, actualFinish, row });
+  }
+
+  /** Seeds one waste drill record, anchored at its occurrence. */
+  seedWasteStageRecord(organizationId: string, occurredAt: string, row: WasteStageRecordRow): void {
+    this.wasteStageRecords.push({ organizationId, occurredAt, row });
   }
 
   /** True when the row's dimension value passes the query's filters. */
@@ -197,5 +345,124 @@ export class FakeReportingStore implements ReportingStore {
         };
       })
       .sort((left, right) => (left.productVariantId < right.productVariantId ? -1 : 1));
+  }
+
+  async sumStockValueByLocationAsOf(
+    query: StockValueByLocationQuery,
+  ): Promise<readonly StockValueByLocationRow[]> {
+    // Divergence: the aggregate is seeded pre-summed, so the fake cannot
+    // recompute the as-of window; it filters by organization and location only.
+    return this.stockValues
+      .filter((entry) => entry.organizationId === query.organizationId)
+      .filter((entry) => inLocationScope(query.locationIds, entry.row.locationId))
+      .map((entry) => entry.row)
+      .sort((left, right) => (left.locationId < right.locationId ? -1 : 1));
+  }
+
+  async sumStockCountVariance(
+    query: StockCountVarianceQuery,
+  ): Promise<readonly StockCountVarianceRow[]> {
+    return this.stockVariances
+      .filter((entry) => entry.organizationId === query.organizationId)
+      .filter((entry) => inLocationScope(query.locationIds, entry.row.locationId))
+      .map((entry) => entry.row)
+      .sort((left, right) => (left.locationId < right.locationId ? -1 : 1));
+  }
+
+  async sumProductionYield(query: ProductionYieldQuery): Promise<readonly ProductionYieldRow[]> {
+    return this.productionYields
+      .filter((entry) => entry.organizationId === query.organizationId)
+      .filter((entry) => inLocationScope(query.locationIds, entry.row.locationId))
+      .map((entry) => entry.row)
+      .sort((left, right) => (left.recipeVersionId < right.recipeVersionId ? -1 : 1));
+  }
+
+  async sumWasteByStage(query: WasteByStageQuery): Promise<readonly WasteByStageRow[]> {
+    // Divergence: the row is seeded pre-aggregated per stage, so the fake
+    // cannot apply the half-open window here; it filters by organization and
+    // location scope only (the Postgres tests pin the window).
+    return this.wasteStages
+      .filter((entry) => entry.organizationId === query.organizationId)
+      .filter((entry) => inLocationScope(query.locationIds, entry.locationId))
+      .map((entry) => entry.row)
+      .sort((left, right) => (left.stage < right.stage ? -1 : 1));
+  }
+
+  async listStockValueRecords(query: StockValueRecordsQuery): Promise<StockValueRecordPage> {
+    // Divergence: the adapter orders `occurred_at, posted_at, id`; a seeded row
+    // carries no `posted_at`, so the fake breaks ties on `id` alone.
+    const asOf = Date.parse(query.asOf);
+    const rows = this.stockValueRecords
+      .filter((entry) => entry.organizationId === query.organizationId)
+      .filter((entry) => Date.parse(entry.asOf) <= asOf)
+      .filter((entry) => inLocationScope(query.locationIds, entry.row.locationId))
+      .map((entry) => entry.row)
+      .sort((left, right) => {
+        if (left.occurredAt !== right.occurredAt)
+          return left.occurredAt < right.occurredAt ? -1 : 1;
+        return left.id < right.id ? -1 : 1;
+      });
+    return pageRecords(rows, query.limit, query.offset);
+  }
+
+  async listStockCountVarianceRecords(
+    query: StockCountVarianceRecordsQuery,
+  ): Promise<StockCountVarianceRecordPage> {
+    const from = Date.parse(query.from);
+    const to = Date.parse(query.to);
+    const rows = this.stockVarianceRecords
+      .filter((entry) => entry.organizationId === query.organizationId)
+      .filter((entry) => inLocationScope(query.locationIds, entry.row.locationId))
+      .filter((entry) => {
+        const cutoff = Date.parse(entry.cutoff);
+        return cutoff >= from && cutoff < to;
+      })
+      .map((entry) => entry.row)
+      .sort((left, right) => {
+        if (left.cutoff !== right.cutoff) return left.cutoff < right.cutoff ? 1 : -1;
+        return left.id < right.id ? -1 : 1;
+      });
+    return pageRecords(rows, query.limit, query.offset);
+  }
+
+  async listProductionYieldRecords(
+    query: ProductionYieldRecordsQuery,
+  ): Promise<ProductionYieldRecordPage> {
+    const from = Date.parse(query.from);
+    const to = Date.parse(query.to);
+    const rows = this.productionRecords
+      .filter((entry) => entry.organizationId === query.organizationId)
+      .filter((entry) => inLocationScope(query.locationIds, entry.row.locationId))
+      .filter((entry) => {
+        const finish = Date.parse(entry.actualFinish);
+        return finish >= from && finish < to;
+      })
+      .map((entry) => entry.row)
+      .sort((left, right) => {
+        const leftFinish = left.actualFinish ?? "";
+        const rightFinish = right.actualFinish ?? "";
+        if (leftFinish !== rightFinish) return leftFinish < rightFinish ? 1 : -1;
+        return left.id < right.id ? -1 : 1;
+      });
+    return pageRecords(rows, query.limit, query.offset);
+  }
+
+  async listWasteStageRecords(query: WasteStageRecordsQuery): Promise<WasteStageRecordPage> {
+    const from = Date.parse(query.from);
+    const to = Date.parse(query.to);
+    const rows = this.wasteStageRecords
+      .filter((entry) => entry.organizationId === query.organizationId)
+      .filter((entry) => inLocationScope(query.locationIds, entry.row.locationId))
+      .filter((entry) => {
+        const at = Date.parse(entry.occurredAt);
+        return at >= from && at < to;
+      })
+      .map((entry) => entry.row)
+      .sort((left, right) => {
+        if (left.occurredAt !== right.occurredAt)
+          return left.occurredAt < right.occurredAt ? 1 : -1;
+        return left.id < right.id ? 1 : -1;
+      });
+    return pageRecords(rows, query.limit, query.offset);
   }
 }

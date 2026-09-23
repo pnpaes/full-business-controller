@@ -193,4 +193,264 @@ export interface ReportingStore {
   sumWasteByProductVariant(
     query: WasteByProductVariantQuery,
   ): Promise<readonly WasteByProductVariantRow[]>;
+  /** Point-in-time stock value by location (`RPT-004`, `DEC-110` item 1). */
+  sumStockValueByLocationAsOf(
+    query: StockValueByLocationQuery,
+  ): Promise<readonly StockValueByLocationRow[]>;
+  /** Approved count variance + booked adjustment value by location (`DEC-110` 2/3). */
+  sumStockCountVariance(query: StockCountVarianceQuery): Promise<readonly StockCountVarianceRow[]>;
+  /** Completed-batch yield inputs/outputs by location/recipe (`DEC-110` item 5). */
+  sumProductionYield(query: ProductionYieldQuery): Promise<readonly ProductionYieldRow[]>;
+  /** Waste by the `DEC-018` stage axis (`DEC-110` item 4). */
+  sumWasteByStage(query: WasteByStageQuery): Promise<readonly WasteByStageRow[]>;
+  /** The as-of ledger movements behind the stock-value section (`RPT-002`). */
+  listStockValueRecords(query: StockValueRecordsQuery): Promise<StockValueRecordPage>;
+  /** The approved count lines behind the stock-variance section (`RPT-002`). */
+  listStockCountVarianceRecords(
+    query: StockCountVarianceRecordsQuery,
+  ): Promise<StockCountVarianceRecordPage>;
+  /** The completed batches behind the production section (`RPT-002`). */
+  listProductionYieldRecords(
+    query: ProductionYieldRecordsQuery,
+  ): Promise<ProductionYieldRecordPage>;
+  /** The waste events behind the waste section (`RPT-002`). */
+  listWasteStageRecords(query: WasteStageRecordsQuery): Promise<WasteStageRecordPage>;
+}
+
+/*
+ * RPT-004 operational reporting port DTOs (rows 13e/13f, `DEC-110`).
+ *
+ * The four aggregate reads return pre-shaped rows; the application read model
+ * sums the totals, derives the yield figures and caps the lists. Every money/
+ * quantity field is a decimal string (never a float) and every read is
+ * organization-scoped (`DEC-061`); an empty/undefined `locationIds` means
+ * organization-wide (the repo convention). Every **flow** section (variance,
+ * production, waste) shares one half-open `[from, to)` window (`DEC-110` item
+ * 6); stock value is point-in-time `<= asOf` and not period-bounded.
+ */
+
+/** The four operational-report sections (`RPT-004`, `DEC-110`). */
+export const OPERATIONS_REPORT_SECTIONS = [
+  "stock_value",
+  "stock_variance",
+  "production",
+  "waste",
+] as const;
+export type OperationsReportSection = (typeof OPERATIONS_REPORT_SECTIONS)[number];
+
+/** True when `value` is one of `OPERATIONS_REPORT_SECTIONS`. */
+export function isOperationsReportSection(value: string): value is OperationsReportSection {
+  return (OPERATIONS_REPORT_SECTIONS as readonly string[]).includes(value);
+}
+
+/** A safety ceiling on each operational-report section; beyond it the report is truncated. */
+export const OPERATIONS_REPORT_MAX_ROWS = 500;
+
+/** Default page size of the RPT-002 operational drill-down when the caller omits `limit`. */
+export const DEFAULT_OPERATIONS_REPORT_RECORD_LIMIT = 100;
+
+/** A stock-value read (`DEC-110` item 1): point-in-time Σ value by location. */
+export interface StockValueByLocationQuery {
+  readonly organizationId: string;
+  /** The valuation instant; an ISO instant. */
+  readonly asOf: string;
+  readonly locationIds?: readonly string[] | undefined;
+}
+
+export interface StockValueByLocationRow {
+  readonly locationId: string;
+  readonly locationName: string | null;
+  /** `numeric(19,4)` money string. */
+  readonly valueOnHand: string;
+}
+
+/** A stock-count variance read (`DEC-110` items 2/3). */
+export interface StockCountVarianceQuery {
+  readonly organizationId: string;
+  /** Inclusive lower bound on `stock_count.cutoff`; an ISO instant. */
+  readonly from: string;
+  /** Exclusive upper bound on `stock_count.cutoff`; an ISO instant. */
+  readonly to: string;
+  readonly locationIds?: readonly string[] | undefined;
+}
+
+export interface StockCountVarianceRow {
+  readonly locationId: string;
+  readonly locationName: string | null;
+  readonly counts: number;
+  /** `numeric(19,6)` quantity string. */
+  readonly varianceQty: string;
+  /** `numeric(19,4)` money string; the booked count-adjustment value. */
+  readonly adjustmentValue: string;
+}
+
+/** A production-yield read (`DEC-110` item 5). */
+export interface ProductionYieldQuery {
+  readonly organizationId: string;
+  /** Inclusive lower bound on `production_batch.actual_finish`; an ISO instant. */
+  readonly from: string;
+  /** Exclusive upper bound on `production_batch.actual_finish`; an ISO instant. */
+  readonly to: string;
+  readonly locationIds?: readonly string[] | undefined;
+}
+
+export interface ProductionYieldRow {
+  readonly locationId: string;
+  readonly locationName: string | null;
+  readonly recipeVersionId: string;
+  readonly recipeName: string | null;
+  readonly batches: number;
+  /** `numeric(19,6)` quantity strings. */
+  readonly plannedOutput: string;
+  readonly actualOutput: string;
+  /** `numeric(19,4)` money strings. */
+  readonly inputValue: string;
+  readonly outputValue: string;
+}
+
+/** A waste-by-stage read (`DEC-110` item 4). */
+export interface WasteByStageQuery {
+  readonly organizationId: string;
+  /** Inclusive lower bound on `waste_event.occurred_at`; an ISO instant. */
+  readonly from: string;
+  /** Exclusive upper bound on `waste_event.occurred_at`; an ISO instant. */
+  readonly to: string;
+  readonly locationIds?: readonly string[] | undefined;
+}
+
+export interface WasteByStageRow {
+  readonly stage: string;
+  readonly events: number;
+  /** `numeric(19,6)` quantity string, summed unit-blind. */
+  readonly quantity: string;
+  /** `numeric(19,4)` money string over moving-average events; null when none. */
+  readonly value: string | null;
+}
+
+/** The as-of window a stock-value drill-down shares (`RPT-002`). */
+export interface StockValueRecordsQuery {
+  readonly organizationId: string;
+  readonly asOf: string;
+  readonly locationIds?: readonly string[] | undefined;
+  readonly limit: number;
+  readonly offset: number;
+}
+
+/** One `stock_movement` row behind the stock-value section. */
+export interface StockValueRecordRow {
+  readonly id: string;
+  readonly occurredAt: string;
+  readonly locationId: string;
+  readonly locationName: string | null;
+  readonly itemId: string;
+  readonly itemCode: string | null;
+  readonly itemName: string | null;
+  readonly movementType: string;
+  readonly quantityDelta: string;
+  readonly unitId: string;
+  readonly valueDelta: string | null;
+  readonly currency: string | null;
+  readonly sourceType: string;
+  readonly sourceId: string;
+}
+
+/** The half-open cutoff window a stock-variance drill-down shares. */
+export interface StockCountVarianceRecordsQuery {
+  readonly organizationId: string;
+  readonly from: string;
+  readonly to: string;
+  readonly locationIds?: readonly string[] | undefined;
+  readonly limit: number;
+  readonly offset: number;
+}
+
+/** One approved `stock_count_line` behind the stock-variance section. */
+export interface StockCountVarianceRecordRow {
+  readonly id: string;
+  readonly stockCountId: string;
+  readonly cutoff: string;
+  readonly locationId: string;
+  readonly locationName: string | null;
+  readonly itemId: string;
+  readonly itemCode: string | null;
+  readonly itemName: string | null;
+  readonly storageAreaId: string;
+  readonly lotId: string | null;
+  readonly expectedQty: string;
+  readonly countedQty: string | null;
+  readonly varianceQty: string | null;
+  readonly reasonCode: string | null;
+  readonly recount: boolean;
+}
+
+/** The half-open finish window a production drill-down shares. */
+export interface ProductionYieldRecordsQuery {
+  readonly organizationId: string;
+  readonly from: string;
+  readonly to: string;
+  readonly locationIds?: readonly string[] | undefined;
+  readonly limit: number;
+  readonly offset: number;
+}
+
+/** One completed `production_batch` behind the production section. */
+export interface ProductionYieldRecordRow {
+  readonly id: string;
+  readonly locationId: string;
+  readonly locationName: string | null;
+  readonly recipeVersionId: string;
+  readonly recipeName: string | null;
+  readonly status: string;
+  readonly actualStart: string | null;
+  readonly actualFinish: string | null;
+  readonly plannedOutputQty: string | null;
+  readonly actualOutputQty: string | null;
+  readonly yieldVariancePct: string | null;
+}
+
+/** The half-open `[from, to)` `occurred_at` window a waste drill-down shares. */
+export interface WasteStageRecordsQuery {
+  readonly organizationId: string;
+  readonly from: string;
+  readonly to: string;
+  readonly locationIds?: readonly string[] | undefined;
+  readonly limit: number;
+  readonly offset: number;
+}
+
+/** One `waste_event` behind the waste section. */
+export interface WasteStageRecordRow {
+  readonly id: string;
+  readonly occurredAt: string;
+  readonly locationId: string;
+  readonly locationName: string | null;
+  readonly stage: string;
+  readonly reasonCode: string;
+  readonly itemId: string | null;
+  readonly itemCode: string | null;
+  readonly itemName: string | null;
+  readonly productVariantId: string | null;
+  readonly quantity: string;
+  readonly unitId: string;
+  readonly valueMethod: string;
+  readonly value: string | null;
+  readonly currency: string | null;
+}
+
+/** One drill-down page with a conservative completeness flag. */
+export interface StockValueRecordPage {
+  readonly rows: readonly StockValueRecordRow[];
+  readonly truncated: boolean;
+}
+export interface StockCountVarianceRecordPage {
+  readonly rows: readonly StockCountVarianceRecordRow[];
+  readonly truncated: boolean;
+}
+export interface ProductionYieldRecordPage {
+  readonly rows: readonly ProductionYieldRecordRow[];
+  readonly truncated: boolean;
+}
+export interface WasteStageRecordPage {
+  readonly rows: readonly WasteStageRecordRow[];
+  readonly truncated: boolean;
 }

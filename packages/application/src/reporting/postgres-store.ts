@@ -3,14 +3,34 @@ import * as repo from "@aquarela/persistence";
 import type { Database } from "@aquarela/persistence";
 
 import type {
+  ProductionYieldQuery,
+  ProductionYieldRecordPage,
+  ProductionYieldRecordRow,
+  ProductionYieldRecordsQuery,
+  ProductionYieldRow,
   ReportingStore,
   SalesGroupRow,
   SalesLineQuery,
   SalesReportLineRow,
   SalesReportLineRowPage,
   SalesSummaryQuery,
+  StockCountVarianceQuery,
+  StockCountVarianceRecordPage,
+  StockCountVarianceRecordRow,
+  StockCountVarianceRecordsQuery,
+  StockCountVarianceRow,
+  StockValueByLocationQuery,
+  StockValueByLocationRow,
+  StockValueRecordPage,
+  StockValueRecordRow,
+  StockValueRecordsQuery,
   WasteByProductVariantQuery,
   WasteByProductVariantRow,
+  WasteByStageQuery,
+  WasteByStageRow,
+  WasteStageRecordPage,
+  WasteStageRecordRow,
+  WasteStageRecordsQuery,
 } from "./types";
 import { SALES_REPORT_UNMAPPED_KEY, SALES_REPORT_UNMAPPED_LABEL } from "./types";
 
@@ -241,6 +261,148 @@ export function createPostgresReportingStore(db: Database): ReportingStore {
         quantity: quantity(row.quantity),
         value: row.value === null ? null : money(row.value),
       }));
+    },
+    sumStockValueByLocationAsOf: async (
+      query: StockValueByLocationQuery,
+    ): Promise<readonly StockValueByLocationRow[]> => {
+      const rows = await repo.sumStockValueByLocationAsOf(db, {
+        organizationId: query.organizationId,
+        asOf: new Date(query.asOf),
+        ...(query.locationIds === undefined ? {} : { locationIds: query.locationIds }),
+      });
+      return rows.map((row) => ({
+        locationId: row.locationId,
+        locationName: row.locationName,
+        valueOnHand: money(row.valueOnHand),
+      }));
+    },
+    sumStockCountVariance: async (
+      query: StockCountVarianceQuery,
+    ): Promise<readonly StockCountVarianceRow[]> => {
+      const rows = await repo.sumStockCountVariance(db, {
+        organizationId: query.organizationId,
+        from: query.from,
+        to: query.to,
+        ...(query.locationIds === undefined ? {} : { locationIds: query.locationIds }),
+      });
+      return rows.map((row) => ({
+        locationId: row.locationId,
+        locationName: row.locationName,
+        counts: countValue(row.counts),
+        varianceQty: quantity(row.varianceQty),
+        adjustmentValue: money(row.adjustmentValue),
+      }));
+    },
+    sumProductionYield: async (
+      query: ProductionYieldQuery,
+    ): Promise<readonly ProductionYieldRow[]> => {
+      const rows = await repo.sumProductionYield(db, {
+        organizationId: query.organizationId,
+        from: query.from,
+        to: query.to,
+        ...(query.locationIds === undefined ? {} : { locationIds: query.locationIds }),
+      });
+      return rows.map((row) => ({
+        locationId: row.locationId,
+        locationName: row.locationName,
+        recipeVersionId: row.recipeVersionId,
+        recipeName: row.recipeName,
+        batches: countValue(row.batches),
+        plannedOutput: quantity(row.plannedOutput),
+        actualOutput: quantity(row.actualOutput),
+        inputValue: money(row.inputValue),
+        outputValue: money(row.outputValue),
+      }));
+    },
+    sumWasteByStage: async (query: WasteByStageQuery): Promise<readonly WasteByStageRow[]> => {
+      const rows = await repo.sumWasteByStage(db, {
+        organizationId: query.organizationId,
+        from: query.from,
+        to: query.to,
+        ...(query.locationIds === undefined ? {} : { locationIds: query.locationIds }),
+      });
+      return rows.map((row) => ({
+        stage: row.stage,
+        events: countValue(row.events),
+        quantity: quantity(row.quantity),
+        value: row.value === null ? null : money(row.value),
+      }));
+    },
+    listStockValueRecords: async (query: StockValueRecordsQuery): Promise<StockValueRecordPage> => {
+      const page = await repo.listStockValueRecords(db, {
+        organizationId: query.organizationId,
+        asOf: new Date(query.asOf),
+        limit: query.limit,
+        offset: query.offset,
+        ...(query.locationIds === undefined ? {} : { locationIds: query.locationIds }),
+      });
+      return {
+        rows: page.rows.map((row): StockValueRecordRow => ({
+          ...row,
+          quantityDelta: quantity(row.quantityDelta),
+          valueDelta: row.valueDelta === null ? null : money(row.valueDelta),
+        })),
+        truncated: page.truncated,
+      };
+    },
+    listStockCountVarianceRecords: async (
+      query: StockCountVarianceRecordsQuery,
+    ): Promise<StockCountVarianceRecordPage> => {
+      const page = await repo.listStockCountVarianceRecords(db, {
+        organizationId: query.organizationId,
+        from: query.from,
+        to: query.to,
+        limit: query.limit,
+        offset: query.offset,
+        ...(query.locationIds === undefined ? {} : { locationIds: query.locationIds }),
+      });
+      return {
+        rows: page.rows.map((row): StockCountVarianceRecordRow => ({
+          ...row,
+          expectedQty: quantity(row.expectedQty),
+          countedQty: row.countedQty === null ? null : quantity(row.countedQty),
+          varianceQty: row.varianceQty === null ? null : quantity(row.varianceQty),
+        })),
+        truncated: page.truncated,
+      };
+    },
+    listProductionYieldRecords: async (
+      query: ProductionYieldRecordsQuery,
+    ): Promise<ProductionYieldRecordPage> => {
+      const page = await repo.listProductionYieldRecords(db, {
+        organizationId: query.organizationId,
+        from: query.from,
+        to: query.to,
+        limit: query.limit,
+        offset: query.offset,
+        ...(query.locationIds === undefined ? {} : { locationIds: query.locationIds }),
+      });
+      return {
+        rows: page.rows.map((row): ProductionYieldRecordRow => ({
+          ...row,
+          plannedOutputQty: row.plannedOutputQty === null ? null : quantity(row.plannedOutputQty),
+          actualOutputQty: row.actualOutputQty === null ? null : quantity(row.actualOutputQty),
+        })),
+        truncated: page.truncated,
+      };
+    },
+    listWasteStageRecords: async (query: WasteStageRecordsQuery): Promise<WasteStageRecordPage> => {
+      const page = await repo.listWasteStageRecords(db, {
+        organizationId: query.organizationId,
+        from: query.from,
+        to: query.to,
+        limit: query.limit,
+        offset: query.offset,
+        ...(query.locationIds === undefined ? {} : { locationIds: query.locationIds }),
+      });
+      return {
+        rows: page.rows.map((row): WasteStageRecordRow => ({
+          ...row,
+          quantity: quantity(row.quantity),
+          value: row.value === null ? null : money(row.value),
+        })),
+        truncated: page.truncated,
+      };
     },
   };
 }
