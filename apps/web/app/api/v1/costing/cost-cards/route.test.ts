@@ -139,6 +139,11 @@ beforeEach(() => {
         otherVariableCost: "0.0000",
         allocatedUnitOverhead: "0.0000",
       },
+      resolved: {
+        directLaborCost: false,
+        channelVariableCost: false,
+        allocatedUnitOverhead: false,
+      },
       notes: [],
     },
   });
@@ -314,6 +319,52 @@ describe("POST /api/v1/costing/cost-cards", () => {
 
   it("returns 400 for a non-uuid fxRateId", async () => {
     const response = await POST(postRequest({ ...validBody, fxRateId: "not-a-uuid" }));
+
+    expect(response.status).toBe(400);
+    expect(application.assembleCostCardComposition).not.toHaveBeenCalled();
+  });
+
+  it("passes costPoolId, unitsPerOrder and the overhead period to the assembler", async () => {
+    const COST_POOL = "66666666-6666-4666-8666-666666666666";
+
+    const response = await POST(
+      postRequest({
+        ...validBody,
+        costPoolId: COST_POOL,
+        unitsPerOrder: "2.000000",
+        periodFrom: "2026-01-01T00:00:00.000Z",
+        periodTo: "2026-02-01T00:00:00.000Z",
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(application.assembleCostCardComposition).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        costPoolId: COST_POOL,
+        unitsPerOrder: "2.000000",
+        periodFrom: new Date("2026-01-01T00:00:00.000Z"),
+        periodTo: new Date("2026-02-01T00:00:00.000Z"),
+      }),
+    );
+  });
+
+  it("returns 400 for a non-uuid costPoolId", async () => {
+    const response = await POST(postRequest({ ...validBody, costPoolId: "not-a-uuid" }));
+
+    expect(response.status).toBe(400);
+    expect(application.assembleCostCardComposition).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 when unitsPerOrder is present as a number", async () => {
+    const response = await POST(postRequest({ ...validBody, unitsPerOrder: 2 }));
+
+    expect(response.status).toBe(400);
+    expect(application.assembleCostCardComposition).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 for an invalid overhead period bound", async () => {
+    const response = await POST(postRequest({ ...validBody, periodFrom: "not-a-date" }));
 
     expect(response.status).toBe(400);
     expect(application.assembleCostCardComposition).not.toHaveBeenCalled();

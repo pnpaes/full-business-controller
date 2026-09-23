@@ -33,6 +33,19 @@ export function isPresentNonString(body: Record<string, unknown>, key: string): 
   return Object.prototype.hasOwnProperty.call(body, key) && typeof body[key] !== "string";
 }
 
+/**
+ * True when `key` is present, not `null`, and its value is not a string. An
+ * explicit `null` is a legitimate "clear this nullable field" for an optional
+ * key (unlike the defaulted money fields), so it is not a malformed value.
+ */
+export function isPresentNonNullNonString(body: Record<string, unknown>, key: string): boolean {
+  return (
+    Object.prototype.hasOwnProperty.call(body, key) &&
+    body[key] !== null &&
+    typeof body[key] !== "string"
+  );
+}
+
 /** Parses a JSON object body, or undefined when it is not one. */
 export async function readJsonObject(
   request: Request,

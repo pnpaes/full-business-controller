@@ -28,6 +28,7 @@ import {
 } from "../costing-views";
 import { costingLimiters } from "../limiters";
 import {
+  isPresentNonNullNonString,
   isPresentNonString,
   isRecord,
   readJsonObject,
@@ -43,9 +44,10 @@ const DEFAULT_COST_SELECTION_POLICY = "latest_approved_price";
 const DEFAULT_RULE_VERSION = "calc-v1";
 
 /**
- * Money/currency body keys. A missing key falls back to the assembler's default
- * (`"0.0000"`, `"NOK"`), but a present non-string value must not silently reach
- * that default: `{"directLaborCost": 2.55}` would otherwise persist `0.0000`.
+ * Money/currency/quantity body keys. A missing key falls back to the assembler's
+ * default (`"0.0000"`, `"NOK"`, `"1"`), but a present non-string value must not
+ * silently reach that default: `{"directLaborCost": 2.55}` would otherwise
+ * persist `0.0000`.
  */
 const STRING_MONEY_FIELDS = [
   "directLaborCost",
@@ -53,6 +55,7 @@ const STRING_MONEY_FIELDS = [
   "otherVariableCost",
   "allocatedUnitOverhead",
   "currency",
+  "unitsPerOrder",
 ] as const;
 
 /**
@@ -135,17 +138,40 @@ export async function POST(request: Request): Promise<Response> {
     const channelId = readOptionalString(body, "channelId");
     const recipeVersionId = readOptionalString(body, "recipeVersionId");
     const fxRateId = readOptionalString(body, "fxRateId");
+    const costPoolId = readOptionalString(body, "costPoolId");
     if (
       (channelId !== undefined && !isUuid(channelId)) ||
       (recipeVersionId !== undefined && !isUuid(recipeVersionId)) ||
-      (fxRateId !== undefined && !isUuid(fxRateId))
+      (fxRateId !== undefined && !isUuid(fxRateId)) ||
+      (costPoolId !== undefined && !isUuid(costPoolId))
     ) {
+      return jsonError(400);
+    }
+    // `costPoolId` is nullable, so an explicit `null` is valid; a number/boolean
+    // would already have been dropped by `readOptionalString` and must be a 400.
+    if (isPresentNonNullNonString(body, "costPoolId")) {
       return jsonError(400);
     }
 
     // A money/currency key that is present but not a string must not fall back
     // to its default (F2): reject rather than persist a wrong financial fact.
     if (STRING_MONEY_FIELDS.some((key) => isPresentNonString(body, key))) {
+      return jsonError(400);
+    }
+
+    // The allocated-overhead window (DEC-112): optional instants, but a present
+    // value must parse as a date. `costPoolId` above is the pool to allocate.
+    const periodFromRaw = readOptionalString(body, "periodFrom");
+    const periodToRaw = readOptionalString(body, "periodTo");
+    if (isPresentNonString(body, "periodFrom") || isPresentNonString(body, "periodTo")) {
+      return jsonError(400);
+    }
+    const periodFrom = periodFromRaw === undefined ? undefined : new Date(periodFromRaw);
+    const periodTo = periodToRaw === undefined ? undefined : new Date(periodToRaw);
+    if (
+      (periodFrom !== undefined && Number.isNaN(periodFrom.getTime())) ||
+      (periodTo !== undefined && Number.isNaN(periodTo.getTime()))
+    ) {
       return jsonError(400);
     }
 
@@ -158,6 +184,7 @@ export async function POST(request: Request): Promise<Response> {
     const channelVariableCost = readOptionalString(body, "channelVariableCost");
     const otherVariableCost = readOptionalString(body, "otherVariableCost");
     const allocatedUnitOverhead = readOptionalString(body, "allocatedUnitOverhead");
+    const unitsPerOrder = readOptionalString(body, "unitsPerOrder");
     // Optional jsonb metadata: absent is fine, present-but-not-an-object is a 400.
     if (
       (body["taxRuleSnapshot"] !== undefined && !isRecord(body["taxRuleSnapshot"])) ||
@@ -180,6 +207,10 @@ export async function POST(request: Request): Promise<Response> {
       ...(channelVariableCost === undefined ? {} : { channelVariableCost }),
       ...(otherVariableCost === undefined ? {} : { otherVariableCost }),
       ...(allocatedUnitOverhead === undefined ? {} : { allocatedUnitOverhead }),
+      ...(costPoolId === undefined ? {} : { costPoolId }),
+      ...(unitsPerOrder === undefined ? {} : { unitsPerOrder }),
+      ...(periodFrom === undefined ? {} : { periodFrom }),
+      ...(periodTo === undefined ? {} : { periodTo }),
       ...(taxRuleSnapshot === undefined ? {} : { taxRuleSnapshot }),
       ...(fxRateId === undefined ? {} : { fxRateId }),
       ...(roundingScales === undefined ? {} : { roundingScales }),

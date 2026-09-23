@@ -3,19 +3,21 @@ import {
   createPostgresCostingStore,
   listOperatingCosts,
   registerAllocationRule,
+  registerChannelFeeRule,
   registerCostPool,
   registerLaborRate,
   registerOperatingCost,
 } from "@aquarela/application";
-import { createDb } from "@aquarela/persistence";
+import { createDb, listEffectiveChannelFeeRules } from "@aquarela/persistence";
 import type { DbClient } from "@aquarela/persistence";
 
 /**
  * Operator command that gives a demo/development install a small, coherent
  * slice-6 costing data set for the Costs screens: one cost centre, one location,
- * one operating cost, one labour rate, and one cost pool with an allocation
- * rule. Everything is registered through the **application** commands, so the
- * effective-window overlap rules and audit facts are exercised end-to-end.
+ * one channel with a channel fee rule, one operating cost linked to a cost pool,
+ * one labour rate, and the cost pool with its allocation rule. Everything is
+ * registered through the **application** commands, so the effective-window
+ * overlap rules and audit facts are exercised end-to-end.
  *
  * Run with `npx tsx apps/web/scripts/seed-costing.ts`. It never creates an
  * organization or a user: the organization must already exist (from
@@ -29,10 +31,15 @@ import type { DbClient } from "@aquarela/persistence";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const LOCATION_CODE = "DEMO_CAFE";
+const CHANNEL_CODE = "DEMO_ONLINE";
 const COST_CENTER_CODE = "DEMO_SHARED";
 const COST_POOL_CODE = "DEMO_OVERHEAD";
 const LABOR_ROLE_CODE = "kitchen";
 const OPERATING_COST_VENDOR = "Demo Utilities AS";
+const CHANNEL_FEE_RULE_FEE_KIND = "commission_pct";
+const CHANNEL_FEE_RULE_FEE_BASIS = "net_price";
+const CHANNEL_FEE_RULE_PERCENTAGE_RATE = "0.025000";
+const CHANNEL_FEE_RULE_CODE = `${CHANNEL_CODE}:${CHANNEL_FEE_RULE_FEE_KIND}`;
 /** A fixed effective window keeps every row reproducible across runs. */
 const EFFECTIVE_FROM = "2026-01-01";
 
@@ -45,8 +52,9 @@ Required (flag or env):
 Optional:
   --help
 
-The cost centre, location, operating cost, labour rate, cost pool and allocation
-rule are all reused when present, so re-running is a no-op.`;
+The cost centre, location, channel, channel fee rule, operating cost, labour
+rate, cost pool and allocation rule are all reused when present, so re-running is
+a no-op.`;
 
 interface CliOptions {
   databaseUrl?: string;
@@ -174,6 +182,19 @@ async function seed(client: DbClient, organizationId: string): Promise<SeedSumma
   );
   entities.push({ kind: "location", code: LOCATION_CODE, created: location.created });
 
+  const channel = await ensureRow(
+    client,
+    {
+      text: "select id from channel where organization_id = $1 and code = $2",
+      values: [organizationId, CHANNEL_CODE],
+    },
+    {
+      text: "insert into channel (organization_id, code, name, is_delivery) values ($1, $2, $3, $4)",
+      values: [organizationId, CHANNEL_CODE, "Demo Online", false],
+    },
+  );
+  entities.push({ kind: "channel", code: CHANNEL_CODE, created: channel.created });
+
   const costCenter = await ensureRow(
     client,
     {
@@ -221,9 +242,9 @@ async function seed(client: DbClient, organizationId: string): Promise<SeedSumma
       organizationId,
       actorId,
       costPoolId,
-      driver: "production_hours",
+      driver: "eligible_products",
       scopeType: "location",
-      denominatorSource: "production_hours",
+      denominatorSource: "eligible_products",
       effectiveFrom: EFFECTIVE_FROM,
     });
     entities.push({ kind: "allocation rule", code: COST_POOL_CODE, created: true });
@@ -264,6 +285,7 @@ async function seed(client: DbClient, organizationId: string): Promise<SeedSumma
       actorId,
       costCenterId: costCenter.id,
       locationId: location.id,
+      costPoolId,
       amount: "12500",
       recurrence: "monthly",
       behavior: "fixed",
@@ -272,6 +294,30 @@ async function seed(client: DbClient, organizationId: string): Promise<SeedSumma
       vendor: OPERATING_COST_VENDOR,
     });
     entities.push({ kind: "operating cost", code: OPERATING_COST_VENDOR, created: true });
+  }
+
+  // One demo channel fee rule (DEC-112). `channel_fee_rule` has no natural key in
+  // the application port, so idempotency is the demo channel + fee kind matched
+  // through the persistence effective-window read.
+  const effectiveFeeRules = await listEffectiveChannelFeeRules(client.db, {
+    organizationId,
+    channelId: channel.id,
+    asOf: new Date(`${EFFECTIVE_FROM}T00:00:00.000Z`),
+  });
+  if (effectiveFeeRules.length > 0) {
+    entities.push({ kind: "channel fee rule", code: CHANNEL_FEE_RULE_CODE, created: false });
+  } else {
+    await registerChannelFeeRule(store, {
+      organizationId,
+      actorId,
+      channelId: channel.id,
+      feeKind: CHANNEL_FEE_RULE_FEE_KIND,
+      percentageRate: CHANNEL_FEE_RULE_PERCENTAGE_RATE,
+      feeBasis: CHANNEL_FEE_RULE_FEE_BASIS,
+      effectiveFrom: EFFECTIVE_FROM,
+      effectiveTo: null,
+    });
+    entities.push({ kind: "channel fee rule", code: CHANNEL_FEE_RULE_CODE, created: true });
   }
 
   return { entities };

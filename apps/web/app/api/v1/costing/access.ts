@@ -36,6 +36,15 @@ export const COST_CARD_READ_ROLES = [
   "analyst",
 ] as const;
 
+/**
+ * Channel fee rules (DEC-112) are a cost-card component, so they share the
+ * cost-card surface's roles: registering one is the same draft/record action
+ * and reading them the same read set. Aliased rather than duplicated so the
+ * two surfaces cannot drift.
+ */
+export const CHANNEL_FEE_RULE_WRITE_ROLES = COST_CARD_WRITE_ROLES;
+export const CHANNEL_FEE_RULE_READ_ROLES = COST_CARD_READ_ROLES;
+
 /** Loads the caller's roles and location scope live from server data (ADR-0003). */
 export async function loadCostingAccess(userId: string): Promise<UserAccess> {
   return loadUserAccess(getAuthStore(), userId);

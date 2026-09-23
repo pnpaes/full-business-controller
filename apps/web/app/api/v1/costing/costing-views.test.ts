@@ -256,6 +256,7 @@ describe("costing view mapping", () => {
           organizationId: ORG,
           locationId: "l",
           costCenterId: "cc",
+          costPoolId: null,
           amount: "12500.0000",
           currency: "NOK",
           recurrence: "monthly",

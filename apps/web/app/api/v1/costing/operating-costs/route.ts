@@ -10,8 +10,13 @@ import { getDb } from "../../../../../lib/db";
 import { jsonError, jsonOk, mapErrors } from "../../../../../lib/http";
 import { resolveOrganization } from "../../../../../lib/organization";
 import { getServerSession } from "../../../../../lib/server-session";
-import { loadCostingRefs, toOperatingCostRows } from "../costing-views";
-import { readJsonObject, readOptionalString, readRequiredString } from "../parse";
+import { isUuid, loadCostingRefs, toOperatingCostRows } from "../costing-views";
+import {
+  isPresentNonNullNonString,
+  readJsonObject,
+  readOptionalString,
+  readRequiredString,
+} from "../parse";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -69,6 +74,16 @@ export async function POST(request: Request): Promise<Response> {
       return jsonError(400);
     }
 
+    // An optional shared-pool link (DEC-112): reject a malformed id rather than
+    // silently register the cost as a direct (unpooled) cost.
+    const costPoolId = readOptionalString(body, "costPoolId");
+    if (
+      (costPoolId !== undefined && !isUuid(costPoolId)) ||
+      isPresentNonNullNonString(body, "costPoolId")
+    ) {
+      return jsonError(400);
+    }
+
     const organizationId = resolveOrganization();
     const store = createPostgresCostingStore(getDb().db);
     const currency = readOptionalString(body, "currency");
@@ -78,6 +93,7 @@ export async function POST(request: Request): Promise<Response> {
         actorId: session.userId,
         costCenterId,
         locationId: readOptionalString(body, "locationId") ?? null,
+        costPoolId: costPoolId ?? null,
         amount,
         ...(currency === undefined ? {} : { currency }),
         recurrence,

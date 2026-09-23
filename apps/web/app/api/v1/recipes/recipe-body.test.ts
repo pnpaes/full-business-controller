@@ -77,6 +77,37 @@ describe("parseRegisterVersionBody", () => {
     }
   });
 
+  it("parses the DEC-112 direct-labour mapping, allowing explicit nulls", () => {
+    const mapped = parseRegisterVersionBody({
+      ...minimal,
+      laborCostCenterId: ITEM,
+      laborRoleCode: "kitchen",
+    });
+    expect(mapped.ok).toBe(true);
+    if (mapped.ok) {
+      expect(mapped.value.laborCostCenterId).toBe(ITEM);
+      expect(mapped.value.laborRoleCode).toBe("kitchen");
+    }
+
+    const cleared = parseRegisterVersionBody({
+      ...minimal,
+      laborCostCenterId: null,
+      laborRoleCode: null,
+    });
+    expect(cleared.ok).toBe(true);
+    if (cleared.ok) {
+      expect(cleared.value.laborCostCenterId).toBeNull();
+      expect(cleared.value.laborRoleCode).toBeNull();
+    }
+  });
+
+  it("rejects a malformed direct-labour mapping", () => {
+    expect(parseRegisterVersionBody({ ...minimal, laborCostCenterId: "nope" })).toEqual({
+      ok: false,
+    });
+    expect(parseRegisterVersionBody({ ...minimal, laborRoleCode: 7 })).toEqual({ ok: false });
+  });
+
   it("rejects a missing line array, a bad version number and a malformed line id", () => {
     expect(parseRegisterVersionBody({ ...minimal, lines: [] })).toEqual({ ok: false });
     expect(parseRegisterVersionBody({ ...minimal, versionNo: 0 })).toEqual({ ok: false });

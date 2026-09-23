@@ -10,4 +10,5 @@ const FIFTEEN_MINUTES_MS = 15 * 60_000;
  */
 export const costingLimiters = {
   calculateCostCard: createInMemoryRateLimiter({ limit: 60, windowMs: FIFTEEN_MINUTES_MS }),
+  registerChannelFeeRule: createInMemoryRateLimiter({ limit: 60, windowMs: FIFTEEN_MINUTES_MS }),
 } as const;

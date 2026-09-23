@@ -30,6 +30,13 @@ export interface RegisterRecipeVersionBody {
   readonly approvedAt?: Date | null;
   readonly preparationMinutes?: number | null;
   readonly notes?: string | null;
+  /**
+   * The DEC-112 direct-labour mapping: a cost centre + role pair, both nullable
+   * and all-or-nothing (the command/database enforce the pairing). The manual
+   * `preparationMinutes` on the version is the per-batch direct-labour minutes.
+   */
+  readonly laborCostCenterId?: string | null;
+  readonly laborRoleCode?: string | null;
   readonly lines: readonly RegisterRecipeVersionLineInput[];
   readonly allergens?: readonly RegisterRecipeVersionAllergenInput[];
 }
@@ -225,6 +232,8 @@ export function parseRegisterVersionBody(
     approvedAt?: Date | null;
     preparationMinutes?: number | null;
     notes?: string | null;
+    laborCostCenterId?: string | null;
+    laborRoleCode?: string | null;
     allergens?: RegisterRecipeVersionAllergenInput[];
   } = { versionNo, plannedInputQty, plannedOutputQty, approvedUsableOutput, effectiveFrom, lines };
 
@@ -280,6 +289,26 @@ export function parseRegisterVersionBody(
         return { ok: false };
       }
       value.notes = notes;
+    }
+  }
+  // DEC-112 direct-labour mapping. The values only need their types checked
+  // here; the command and the all-or-nothing check own the pairing/vocabulary.
+  if ("laborCostCenterId" in body) {
+    const laborCostCenterId = nullableUuid(body.laborCostCenterId);
+    if (laborCostCenterId === undefined) {
+      return { ok: false };
+    }
+    value.laborCostCenterId = laborCostCenterId;
+  }
+  if ("laborRoleCode" in body) {
+    if (body.laborRoleCode === null) {
+      value.laborRoleCode = null;
+    } else {
+      const laborRoleCode = nonEmptyString(body.laborRoleCode, 40);
+      if (laborRoleCode === undefined) {
+        return { ok: false };
+      }
+      value.laborRoleCode = laborRoleCode;
     }
   }
   if ("allergens" in body) {

@@ -1,4 +1,5 @@
 import { MONEY_SCALE, formatDecimal, parseDecimal } from "@aquarela/domain";
+import type { ChannelFeeRule, Database, NodeDatabase } from "@aquarela/persistence";
 import type {
   AllocationRuleReadRecord,
   CalculationSnapshotRecord,
@@ -636,4 +637,66 @@ export function toAllocationRuleRows(
     effectiveFrom: rule.effectiveFrom,
     effectiveTo: rule.effectiveTo,
   }));
+}
+
+/* ---------------------------- channel fee rules ---------------------------- */
+
+/** Query API is present on the pool database and a transaction alike. */
+function relational(db: Database): NodeDatabase {
+  return db as NodeDatabase;
+}
+
+/**
+ * The organization's channel fee rules (DEC-112), newest effective window first.
+ *
+ * The application `CostingReadStore` has no channel-fee projection (the resolver
+ * reads effective rules per channel inside `assembleCostCardComposition`), so the
+ * list read lives here over the org-scoped persistence row, following the read
+ * adapter's relational-query pattern. `timestamptz` columns become ISO strings.
+ */
+export async function listChannelFeeRules(
+  db: Database,
+  organizationId: string,
+): Promise<readonly ChannelFeeRule[]> {
+  return relational(db).query.channelFeeRule.findMany({
+    where: (table, { eq }) => eq(table.organizationId, organizationId),
+    orderBy: (table, { desc }) => [desc(table.effectiveFrom)],
+  });
+}
+
+export interface ChannelFeeRuleRow {
+  readonly id: string;
+  readonly channelId: string;
+  readonly channelName: string | null;
+  readonly feeKind: string;
+  readonly percentageRate: string | null;
+  readonly fixedAmount: string | null;
+  readonly feeBasis: string;
+  readonly taxRuleId: string | null;
+  readonly effectiveFrom: string;
+  readonly effectiveTo: string | null;
+}
+
+export function toChannelFeeRuleRows(
+  organizationId: string,
+  rules: readonly ChannelFeeRule[],
+  refs: CostingRefs,
+): readonly ChannelFeeRuleRow[] {
+  return rules
+    .filter((rule) => rule.organizationId === organizationId)
+    .map((rule) => {
+      const channel = owned(refs, "channels", rule.channelId, organizationId);
+      return {
+        id: rule.id,
+        channelId: rule.channelId,
+        channelName: channel?.name ?? null,
+        feeKind: rule.feeKind,
+        percentageRate: rule.percentageRate,
+        fixedAmount: rule.fixedAmount,
+        feeBasis: rule.feeBasis,
+        taxRuleId: rule.taxRuleId,
+        effectiveFrom: rule.effectiveFrom.toISOString(),
+        effectiveTo: rule.effectiveTo === null ? null : rule.effectiveTo.toISOString(),
+      };
+    });
 }
