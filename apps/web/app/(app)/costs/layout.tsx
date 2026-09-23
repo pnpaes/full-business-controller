@@ -1,4 +1,4 @@
-import { PageHeader, spacing } from "@aquarela/ui";
+import { PageHeader, containerWidth, spacing } from "@aquarela/ui";
 import type { ReactNode } from "react";
 
 import { CostsTabs } from "./tabs";
@@ -19,7 +19,7 @@ export default function CostsLayout({ children }: { children: ReactNode }) {
         flexDirection: "column",
         gap: spacing[5],
         width: "100%",
-        maxWidth: 1120,
+        maxWidth: containerWidth.default,
         margin: "0 auto",
       }}
     >

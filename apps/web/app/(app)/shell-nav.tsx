@@ -33,7 +33,7 @@ function BrandMark() {
         fontFamily={typography.fontFamily.display}
         fontSize="20"
         fontWeight={typography.fontWeight.semibold}
-        fill={color.brand.cream}
+        fill={color.ink.primary}
       >
         A
       </text>
@@ -350,6 +350,46 @@ export function MobileNav() {
         </>
       ) : null}
     </>
+  );
+}
+
+/* ------------------------------- Bottom nav -------------------------------- */
+
+/** The core sections for the compact mobile bottom navigation (brief §6
+ * mobile, §17): Home (the operational entry), Sales and Inventory (the two
+ * highest-frequency operational facts), Production (the daily workflow) and
+ * Insights (the analytical entry). The lower-frequency or role-gated areas —
+ * Purchasing, Costs, Close, Tasks, Administration — stay reachable through
+ * the drawer, which carries the full set. */
+const BOTTOM_NAV_HREFS: readonly string[] = [
+  "/",
+  "/sales",
+  "/inventory",
+  "/production",
+  "/insights",
+];
+
+/**
+ * Fixed, softly rounded floating container with the 3–5 most important
+ * sections (brief §6 mobile). Hidden by the shell stylesheet at tablet width
+ * and above; ≥44px targets, `aria-current="page"` on the active section.
+ */
+export function BottomNav() {
+  const pathname = usePathname();
+  return (
+    <nav className="aq-bottomnav" aria-label="Primary sections">
+      {AREAS.filter((area) => BOTTOM_NAV_HREFS.includes(area.href)).map((area) => (
+        <a
+          key={area.href}
+          href={area.href}
+          className="aq-bottomnav-item"
+          aria-current={isActive(pathname, area.href) ? "page" : undefined}
+        >
+          {area.icon}
+          <span>{area.label}</span>
+        </a>
+      ))}
+    </nav>
   );
 }
 

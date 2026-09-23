@@ -148,23 +148,15 @@ export const spacing = {
  * Typography (brief §4): one geometric/humanist sans for everything,
  * hierarchy from size/position/spacing rather than heavy bold.
  *
- * Font decision: the sans stack is a system stack in this wave. The brief's
- * webfont (e.g. Outfit/Manrope via `next/font`) must be exposed as a CSS
- * variable by the app layout — a later wave. The ready-to-flip stack is
- * kept in `fontFamily.sansVar`; switching `sans` to it before the app
- * defines `--font-sans` would make every `font-family` declaration
- * invalid-at-computed-value time (undefined var) and silently fall back to
- * the browser default, so the flip happens together with the layout change:
- *
- *   // apps/web/app/layout.tsx (later wave)
- *   import { Outfit } from "next/font/google";
- *   const sans = Outfit({ subsets: ["latin"], variable: "--font-sans" });
- *   <html className={sans.variable}>
+ * Font decision: the app layout defines `--font-sans` via `next/font`
+ * (Manrope) on `<html>`, so `sans` and `display` use the `sansVar` stack and
+ * fall back to the system stack if the variable is absent.
  */
 export const typography = {
   fontFamily: {
-    display: 'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
-    sans: 'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+    display:
+      '"var(--font-sans)", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+    sans: '"var(--font-sans)", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
     mono: 'ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace',
     /** Webfont-ready stack: the app layout defines `--font-sans` via
      * `next/font` (see the file comment). No URL, so it stays
