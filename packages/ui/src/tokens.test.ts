@@ -148,12 +148,15 @@ const textPairs: Array<{
       min: AA_NORMAL,
     },
   ]),
-  {
-    name: "ink tertiary on strong surface (metadata, 3:1)",
+  // ink.tertiary is used as text at 11–13px (PageHeader scope, breadcrumbs,
+  // description-list terms, progress percentage, axis labels), so it must
+  // meet full AA (4.5:1) on every surface it appears on.
+  ...(["canvas", "base", "strong"] as const).map((tier) => ({
+    name: `ink tertiary (metadata text) on surface.${tier}`,
     fg: color.ink.tertiary,
-    bg: color.surface.strong,
-    min: AA_LARGE_OR_UI,
-  },
+    bg: color.surface[tier],
+    min: AA_NORMAL,
+  })),
   {
     name: "accent ink on accent",
     fg: color.accent.ink,
@@ -209,6 +212,13 @@ const nonTextPairs: Array<{ name: string; fg: string; bg: string }> = [
     fg: color.border.focus,
     bg: color.surface.strong,
   },
+  // The comparison series carries real information (a second data series),
+  // so it must meet 1.4.11 on every surface charts render on.
+  ...(["canvas", "base", "strong"] as const).map((tier) => ({
+    name: `dataViz comparison series on surface.${tier}`,
+    fg: color.dataViz.comparison,
+    bg: color.surface[tier],
+  })),
 ];
 
 describe("color tokens: WCAG AA text contrast", () => {
@@ -294,6 +304,18 @@ describe("structural token scales", () => {
   it("font stacks contain no webfont URLs (no downloads)", () => {
     for (const stack of Object.values(typography.fontFamily)) {
       expect(stack).not.toMatch(/https?:|url\(/);
+    }
+  });
+
+  it("webfont stacks lead with an UNQUOTED var(--font-sans)", () => {
+    // A quoted "var(--font-sans)" is a literal (non-existent) family name,
+    // so the next/font webfont would silently never apply.
+    for (const stack of [
+      typography.fontFamily.display,
+      typography.fontFamily.sans,
+      typography.fontFamily.sansVar,
+    ]) {
+      expect(stack.startsWith("var(--font-sans),")).toBe(true);
     }
   });
 

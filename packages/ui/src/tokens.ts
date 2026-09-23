@@ -32,8 +32,11 @@ export const color = {
   ink: {
     primary: "#171918",
     secondary: "#656A67",
-    /** Non-essential metadata only; meets 3:1, not AA body text. */
-    tertiary: "#878C88",
+    /** Metadata text tier. Darkened from #878C88 (3.2:1) so it meets WCAG
+     * 1.4.3 (≥4.5:1) as text at 11–13px on every surface tier; the step
+     * above `secondary` is now subtle — compliance was preferred over a
+     * wide tonal gap. */
+    tertiary: "#6C716D",
   },
   /** One acid/lime accent family used sparingly (brief §3, §22 item 6),
    * plus at most one secondary accent (pale blue). `accent`/`soft` are
@@ -41,7 +44,10 @@ export const color = {
    * (AA on canvas/surface/strong); `ink` is legible on the accent. */
   accent: {
     accent: "#DFFF55",
-    soft: "#F0F8C9",
+    /** Active-surface tint (Tabs/SegmentedControl/FilterChip/nav). Darkened
+     * from #F0F8C9, which sat at 1.06:1 on surface.base and made the active
+     * state rest entirely on the 1px inset border. */
+    soft: "#DCEF98",
     ink: "#20240F",
     deep: "#5A6B0A",
     secondary: "#A8CBE4",
@@ -109,6 +115,11 @@ export const color = {
    * surfaces (WCAG 1.4.11) and pairwise distinguishable. Sequential ramps
    * are monotonic in luminance. */
   dataViz: {
+    /** Pale neutral for comparison series (brief §10). A dedicated token,
+     * ≥3:1 against the surface tiers (WCAG 1.4.11) because the comparison
+     * series carries real information; still clearly secondary to the
+     * accent series. */
+    comparison: "#838984",
     categorical: [
       "#1E2321", // dark neutral
       "#083A3A", // deep teal
@@ -155,14 +166,16 @@ export const spacing = {
 export const typography = {
   fontFamily: {
     display:
-      '"var(--font-sans)", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
-    sans: '"var(--font-sans)", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+      'var(--font-sans), system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+    sans: 'var(--font-sans), system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
     mono: 'ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace',
     /** Webfont-ready stack: the app layout defines `--font-sans` via
      * `next/font` (see the file comment). No URL, so it stays
-     * download-free at the token level. */
+     * download-free at the token level. `var()` must stay UNQUOTED —
+     * inside quotes it is a literal (non-existent) family name and the
+     * webfont silently never applies. */
     sansVar:
-      '"var(--font-sans)", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
+      'var(--font-sans), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
   },
   fontSize: {
     "2xs": 11,

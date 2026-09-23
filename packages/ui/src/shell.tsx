@@ -444,8 +444,9 @@ const sparkTones = {
 
 export type SparklineTone = keyof typeof sparkTones;
 
-/** Pale neutral used for comparison series (brief §10). */
-const comparisonStroke = color.dataViz.sequential.navy[1];
+/** Comparison series (brief §10): ≥3:1 on the surfaces (WCAG 1.4.11)
+ * because it carries real information; clearly secondary to the accent. */
+const comparisonStroke = color.dataViz.comparison;
 
 export interface SparklineProps {
   /** Series values in render order; fewer than two renders a flat line. */

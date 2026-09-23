@@ -20,9 +20,14 @@ import { color, typography } from "./tokens";
 
 /** Strong accent series colour (text-safe accent, brief §3/§10). */
 const accentStroke = color.accent.deep;
-/** Pale neutral comparison series (brief §10). */
-const comparisonStroke = color.dataViz.sequential.navy[1];
-const gridStroke = color.border.subtle;
+/** Comparison series: carries real information, so ≥3:1 on the surfaces
+ * (WCAG 1.4.11) while staying clearly secondary to the accent series. */
+const comparisonStroke = color.dataViz.comparison;
+/* Grid lines are decorative (WCAG 1.4.11 exempt): the data is carried by the
+ * series strokes, the axis labels and the accessible summary, so they stay
+ * quiet (brief §10: "subtle grid lines, sparse axis labeling") at
+ * border.default — raised from border.subtle but never prominent. */
+const gridStroke = color.border.default;
 const axisLabelColor = color.ink.tertiary;
 
 const AXIS_LABEL_FONT_SIZE = typography.fontSize["2xs"];
@@ -65,6 +70,14 @@ function scaleSeries(
     const y = pad + (height - pad * 2) * (1 - ratio);
     return { x, y };
   });
+}
+
+/** Bar-specific y mapping: a zero-value bar draws at zero height, while a
+ * flat non-zero series keeps a sane mid-plot rendering. */
+function barYFor(value: number, min: number, max: number, padTop: number, plotH: number): number {
+  const range = max - min;
+  const ratio = range === 0 ? (value === 0 ? 0 : 0.5) : (value - min) / range;
+  return padTop + plotH * (1 - ratio);
 }
 
 /** Shared min/max across the accent and comparison series. */
@@ -119,19 +132,25 @@ export function LineChart({
   const pad = { top: 12, right: directLabel ? 72 : 12, bottom: xLabels ? 20 : 8, left: 12 };
   const plotW = width - pad.left - pad.right;
   const plotH = height - pad.top - pad.bottom;
-  const { min, max } = combinedRange(points, comparisonPoints);
-  const xy = scaleSeries(points, plotW, plotH, 0, min, max).map((c) => ({
-    x: c.x + pad.left,
-    y: c.y + pad.top,
-  }));
+  // Empty series: no geometry — render the quiet frame (grid + baseline)
+  // rather than letting Infinity/NaN reach the polyline points.
+  const empty = points.length === 0;
+  const { min, max } = empty ? { min: 0, max: 1 } : combinedRange(points, comparisonPoints);
+  const xy = empty
+    ? []
+    : scaleSeries(points, plotW, plotH, 0, min, max).map((c) => ({
+        x: c.x + pad.left,
+        y: c.y + pad.top,
+      }));
   const line = xy.map((c) => `${c.x.toFixed(2)},${c.y.toFixed(2)}`).join(" ");
   const last = xy[xy.length - 1];
 
-  const comparisonLine = comparisonPoints
-    ? scaleSeries(comparisonPoints, plotW, plotH, 0, min, max)
-        .map((c) => `${(c.x + pad.left).toFixed(2)},${(c.y + pad.top).toFixed(2)}`)
-        .join(" ")
-    : null;
+  const comparisonLine =
+    !empty && comparisonPoints && comparisonPoints.length > 0
+      ? scaleSeries(comparisonPoints, plotW, plotH, 0, min, max)
+          .map((c) => `${(c.x + pad.left).toFixed(2)},${(c.y + pad.top).toFixed(2)}`)
+          .join(" ")
+      : null;
 
   // Subtle horizontal grid lines only (brief §10): three quiet rules.
   const gridYs = [0.25, 0.5, 0.75].map((t) => pad.top + plotH * t);
@@ -178,14 +197,16 @@ export function LineChart({
           strokeLinejoin="round"
         />
       ) : null}
-      <polyline
-        points={line}
-        fill="none"
-        stroke={accentStroke}
-        strokeWidth={2}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
+      {!empty ? (
+        <polyline
+          points={line}
+          fill="none"
+          stroke={accentStroke}
+          strokeWidth={2}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      ) : null}
       {highlight ? (
         <g>
           <circle cx={highlight.x} cy={highlight.y} r={6} fill={accentStroke} opacity={0.18} />
@@ -262,12 +283,11 @@ export function BarChart({
   const plotW = width - pad.left - pad.right;
   const plotH = height - pad.top - pad.bottom;
   const { min, max } = combinedRange(values, comparisonValues);
-  const range = max - min;
   const slot = plotW / values.length;
   const barW = Math.min(14, slot * 0.5);
   const baselineY = pad.top + plotH;
 
-  const yFor = (v: number) => pad.top + plotH * (1 - (range === 0 ? 0.5 : (v - min) / range));
+  const yFor = (v: number) => barYFor(v, min, max, pad.top, plotH);
 
   const labelIndices = labels ? sparseIndices(values.length) : [];
 
@@ -299,7 +319,7 @@ export function BarChart({
                 x={x}
                 y={y}
                 width={barW}
-                height={Math.max(baselineY - y, 1)}
+                height={Math.max(baselineY - y, 0)}
                 rx={Math.min(barW / 2, 4)}
                 fill={comparisonStroke}
               />
@@ -316,7 +336,7 @@ export function BarChart({
             x={x}
             y={y}
             width={barW}
-            height={Math.max(baselineY - y, 1)}
+            height={Math.max(baselineY - y, 0)}
             rx={Math.min(barW / 2, 6)}
             fill={isHighlight ? color.ink.primary : accentStroke}
             opacity={isHighlight ? 1 : 0.9}

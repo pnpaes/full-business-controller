@@ -45,7 +45,7 @@ function controlFrame(error: string | undefined): CSSProperties {
     display: "flex",
     alignItems: "center",
     backgroundColor: color.surface.well,
-    border: `1px solid ${error ? color.status.danger.border : color.border.subtle}`,
+    border: `1px solid ${error ? color.status.danger.border : color.border.default}`,
     borderRadius: radius.md,
     minHeight: MIN_TOUCH_TARGET_PX,
     transition: `border-color ${motion.duration.fast}ms ${motion.easing}`,
@@ -837,7 +837,7 @@ export function Tabs({ items, ariaLabel }: TabsProps) {
                 borderRadius: radius.md,
                 backgroundColor: item.active ? color.accent.soft : "transparent",
                 color: item.active ? color.ink.primary : color.ink.secondary,
-                boxShadow: item.active ? `inset 0 0 0 1px ${color.accent.deep}` : "none",
+                boxShadow: item.active ? `inset 0 0 0 2px ${color.accent.deep}` : "none",
                 fontWeight: item.active
                   ? typography.fontWeight.medium
                   : typography.fontWeight.regular,

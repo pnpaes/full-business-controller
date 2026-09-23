@@ -63,18 +63,20 @@ export const uiGlobalCss = `
 .aquarela-btn:active:not(:disabled) {
   transform: translateY(1px);
 }
+/* Button hover states must beat the inline backgroundColor/border set by
+ * Button — a stylesheet rule loses to inline styles without !important. */
 .aquarela-btn-primary:hover:not(:disabled) {
-  background-color: ${color.brand.navyDeep};
-  border-color: ${color.brand.navyDeep};
+  background-color: ${color.brand.navyDeep} !important; /* inline styles win otherwise */
+  border-color: ${color.brand.navyDeep} !important; /* inline styles win otherwise */
 }
 .aquarela-btn-secondary:hover:not(:disabled) {
-  background-color: ${color.surface.muted};
+  background-color: ${color.surface.muted} !important; /* inline styles win otherwise */
 }
 .aquarela-btn-danger:hover:not(:disabled) {
-  background-color: ${color.status.danger.border};
+  background-color: ${color.status.danger.border} !important; /* inline styles win otherwise */
 }
 .aquarela-btn-ghost:hover:not(:disabled) {
-  background-color: ${color.surface.muted};
+  background-color: ${color.surface.muted} !important; /* inline styles win otherwise */
 }
 /* Table: tonal row hover and sticky-header hook (brief §11). */
 .aquarela-table tbody tr:hover td {
@@ -120,7 +122,9 @@ export const uiGlobalCss = `
 .aquarela-seg input:checked + span {
   background-color: ${color.accent.soft};
   color: ${color.ink.primary};
-  box-shadow: inset 0 0 0 1px ${color.accent.deep};
+  /* 2px inset ring: the tint alone is quiet by design, so the active state
+   * also carries a perceivable non-colour affordance. */
+  box-shadow: inset 0 0 0 2px ${color.accent.deep};
 }
 .aquarela-seg input:focus-visible + span {
   outline: 2px solid ${color.border.focus};
@@ -132,13 +136,16 @@ export const uiGlobalCss = `
     border-color ${motion.duration.fast}ms ${motion.easing},
     color ${motion.duration.fast}ms ${motion.easing};
 }
+/* Active/hover chip states fight the inline backgroundColor/border/color of
+ * FilterChip, so they need !important (inline styles win otherwise). */
 .aquarela-chip[aria-pressed="true"] {
-  background-color: ${color.accent.soft};
-  border-color: ${color.accent.deep};
-  color: ${color.ink.primary};
+  background-color: ${color.accent.soft} !important; /* inline styles win otherwise */
+  border-color: ${color.accent.deep} !important; /* inline styles win otherwise */
+  color: ${color.ink.primary} !important; /* inline styles win otherwise */
+  box-shadow: inset 0 0 0 1px ${color.accent.deep};
 }
 .aquarela-chip:hover {
-  border-color: ${color.border.strong};
+  border-color: ${color.border.strong} !important; /* inline styles win otherwise */
 }
 /* CSS-only tooltip: revealed on hover or keyboard focus of the trigger. */
 .aquarela-tooltip {
@@ -172,9 +179,11 @@ export const uiGlobalCss = `
   transition: color ${motion.duration.fast}ms ${motion.easing},
     background-color ${motion.duration.fast}ms ${motion.easing};
 }
+/* Nav hover fights NavItem's inline color/background-color, so !important
+ * is required (inline styles win otherwise) — same approach as the shell. */
 .aquarela-nav-item:hover:not([aria-current="page"]) {
-  color: ${color.navigation.text};
-  background-color: rgba(245, 246, 244, 0.05);
+  color: ${color.navigation.text} !important; /* inline styles win otherwise */
+  background-color: rgba(245, 246, 244, 0.05) !important; /* inline styles win otherwise */
 }
 /* Tabs (patterns.tsx): quiet hover wash on inactive tabs (brief §12). */
 .aquarela-tabs a {
@@ -182,16 +191,20 @@ export const uiGlobalCss = `
     color ${motion.duration.fast}ms ${motion.easing},
     box-shadow ${motion.duration.fast}ms ${motion.easing};
 }
+/* Tab hover fights the inline backgroundColor/color of the tab anchors, so
+ * !important is required (inline styles win otherwise). */
 .aquarela-tabs a:hover:not([aria-current="page"]) {
-  background-color: ${color.surface.muted};
-  color: ${color.ink.primary};
+  background-color: ${color.surface.muted} !important; /* inline styles win otherwise */
+  color: ${color.ink.primary} !important; /* inline styles win otherwise */
 }
 /* Breadcrumb links (patterns.tsx): quiet hover darken. */
 .aquarela-crumb a {
   transition: color ${motion.duration.fast}ms ${motion.easing};
 }
+/* Crumb hover fights the anchor's inline color, so !important is required
+ * (inline styles win otherwise). */
 .aquarela-crumb a:hover {
-  color: ${color.ink.primary};
+  color: ${color.ink.primary} !important; /* inline styles win otherwise */
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
@@ -382,7 +395,7 @@ export function TextField({
           display: "flex",
           alignItems: "center",
           backgroundColor: color.surface.well,
-          border: `1px solid ${error ? color.status.danger.border : color.border.subtle}`,
+          border: `1px solid ${error ? color.status.danger.border : color.border.default}`,
           borderRadius: radius.md,
           minHeight: MIN_TOUCH_TARGET_PX,
           transition: `border-color ${motion.duration.fast}ms ${motion.easing}`,
