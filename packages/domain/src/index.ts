@@ -102,6 +102,8 @@ export type {
   RecipeDependencyEdge,
   RecipeVersionState,
 } from "./recipe";
+export { normaliseRecurringCostsToPeriod, recurringCostContributesToPeriod } from "./recurrence";
+export type { RecurringCostToNormalise } from "./recurrence";
 export {
   SALES_REPORT_GRAINS,
   contributionBeforeLabour,
