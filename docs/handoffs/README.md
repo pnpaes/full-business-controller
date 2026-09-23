@@ -8,6 +8,7 @@ for that slice, including commits, verification and reconciliation notes.
 The per-slice rollback/commit inventory lives in
 [`reversibility-log.md`](reversibility-log.md).
 
+- **2026-09-23** — [Cost-card composition assembler delivered (DEC-111): recipe-version resolution, ingredient/packaging/sub-recipe via computeRecipeCost, unitNetSales from the effective price_version, the four non-resolvable components as explicit inputs, and POST /api/v1/costing/cost-cards](070-2026-09-23-cost-card-composition-assembler-dec-111.md)
 - **2026-09-23** — [Row 13e/13f `RPT-004` operations report delivered (DEC-110): stock value/variance (booked adjustment value), production yield, waste by DEC-018 stage; the Insights Operations screen; row 13's reporting set complete](069-2026-09-23-row-13ef-rpt-004-operations-report-dec-110.md)
 - **2026-09-22** — [Row 13d menu engineering delivered (RPT-005, DEC-109): computed-median thresholds (popularity + category-relative contribution), high/low classification, waste annotations, the Insights matrix screen; row 13's dashboards/menu-engineering half complete](068-2026-09-22-row-13d-menu-engineering-rpt-005-dec-109.md)
 - **2026-09-22** — [Row 13c review findings applied: full variant resolution (product_variant_id → sku → external_mapping → unmapped) for product/category grouping, a window-level distinct transaction count, the multi-location drill-down scope, the `included`-line disclosure and the F1–F11 fixes; no migration](067-2026-09-22-row-13c-review-fixes-variant-resolution-window-count.md)

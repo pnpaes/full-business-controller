@@ -12,66 +12,71 @@ orientation and the next step. See "Handover archive" and "Update protocol".
 ## Resume here (next session)
 
 **Say "resume the work" and start here.** A fresh session must be able to
-continue from this section alone. (Rewritten by the 2026-09-23 `RPT-004`
-operations-report session.)
+continue from this section alone. (Rewritten by the 2026-09-23 cost-card
+composition assembler session.)
 
-**State:** `main`; HEAD before the `RPT-004` slice was **`0d9119c`** (the
-row-13d handoff). `RPT-004` lands as **`fdf7dc0`** `feat(domain)`, **`353c0bc`**
-`feat(persistence)`, **`fa7cfe2`** `feat(application)`, **`ae2352f`**
-`feat(web)`, the `docs(decisions)` commit (`DEC-110`) and this `docs(context)`
-handoff. Nothing pushed; nothing applied to DigitalOcean. Schema: migrations
-through **`0059`**; **89 tables**; next free decision id **`DEC-111`**. Baseline
-with `DATABASE_URL`: **3443/3443 tests** (225 files). Handoff:
-`docs/handoffs/069-…md`. **Row 13 is complete** — close (13a/13b) and reporting
-(13c/13d/`RPT-004`), covering `REC-003`–`REC-006` and `RPT-001`–`RPT-005`.
+**State:** `main`; HEAD before the assembler slice was **`837e9a5`** (the
+`RPT-004` handoff). The assembler lands as **`182342b`** `feat(application)`,
+**`0ee79f7`** `feat(web)`, the `docs(decisions)` commit (`DEC-111`) and this
+`docs(context)` handoff. Nothing pushed; nothing applied to DigitalOcean.
+Schema: migrations through **`0059`**; **89 tables**; next free decision id
+**`DEC-112`**. Baseline with `DATABASE_URL`: **3482/3482 tests** (228 files).
+Handoff: `docs/handoffs/070-…md`. **Row 13 is complete** and the cost-card
+assembler now exists (the contract's full variable/full cost is assemblable once
+the four component resolvers land).
 
-**Next task — the cost-card composition assembler.** The highest-value remaining
-build: it unblocks the contract's full `unit_variable_cost`/`unit_full_cost`
-(no cost card is ever created today — `calculateCostCard` has no production
-caller, no create route, no channel-fee resolver, no `operating_cost`→pool/driver
-assembler), which would let the row-13c/13d reports show real contribution and
-full cost instead of "contribution before labour/fees". Alternatives: the row-11
-**import mapping writer** (populate `sales_line.product_variant_id` so product
-labels are real — the variant chain resolves by sku meanwhile); the deferred
-close follow-ups (correction-posting wiring `DEC-028`/`DEC-073`, `daily_close`);
-the **receipt→ledger wiring** once the OPS `storage_area_id` policy lands. Do not
-resolve I11, the OPS policy or any recorded open input silently.
+**Next task — the four cost-card component resolvers.** The assembler takes
+`directLaborCost`, `channelVariableCost`, `otherVariableCost` and
+`allocatedUnitOverhead` as explicit inputs because the resolvers do not exist;
+building them (under a new `DEC-112`) would let the reports show real
+contribution and full cost. In order of tractability: (a) a **per-product
+direct-labour** rule (a recipe→role/cost-centre mapping and defined
+`preparation_minutes` semantics); (b) a **`channel_fee_rule` reader** with the
+`fee_basis` resolution (`[PROPOSED]` in the contract); (c) an
+**`operating_cost`→`cost_pool` amount** aggregation + a per-driver
+denominator resolver (and a controlled `denominator_source` vocabulary).
+Alternatives: the row-11 **import mapping writer** (populate
+`sales_line.product_variant_id` so product labels are real — the variant chain
+resolves by sku meanwhile); the deferred close follow-ups (correction-posting
+wiring `DEC-028`/`DEC-073`, `daily_close`); the **receipt→ledger wiring** once
+the OPS `storage_area_id` policy lands. Do not resolve I11, the OPS policy, the
+`DEC-077` price-scope fallback or any recorded open input silently.
 
 **Objective:** build the next slice per the existing package boundaries —
 organization-scoped (`DEC-061`), decimal-only (`CALCULATION_CONTRACT.md`), metric
 definitions once in domain/application (`ADR-0007`), with a rehearsed down path
 for any migration and a `.test.ts` for new non-trivial logic.
 
-**Scope (do):** read this file, `docs/handoffs/069-…md`, `DEC-108`/`DEC-110`,
-the slice-7 cost-card decisions (`DEC-021`/`DEC-063` and the cost-card
-open points in `docs/BUILD_ROADMAP.md` §5), `docs/phase0/CALCULATION_CONTRACT.md`
-§3/§7/§9/§11, `packages/domain/src/{cost-card,pricing,labour,allocation}.ts`,
+**Scope (do):** read this file, `docs/handoffs/070-…md`, `DEC-111`, the slice-7
+cost-card/pricing decisions (`DEC-021`/`DEC-063`/`DEC-060` and the 16 open points
+in `docs/BUILD_ROADMAP.md` §5) and the slice-6 allocation open points,
+`docs/phase0/CALCULATION_CONTRACT.md` §3/§7/§9/§11,
+`packages/domain/src/{cost-card,pricing,labour,allocation}.ts`,
 `packages/application/src/costing/**` and `packages/application/src/recipes/**`
-(`computeRecipeCost`, `selectBaseUnitCost`) first; keep changes additive,
-decimal-only, `EXPECTED_TABLES` updated for any table, and commit in layers with
-the rollback approach in the body (Rule 2).
+first; keep changes additive, decimal-only, `EXPECTED_TABLES` updated for any
+table, and commit in layers with the rollback approach in the body (Rule 2).
 
-**Scope (do not):** do not invent cost/pricing policy — the cost-card
-composition inputs (direct labour, channel fees, other variable cost,
-allocated overhead) must come from the existing domain/decision definitions or a
-recorded provisional decision; do not build materialized aggregates/MVs or a
-refresh job (`ADR-0004` still `Proposed`); append to `12_OPEN_DECISIONS.md` only
-a new provisional decision (next free id `DEC-111`); do not deploy or write
-externally (`DEC-015`); do not rewrite the specification inputs.
+**Scope (do not):** do not invent cost/pricing policy — each resolver needs a
+recorded provisional decision for its mapping/formula/scope before it is built;
+do not build materialized aggregates/MVs or a refresh job (`ADR-0004` still
+`Proposed`); append to `12_OPEN_DECISIONS.md` only a new provisional decision
+(next free id `DEC-112`); do not add a price-version scope fallback (a recorded
+`DEC-077` open point); do not deploy or write externally (`DEC-015`); do not
+rewrite the specification inputs.
 
 **Acceptance / verification:** `export NVM_DIR="$HOME/.nvm"; . "$NVM_DIR/nvm.sh";
 nvm use 22`; then `npm run typecheck`, `npm run lint`, `npm run test` (with
-`DATABASE_URL` — current baseline **3443/3443**, 225 files), `npm run build`,
+`DATABASE_URL` — current baseline **3482/3482**, 228 files), `npm run build`,
 `npm run format:check`, `npm audit --omit=dev` = 0; `db:migrate` a no-op. Commit
 in layers (`feat(domain)`, `feat(persistence)`, `feat(application)`, `feat(web)`,
 `docs(decisions)`, `docs(context)`) with the rollback approach in the body
 (Rule 2).
 
-**Step after:** the cost-card composition assembler (real contribution/full cost)
-then the row-11 import mapping writer; the deferred close follow-ups
-(correction-posting wiring `DEC-028`/`DEC-073`, `daily_close`); the
-receipt→ledger wiring once the OPS policy lands; the test-deployment rehearsal
-and golden-fixture sign-off (both parked on owner inputs).
+**Step after:** the component resolvers then the row-11 import mapping writer;
+the deferred close follow-ups (correction-posting wiring `DEC-028`/`DEC-073`,
+`daily_close`); the receipt→ledger wiring once the OPS policy lands; the
+test-deployment rehearsal and golden-fixture sign-off (both parked on owner
+inputs).
 
 **Programme direction (standing user instruction):** proceed autonomously, in
 continuous sequence — parallel background agents → adversarial review + fixes →
@@ -106,7 +111,7 @@ Per-slice detail, commits and reconciliation are in `docs/handoffs/`.
 - `00_README.md` … `13_AGENT_BUILD_BRIEF.md` — the specification package
   (inputs, rarely edited). Start with `00_README.md`.
 - `12_OPEN_DECISIONS.md` — the accepted decisions (`DEC-001`…`DEC-104`); the
-  authority. New decisions are appended here (next free id `DEC-111`).
+  authority. New decisions are appended here (next free id `DEC-112`).
 - `docs/phase0/` — close-out plan, calculation contract, data dictionary, golden
   fixtures, source-data request, notes. See
   `docs/phase0/CALCULATION_CONTRACT.md`.
@@ -127,10 +132,18 @@ Per-slice detail, commits and reconciliation are in `docs/handoffs/`.
 
 ## Current status
 
-- **As of:** 2026-09-23 — branch `main`; the `RPT-004` slice is committed
-  (`fdf7dc0`…`ae2352f`, plus the `docs(decisions)` and this `docs(context)`
-  handoff). Lineage and full per-slice detail: `docs/handoffs/README.md` and the
-  files it lists.
+- **As of:** 2026-09-23 — branch `main`; the cost-card assembler slice is
+  committed (`182342b`…`0ee79f7`, plus the `docs(decisions)` and this
+  `docs(context)` handoff). Lineage and full per-slice detail:
+  `docs/handoffs/README.md` and the files it lists.
+- **Cost-card composition assembler is delivered (`DEC-111`):** the recipe
+  version (effective `product_recipe_assignment`; an explicit id must agree or
+  stands in), ingredient/packaging/sub-recipe via `computeRecipeCost` ÷
+  `approvedUsableOutput`, `unitNetSales` from the effective
+  `price_version.netPrice`, and the four non-resolvable components (direct
+  labour, channel variable cost, other variable cost, allocated overhead) as
+  **explicit validated inputs** with provenance. `POST /api/v1/costing/cost-cards`
+  assembles then calls `calculateCostCard`. No migration.
 - **Row 13e/13f `RPT-004` operations report is delivered (`DEC-110`):** stock
   value (point-in-time ledger Σ by location), stock variance (Σ
   `stock_count_line.variance_qty` + the **booked** adjustment value, never
@@ -184,18 +197,20 @@ Per-slice detail, commits and reconciliation are in `docs/handoffs/`.
   first versioned entity); the workflow platform (`DEC-094`/`DEC-101`,
   schema-only). The `job`/worker/outbox layer stays gated on `ADR-0004`.
 - **Schema:** migrations through **`0059`**; **89 tables** (all additive, tested
-  down paths). Next free decision id **`DEC-111`** (`DEC-108`-`DEC-110` are
+  down paths). Next free decision id **`DEC-112`** (`DEC-108`-`DEC-111` are
   committed).
-- **Verification (2026-09-23, at the `RPT-004` tree):** `typecheck`, `lint`,
-  `format:check`, `build` clean; **3443/3443 tests with `DATABASE_URL`**
-  (225 files); `npm audit --omit=dev` = 0; `db:migrate` through `0059` a no-op on
+- **Verification (2026-09-23, at the cost-card assembler tree):** `typecheck`,
+  `lint`, `format:check`, `build` clean; **3482/3482 tests with `DATABASE_URL`**
+  (228 files); `npm audit --omit=dev` = 0; `db:migrate` through `0059` a no-op on
   re-run; 89 public base tables. (One full-suite run mid-session failed a single
   test that did not reproduce across three subsequent runs; recorded in
   `docs/handoffs/069-…md` for CI watchfulness.)
-- **Not yet built:** the **cost-card composition assembler** (which would make
-  the contract's full `unit_variable_cost`/`unit_full_cost` computable); the
-  row-11 import mapping writer (`sales_line.product_variant_id` is never written
-  — the variant chain resolves by sku meanwhile); the deferred `daily_close` and
+- **Not yet built:** the four cost-card component **resolvers** (per-product
+  direct labour, a `channel_fee_rule` reader with the `fee_basis` resolution,
+  `operating_cost`→`cost_pool` amount + driver-denominator resolver) — the
+  assembler takes those four values as explicit inputs today; the row-11 import
+  mapping writer (`sales_line.product_variant_id` is never written — the variant
+  chain resolves by sku meanwhile); the deferred `daily_close` and
   the correction-posting wiring (`DEC-028`/`DEC-073`); the receipt→ledger wiring
   (gated on the OPS destination `storage_area_id` policy) and rows 15–18
   (blocked: data / `ADR-0009`–`0011`). The deferred file FKs
@@ -224,10 +239,12 @@ open-point lists. Per-slice detail is in `docs/handoffs/`.
    (`REC-005`, `DEC-106`/`DEC-107`, migration `0059`), committed
    `415297b`…`956ceb6`. The reporting half: 13c sales & margin (`RPT-001`–`003`,
    `FND-006`, `DEC-108`), 13d menu engineering (`RPT-005`, `DEC-109`) and
-   13e/13f `RPT-004` operations (`DEC-110`) — all no-migration. **Next: the
-   cost-card composition assembler** (real contribution/full cost), then the
-   row-11 import mapping writer and the deferred `daily_close`/correction
-   wiring.
+   13e/13f `RPT-004` operations (`DEC-110`) — all no-migration. **The cost-card
+   composition assembler is delivered** (`DEC-111`, `182342b`…`0ee79f7`).
+   **Next: the four component resolvers** (per-product direct labour, a
+   `channel_fee_rule` reader, `operating_cost`→`cost_pool` + driver
+   denominators), then the row-11 import mapping writer and the deferred
+   `daily_close`/correction wiring.
 2. **Receipt→ledger wiring — the lead item, gated:** on the **OPS receipt
    destination `storage_area_id` policy** (a recorded owner input). If it has
    not landed it stays blocked; do not resolve the policy silently
@@ -271,8 +288,9 @@ Full detail for each item lives in its slice's handoff file and in
   and the 15-minute refresh stay open, the job layer gated on `ADR-0004`); net
   sales prefers the imported `net_amount`; cost is **ingredient-only**
   (ledger-derived) so contribution is **before labour/fees** and **full cost is
-  not reported** — the cost-card composition assembler is a prerequisite slice
-  to schedule; the `RPT-003` normalized measures are undefined (totals only);
+  not reported** — the cost-card composition assembler is now built (`DEC-111`),
+  but its four component resolvers are not; the `RPT-003` normalized measures are
+  undefined (totals only);
   `product.category` is free text; read access is provisional.
   `DEC-109` (13d) — menu-engineering thresholds are **computed medians** only
   (no Star/Puzzle labels, no approved-target rule), `option_kind='included'`
@@ -301,6 +319,22 @@ cost` (the `DEC-067`/`DEC-008` valuation is asymmetric); the waste reasons axis
   `actual_finish`; `stock_turn`, multi-currency, `DEC-028` reversal pairing and
   item→product attribution remain deferred; no covering index for the new reads
   (a future index review); read access per `DEC-108`.
+- **Cost-card composition assembler (provisional, awaiting owner/OPS):**
+  `DEC-111` — the recipe version is the effective `product_recipe_assignment`
+  (an explicit `recipeVersionId` must agree or stands in; both missing rejected);
+  ingredient/packaging/sub-recipe assembled via `computeRecipeCost` (a
+  sub-recipe's internal packaging lands in the ingredient bucket);
+  `unitNetSales` from the exact-scope effective `price_version.netPrice` (a
+  missing or negative value rejected); **direct labour, channel variable cost,
+  other variable cost and allocated unit overhead are explicit validated inputs**
+  (default `0.0000`, provenance recorded) because the resolvers do not exist — no
+  product→role/cost-centre mapping and `recipe_version.preparation_minutes` is
+  unit-less and unused, no `channel_fee_rule` reader and `fee_basis` is
+  `[PROPOSED]`, no `other_variable_cost` source, `operating_cost`→`cost_pool`
+  unmodelled and `denominator_source` free text. `COST_CARD_WRITE_ROLES`
+  (incl. `kitchen`) is provisional; no price-version scope fallback (a recorded
+  `DEC-077` open point); the cost-card version chain, the per-item cost-selection
+  override and the golden-fixture sign-off remain open.
 - **Row 14 (provisional, awaiting owner/OPS):** `DEC-104` — the "remaining
   planned shifts run as scheduled" assumption is **not** implemented (only
   `{assigned, completed}` shifts count, so a pre-month-end payroll report

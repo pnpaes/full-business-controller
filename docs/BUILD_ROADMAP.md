@@ -102,8 +102,12 @@ Management-home/Insights wiring, `RPT-001`–`RPT-003`/`FND-006`, `DEC-108`; men
 engineering, `RPT-005`, `DEC-109`; and the operations report — stock
 value/variance, production yield, waste by stage — `RPT-004`, `DEC-110`; the
 reporting slices are on-demand over canonical facts, no migration). **Row 13 is
-complete.** **Next: the cost-card composition assembler** (real
-contribution/full cost), then the row-11 import mapping writer; the
+complete**, and the **cost-card composition assembler is delivered**
+(`DEC-111` — recipe version + ingredient/packaging/sub-recipe + `unitNetSales`
+assembled; direct labour, channel fees, other variable cost and allocated
+overhead are explicit inputs pending their resolvers). **Next: the four
+cost-card component resolvers** (real contribution/full cost), then the row-11
+import mapping writer; the
 receipt→ledger wiring is the other buildable candidate if the OPS destination
 `storage_area_id` policy lands; then the deployment rehearsal (owner inputs).
 Then the
@@ -191,7 +195,7 @@ inputs; the receipt→ledger wiring needs the OPS destination
 history/grain quality (I11); rows 15–18 remain blocked (data /
 `ADR-0009`–`0011`); the deployment rehearsal is parked on the owner inputs;
 the golden fixtures are unsigned.
-Next free decision id `DEC-111`.
+Next free decision id `DEC-112`.
 
 ## 2. The execution loop (per slice)
 

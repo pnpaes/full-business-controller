@@ -1,5 +1,12 @@
 # Reversibility log
 
+- **2026-09-23 cost-card composition assembler (`DEC-111`; 4 commits incl. this
+  docs commit; nothing pushed)**: 1. `182342b` `feat(application)`; 2. `0ee79f7`
+  `feat(web)`; 3. the `docs(decisions)` commit (`DEC-111`); 4. this
+  `docs(context)` update — each independently revertible with
+  `git revert <sha>`. **No migration and no data written** (reads + one new write
+  path over existing tables); schema stays **89 tables / `0059`**; `db:migrate`
+  is a no-op. Nothing applied to DigitalOcean.
 - **2026-09-23 row-13e/13f `RPT-004` operations report (`DEC-110`; 6 commits incl.
   this docs commit; nothing pushed)**: 1. `fdf7dc0` `feat(domain)`; 2. `353c0bc`
   `feat(persistence)`; 3. `fa7cfe2` `feat(application)`; 4. `ae2352f`
