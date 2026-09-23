@@ -66,7 +66,7 @@ export function Modal({ title, children, footer, open = false, onClose }: ModalP
         alignItems: "center",
         justifyContent: "center",
         padding: spacing[4],
-        backgroundColor: "rgba(22, 36, 61, 0.5)",
+        backgroundColor: "rgba(23, 25, 24, 0.45)",
       }}
     >
       <div
@@ -85,8 +85,8 @@ export function Modal({ title, children, footer, open = false, onClose }: ModalP
           flexDirection: "column",
           gap: spacing[4],
           padding: spacing[5],
-          backgroundColor: color.background.surface,
-          borderRadius: radius.lg,
+          backgroundColor: color.surface.strong,
+          borderRadius: radius["2xl"],
           boxShadow: elevation.lg,
           outline: "none",
         }}

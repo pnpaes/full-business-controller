@@ -6,6 +6,7 @@ drizzle
 package-lock.json
 
 [0-9]*.md
+designer-agent-modern-saas-ui-brief.md
 docs/
 samples/
 schemas/
