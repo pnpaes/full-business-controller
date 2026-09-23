@@ -1,5 +1,22 @@
 # Reversibility log
 
+- **2026-09-23 daily (location, day) close exposed (`DEC-119`; 4 commits incl.
+  the `docs(decisions)` commit; nothing pushed)**: 1. `docs(decisions)`
+  (`DEC-119`); 2. `test(application)` — the joining tests + the fake wiring
+  (`packages/application/src/sales/{sales.test.ts,
+  correct-sales-line.postgres.test.ts,test-support.ts}`); 3. `feat(web)`
+  (the `/close` register UI under `apps/web/app/(app)/close/**` +
+  `shell-nav.tsx` + `tasks/page.tsx`); 4. this `docs(context)` update — each
+  independently revertible with `git revert <sha>`. **No migration, no schema
+  change and no data written by the slice** (migrations stay through `0062`;
+  **89 tables**): the backend already supported both scopes, so no backend
+  production code changed — no command, route, schema or gate change, no new
+  route. Reverting the web layer removes the screen (the API and the
+  `beginPeriodClose`/`lockPeriodClose` commands remain usable directly);
+  reverting the tests removes only coverage; creating and locking a close
+  through the UI is an ordinary operator action writing normal append-only
+  `period_close` rows, not slice data. **No backfill.** `db:migrate` is a
+  no-op on re-run through `0062`. Nothing applied to DigitalOcean.
 - **2026-09-23 settlement reconciliation nets line-level reversals
   (`DEC-118`; 4 commits incl. the `docs(decisions)` commit; nothing pushed)**:
   1. `docs(decisions)` (`DEC-118`); 2. `feat(persistence)` (the new read-only
