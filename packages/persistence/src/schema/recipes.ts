@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import {
   boolean,
+  char,
   check,
   index,
   integer,
@@ -16,6 +17,7 @@ import {
   approvalCheck,
   effectiveRange,
   enumCheck,
+  money,
   orgId,
   quantity,
   rangeCheck,
@@ -57,6 +59,9 @@ export const recipeVersion = pgTable(
     approvedBy: uuid("approved_by"),
     approvedAt: tstz("approved_at"),
     notes: text("notes"),
+    // `DEC-123`: the version's free-text method/steps. Additive and nullable;
+    // no backfill is needed (an additive nullable column on an existing table).
+    method: text("method"),
     // `DEC-112`: the per-version direct-labour mapping. Both columns are
     // nullable and all-or-nothing (`recipe_version_labor_mapping_check`): a
     // version either names a cost centre + role or carries no labour mapping.
@@ -165,5 +170,58 @@ export const recipeAllergen = pgTable(
       sql`${t.source} <> 'verified' or ${t.verifiedBy} is not null`,
     ),
     index("recipe_allergen_allergen_idx").on(t.allergenId),
+  ],
+);
+
+/**
+ * `DEC-123`: a recipe **trial** — an observed test run of a specific
+ * `recipe_version` (the `REC`/`PROD` trial fact). A trial is a fact, so the
+ * table is **append-only**: it carries no `updated_at`/`updated_by`/`version`
+ * (the `document_acknowledgement`/`import_disposition` fact-table precedent) and
+ * the `recipe_version` FK is `NO ACTION` (never cascade). `tested_at` and
+ * `batch_input_qty` are required; the observed outputs (`actual_output_qty`,
+ * `actual_duration_minutes`, `actual_cost`, `currency`) and the narrative fields
+ * (`quality_comments`, `proposed_adjustment`) are nullable, and
+ * `resulting_recipe_version_id` is set when a later version is registered from
+ * the proposal (itself a nullable `NO ACTION` FK back to `recipe_version`).
+ * `actor_id` stays a plain `uuid` because the `app_user` FK is deferred
+ * repo-wide. The `(recipe_version_id, tested_at)` and `(organization_id,
+ * tested_at)` indexes cover the trial reads.
+ */
+export const recipeTest = pgTable(
+  "recipe_test",
+  {
+    id: uuidPk(),
+    organizationId: orgId().references(() => organization.id),
+    recipeVersionId: uuid("recipe_version_id")
+      .notNull()
+      .references(() => recipeVersion.id),
+    testedAt: tstz("tested_at").notNull(),
+    batchInputQty: quantity("batch_input_qty").notNull(),
+    actualOutputQty: quantity("actual_output_qty"),
+    actualDurationMinutes: integer("actual_duration_minutes"),
+    actualCost: money("actual_cost"),
+    currency: char("currency", { length: 3 }),
+    qualityComments: text("quality_comments"),
+    proposedAdjustment: text("proposed_adjustment"),
+    resultingRecipeVersionId: uuid("resulting_recipe_version_id").references(
+      () => recipeVersion.id,
+    ),
+    actorId: uuid("actor_id").notNull(),
+    createdAt: tstz("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    check("recipe_test_batch_input_qty_check", sql`${t.batchInputQty} > 0`),
+    check(
+      "recipe_test_actual_output_qty_check",
+      sql`${t.actualOutputQty} is null or ${t.actualOutputQty} > 0`,
+    ),
+    check(
+      "recipe_test_actual_duration_minutes_check",
+      sql`${t.actualDurationMinutes} is null or ${t.actualDurationMinutes} >= 0`,
+    ),
+    check("recipe_test_actual_cost_check", sql`${t.actualCost} is null or ${t.actualCost} >= 0`),
+    index("recipe_test_version_tested_idx").on(t.recipeVersionId, t.testedAt),
+    index("recipe_test_org_tested_idx").on(t.organizationId, t.testedAt),
   ],
 );

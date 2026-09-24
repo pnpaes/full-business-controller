@@ -1,5 +1,14 @@
 import { sql } from "drizzle-orm";
-import { check, date, index, pgTable, text, uuid, type AnyPgColumn } from "drizzle-orm/pg-core";
+import {
+  check,
+  date,
+  index,
+  numeric,
+  pgTable,
+  text,
+  uuid,
+  type AnyPgColumn,
+} from "drizzle-orm/pg-core";
 
 import { item, unit } from "./catalog";
 import { auditColumns, enumCheck, orgId, quantity, rate, tstz, uuidPk } from "./columns";
@@ -123,6 +132,10 @@ export const productionBatch = pgTable(
     actualOutputQty: quantity("actual_output_qty"),
     // Open point (g): stored as a fact; no tolerance check, no exception store.
     yieldVariancePct: rate("yield_variance_pct"),
+    // `DEC-124`: the observed labour hours booked against the batch, an
+    // additive nullable fact (no backfill). `numeric(9,2)` is the hours
+    // convention (`shift_adjustment.adjusted_hours`); no cost is derived here.
+    actualLabourHours: numeric("actual_labour_hours", { precision: 9, scale: 2 }),
     reversalOfId: uuid("reversal_of_id").references((): AnyPgColumn => productionBatch.id),
     ...auditColumns(),
   },
@@ -135,6 +148,10 @@ export const productionBatch = pgTable(
     check(
       "production_batch_actual_output_qty_check",
       sql`${t.actualOutputQty} is null or ${t.actualOutputQty} >= 0`,
+    ),
+    check(
+      "production_batch_actual_labour_hours_check",
+      sql`${t.actualLabourHours} is null or ${t.actualLabourHours} >= 0`,
     ),
     check(
       "production_batch_actual_range_check",

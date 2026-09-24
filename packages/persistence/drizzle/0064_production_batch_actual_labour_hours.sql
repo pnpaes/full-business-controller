@@ -1,0 +1,2 @@
+ALTER TABLE "production_batch" ADD COLUMN "actual_labour_hours" numeric(9, 2);--> statement-breakpoint
+ALTER TABLE "production_batch" ADD CONSTRAINT "production_batch_actual_labour_hours_check" CHECK ("production_batch"."actual_labour_hours" is null or "production_batch"."actual_labour_hours" >= 0);

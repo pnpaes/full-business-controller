@@ -14,7 +14,7 @@ import * as schema from "./index";
 
 const tables = Object.values(schema).filter((value) => is(value, PgTable));
 
-/** The 89 in-scope Phase 1-2 tables: the 35 core tables, the slice-3
+/** The 90 in-scope Phase 1-2 tables: the 35 core tables, the slice-3
  * master-data additions (`unit_conversion`, `supplier`, `supplier_item`,
  * `cost_center`), the slice-4 receiving additions (`goods_receipt`,
  * `goods_receipt_line`), the slice-5 allergen additions (`allergen`,
@@ -47,7 +47,9 @@ const tables = Object.values(schema).filter((value) => is(value, PgTable));
  * `schemas/phase1_2_draft.sql` / `DATA_DICTIONARY`. The `DEC-112` cost-card
  * component-resolver slice adds only nullable columns — `recipe_version`'s
  * `labor_cost_center_id`/`labor_role_code` and `operating_cost.cost_pool_id` —
- * so the table count stays at 89. */
+ * so the table count stays at 89. The `DEC-123` recipe-trial slice adds the
+ * append-only `recipe_test` table plus the nullable `recipe_version.method`
+ * column, taking the count to 90. */
 const EXPECTED_TABLES = [
   "addon_applicability",
   "adjustment_period",
@@ -109,6 +111,7 @@ const EXPECTED_TABLES = [
   "recipe",
   "recipe_allergen",
   "recipe_line",
+  "recipe_test",
   "recipe_version",
   "reconciliation",
   "reconciliation_tolerance",
