@@ -1,0 +1,228 @@
+import {
+  createPostgresMasterDataStore,
+  createPostgresProductStore,
+  findProductVariant,
+  listAssignmentOptions,
+  listProducts,
+} from "@aquarela/application";
+import {
+  Badge,
+  DescriptionList,
+  EmptyState,
+  PageHeader,
+  SectionCard,
+  Table,
+  Td,
+  Th,
+  color,
+  spacing,
+  typography,
+} from "@aquarela/ui";
+import { redirect } from "next/navigation";
+
+import { getDb } from "../../../../../lib/db";
+import { resolveOrganization } from "../../../../../lib/organization";
+import { uuidOrNotFound } from "../../../../../lib/route-params";
+import { getServerSession } from "../../../../../lib/server-session";
+
+import { AddonApplicabilityForm } from "./addon-applicability-form";
+import { AssignRecipeForm } from "./assign-recipe-form";
+import { EditVariantForm } from "./edit-variant-form";
+
+export const dynamic = "force-dynamic";
+export const metadata = { title: "Variant — Aquarela Business Control" };
+
+/** A `Date` as its `yyyy-mm-dd` calendar day. */
+function isoDay(value: Date): string {
+  return value.toISOString().slice(0, 10);
+}
+
+/**
+ * One variant (`DEC-128`): its identity, the mutable-field editor, the
+ * effective-dated recipe assignments and the add-on applicability rows naming
+ * its product. `code`, `sku` and the product are shown read-only because they
+ * anchor identity and are never rewritten.
+ */
+export default async function VariantPage({
+  params,
+}: {
+  readonly params: Promise<{ readonly variantId: string }>;
+}) {
+  const session = await getServerSession();
+  if (session === undefined) {
+    redirect("/login");
+  }
+
+  const variantId = uuidOrNotFound((await params).variantId);
+  const organizationId = resolveOrganization();
+  const db = getDb().db;
+  const store = createPostgresProductStore(db);
+
+  const [detail, options, products] = await Promise.all([
+    findProductVariant(store, { organizationId, productVariantId: variantId }),
+    listAssignmentOptions(store, { organizationId }),
+    listProducts(store, { organizationId }),
+  ]);
+  const organization = await createPostgresMasterDataStore(db).findOrganization(organizationId);
+  const currency = organization?.currency ?? null;
+
+  const baseProducts = products
+    .map(({ product }) => product)
+    .filter((product) => product.id !== detail.product.id);
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: spacing[6],
+        width: "100%",
+        maxWidth: 1120,
+        margin: "0 auto",
+        padding: `${spacing[8]}px ${spacing[4]}px`,
+      }}
+    >
+      <PageHeader
+        title={`${detail.product.code} · ${detail.variant.code}`}
+        scope="Sellable variant"
+        description="The sellable identity: its SKU, the recipe it is made from and the add-ons it accepts."
+      />
+
+      <p style={{ margin: 0 }}>
+        <a href="/products/sellables" style={{ color: color.brand.navy }}>
+          ← Back to sellable products
+        </a>
+      </p>
+
+      <SectionCard title="Identity" meta="read-only">
+        <DescriptionList
+          items={[
+            { term: "Product", description: `${detail.product.code} — ${detail.product.name}` },
+            { term: "Variant code", description: detail.variant.code },
+            { term: "SKU", description: detail.variant.sku },
+            {
+              term: "Finished good",
+              description:
+                detail.variant.finishedGoodItemId === null
+                  ? "Made to order (no stocked item)"
+                  : detail.variant.finishedGoodItemId,
+            },
+            { term: "Active from", description: detail.variant.activeFrom },
+          ]}
+        />
+      </SectionCard>
+
+      <SectionCard title="Edit variant" meta="display fields and the finished-good link">
+        <EditVariantForm
+          productVariantId={detail.variant.id}
+          name={detail.variant.name}
+          size={detail.variant.size}
+          finishedGoodItemId={detail.variant.finishedGoodItemId}
+        />
+      </SectionCard>
+
+      <SectionCard title="Recipe assignment" meta="approved version · location · window">
+        {detail.recipeAssignments.length === 0 ? (
+          <EmptyState title="No recipe assigned">
+            Assign an approved recipe version for a location and window below. Overlapping windows
+            for the same variant and location are rejected.
+          </EmptyState>
+        ) : (
+          <Table caption="Effective recipe assignments for this variant." columnCount={4}>
+            <thead>
+              <tr>
+                <Th>Location</Th>
+                <Th>Recipe version</Th>
+                <Th>From</Th>
+                <Th>To</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {detail.recipeAssignments.map((assignment) => (
+                <tr key={assignment.id}>
+                  <Td>
+                    <Badge>{assignment.locationCode}</Badge> {assignment.locationName}
+                  </Td>
+                  <Td>
+                    <span style={{ fontFamily: typography.fontFamily.mono }}>
+                      v{assignment.recipeVersionNo}
+                    </span>
+                  </Td>
+                  <Td>{isoDay(assignment.effectiveFrom)}</Td>
+                  <Td>
+                    {assignment.effectiveTo === null ? (
+                      <span style={{ color: color.text.muted }}>Open-ended</span>
+                    ) : (
+                      isoDay(assignment.effectiveTo)
+                    )}
+                  </Td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        )}
+        <div style={{ marginTop: spacing[4] }}>
+          <AssignRecipeForm
+            productVariantId={detail.variant.id}
+            locations={options.locations.map((location) => ({
+              id: location.id,
+              code: location.code,
+              name: location.name,
+            }))}
+            recipeVersions={options.recipeVersions.map((version) => ({
+              id: version.id,
+              recipeCode: version.recipeCode,
+              recipeName: version.recipeName,
+              versionNo: version.versionNo,
+            }))}
+          />
+        </div>
+      </SectionCard>
+
+      <SectionCard title="Add-on applicability" meta="this product as an add-on">
+        {detail.addonApplicability.length === 0 ? (
+          <EmptyState title="No add-ons configured">
+            Declare which base products this product may attach to below. A product cannot be its
+            own add-on.
+          </EmptyState>
+        ) : (
+          <Table caption="Add-on applicability rows naming this product." columnCount={3}>
+            <thead>
+              <tr>
+                <Th>Add-on</Th>
+                <Th>Base product</Th>
+                <Th>Price effect</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {detail.addonApplicability.map((row) => (
+                <tr key={row.id}>
+                  <Td>{row.addon.code}</Td>
+                  <Td>{row.base.code}</Td>
+                  <Td>
+                    {row.priceEffect === null ? (
+                      <span style={{ color: color.text.muted }}>—</span>
+                    ) : (
+                      `${row.priceEffect}${currency === null ? "" : ` ${currency}`}`
+                    )}
+                  </Td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        )}
+        <div style={{ marginTop: spacing[4] }}>
+          <AddonApplicabilityForm
+            productId={detail.product.id}
+            products={baseProducts.map((product) => ({
+              id: product.id,
+              code: product.code,
+              name: product.name,
+            }))}
+            currency={currency}
+          />
+        </div>
+      </SectionCard>
+    </div>
+  );
+}

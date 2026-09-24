@@ -126,9 +126,10 @@ const pageCss = `
  * analytical story (contribution before labour against net sales, with the
  * daily net-sales line), then the period measures as one grouped band, then
  * compact preview panels — one per child report, each with a real figure and
- * a link into it. Planning and Competitors stay honestly planned: they have no
- * backend, so they are labelled with the reason (Phase 4 / needs history and
- * dated observations), never charted with placeholders.
+ * a link into it. Competitors is now a live preview linking into the reviewed
+ * observation register (`DEC-126`); Planning stays honestly planned: tracking
+ * has no backend, so it is labelled with the reason (needs history), never
+ * charted with placeholders.
  *
  * Every figure carries its period, scope and freshness (`08_UI_UX.md` §8.4,
  * `FND-006`). Contribution is **before** direct labour, channel fees and
@@ -549,13 +550,22 @@ export default async function InsightsPage() {
             </p>
           </div>
         </SectionCard>
-        <SectionCard title="Competitors" meta="Planned · needs dated observations">
+        <SectionCard
+          title="Competitors"
+          meta="Live · reviewed observations only"
+          actions={
+            <a href="/insights/competitors" style={actionLink}>
+              Open competitors
+            </a>
+          }
+        >
           <div style={{ display: "flex", flexDirection: "column", gap: spacing[2] }}>
-            <StatusPill tone="info">Planned</StatusPill>
+            <StatusPill tone="success">Register live</StatusPill>
             <p style={paragraph}>
-              Competitor price tracking and comparison. No tables, commands or routes exist for it
-              yet, and it needs history and dated competitor observations before a view can be
-              honest, so nothing is charted here.
+              The competitor register and the dated observation log are built (DEC-126), behind a
+              human-review gate (DEC-020): only reviewed observations are intelligence, and only
+              those are compared against our prices. Automated permitted-source collection and
+              seasonal analysis stay deferred.
             </p>
           </div>
         </SectionCard>

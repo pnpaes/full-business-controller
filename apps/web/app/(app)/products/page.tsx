@@ -165,6 +165,10 @@ export default async function ProductsPage({
         description="Items and their supplier packs, base units and current cost. Select an item for its conversions and stock."
       />
 
+      <p style={{ margin: 0 }}>
+        Looking for what we sell? <a href="/products/sellables">Products and variants →</a>
+      </p>
+
       <SectionCard title="Register an item" meta="W2 · create">
         <details>
           <summary
