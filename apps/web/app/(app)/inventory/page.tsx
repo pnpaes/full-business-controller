@@ -296,7 +296,9 @@ export default async function InventoryPage() {
       >
         <StorageAreasTable rows={storageAreaRows} />
         <div style={{ marginTop: spacing[6] }}>
-          <h3 style={{ margin: `0 0 ${spacing[3]}px`, fontSize: 18 }}>Register a storage area</h3>
+          <h3 style={{ margin: `0 0 ${spacing[3]}px`, fontSize: typography.fontSize.lg }}>
+            Register a storage area
+          </h3>
           <RegisterStorageAreaForm locations={locationOptions} kinds={STORAGE_AREA_KIND} />
         </div>
       </SectionCard>

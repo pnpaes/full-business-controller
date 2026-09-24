@@ -1,4 +1,14 @@
-import { Badge, EmptyState, StatusPill, Table, Td, Th, color, spacing } from "@aquarela/ui";
+import {
+  Badge,
+  EmptyState,
+  StatusPill,
+  Table,
+  Td,
+  Th,
+  color,
+  spacing,
+  typography,
+} from "@aquarela/ui";
 import Link from "next/link";
 
 import type { TransferRow } from "../../../api/v1/transfers/transfer-rows";
@@ -76,7 +86,7 @@ export function TransfersTable({ rows }: TransfersTableProps) {
                 >
                   <StatusPill tone="warning">Discrepancy</StatusPill>
                   {row.discrepancyNote === null ? null : (
-                    <span style={{ color: color.text.muted, fontSize: 12 }}>
+                    <span style={{ color: color.text.muted, fontSize: typography.fontSize.xs }}>
                       {row.discrepancyNote}
                     </span>
                   )}
