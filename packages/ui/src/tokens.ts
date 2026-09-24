@@ -1,9 +1,28 @@
 /**
  * Design tokens for the Aquarela Business Controller.
  *
- * Direction: `designer-agent-modern-saas-ui-brief.md` (modern editorial SaaS),
- * superseding 08_UI_UX.md §8.7 (recorded as DEC-120). Framework-agnostic
- * values only: no components, no CSS, no fonts downloaded.
+ * Direction: the Aquarela backoffice design system v0.1.0
+ * (`docs/aquarela-design-system/`), recorded as DEC-129. It supersedes the
+ * palette and typography of `designer-agent-modern-saas-ui-brief.md`
+ * (DEC-120) but NOT that brief's intent or any accessibility rule: the
+ * WCAG 2.2 AA acceptance, the 44px touch targets and the token architecture
+ * all carry over unchanged.
+ *
+ * The design system ships Tailwind class recipes and a shadcn theme block.
+ * Neither applies here — this repository has no Tailwind, no CSS files and
+ * no shadcn, by DEC-120 — so the *values* were merged instead:
+ * `docs/aquarela-design-system/shadcn-theme.css` (its canonical colour
+ * authority), `tokens.json` and `component-recipes.ts`. The structure of
+ * this file is unchanged, which is what keeps ~86 consumer files and
+ * `tokens.test.ts` working.
+ *
+ * Framework-agnostic values only: no components, no CSS, no fonts
+ * downloaded.
+ *
+ * Font: the design system's prose says Inter, but the package itself ships
+ * `fonts/manrope-*.ttf` with `fonts.css` declaring Manrope, and this app
+ * already self-hosts Manrope through `next/font`. Manrope is retained until
+ * the prose/assets contradiction is resolved — see DEC-129.
  *
  * Legacy names (`color.brand.*`, `color.background.*`, `color.text.*`,
  * `color.border.*`, `color.navigation.*`, `color.status.*`, `color.dataViz.*`)
@@ -11,134 +30,185 @@
  * re-tuned to the new palette; where the legacy name would be dishonest
  * (e.g. `brand.cream` is no longer cream) the name aliases the new semantic
  * token instead of keeping a stale value.
+ *
+ * Two values are derived rather than taken from the design system, because
+ * it defines a light sidebar (stage 2) while this stage keeps the dark
+ * navigation shell: `brand.navyDeep` (the pressed/hover step below
+ * `primary`) and `border.default` (the middle separator tier, between the
+ * decorative `border` and the control `input`). Both are marked inline.
  */
 
-/** Semantic surface tiers (brief §3, §7): airy neutral canvas, tonal
- * surfaces, and inset wells — no decorative gradients. */
+/** Semantic surface tiers (design system "Color contract"): a cool neutral
+ * canvas, white panels, and quiet muted fills — no decorative gradients. */
 export const color = {
   surface: {
-    /** Page canvas. */
-    canvas: "#F5F6F4",
-    /** Default card/panel surface, one step above the canvas. */
-    base: "#FAFAF8",
-    /** Strongest surface (popovers, elevated panels). */
+    /** Page canvas — design system `background` #F1F3F8. */
+    canvas: "#F1F3F8",
+    /** Default card/panel surface — design system `card` #FFFFFF. */
+    base: "#FFFFFF",
+    /** Strongest surface (popovers, elevated panels) — `popover` #FFFFFF. */
     strong: "#FFFFFF",
-    /** Muted tonal surface for zebra rows and secondary zones. */
-    muted: "#ECEFEC",
-    /** Inset wells (inputs, code, table headers). */
-    well: "#E7EBE8",
+    /** Muted tonal surface for zebra rows and secondary zones — `muted` #F8F9FC. */
+    muted: "#F8F9FC",
+    /** Inset wells (table headers, code) — the `muted` tier, which the
+     * component recipes use for `tableHead` (`bg-muted`). Inputs are white
+     * now (`bg-card`), not wells. */
+    well: "#F8F9FC",
   },
-  /** Text tiers (brief §3). */
+  /** Text tiers (design system "Color contract"). */
   ink: {
-    primary: "#171918",
-    secondary: "#656A67",
-    /** Metadata text tier. Darkened from #878C88 (3.2:1) so it meets WCAG
-     * 1.4.3 (≥4.5:1) as text at 11–13px on every surface tier; the step
-     * above `secondary` is now subtle — compliance was preferred over a
-     * wide tonal gap. */
-    tertiary: "#6C716D",
+    /** Main text — design system `foreground` #151A2D. */
+    primary: "#151A2D",
+    /** Secondary text — design system `secondary-foreground` #353C50. */
+    secondary: "#353C50",
+    /** Metadata text tier — design system `muted-foreground` #626B7E,
+     * certified by the package at 5.35:1 on card, 4.82:1 on background and
+     * 4.61:1 on accent, so it holds AA (4.5:1) at 11–13px on every surface
+     * tier. */
+    tertiary: "#626B7E",
   },
-  /** One acid/lime accent family used sparingly (brief §3, §22 item 6),
-   * plus at most one secondary accent (pale blue). `accent`/`soft` are
-   * surfaces and marks only — never text. `deep` is the text-safe accent
-   * (AA on canvas/surface/strong); `ink` is legible on the accent. */
+  /** Brand accent family (design system "Iris"): a saturated violet for
+   * focus, selection and the primary chart series, with its lavender soft
+   * surface. `accent`/`soft` are surfaces and marks only — never text.
+   * `deep` is the text-safe violet (certified 7.26:1 on card, 6.54:1 on
+   * background); `ink` is legible on the violet. */
   accent: {
-    accent: "#DFFF55",
-    /** Active-surface tint (Tabs/SegmentedControl/FilterChip/nav). Darkened
-     * from #F0F8C9, which sat at 1.06:1 on surface.base and made the active
-     * state rest entirely on the 1px inset border. */
-    soft: "#DCEF98",
-    ink: "#20240F",
-    deep: "#5A6B0A",
-    secondary: "#A8CBE4",
-    secondaryDeep: "#2E5E80",
+    accent: "#5742BA",
+    /** Active-surface tint (Tabs/SegmentedControl/FilterChip/nav) —
+     * design system `accent` / `brand-soft` #EEECFF. */
+    soft: "#EEECFF",
+    /** Text on the violet — design system `brand-foreground` #FFFFFF. */
+    ink: "#FFFFFF",
+    /** Text-safe violet — the same iris, certified AA as text on the
+     * surface tiers. */
+    deep: "#5742BA",
+    /** Secondary accent, pale surface — design system `info` #EAF1FF. */
+    secondary: "#EAF1FF",
+    /** Text-safe secondary accent — design system `info-foreground` #315FAA. */
+    secondaryDeep: "#315FAA",
   },
   brand: {
-    /** Legacy name, now an alias of the warm-neutral canvas (§3 `--bg`). */
-    cream: "#F5F6F4",
+    /** Legacy name, now an alias of the cool neutral canvas. */
+    cream: "#F1F3F8",
     /** Legacy name, now the dark neutral ink used for navigation and
-     * high-contrast text (§3 `--text-primary`). */
-    navy: "#171918",
-    /** Deeper neutral for pressed/hover states on navigation. */
-    navyDeep: "#0D0F0E",
-    /** Muted berry for commercial/important data. */
-    berry: "#8E2A4F",
-    /** Muted green for healthy operational state. */
-    green: "#134E30",
-    /** Muted gold for review/attention — text-safe dark gold. */
-    gold: "#8C6421",
-    /** Lighter gold for accents, badges and backgrounds only (not text). */
-    goldSoft: "#B07C1F",
+     * high-contrast text — design system `primary` #151A2D. */
+    navy: "#151A2D",
+    /** Deeper neutral for pressed/hover states on navigation.
+     * ponytail: DERIVED (not in the design system, which specifies a light
+     * sidebar). Replace with the light-sidebar treatment in stage 2. */
+    navyDeep: "#0C0F1C",
+    /** Muted plum for commercial/important data — design system `chart-5`. */
+    berry: "#80518F",
+    /** Muted green for healthy operational state — `success-foreground`. */
+    green: "#256442",
+    /** Muted gold for review/attention, text-safe — `warning-foreground`. */
+    gold: "#80550C",
+    /** Lighter gold for accents, badges and backgrounds only (not text) —
+     * design system `warning` surface #FFF3D9. */
+    goldSoft: "#FFF3D9",
   },
   background: {
-    page: "#F5F6F4",
-    surface: "#FAFAF8",
+    page: "#F1F3F8",
+    surface: "#FFFFFF",
     /** Alternate surface for zebra rows and secondary cards. */
-    surfaceAlt: "#ECEFEC",
-    /** Inset wells (inputs, code, table headers). */
-    inset: "#E7EBE8",
+    surfaceAlt: "#F8F9FC",
+    /** Inset wells (table headers, code). */
+    inset: "#F8F9FC",
   },
   navigation: {
-    background: "#171918",
-    backgroundHover: "#0D0F0E",
-    text: "#F5F6F4",
-    textMuted: "#A8B0AB",
-    /** Selected navigation accent: the lime accent on dark neutral. */
-    active: "#DFFF55",
+    /** Dark navigation shell, retained this stage on the design system's
+     * `primary` ink. The design system's own sidebar is white with a
+     * lavender active surface — that is stage 2 (`DEC-129`). */
+    background: "#151A2D",
+    backgroundHover: "#0C0F1C",
+    text: "#FFFFFF",
+    textMuted: "#858DA0",
+    /** Selected navigation accent — design system `brand-soft` #EEECFF,
+     * which stays legible on the dark shell (the saturated iris would not). */
+    active: "#EEECFF",
   },
   text: {
-    primary: "#171918",
-    secondary: "#656A67",
-    muted: "#6B706C",
-    onNavy: "#F5F6F4",
-    onNavyMuted: "#A8B0AB",
+    primary: "#151A2D",
+    secondary: "#353C50",
+    muted: "#626B7E",
+    onNavy: "#FFFFFF",
+    onNavyMuted: "#858DA0",
     inverse: "#FFFFFF",
   },
-  /** Thin subtle separators, no thick borders (brief §3, §7). */
+  /** Thin subtle separators, no thick borders. `subtle` is the design
+   * system's decorative `border` #E5E8F0; `strong` is its control boundary
+   * `input` #858DA0 ("use the stronger input border where the boundary
+   * identifies a control"). */
   border: {
-    subtle: "#E4E8E5",
-    default: "#D6DAD7",
-    strong: "#C3C9C5",
-    focus: "#2E6FA3",
+    subtle: "#E5E8F0",
+    /** ponytail: DERIVED middle tier — the design system supplies only the
+     * decorative border and the control border. */
+    default: "#D6DAE4",
+    strong: "#858DA0",
+    /** Focus ring — design system `ring` #5742BA, certified 7.26:1 on card
+     * and 6.54:1 on background. */
+    focus: "#5742BA",
   },
-  /** Semantic status: muted tints and small indicators, never saturated
-   * blocks (brief §3). Structure `{fg,bg,border}` is load-bearing for
-   * StatusPill. */
+  /** Semantic status: the design system's four hue families, retuned in
+   * lightness only. Structure `{fg,bg,border}` is load-bearing for
+   * StatusPill.
+   *
+   * DEVIATION from the design system's exact values, driven by gates this
+   * repo already enforced before DEC-129: its four status foregrounds sit
+   * within 1.005–1.12:1 of each other, failing the pairwise
+   * distinguishability assertion (≥1.3:1), and its washes sit 1.008–1.021
+   * from its own page canvas, failing the wash-separation assertion
+   * (>1.05:1). Both gates protect legibility, so the values below keep each
+   * hue and spread the luminances instead. Every pair is re-derived in
+   * `tokens.test.ts` and each is AA on its wash and on white. */
   status: {
-    success: { fg: "#134e30", bg: "#e2f0e7", border: "#134e30" },
-    warning: { fg: "#8c6421", bg: "#f6ecd4", border: "#b07c1f" },
-    danger: { fg: "#620f17", bg: "#f9e3e1", border: "#620f17" },
-    info: { fg: "#215a8b", bg: "#e2ecf7", border: "#215a8b" },
+    success: { fg: "#102B1C", bg: "#E2EFE9", border: "#102B1C" },
+    warning: { fg: "#523608", bg: "#F6EBD5", border: "#523608" },
+    danger: { fg: "#922931", bg: "#F8E8E9", border: "#922931" },
+    info: { fg: "#3865AD", bg: "#E5ECFB", border: "#3865AD" },
   },
-  /** Data-visualization palettes (brief §10): muted, staggered in
-   * luminance, no rainbow. Categorical colours are each ≥3:1 against the
-   * surfaces (WCAG 1.4.11) and pairwise distinguishable. Sequential ramps
-   * are monotonic in luminance. */
+  /** Data-visualization palettes: the product's established 8-colour ladder
+   * with the design system's neutral comparison grey.
+   *
+   * DEVIATION: the design system's `chart-1`..`chart-5` are retained as
+   * `accent.*`/`border.focus` (selection, focus, brand) but are NOT adopted
+   * as the categorical series. Two independent reasons: no 8-colour set
+   * containing the iris satisfies the pairwise ≥1.2:1 assertion (the best
+   * achievable is 1.115, and the package's own chart-1 vs chart-3 is
+   * 1.030), and `shell.tsx` indexes this array positionally with semantic
+   * names (`navy`=0, `teal`=1, `green`=2, `berry`=3, `gold`=7), so its
+   * length and order are load-bearing. Reordering or shortening it would
+   * silently recolour named chart series.
+   *
+   * Categorical colours are each ≥3:1 against the surfaces (WCAG 1.4.11)
+   * and pairwise distinguishable. Sequential ramps are monotonic in
+   * luminance. */
   dataViz: {
-    /** Pale neutral for comparison series (brief §10). A dedicated token,
-     * ≥3:1 against the surface tiers (WCAG 1.4.11) because the comparison
-     * series carries real information; still clearly secondary to the
-     * accent series. */
-    comparison: "#838984",
+    /** Pale neutral for comparison series — design system
+     * `muted-foreground` #626B7E, ≥3:1 on the surface tiers because the
+     * comparison series carries real information. */
+    comparison: "#626B7E",
     categorical: [
-      "#1E2321", // dark neutral
-      "#083A3A", // deep teal
-      "#134E30", // green
-      "#8E2A4F", // berry
+      "#1E2321", // dark neutral (`navy` in shell.tsx)
+      "#083A3A", // deep teal (`teal`)
+      "#134E30", // green (`green`)
+      "#8E2A4F", // berry (`berry`)
       "#8F4A18", // muted terracotta
-      "#7A5CA8", // muted plum
-      "#647995", // slate blue
-      "#B07C1F", // muted gold
+      "#7A5CA8", // muted plum (`plum`)
+      "#647995", // slate blue (`slate`)
+      "#B07C1F", // muted gold (`gold`)
     ],
     sequential: {
-      /** Neutral ink ramp. */
-      navy: ["#E9EBEA", "#C2C7C4", "#989E9A", "#676D69", "#343836"],
-      berry: ["#f6e4ea", "#dca9b8", "#bc6e8b", "#93365c", "#5c1b36"],
+      /** Cool neutral ink ramp. */
+      navy: ["#EEF1F7", "#D3D8E4", "#A9B0C4", "#626B7E", "#353C50"],
+      /** Violet ramp (legacy `berry` key, re-tinted to the iris family). */
+      berry: ["#F0EDFF", "#CFC4F5", "#A695E8", "#7A63D0", "#4A3596"],
     },
   },
 } as const;
 
-/** Spacing scale in pixels, 4px base unit. Keys are scale steps. */
+/** Spacing scale in pixels, 4px base unit. Keys are scale steps. Matches the
+ * design system's 4, 8, 12, 16, 20, 24, 32, 40, 48, 64 scale. */
 export const spacing = {
   0: 0,
   1: 4,
@@ -156,7 +226,7 @@ export const spacing = {
 } as const;
 
 /**
- * Typography (brief §4): one geometric/humanist sans for everything,
+ * Typography (design system "Typography"): one sans for everything,
  * hierarchy from size/position/spacing rather than heavy bold.
  *
  * Font decision: the app layout defines `--font-sans` via `next/font`
@@ -185,7 +255,8 @@ export const typography = {
     lg: 16,
     xl: 20,
     "2xl": 24,
-    "3xl": 30,
+    /** Page heading — design system "Page heading" 32 / 38. */
+    "3xl": 32,
     "4xl": 40,
     "5xl": 48,
     "6xl": 56,
@@ -198,48 +269,83 @@ export const typography = {
     bold: 700,
   },
   lineHeight: {
-    /** Tight display line-height for large statements (brief §4). */
+    /** Tight display line-height for large statements. */
     display: 1.1,
     tight: 1.2,
     normal: 1.5,
     relaxed: 1.65,
   },
-  /** Tabular-numeric affordance for figures (KPIs, tables). */
+  /** Tabular-numeric affordance for figures (KPIs, tables, money). The
+   * design system requires tabular figures for money, stock and aligned
+   * metrics. */
   fontVariantNumeric: {
     tabular: "tabular-nums",
   },
 } as const;
 
-/** Corner radius scale in pixels (brief §7: 16–24px modules). */
+/** Corner radius scale in pixels (design system "Radii": 6px small nested
+ * surface, 10px button/input/popover, 16px card, 24px dialog). */
 export const radius = {
   none: 0,
-  sm: 4,
-  md: 8,
-  lg: 12,
-  xl: 16,
+  /** Small nested surface — 6px. */
+  sm: 6,
+  /** Button / input / popover — 10px. */
+  md: 10,
+  /** Card — 16px. */
+  lg: 16,
+  /** Dialog — 24px. */
+  xl: 24,
   "2xl": 20,
   "3xl": 24,
   pill: 999,
 } as const;
 
-/** Border widths (brief §7: thin, subtle). */
+/** Border widths (thin, subtle). */
 export const borderWidth = {
   none: 0,
   hairline: 1,
   medium: 2,
 } as const;
 
-/** Elevation: none or extremely soft (brief §7). */
-export const elevation = {
-  none: "none",
-  sm: "0 1px 2px rgba(23, 25, 24, 0.06)",
-  /** Extremely soft panel elevation for feature modules. */
-  panel: "0 1px 2px rgba(23, 25, 24, 0.05), 0 2px 8px rgba(23, 25, 24, 0.04)",
-  md: "0 2px 6px rgba(23, 25, 24, 0.08), 0 1px 2px rgba(23, 25, 24, 0.05)",
-  lg: "0 8px 24px rgba(23, 25, 24, 0.12), 0 2px 6px rgba(23, 25, 24, 0.06)",
+/** Control geometry (design system "Component contract" and
+ * `component-recipes.ts` sizes): 40px default control, 32px compact, 48px
+ * large, 56px table row with a 40px compact row, and a 44px minimum touch
+ * target for the counter-tablet context. */
+export const geometry = {
+  controlHeight: {
+    sm: 32,
+    md: 40,
+    lg: 48,
+  },
+  tableRowHeight: {
+    default: 56,
+    compact: 40,
+  },
+  tableHeaderHeight: 40,
+  /** WCAG 2.2 target size / design system tablet requirement. */
+  touchTarget: 44,
 } as const;
 
-/** Icon sizes (brief §20: mostly 16–20px in UI). */
+/** Focus treatment (design system "Accessibility acceptance"): a 3px solid
+ * iris ring with a 2px gap, never an opacity-modified ring. */
+export const focus = {
+  ringWidth: 3,
+  ringOffset: 2,
+  ringColor: "#5742BA",
+} as const;
+
+/** Elevation: none or extremely soft. Resting panels have 1px borders and
+ * no shadow; menus use a soft shadow and dialogs stronger elevation. */
+export const elevation = {
+  none: "none",
+  sm: "0 1px 2px rgba(21, 26, 45, 0.06)",
+  /** Extremely soft panel elevation for feature modules. */
+  panel: "0 1px 2px rgba(21, 26, 45, 0.05), 0 2px 8px rgba(21, 26, 45, 0.04)",
+  md: "0 2px 6px rgba(21, 26, 45, 0.08), 0 1px 2px rgba(21, 26, 45, 0.05)",
+  lg: "0 8px 24px rgba(21, 26, 45, 0.12), 0 2px 6px rgba(21, 26, 45, 0.06)",
+} as const;
+
+/** Icon sizes (mostly 16–20px in UI). */
 export const iconSize = {
   xs: 16,
   sm: 18,
@@ -247,7 +353,8 @@ export const iconSize = {
   lg: 24,
 } as const;
 
-/** Container widths (brief §5). */
+/** Container widths. The design system proposes a sensible content max of
+ * 1440px. */
 export const containerWidth = {
   /** Narrow form/working width. */
   narrow: 760,
@@ -257,14 +364,15 @@ export const containerWidth = {
   wide: 1600,
 } as const;
 
-/** 12-column grid definition (brief §5). */
+/** 12-column grid definition. */
 export const grid = {
   columns: 12,
   gutter: 24,
   margin: 32,
 } as const;
 
-/** Responsive breakpoints (brief §18). */
+/** Responsive breakpoints. The design system's table adds 1024 (collapse
+ * navigation) and 1280 (expanded, 3–4 metrics) to the existing set. */
 export const breakpoint = {
   mobile: 375,
   tablet: 768,
@@ -272,11 +380,12 @@ export const breakpoint = {
   large: 1600,
 } as const;
 
-/** Animation timing (brief §19: 120–220 ms, restrained). */
+/** Animation timing (design system: 120ms hover, 180ms panel transition;
+ * no bouncing or dramatic scaling). */
 export const motion = {
   duration: {
     fast: 120,
-    base: 160,
+    base: 180,
     slow: 220,
   },
   easing: "cubic-bezier(0.2, 0, 0, 1)",
@@ -289,6 +398,8 @@ export const TOKENS = {
   typography,
   radius,
   borderWidth,
+  geometry,
+  focus,
   elevation,
   iconSize,
   containerWidth,

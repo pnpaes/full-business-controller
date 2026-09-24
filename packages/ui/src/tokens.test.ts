@@ -7,6 +7,8 @@ import {
   color,
   containerWidth,
   elevation,
+  focus,
+  geometry,
   iconSize,
   motion,
   radius,
@@ -221,6 +223,110 @@ const nonTextPairs: Array<{ name: string; fg: string; bg: string }> = [
   })),
 ];
 
+/**
+ * The Aquarela backoffice design system v0.1.0 (`docs/aquarela-design-system/`,
+ * DEC-129) publishes its own static contrast evidence in `VALIDATION.md`.
+ * These assertions re-derive each published pair from the merged token values
+ * so the evidence and the code cannot drift apart: if a value is retuned, the
+ * matching published ratio must be re-checked here.
+ *
+ * Additive only — the pairs above are unchanged.
+ */
+const designSystemPairs: Array<{ name: string; fg: string; bg: string; min: number }> = [
+  { name: "foreground on card", fg: color.ink.primary, bg: color.surface.base, min: AA_NORMAL },
+  {
+    name: "foreground on background",
+    fg: color.ink.primary,
+    bg: color.surface.canvas,
+    min: AA_NORMAL,
+  },
+  {
+    name: "muted-foreground on card",
+    fg: color.ink.tertiary,
+    bg: color.surface.base,
+    min: AA_NORMAL,
+  },
+  {
+    name: "muted-foreground on background",
+    fg: color.ink.tertiary,
+    bg: color.surface.canvas,
+    min: AA_NORMAL,
+  },
+  {
+    name: "muted-foreground on accent",
+    fg: color.ink.tertiary,
+    bg: color.accent.soft,
+    min: AA_NORMAL,
+  },
+  {
+    name: "primary-foreground on primary",
+    fg: color.text.onNavy,
+    bg: color.brand.navy,
+    min: AA_NORMAL,
+  },
+  {
+    name: "accent-foreground on accent",
+    fg: color.accent.deep,
+    bg: color.accent.soft,
+    min: AA_NORMAL,
+  },
+  {
+    name: "success-foreground on success",
+    fg: color.status.success.fg,
+    bg: color.status.success.bg,
+    min: AA_NORMAL,
+  },
+  {
+    name: "warning-foreground on warning",
+    fg: color.status.warning.fg,
+    bg: color.status.warning.bg,
+    min: AA_NORMAL,
+  },
+  {
+    name: "danger-foreground on danger",
+    fg: color.status.danger.fg,
+    bg: color.status.danger.bg,
+    min: AA_NORMAL,
+  },
+  {
+    name: "info-foreground on info",
+    fg: color.status.info.fg,
+    bg: color.status.info.bg,
+    min: AA_NORMAL,
+  },
+  {
+    name: "destructive-foreground on destructive",
+    fg: color.text.inverse,
+    bg: color.status.danger.fg,
+    min: AA_NORMAL,
+  },
+  // Non-text pairs (design system: ≥3:1 for meaningful control boundaries).
+  {
+    name: "input control boundary on card",
+    fg: color.border.strong,
+    bg: color.surface.base,
+    min: AA_LARGE_OR_UI,
+  },
+  {
+    name: "ring on card",
+    fg: color.border.focus,
+    bg: color.surface.base,
+    min: AA_LARGE_OR_UI,
+  },
+  {
+    name: "ring on background",
+    fg: color.border.focus,
+    bg: color.surface.canvas,
+    min: AA_LARGE_OR_UI,
+  },
+];
+
+describe("color tokens: Aquarela design system published evidence", () => {
+  it.each(designSystemPairs)("$name meets >= $min:1", ({ fg, bg, min }) => {
+    expect(contrastRatio(fg, bg)).toBeGreaterThanOrEqual(min);
+  });
+});
+
 describe("color tokens: WCAG AA text contrast", () => {
   it.each(textPairs)("$name meets >= $min:1", ({ fg, bg, min }) => {
     expect(contrastRatio(fg, bg)).toBeGreaterThanOrEqual(min);
@@ -359,6 +465,40 @@ describe("structural token scales", () => {
       expect(widths[i]).toBeGreaterThanOrEqual(widths[i - 1]!);
     }
   });
+
+  // Control geometry and focus treatment come from the design system's
+  // "Component contract" and `component-recipes.ts` sizes.
+  it("control heights ascend and match the 40px default", () => {
+    expect(geometry.controlHeight.sm).toBeLessThan(geometry.controlHeight.md);
+    expect(geometry.controlHeight.md).toBeLessThan(geometry.controlHeight.lg);
+    expect(geometry.controlHeight.md).toBe(40);
+    expect(geometry.controlHeight.sm).toBe(32);
+    expect(geometry.controlHeight.lg).toBe(48);
+  });
+
+  it("table rows are 56px default with a 40px compact row and a 40px header", () => {
+    expect(geometry.tableRowHeight.default).toBe(56);
+    expect(geometry.tableRowHeight.compact).toBe(40);
+    expect(geometry.tableHeaderHeight).toBe(40);
+    expect(geometry.tableRowHeight.compact).toBeLessThan(geometry.tableRowHeight.default);
+  });
+
+  it("the touch target meets the 44px minimum", () => {
+    expect(geometry.touchTarget).toBeGreaterThanOrEqual(44);
+  });
+
+  it("the focus ring is a solid 3px ring with a 2px offset", () => {
+    expect(focus.ringWidth).toBe(3);
+    expect(focus.ringOffset).toBe(2);
+    // Never an opacity-modified ring: the token must be a complete colour.
+    expect(focus.ringColor).toMatch(/^#[0-9a-fA-F]{6}$/);
+    expect(focus.ringColor).toBe(color.border.focus);
+  });
+
+  it("motion durations match the design system's 120ms / 180ms pair", () => {
+    expect(motion.duration.fast).toBe(120);
+    expect(motion.duration.base).toBe(180);
+  });
 });
 
 describe("TOKENS aggregate", () => {
@@ -369,6 +509,8 @@ describe("TOKENS aggregate", () => {
       "color",
       "containerWidth",
       "elevation",
+      "focus",
+      "geometry",
       "grid",
       "iconSize",
       "motion",
@@ -389,5 +531,7 @@ describe("TOKENS aggregate", () => {
     expect(TOKENS.containerWidth).toBe(containerWidth);
     expect(TOKENS.breakpoint).toBe(breakpoint);
     expect(TOKENS.motion).toBe(motion);
+    expect(TOKENS.geometry).toBe(geometry);
+    expect(TOKENS.focus).toBe(focus);
   });
 });
