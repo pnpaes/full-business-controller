@@ -1,0 +1,407 @@
+import type { SalesReportGrain } from "@aquarela/domain";
+
+/**
+ * Application-level ports and DTOs for the analytics read model (`W6` —
+ * trends, benchmarks, predictability and rule-based suggestions).
+ *
+ * This is a **read-only analytical layer over data that already exists**: every
+ * computation runs over the existing reporting reads (`ReportingStore`), so
+ * there is no new SQL, no aggregate table, no schema change and no audit fact.
+ * The metric definitions live in the domain (`contributionBeforeLabour`,
+ * `medianDecimal`, `yieldRatio`); this slice only composes, compares and
+ * labels them.
+ *
+ * **Honesty is the contract.** Every result states its method, its inputs and
+ * its error/uncertainty; a benchmark states that it is internal; a forecast is
+ * labelled a model, never a fact; every suggestion carries its rule id and the
+ * figures that fired it. Nothing presents a projection as a recorded fact.
+ */
+
+/** The metrics the analytics reads can compute from the existing reporting reads. */
+export const ANALYTICS_METRICS = [
+  "revenue",
+  "contribution",
+  "units",
+  "transactions",
+  "average_order_value",
+  "production_yield",
+  "waste",
+] as const;
+export type AnalyticsMetric = (typeof ANALYTICS_METRICS)[number];
+
+/** True when `value` is one of `ANALYTICS_METRICS`. */
+export function isAnalyticsMetric(value: string): value is AnalyticsMetric {
+  return (ANALYTICS_METRICS as readonly string[]).includes(value);
+}
+
+/** The dimensions a benchmark can compare (`W6`). */
+export const BENCHMARK_DIMENSIONS = ["location", "product", "channel"] as const;
+export type BenchmarkDimension = (typeof BENCHMARK_DIMENSIONS)[number];
+
+/** True when `value` is one of `BENCHMARK_DIMENSIONS`. */
+export function isBenchmarkDimension(value: string): value is BenchmarkDimension {
+  return (BENCHMARK_DIMENSIONS as readonly string[]).includes(value);
+}
+
+/**
+ * The metrics a benchmark supports: the sales-derived subset. Production yield
+ * and waste have no product/channel attribution and the existing reads do not
+ * group them by the benchmark dimensions, so benchmarking them is not built —
+ * a `DomainError` names the supported set rather than returning a number the
+ * data cannot support.
+ */
+export const BENCHMARK_METRICS = [
+  "revenue",
+  "contribution",
+  "units",
+  "transactions",
+  "average_order_value",
+] as const;
+export type BenchmarkMetric = (typeof BENCHMARK_METRICS)[number];
+
+/** True when `value` is one of `BENCHMARK_METRICS`. */
+export function isBenchmarkMetric(value: string): value is BenchmarkMetric {
+  return (BENCHMARK_METRICS as readonly string[]).includes(value);
+}
+
+/** The direction of a period-over-period change. */
+export type TrendDirection = "up" | "down" | "flat";
+
+/** The unit a metric's figures are expressed in. */
+export type MetricUnit = "money" | "quantity" | "count" | "ratio";
+
+/** The scale (decimal places) the analytics maths works at for a metric. */
+export const ANALYTICS_RATIO_SCALE = 6;
+
+/** The default period-over-period flat band: a change under 5% reads as flat. */
+export const ANALYTICS_FLAT_BAND_FRACTION = "0.050000";
+
+/** The default number of periods a trend/forecast reads back over. */
+export const DEFAULT_TREND_PERIODS = 6;
+export const DEFAULT_FORECAST_HISTORY_PERIODS = 12;
+export const DEFAULT_FORECAST_HORIZON_PERIODS = 3;
+
+/** The minimum history points a least-squares fit needs (n − 2 residual d.o.f.). */
+export const FORECAST_MINIMUM_HISTORY_POINTS = 3;
+
+/** A safety ceiling on the periods a single analytics read will fetch. */
+export const ANALYTICS_MAX_PERIODS = 60;
+
+/** The reporting currency (`DEC-104` hard-codes NOK; the organization's own). */
+export const ANALYTICS_CURRENCY = "NOK";
+
+/** One metric's presentation and maths specification. */
+export interface AnalyticsMetricSpec {
+  readonly label: string;
+  readonly unit: MetricUnit;
+  readonly scale: number;
+  /** The metric's definition, stated on every result that carries it. */
+  readonly definition: string;
+}
+
+/**
+ * The metric definitions, stated once so the trend, benchmark, forecast and
+ * suggestion results all describe the same figure the same way. Money and
+ * quantities are decimal only (`DEC-024`); `transactions` is a count.
+ */
+export const ANALYTICS_METRIC_SPECS: Record<AnalyticsMetric, AnalyticsMetricSpec> = {
+  revenue: {
+    label: "Net sales",
+    unit: "money",
+    scale: 4,
+    definition:
+      "net sales summed from the posted sales lines (net_amount, else gross − tax − discount − refund); included add-on lines are excluded (SALE-011)",
+  },
+  contribution: {
+    label: "Contribution before labour",
+    unit: "money",
+    scale: 4,
+    definition:
+      "net sales minus the moving-average ingredient cost posted to the stock ledger; excludes direct labour, channel fees and allocated overhead (DEC-063)",
+  },
+  units: {
+    label: "Units",
+    unit: "quantity",
+    scale: 6,
+    definition:
+      "summed sales_line.quantity (a reversal line is a negated row, so a plain sum nets it)",
+  },
+  transactions: {
+    label: "Transactions",
+    unit: "count",
+    scale: 0,
+    definition: "distinct sales transactions that contribute at least one non-included line",
+  },
+  average_order_value: {
+    label: "Average order value",
+    unit: "money",
+    scale: 4,
+    definition:
+      "net sales ÷ transactions, HALF_UP at 4 dp (DEC-024); undefined (null) when the period has no transaction",
+  },
+  production_yield: {
+    label: "Production yield",
+    unit: "ratio",
+    scale: 6,
+    definition:
+      "actual ÷ planned output over completed batches (DEC-110 item 5); undefined (null) when planned output is non-positive",
+  },
+  waste: {
+    label: "Waste value",
+    unit: "money",
+    scale: 4,
+    definition:
+      "moving-average waste value (DEC-068); undefined (null) when the period has no valued waste event, never a silent zero",
+  },
+};
+
+/** An ISO-inclusive period window. */
+export interface AnalyticsPeriod {
+  /** Inclusive lower bound; an ISO instant. */
+  readonly from: string;
+  /** Inclusive upper bound; an ISO instant. */
+  readonly to: string;
+}
+
+/** The echoed filters an analytics result was produced with (`FND-006`). */
+export interface AnalyticsScope {
+  /** `null` = organization-wide. */
+  readonly locationIds: readonly string[] | null;
+  readonly channelId: string | null;
+}
+
+/** One period of a trend series and its comparison against the previous period. */
+export interface TrendPoint {
+  /** The grain bucket label (e.g. `2026-09`). */
+  readonly period: string;
+  readonly from: string;
+  readonly to: string;
+  /** `null` when the metric is undefined for the period (never a silent zero). */
+  readonly value: string | null;
+  readonly previousValue: string | null;
+  /** `value − previousValue` at the metric's scale; `null` when either is undefined. */
+  readonly absoluteChange: string | null;
+  /** `(value − previous) / previous` as a fraction at 6 dp; `null` when the previous is 0/undefined. */
+  readonly relativeChange: string | null;
+  /** `null` for the first period (no comparison exists). */
+  readonly direction: TrendDirection | null;
+}
+
+/** A period-over-period trend series with its method and window stated. */
+export interface TrendSeries {
+  readonly asOf: string;
+  readonly metric: AnalyticsMetric;
+  readonly metricLabel: string;
+  readonly unit: MetricUnit;
+  readonly grain: SalesReportGrain;
+  readonly scope: AnalyticsScope;
+  readonly method: string;
+  /** The flat band as a fraction at 6 dp (a change within it reads as flat). */
+  readonly flatBandFraction: string;
+  readonly points: readonly TrendPoint[];
+  readonly notes: readonly string[];
+}
+
+export interface ComputeTrendsInput {
+  readonly organizationId: string;
+  readonly metric: AnalyticsMetric;
+  readonly grain: SalesReportGrain;
+  /** Empty/undefined = organization-wide (the repo convention). */
+  readonly locationIds?: readonly string[] | undefined;
+  readonly channelId?: string | undefined;
+  /** The number of periods to read back from `now`; defaults to 6. */
+  readonly periods?: number | undefined;
+  /** The window anchor; an ISO instant. Defaults to the current instant. */
+  readonly now?: string | undefined;
+}
+
+/** One benchmarked entity: its value against the organization and peer median. */
+export interface BenchmarkEntity {
+  /** The dimension id; `null` for the unmapped bucket. */
+  readonly entityId: string | null;
+  readonly label: string;
+  /** True for the bucket of rows with no value for the dimension (never ranked). */
+  readonly isUnmapped: boolean;
+  readonly value: string | null;
+  /** Standard competition rank (1, 2, 2, 4) among mapped entities; `null` when unranked. */
+  readonly rank: number | null;
+  /** `value / organizationAggregate` as a fraction at 6 dp; `null` when either is 0/undefined. */
+  readonly ratioToOrganization: string | null;
+  /** `value / peerMedian` as a fraction at 6 dp; `null` when either is 0/undefined. */
+  readonly ratioToPeerMedian: string | null;
+  /** True when `value >= peerMedian` (`DEC-109` item 1 boundary); `null` when undefined. */
+  readonly meetsPeerMedian: boolean | null;
+}
+
+/** A benchmark report: each entity against the organization and the peer median. */
+export interface BenchmarkReport {
+  readonly asOf: string;
+  readonly metric: BenchmarkMetric;
+  readonly metricLabel: string;
+  readonly unit: MetricUnit;
+  readonly dimension: BenchmarkDimension;
+  readonly dimensionLabel: string;
+  readonly period: AnalyticsPeriod;
+  readonly scope: AnalyticsScope;
+  /** Always `"internal"`: there is no external market data in this system. */
+  readonly basis: "internal";
+  readonly basisNote: string;
+  readonly organizationAggregate: string | null;
+  /** The median of the mapped entities' values; `null` when none is computable. */
+  readonly peerMedian: string | null;
+  readonly entities: readonly BenchmarkEntity[];
+  readonly notes: readonly string[];
+}
+
+export interface ComputeBenchmarksInput {
+  readonly organizationId: string;
+  readonly dimension: BenchmarkDimension;
+  readonly metric: BenchmarkMetric;
+  readonly period: AnalyticsPeriod;
+  /** Empty/undefined = organization-wide (the repo convention). */
+  readonly locationIds?: readonly string[] | undefined;
+  readonly channelId?: string | undefined;
+}
+
+/** One fitted history point: the actual value and the model's fitted value. */
+export interface ForecastHistoryPoint {
+  readonly period: string;
+  readonly value: string;
+  readonly fitted: string;
+}
+
+/** One projected point: the model's value and its ±1 residual-σ band. */
+export interface ForecastProjectionPoint {
+  readonly period: string;
+  readonly value: string;
+  readonly lower: string;
+  readonly upper: string;
+}
+
+/** The stated forecast model: method, parameters and confidence. */
+export interface ForecastModel {
+  readonly method: "least_squares_linear";
+  readonly methodNote: string;
+  readonly slopePerPeriod: string;
+  readonly intercept: string;
+  readonly confidence: {
+    readonly method: string;
+    readonly bandScale: string;
+  };
+}
+
+/** The backtested historical accuracy of the model. */
+export interface ForecastAccuracy {
+  readonly method: "mape";
+  readonly methodNote: string;
+  /** Mean absolute percentage error as a fraction at 6 dp; `null` when no non-zero actual. */
+  readonly mape: string | null;
+  /** The number of history points the error was measured over. */
+  readonly points: number;
+}
+
+/** The explicit result when history is too short to fit honestly. */
+export interface ForecastInsufficient {
+  readonly status: "insufficient_history";
+  readonly reason: string;
+  readonly historyPoints: number;
+  readonly minimumPoints: number;
+}
+
+/**
+ * A forecast result. `status` is `"ok"` with a model and projection, or
+ * `"insufficient_history"` with the reason and no number — never a fabricated
+ * projection from too little history.
+ */
+export interface ForecastResult {
+  readonly asOf: string;
+  readonly metric: AnalyticsMetric;
+  readonly metricLabel: string;
+  readonly unit: MetricUnit;
+  readonly grain: SalesReportGrain;
+  readonly scope: AnalyticsScope;
+  readonly status: "ok" | "insufficient_history";
+  /** The model's method, stated on every result. */
+  readonly method: string;
+  readonly history: readonly ForecastHistoryPoint[];
+  readonly projection: readonly ForecastProjectionPoint[];
+  readonly model: ForecastModel | null;
+  readonly accuracy: ForecastAccuracy | null;
+  readonly insufficient: ForecastInsufficient | null;
+  readonly notes: readonly string[];
+}
+
+export interface ComputeForecastInput {
+  readonly organizationId: string;
+  readonly metric: AnalyticsMetric;
+  readonly grain: SalesReportGrain;
+  /** Empty/undefined = organization-wide (the repo convention). */
+  readonly locationIds?: readonly string[] | undefined;
+  readonly channelId?: string | undefined;
+  /** The number of history periods to fit over; defaults to 12. */
+  readonly historyPeriods?: number | undefined;
+  /** The number of periods to project; defaults to 3. */
+  readonly horizonPeriods?: number | undefined;
+  /** The window anchor; an ISO instant. Defaults to the current instant. */
+  readonly now?: string | undefined;
+}
+
+/** The severity of a suggestion. */
+export type SuggestionSeverity = "high" | "medium" | "low";
+
+/** One figure behind a suggestion: the evidence that fired the rule. */
+export interface SuggestionEvidence {
+  readonly label: string;
+  readonly value: string;
+}
+
+/** The subject a suggestion is about (a location, a product, the organization). */
+export interface SuggestionSubject {
+  readonly kind: "metric" | "location" | "product" | "channel";
+  readonly id: string | null;
+  readonly label: string;
+}
+
+/** One transparent, rule-based advisory. Never auto-applied (`DEC-039`). */
+export interface Suggestion {
+  readonly ruleId: string;
+  readonly title: string;
+  readonly severity: SuggestionSeverity;
+  /** Always true: the recorded posture is advisory-only with human approval. */
+  readonly advisory: true;
+  /** The metric the evidence is about; `null` for a non-metric (e.g. a product). */
+  readonly metric: AnalyticsMetric | null;
+  readonly subject: SuggestionSubject;
+  readonly evidence: readonly SuggestionEvidence[];
+  readonly action: string;
+}
+
+/** One rule's evaluation count, so a screen can say which rules ran. */
+export interface SuggestionRuleRun {
+  readonly ruleId: string;
+  readonly title: string;
+  readonly fired: number;
+}
+
+export interface SuggestionsReport {
+  readonly asOf: string;
+  readonly period: AnalyticsPeriod;
+  readonly scope: AnalyticsScope;
+  /** Always `"advisory_only"`: no AI, no opaque scoring, no auto-apply (`DEC-039`). */
+  readonly posture: "advisory_only";
+  readonly postureNote: string;
+  readonly suggestions: readonly Suggestion[];
+  readonly evaluated: readonly SuggestionRuleRun[];
+  readonly notes: readonly string[];
+}
+
+export interface ComputeSuggestionsInput {
+  readonly organizationId: string;
+  readonly period: AnalyticsPeriod;
+  /** The grain the trend scan steps at; defaults to `month`. */
+  readonly grain?: SalesReportGrain | undefined;
+  /** The trend periods to scan; defaults to `DEFAULT_TREND_PERIODS` (6). */
+  readonly trendPeriods?: number | undefined;
+  /** Empty/undefined = organization-wide (the repo convention). */
+  readonly locationIds?: readonly string[] | undefined;
+}

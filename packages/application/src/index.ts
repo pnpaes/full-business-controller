@@ -1,4 +1,5 @@
 export * from "./adjustment-period";
+export * from "./analytics";
 export * from "./auth";
 export * from "./catalog";
 export * from "./close";
@@ -14,6 +15,7 @@ export * from "./reconciliation";
 export * from "./reporting";
 export * from "./sales";
 export * from "./scheduling";
+export * from "./simulation";
 export * from "./tasks";
 export * from "./recipes";
 export * from "./receiving";
