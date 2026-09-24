@@ -75,3 +75,17 @@ export function hasYieldVariance(value: string | null): boolean {
 export function orDash(value: string | null): string {
   return value === null || value === "" ? "—" : value;
 }
+
+/**
+ * A canonical money string at its full precision (B-money/B2/B3 are 4 dp) with
+ * its currency — trailing zeros trimmed, never rounded to 2 dp, so the panel
+ * shows the exact figure the query returned.
+ */
+export function moneyLabel(value: string, currency: string): string {
+  return `${trimDecimal(value)} ${currency}`;
+}
+
+/** `numeric(9,2)` labour hours → "1.5 h". */
+export function hoursLabel(value: string): string {
+  return `${trimDecimal(value)} h`;
+}

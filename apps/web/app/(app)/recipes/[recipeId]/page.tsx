@@ -1,13 +1,23 @@
 import {
   createPostgresRecipeStore,
   getRecipe,
+  listRecipeTests,
   type RecipeAllergenRecordView,
   type RecipeCostComponent,
   type RecipeDetail,
   type RecipeItemRecord,
   type RecipeStore,
+  type RecipeTestView,
 } from "@aquarela/application";
-import { MONEY_SCALE, NotFoundError, formatDecimal, parseDecimal, rescale } from "@aquarela/domain";
+import {
+  MONEY_SCALE,
+  NotFoundError,
+  QUANTITY_SCALE,
+  divideRoundHalfUp,
+  formatDecimal,
+  parseDecimal,
+  rescale,
+} from "@aquarela/domain";
 import {
   Alert,
   Badge,
@@ -29,6 +39,8 @@ import { getDb } from "../../../../lib/db";
 import { resolveOrganization } from "../../../../lib/organization";
 import { uuidOrNotFound } from "../../../../lib/route-params";
 import { getServerSession } from "../../../../lib/server-session";
+
+import { RecordRecipeTestForm } from "./record-recipe-test-form";
 
 export const dynamic = "force-dynamic";
 
@@ -64,6 +76,28 @@ function effectiveWindow(effectiveFrom: Date, effectiveTo: Date | null): string 
   return effectiveTo === null
     ? `from ${instantDay(effectiveFrom)}`
     : `${instantDay(effectiveFrom)} → ${instantDay(effectiveTo)}`;
+}
+
+/**
+ * The trial yield, **derived** as `actual_output_qty / batch_input_qty` at 6 dp
+ * HALF_UP (`DEC-123` clause 2 — never stored). `null` when the test has no
+ * measured output. A rate above 1 is possible for a trial (e.g. water added), so
+ * this deliberately does not reuse `usableYieldRate`, which bounds to `(0,1]`.
+ */
+function derivedYield(actualOutputQty: string | null, batchInputQty: string): string | null {
+  if (actualOutputQty === null) {
+    return null;
+  }
+  try {
+    const output = parseDecimal(actualOutputQty, QUANTITY_SCALE);
+    const input = parseDecimal(batchInputQty, QUANTITY_SCALE);
+    if (input <= 0n) {
+      return null;
+    }
+    return formatDecimal(divideRoundHalfUp(output * 10n ** 6n, input), 6);
+  } catch {
+    return null;
+  }
 }
 
 /** The labels the detail view needs, resolved through the recipe port only. */
@@ -191,6 +225,16 @@ export default async function RecipeDetailPage({
   }
 
   const refs = await loadRefs(store, detail);
+  const allTests = await listRecipeTests(store, { organizationId, recipeId });
+  const testsByVersion = new Map<string, RecipeTestView[]>();
+  for (const test of allTests) {
+    const list = testsByVersion.get(test.recipeVersionId);
+    if (list === undefined) {
+      testsByVersion.set(test.recipeVersionId, [test]);
+    } else {
+      list.push(test);
+    }
+  }
   const latest = detail.versions[0];
   const outputItem =
     detail.recipe.outputItemId === null ? undefined : refs.items.get(detail.recipe.outputItemId);
@@ -296,6 +340,7 @@ export default async function RecipeDetailPage({
             {detail.versions.map((entry) => (
               <div
                 key={entry.version.id}
+                id={`version-${entry.version.id}`}
                 style={{ display: "flex", flexDirection: "column", gap: spacing[3] }}
               >
                 <div
@@ -328,6 +373,30 @@ export default async function RecipeDetailPage({
                       : ` · prep ${entry.version.preparationMinutes} min`}
                   </span>
                 </div>
+
+                {entry.version.method === null ? null : (
+                  <div>
+                    <span
+                      style={{
+                        fontSize: typography.fontSize.sm,
+                        fontWeight: typography.fontWeight.semibold,
+                        color: color.text.secondary,
+                      }}
+                    >
+                      Method
+                    </span>
+                    <p
+                      style={{
+                        margin: `${spacing[1]}px 0 0`,
+                        whiteSpace: "pre-wrap",
+                        fontSize: typography.fontSize.sm,
+                        color: color.text.primary,
+                      }}
+                    >
+                      {entry.version.method}
+                    </p>
+                  </div>
+                )}
 
                 <div>
                   <span
@@ -405,11 +474,126 @@ export default async function RecipeDetailPage({
                   </span>
                   <AllergenBadges allergens={entry.allergens} />
                 </div>
+
+                <VersionTests
+                  recipeId={detail.recipe.id}
+                  versionId={entry.version.id}
+                  tests={testsByVersion.get(entry.version.id) ?? []}
+                />
               </div>
             ))}
           </div>
         )}
       </SectionCard>
+    </div>
+  );
+}
+
+/**
+ * The per-version **Tests** section (`DEC-123`): each recorded trial with its
+ * tested date, batch size, measured output, the **derived** yield
+ * (`actual_output / batch_input`), duration, an *illustrative* cost (a recorded
+ * observation, not a computed verified cost), the comments/proposal, and a link
+ * to the version the trial motivated. The record form appends a new trial below.
+ */
+function VersionTests({
+  recipeId,
+  versionId,
+  tests,
+}: {
+  readonly recipeId: string;
+  readonly versionId: string;
+  readonly tests: readonly RecipeTestView[];
+}) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: spacing[3] }}>
+      <span
+        style={{
+          fontSize: typography.fontSize.sm,
+          fontWeight: typography.fontWeight.semibold,
+          color: color.text.secondary,
+        }}
+      >
+        Tests
+      </span>
+      <Table
+        caption={`Recipe trials recorded for version ${versionId}. The yield is derived from the measured output and batch input; a recorded cost is illustrative, not a computed verified cost.`}
+        columnCount={8}
+        emptyMessage="No trials recorded for this version yet."
+      >
+        <thead>
+          <tr>
+            <Th>Tested</Th>
+            <Th style={{ textAlign: "right" }}>Batch input</Th>
+            <Th style={{ textAlign: "right" }}>Actual output</Th>
+            <Th style={{ textAlign: "right" }}>Yield (derived)</Th>
+            <Th style={{ textAlign: "right" }}>Duration</Th>
+            <Th>Cost</Th>
+            <Th>Quality / proposal</Th>
+            <Th>Resulting</Th>
+          </tr>
+        </thead>
+        <tbody>
+          {tests.map((test) => {
+            const yieldRate = derivedYield(test.actualOutputQty, test.batchInputQty);
+            return (
+              <tr key={test.id}>
+                <Td>{instantDay(test.testedAt)}</Td>
+                <Td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                  {trimDecimal(test.batchInputQty)}
+                </Td>
+                <Td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                  {test.actualOutputQty === null ? "—" : trimDecimal(test.actualOutputQty)}
+                </Td>
+                <Td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                  {yieldRate === null ? "—" : trimDecimal(yieldRate)}
+                </Td>
+                <Td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                  {test.actualDurationMinutes === null ? "—" : `${test.actualDurationMinutes} min`}
+                </Td>
+                <Td>
+                  {test.actualCost === null ? (
+                    "—"
+                  ) : (
+                    <span style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                      <span style={{ fontVariantNumeric: "tabular-nums" }}>
+                        {formatMoneyAmount(test.actualCost)}
+                        {test.currency === null ? "" : ` ${test.currency}`}
+                      </span>
+                      <span style={{ fontSize: typography.fontSize.xs, color: color.text.muted }}>
+                        illustrative
+                      </span>
+                    </span>
+                  )}
+                </Td>
+                <Td>
+                  <span style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                    <span>{test.qualityComments ?? "—"}</span>
+                    {test.proposedAdjustment === null ? null : (
+                      <span style={{ fontSize: typography.fontSize.xs, color: color.text.muted }}>
+                        Proposal: {test.proposedAdjustment}
+                      </span>
+                    )}
+                  </span>
+                </Td>
+                <Td>
+                  {test.resultingRecipeVersionId === null ? (
+                    "—"
+                  ) : (
+                    <a
+                      href={`/recipes/${recipeId}#version-${test.resultingRecipeVersionId}`}
+                      style={{ color: color.brand.navy }}
+                    >
+                      v{test.resultingVersionNo ?? "?"}
+                    </a>
+                  )}
+                </Td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </Table>
+      <RecordRecipeTestForm recipeId={recipeId} recipeVersionId={versionId} />
     </div>
   );
 }

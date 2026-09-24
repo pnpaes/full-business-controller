@@ -1,9 +1,11 @@
 import {
+  computeProductionBatchCost,
+  createPostgresProductionBatchCostStore,
   createPostgresProductionStore,
   getProductionBatch,
   resolvePlannedSnapshot,
 } from "@aquarela/application";
-import type { PlannedSnapshot } from "@aquarela/application";
+import type { PlannedSnapshot, ProductionBatchCost } from "@aquarela/application";
 import { QUANTITY_SCALE, parseDecimal } from "@aquarela/domain";
 import {
   Alert,
@@ -33,6 +35,8 @@ import {
 import {
   formatInstant,
   hasYieldVariance,
+  hoursLabel,
+  moneyLabel,
   orDash,
   productionStatusView,
   trimDecimal,
@@ -108,6 +112,24 @@ export default async function ProductionBatchDetailPage({
     notFound();
   }
   const batch = detail.batch;
+
+  // `DEC-124`: the realistic cost, computed on read for a completed batch. No
+  // cost pool is chosen on this screen, so the overhead is reported as zero with
+  // a provenance note; a broken recipe surfaces as an error, never a guess.
+  const costStore = createPostgresProductionBatchCostStore(getDb().db);
+  let batchCost: ProductionBatchCost | null = null;
+  let batchCostError: string | null = null;
+  if (batch.status === "completed") {
+    try {
+      batchCost = await computeProductionBatchCost(costStore, {
+        organizationId,
+        productionBatchId: batch.id,
+      });
+    } catch (error) {
+      batchCostError =
+        error instanceof Error ? error.message : "the batch cost could not be computed";
+    }
+  }
 
   // Planned snapshot for a batch that has no persisted lines yet. Resolving it
   // can reject (a recipe that lost its output item, a broken conversion); the
@@ -435,6 +457,80 @@ export default async function ProductionBatchDetailPage({
           {batch.actualFinish === null ? "" : ` at ${formatInstant(batch.actualFinish)}`}. A mistake
           is corrected by reversing the movements (DEC-028), never by editing this batch.
         </Alert>
+      ) : null}
+
+      {batchCostError !== null ? (
+        <Alert tone="danger" title="Batch cost unavailable">
+          {batchCostError}
+        </Alert>
+      ) : null}
+
+      {batchCost !== null ? (
+        <SectionCard
+          title="Batch cost"
+          meta={`${moneyLabel(batchCost.totalBatchCost, batchCost.currency)} total · computed on read (DEC-124)`}
+        >
+          <DescriptionList
+            items={[
+              {
+                term: "Ingredient cost",
+                description: moneyLabel(batchCost.ingredientCost, batchCost.currency),
+              },
+              {
+                term: "Labour cost",
+                description:
+                  batchCost.effectiveLoadedHourlyRate === null
+                    ? `${moneyLabel(batchCost.labourCost, batchCost.currency)} · no labour mapping`
+                    : `${moneyLabel(batchCost.labourCost, batchCost.currency)} · ${hoursLabel(batchCost.actualHours)} @ ${batchCost.effectiveLoadedHourlyRate}/h`,
+              },
+              {
+                term: "Allocated overhead",
+                description: moneyLabel(batchCost.allocatedOverhead, batchCost.currency),
+              },
+              {
+                term: "Total batch cost",
+                description: moneyLabel(batchCost.totalBatchCost, batchCost.currency),
+              },
+              {
+                term: "Unit cost (B3)",
+                description: `${moneyLabel(batchCost.unitCost, batchCost.currency)} per ${trimDecimal(batchCost.actualOutputQty)} output unit`,
+              },
+              { term: "Actual hours", description: hoursLabel(batchCost.actualHours) },
+              {
+                term: "Effective loaded rate",
+                description:
+                  batchCost.effectiveLoadedHourlyRate === null
+                    ? "—"
+                    : `${batchCost.effectiveLoadedHourlyRate} /h`,
+              },
+              {
+                term: "Yield variance",
+                description: yieldVarianceLabel(batchCost.yieldVariancePct),
+              },
+              {
+                term: "Theoretical unit cost",
+                description:
+                  batchCost.theoreticalUnitCost === null
+                    ? "—"
+                    : moneyLabel(batchCost.theoreticalUnitCost, batchCost.currency),
+              },
+              {
+                term: "Theoretical vs actual",
+                description:
+                  batchCost.varianceUnitCost === null
+                    ? "—"
+                    : `${moneyLabel(batchCost.varianceUnitCost, batchCost.currency)} per unit`,
+              },
+            ]}
+          />
+          <Alert tone="info" title="Provenance">
+            <ul style={{ margin: 0, paddingLeft: spacing[5] }}>
+              {batchCost.provenance.map((note) => (
+                <li key={note}>{note}</li>
+              ))}
+            </ul>
+          </Alert>
+        </SectionCard>
       ) : null}
 
       {batch.status === "cancelled" ? (

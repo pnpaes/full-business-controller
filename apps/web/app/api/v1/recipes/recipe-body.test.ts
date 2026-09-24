@@ -101,6 +101,36 @@ describe("parseRegisterVersionBody", () => {
     }
   });
 
+  it("parses the DEC-123 method and source recipe test", () => {
+    const parsed = parseRegisterVersionBody({
+      ...minimal,
+      method: "Mix, rest, fold.",
+      sourceRecipeTestId: ITEM,
+    });
+    expect(parsed.ok).toBe(true);
+    if (parsed.ok) {
+      expect(parsed.value.method).toBe("Mix, rest, fold.");
+      expect(parsed.value.sourceRecipeTestId).toBe(ITEM);
+    }
+
+    const cleared = parseRegisterVersionBody({
+      ...minimal,
+      method: null,
+      sourceRecipeTestId: null,
+    });
+    expect(cleared.ok).toBe(true);
+    if (cleared.ok) {
+      expect(cleared.value.method).toBeNull();
+      expect(cleared.value.sourceRecipeTestId).toBeNull();
+    }
+  });
+
+  it("rejects a malformed source recipe test id", () => {
+    expect(parseRegisterVersionBody({ ...minimal, sourceRecipeTestId: "nope" })).toEqual({
+      ok: false,
+    });
+  });
+
   it("rejects a malformed direct-labour mapping", () => {
     expect(parseRegisterVersionBody({ ...minimal, laborCostCenterId: "nope" })).toEqual({
       ok: false,

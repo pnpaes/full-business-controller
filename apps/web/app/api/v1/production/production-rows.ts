@@ -2,6 +2,7 @@ import type {
   InventoryItemRecord,
   InventoryLocationRecord,
   InventoryUnitRecord,
+  ProductionBatchCost,
   ProductionBatchInputRecord,
   ProductionBatchOutputRecord,
   ProductionBatchRecord,
@@ -86,6 +87,22 @@ function readOptionalQueryText(
   }
   const value = raw.trim();
   return value.length > 0 && value.length <= MAX_TEXT ? value : "invalid";
+}
+
+/** Optional ISO instant query value; absent/blank → undefined, malformed → "invalid". */
+function readOptionalInstant(
+  searchParams: URLSearchParams,
+  key: string,
+): string | undefined | "invalid" {
+  const raw = searchParams.get(key);
+  if (raw === null) {
+    return undefined;
+  }
+  const value = raw.trim();
+  if (value.length === 0) {
+    return undefined;
+  }
+  return ISO_INSTANT.test(value) && !Number.isNaN(Date.parse(value)) ? value : "invalid";
 }
 
 /* ------------------------------- list query ------------------------------- */
@@ -189,6 +206,38 @@ export function parseProductionBatchListQuery(
       ...(workstation === undefined ? {} : { workstation }),
       limit: limit ?? DEFAULT_LIMIT,
       offset: offset ?? 0,
+    },
+  };
+}
+
+export interface ProductionBatchCostQuery {
+  readonly costPoolId?: string;
+  readonly periodFrom?: string;
+  readonly periodTo?: string;
+}
+
+export type ParsedProductionBatchCostQuery =
+  { readonly ok: true; readonly query: ProductionBatchCostQuery } | { readonly ok: false };
+
+/**
+ * `GET /batches/[id]/cost` query: the optional cost pool and allocation period.
+ * All three are optional — without a pool the overhead is reported as zero.
+ */
+export function parseProductionBatchCostQuery(
+  searchParams: URLSearchParams,
+): ParsedProductionBatchCostQuery {
+  const costPoolId = readOptionalUuid(searchParams, "costPoolId");
+  const periodFrom = readOptionalInstant(searchParams, "periodFrom");
+  const periodTo = readOptionalInstant(searchParams, "periodTo");
+  if (costPoolId === "invalid" || periodFrom === "invalid" || periodTo === "invalid") {
+    return { ok: false };
+  }
+  return {
+    ok: true,
+    query: {
+      ...(costPoolId === undefined ? {} : { costPoolId }),
+      ...(periodFrom === undefined ? {} : { periodFrom }),
+      ...(periodTo === undefined ? {} : { periodTo }),
     },
   };
 }
@@ -747,6 +796,53 @@ export function toProductionBatchOutputRows(
       movementId: line.movementId,
     };
   });
+}
+
+export interface ProductionBatchCostRow {
+  readonly productionBatchId: string;
+  readonly currency: string;
+  /** All money values are canonical 4 dp strings (B-money / B2 / B3). */
+  readonly ingredientCost: string;
+  readonly labourCost: string;
+  readonly allocatedOverhead: string;
+  readonly totalBatchCost: string;
+  /** numeric(19,6). */
+  readonly actualOutputQty: string;
+  readonly unitCost: string;
+  readonly plannedOutputQty: string | null;
+  /** numeric(9,6) signed fraction (not ×100). */
+  readonly yieldVariancePct: string | null;
+  readonly actualHours: string;
+  readonly effectiveLoadedHourlyRate: string | null;
+  readonly theoreticalUnitCost: string | null;
+  readonly varianceUnitCost: string | null;
+  readonly provenance: readonly string[];
+}
+
+/**
+ * Maps the `DEC-124` batch cost to the HTTP row. It is a deliberate 1:1
+ * projection — the query already returns only canonical decimals and
+ * organization-scoped facts — kept as a named mapper so the route's response
+ * contract is explicit and testable.
+ */
+export function toProductionBatchCostRow(cost: ProductionBatchCost): ProductionBatchCostRow {
+  return {
+    productionBatchId: cost.productionBatchId,
+    currency: cost.currency,
+    ingredientCost: cost.ingredientCost,
+    labourCost: cost.labourCost,
+    allocatedOverhead: cost.allocatedOverhead,
+    totalBatchCost: cost.totalBatchCost,
+    actualOutputQty: cost.actualOutputQty,
+    unitCost: cost.unitCost,
+    plannedOutputQty: cost.plannedOutputQty,
+    yieldVariancePct: cost.yieldVariancePct,
+    actualHours: cost.actualHours,
+    effectiveLoadedHourlyRate: cost.effectiveLoadedHourlyRate,
+    theoreticalUnitCost: cost.theoreticalUnitCost,
+    varianceUnitCost: cost.varianceUnitCost,
+    provenance: cost.provenance,
+  };
 }
 
 /* --------------------------------- refs ----------------------------------- */

@@ -37,6 +37,10 @@ export interface RegisterRecipeVersionBody {
    */
   readonly laborCostCenterId?: string | null;
   readonly laborRoleCode?: string | null;
+  /** `DEC-123`: the version's free-text method/steps. */
+  readonly method?: string | null;
+  /** `DEC-123`: the trial this version answers (linked in the same transaction). */
+  readonly sourceRecipeTestId?: string | null;
   readonly lines: readonly RegisterRecipeVersionLineInput[];
   readonly allergens?: readonly RegisterRecipeVersionAllergenInput[];
 }
@@ -234,6 +238,8 @@ export function parseRegisterVersionBody(
     notes?: string | null;
     laborCostCenterId?: string | null;
     laborRoleCode?: string | null;
+    method?: string | null;
+    sourceRecipeTestId?: string | null;
     allergens?: RegisterRecipeVersionAllergenInput[];
   } = { versionNo, plannedInputQty, plannedOutputQty, approvedUsableOutput, effectiveFrom, lines };
 
@@ -310,6 +316,24 @@ export function parseRegisterVersionBody(
       }
       value.laborRoleCode = laborRoleCode;
     }
+  }
+  if ("method" in body) {
+    if (body.method === null) {
+      value.method = null;
+    } else {
+      const method = boundedString(body.method, 4000);
+      if (method === undefined) {
+        return { ok: false };
+      }
+      value.method = method;
+    }
+  }
+  if ("sourceRecipeTestId" in body) {
+    const sourceRecipeTestId = nullableUuid(body.sourceRecipeTestId);
+    if (sourceRecipeTestId === undefined) {
+      return { ok: false };
+    }
+    value.sourceRecipeTestId = sourceRecipeTestId;
   }
   if ("allergens" in body) {
     const rawAllergens = body.allergens;

@@ -18,6 +18,9 @@ import type { FormEvent } from "react";
 const LIFECYCLE_FALLBACK = "Could not update the batch. Please try again.";
 const COMPLETE_FALLBACK = "Could not complete the batch. Please try again.";
 
+/** `production_batch.actual_labour_hours` is `numeric(9,2)` (DEC-124). */
+const HOURS_SCALE = 2;
+
 interface ErrorBody {
   readonly error?: string;
 }
@@ -160,6 +163,7 @@ export function CompleteBatchForm({ batchId, inputs, output, areas }: CompleteBa
   const [outputQty, setOutputQty] = useState(output.plannedQty);
   const [outputLotId, setOutputLotId] = useState("");
   const [outputExpiry, setOutputExpiry] = useState("");
+  const [actualLabourHours, setActualLabourHours] = useState("");
   const [inputStorageAreaId, setInputStorageAreaId] = useState(areas[0]?.id ?? "");
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -227,6 +231,21 @@ export function CompleteBatchForm({ batchId, inputs, output, areas }: CompleteBa
       return;
     }
 
+    const hoursRaw = actualLabourHours.trim();
+    if (hoursRaw.length > 0) {
+      let hoursScaled: bigint;
+      try {
+        hoursScaled = parseDecimal(hoursRaw, HOURS_SCALE);
+      } catch {
+        setError("Enter the actual labour hours as a number with at most 2 decimal places.");
+        return;
+      }
+      if (hoursScaled < 0n) {
+        setError("Actual labour hours cannot be negative.");
+        return;
+      }
+    }
+
     setBusy(true);
     try {
       const response = await fetch(`/api/v1/production/batches/${batchId}/complete`, {
@@ -243,6 +262,7 @@ export function CompleteBatchForm({ batchId, inputs, output, areas }: CompleteBa
             ...(outputLotId.trim().length === 0 ? {} : { lotId: outputLotId.trim() }),
             ...(outputExpiry.trim().length === 0 ? {} : { expiryDate: outputExpiry.trim() }),
           },
+          ...(hoursRaw.length === 0 ? {} : { actualLabourHours: hoursRaw }),
         }),
       });
       if (!response.ok) {
@@ -351,6 +371,17 @@ export function CompleteBatchForm({ batchId, inputs, output, areas }: CompleteBa
           onChange={(event) => setOutputQty(event.target.value)}
           {...(output.unitCode === null ? {} : { unit: output.unitCode })}
           help={`Planned output ${output.plannedQty}. Consumption is valued at the locked moving weighted average (DEC-008); the output unit cost is derived from it (CALCULATION_CONTRACT §6 B3).`}
+        />
+
+        <NumberField
+          name="actualLabourHours"
+          label="Actual labour hours"
+          min="0"
+          step="0.01"
+          value={actualLabourHours}
+          onChange={(event) => setActualLabourHours(event.target.value)}
+          unit="hours"
+          help="Optional (DEC-124). The hours actually worked on this batch; the batch cost multiplies them by the effective loaded rate. Leave blank to record none."
         />
 
         <TextField

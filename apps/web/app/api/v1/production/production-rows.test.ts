@@ -70,6 +70,7 @@ function batchRecord(overrides: Partial<ProductionBatchRecord> = {}): Production
     plannedOutputQty: "1.000000",
     actualOutputQty: "1.000000",
     yieldVariancePct: "0.000000",
+    actualLabourHours: null,
     reversalOfId: null,
     createdAt: "2026-09-19T10:00:00.000Z",
     ...overrides,
