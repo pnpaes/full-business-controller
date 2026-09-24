@@ -16,7 +16,7 @@ continue from this section alone. (Rewritten by the 2026-09-24 W7
 documentation session; the W7 wave is documented in
 `docs/handoffs/080-2026-09-24-w7-ui-refinement-wave.md`.)
 
-**State:** `main`; HEAD **`01a9cda`**, working tree clean. W7 — the
+**State:** `main`; HEAD **`f3adeb8`**, working tree clean. W7 — the
 UI-refinement wave of the operations-completion programme
 (`docs/ROADMAP-OPERATIONS-COMPLETION.md`) — is **complete for the screens**: every
 recorded action that has an application service plus an HTTP route is now
@@ -25,8 +25,9 @@ on the design tokens, and WCAG 2.2 AA and 375px mobile behaviour are enforced.
 One W7 leftover is deliberately left to the next session: the app-shell search
 and scope placeholders in `apps/web/app/(app)/layout.tsx` (Part 1 below). Not
 every honest gap is closed — see "Open decisions / inputs" for what still has no
-backend at all. Six commits on `main` (`54022c7` … `01a9cda` — see the handoff for
-the list), **all unpushed**; nothing applied to DigitalOcean. This wave added
+backend at all. Seven commits on `main` (`54022c7` … `01a9cda` plus the
+review-fix commit `f3adeb8` — see the handoff for the list), **all
+unpushed**; nothing applied to DigitalOcean. This wave added
 **no new decision**; next free decision id is **`DEC-129`**. The wave builds
 on the `DEC-120` redesign, the `DEC-121` wiring and the `DEC-122` task
 workflow (decisions + earlier handoffs are the authority for those). Schema:
@@ -166,13 +167,26 @@ Per-slice detail, commits and reconciliation are in `docs/handoffs/`.
 
 ## Current status
 
-- **As of:** 2026-09-24 — branch `main`; HEAD **`01a9cda`**, working tree
+- **2026-09-24 W7 review follow-up (`f3adeb8`):** a four-track review of
+  the range `e12116c..HEAD` (security, business logic, dead code,
+  duplication) found **six findings** — all from the business-logic and
+  duplication tracks — fixed in `f3adeb8` `fix(web): resolve the six
+findings from the W7 review` (5 files, all under `apps/web/app/(app)/**`;
+  presentation and validation only, no route/command/vocabulary change).
+  Security and dead code returned **no findings**; deploy safety and
+  performance clean; no migration (through `0066`); nothing pushed. The
+  six findings, the clean tracks, the currency-stance open item (below)
+  and the `security`-agent dead-pin fact are recorded in
+  `docs/handoffs/080-2026-09-24-w7-ui-refinement-wave.md`. Reverts
+  independently with `git revert f3adeb8`.
+- **As of:** 2026-09-24 — branch `main`; HEAD **`f3adeb8`**, working tree
   clean. **W7 — the UI-refinement wave of the operations-completion
   programme — is complete** and it is the newest work-log entry: six commits
   (`54022c7` reconcile forms, `5227552` costing/inventory authoring,
   `f3201ff` workforce/HMS/document actions, `733ee83` review findings,
   `c202c39` honesty corrections, `01a9cda` recipe-version registration +
-  item pickers — the verbatim list is in
+  item pickers, then `f3adeb8` the six-finding review fixes — the verbatim
+  list is in
   `docs/handoffs/080-2026-09-24-w7-ui-refinement-wave.md`), all **unpushed**,
   covering
   sales, purchasing, inventory, costs, workforce, HMS, documents, tasks,
@@ -187,7 +201,7 @@ Per-slice detail, commits and reconciliation are in `docs/handoffs/`.
   through `DEC-128` recorded and implemented; per-wave detail lives in the
   decisions rows and the handoff archive — not restated here). The prior
   entries below record the programme's earlier completed slices.
-- **W7 verification (2026-09-24, at `01a9cda`):** `typecheck`, `lint`,
+- **W7 verification (2026-09-24, at `f3adeb8`):** `typecheck`, `lint`,
   `format:check`, `build` clean (build under a unique `NEXT_DIST_DIR`);
   **4276/4276 tests with `DATABASE_URL`** (294 files); `db:migrate` a no-op.
   Review: `reviewer-qwen` (adversarial) + `reviewer-glm` (code-level) —
@@ -442,7 +456,7 @@ sales_units}` in `schemas/domain-enums.yaml` and
 - **Schema:** migrations through **`0066`**; **93 tables** (all additive,
   tested down paths). Next free decision id **`DEC-129`** (`DEC-120`–`DEC-128`
   are recorded and implemented).
-- **Verification (2026-09-24, at `01a9cda`):** `typecheck`, `lint`,
+- **Verification (2026-09-24, at `f3adeb8`):** `typecheck`, `lint`,
   `format:check`, `build` clean; **4276/4276 tests with `DATABASE_URL`**
   (294 files); `db:migrate` a no-op through `0066`; 93 public base tables.
   (Known flake, re-observed in this wave:
@@ -653,6 +667,13 @@ cost` (the `DEC-067`/`DEC-008` valuation is asymmetric); the waste reasons axis
   (incl. `kitchen`) is provisional; no price-version scope fallback (a recorded
   `DEC-077` open point); the cost-card version chain, the per-item cost-selection
   override and the golden-fixture sign-off remain open.
+- **W7 costing forms take opposite stances on currency (awaiting owner/TECH;
+  raised by the `f3adeb8` review):** `register-operating-cost-form` sends an
+  editable currency per record, while `register-labor-rate-form` displays a
+  currency it never persists (the labour-rate record has no currency column).
+  `f3adeb8` only made each screen honest about what it stores; reconciling
+  the two stances needs a recorded decision, and it should be taken before
+  any multi-currency work.
 - **Row 14 (provisional, awaiting owner/OPS):** `DEC-104` — the "remaining
   planned shifts run as scheduled" assumption is **not** implemented (only
   `{assigned, completed}` shifts count, so a pre-month-end payroll report

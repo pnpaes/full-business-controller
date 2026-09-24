@@ -1,5 +1,16 @@
 # Reversibility log
 
+- **2026-09-24 W7 review-fix commit `f3adeb8` (nothing pushed)**:
+  `f3adeb8` `fix(web): resolve the six findings from the W7 review` — 5
+  files, all under `apps/web/app/(app)/**`; **presentation and validation
+  only** (no route, command, vocabulary or business-rule change; nothing
+  under `packages/**`; no test asserted any replaced string). **No
+  migration, no schema change and no data written** — migrations stay
+  through `0066`, **93 tables**; `db:migrate` a no-op on re-run.
+  **Independently revertible with `git revert f3adeb8`** — it does not touch
+  the six wave commits' files in a coupled way, and reverting it restores
+  the six defects it fixed. Nothing pushed; nothing applied to
+  DigitalOcean.
 - **2026-09-24 W7 UI-refinement wave (6 commits, HEAD `01a9cda`; nothing
   pushed)**: `54022c7`, `5227552`, `f3201ff`, `733ee83`, `c202c39`,
   `01a9cda` — all web-layer changes under `apps/web/**` only (new forms and
