@@ -47,6 +47,7 @@ function planRecord(overrides: Partial<ProductionPlanRecord> = {}): ProductionPl
     locationId: LOCATION,
     productionDate: "2026-09-20",
     status: "planned",
+    lines: [],
     createdAt: "2026-09-19T10:00:00.000Z",
     createdBy: "actor-1",
     ...overrides,
@@ -67,6 +68,7 @@ function batchRecord(overrides: Partial<ProductionBatchRecord> = {}): Production
     actualFinish: "2026-09-20T08:30:00.000Z",
     operatorId: null,
     destinationStorageAreaId: AREA,
+    plannedQty: null,
     plannedOutputQty: "1.000000",
     actualOutputQty: "1.000000",
     yieldVariancePct: "0.000000",
@@ -246,7 +248,7 @@ describe("parseProductionBatchListQuery", () => {
 });
 
 describe("parseCreateProductionPlanBody", () => {
-  it("defaults the optional status and deterministic id to null", () => {
+  it("defaults the optional status, lines and deterministic id", () => {
     expect(
       parseCreateProductionPlanBody({ locationId: LOCATION, productionDate: "2026-09-20" }),
     ).toEqual({
@@ -255,9 +257,43 @@ describe("parseCreateProductionPlanBody", () => {
         locationId: LOCATION,
         productionDate: "2026-09-20",
         status: null,
+        lines: [],
         productionPlanId: null,
       },
     });
+  });
+
+  it("accepts plan lines and rejects a non-positive or malformed quantity (DEC-125)", () => {
+    const parsed = parseCreateProductionPlanBody({
+      locationId: LOCATION,
+      productionDate: "2026-09-20",
+      lines: [{ recipeVersionId: VERSION, plannedQty: "60.000000" }],
+    });
+    expect(parsed.ok).toBe(true);
+    if (parsed.ok) {
+      expect(parsed.input.lines).toEqual([{ recipeVersionId: VERSION, plannedQty: "60.000000" }]);
+    }
+    expect(
+      parseCreateProductionPlanBody({
+        locationId: LOCATION,
+        productionDate: "2026-09-20",
+        lines: [{ recipeVersionId: VERSION, plannedQty: "0" }],
+      }).ok,
+    ).toBe(false);
+    expect(
+      parseCreateProductionPlanBody({
+        locationId: LOCATION,
+        productionDate: "2026-09-20",
+        lines: [{ recipeVersionId: "not-a-uuid", plannedQty: "1.000000" }],
+      }).ok,
+    ).toBe(false);
+    expect(
+      parseCreateProductionPlanBody({
+        locationId: LOCATION,
+        productionDate: "2026-09-20",
+        lines: "nope",
+      }).ok,
+    ).toBe(false);
   });
 
   it("rejects a bad location and a non-date production date", () => {
@@ -302,6 +338,34 @@ describe("parseCreateProductionBatchBody", () => {
         locationId: LOCATION,
         recipeVersionId: VERSION,
         plannedStart: "2026-09-20",
+      }).ok,
+    ).toBe(false);
+  });
+
+  it("accepts an optional planned quantity and plan line (DEC-125)", () => {
+    const parsed = parseCreateProductionBatchBody({
+      locationId: LOCATION,
+      recipeVersionId: VERSION,
+      plannedQty: "60.000000",
+      planLineId: PLAN,
+    });
+    expect(parsed.ok).toBe(true);
+    if (parsed.ok) {
+      expect(parsed.input.plannedQty).toBe("60.000000");
+      expect(parsed.input.planLineId).toBe(PLAN);
+    }
+    expect(
+      parseCreateProductionBatchBody({
+        locationId: LOCATION,
+        recipeVersionId: VERSION,
+        plannedQty: "0",
+      }).ok,
+    ).toBe(false);
+    expect(
+      parseCreateProductionBatchBody({
+        locationId: LOCATION,
+        recipeVersionId: VERSION,
+        planLineId: "nope",
       }).ok,
     ).toBe(false);
   });
@@ -390,6 +454,35 @@ describe("toProductionPlanRows", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ locationCode: "DEMO_CAFE", status: "planned" });
   });
+
+  it("maps the plan's lines (DEC-125)", () => {
+    const [row] = toProductionPlanRows(
+      ORG,
+      [
+        planRecord({
+          lines: [
+            {
+              id: "line-1",
+              organizationId: ORG,
+              planId: PLAN,
+              recipeVersionId: VERSION,
+              plannedQty: "60.000000",
+              createdAt: "2026-09-19T10:05:00.000Z",
+            },
+          ],
+        }),
+      ],
+      new Map(),
+    );
+    expect(row?.lines).toEqual([
+      {
+        id: "line-1",
+        recipeVersionId: VERSION,
+        plannedQty: "60.000000",
+        createdAt: "2026-09-19T10:05:00.000Z",
+      },
+    ]);
+  });
 });
 
 describe("toProductionBatchRows", () => {
@@ -403,6 +496,7 @@ describe("toProductionBatchRows", () => {
       outputItemCode: "DEMO_HOUSE_BLEND",
       outputUnitCode: "g",
       plannedOutputQty: "1.000000",
+      plannedQty: null,
       yieldVariancePct: "0.000000",
     });
   });

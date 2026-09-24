@@ -8,6 +8,7 @@ import {
   type SupplierItemDetail,
 } from "@aquarela/application";
 import { DomainError, MONEY_SCALE, formatDecimal, parseDecimal, rescale } from "@aquarela/domain";
+import { INVENTORY_POLICY } from "@aquarela/persistence";
 import {
   EmptyState,
   PageHeader,
@@ -28,6 +29,7 @@ import { resolveOrganization } from "../../../../lib/organization";
 import { uuidOrNotFound } from "../../../../lib/route-params";
 import { getServerSession } from "../../../../lib/server-session";
 
+import { EditItemForm } from "./edit-item-form";
 import { RegisterSupplierPackForm } from "./register-supplier-pack-form";
 
 export const dynamic = "force-dynamic";
@@ -362,6 +364,33 @@ export default async function ItemDetailPage({
             {item.activeTo ?? "open"}
           </Definition>
         </dl>
+      </SectionCard>
+
+      <SectionCard title="Edit item" meta="W2 · edit">
+        <details>
+          <summary
+            style={{
+              cursor: "pointer",
+              minHeight: 44,
+              display: "flex",
+              alignItems: "center",
+              fontSize: typography.fontSize.md,
+              fontWeight: typography.fontWeight.semibold,
+              color: color.brand.navy,
+            }}
+          >
+            Edit name, inventory policy and lot tracking
+          </summary>
+          <div style={{ marginTop: spacing[4] }}>
+            <EditItemForm
+              itemId={item.id}
+              name={item.name}
+              inventoryPolicy={item.inventoryPolicy}
+              lotTracked={item.lotTracked}
+              inventoryPolicies={INVENTORY_POLICY}
+            />
+          </div>
+        </details>
       </SectionCard>
 
       <SupplierPacksSection packs={supplierItems} baseUnitCode={item.baseUnitCode} />

@@ -92,6 +92,7 @@ export async function POST(request: Request): Promise<Response> {
         actorId: session.userId,
         locationId: parsed.input.locationId,
         productionDate: parsed.input.productionDate,
+        lines: parsed.input.lines,
         ...(parsed.input.status === null ? {} : { status: parsed.input.status }),
         ...(parsed.input.productionPlanId === null
           ? {}

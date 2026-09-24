@@ -2,6 +2,7 @@ import {
   createPostgresProductionStore,
   createPostgresRecipeStore,
   listProductionBatches,
+  listProductionPlans,
   listRecipes,
 } from "@aquarela/application";
 import { Alert, EmptyState, KpiCard, PageHeader, SectionCard, Tabs, spacing } from "@aquarela/ui";
@@ -17,8 +18,12 @@ import {
 } from "../../api/v1/production/production-rows";
 
 import { ProductionBoardTable } from "./board-table";
-import { CreateBatchForm, type RecipeVersionOption } from "./create-batch-form";
-import { hasYieldVariance, productionStatusView } from "./production-labels";
+import {
+  CreateBatchForm,
+  type BatchPlanLineOption,
+  type RecipeVersionOption,
+} from "./create-batch-form";
+import { hasYieldVariance, productionStatusView, trimDecimal } from "./production-labels";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Production board — Aquarela Business Control" };
@@ -82,10 +87,11 @@ export default async function ProductionPage({
 
   // The plan-a-batch form needs the approved recipe versions and the location's
   // storage areas; only the latest approved version of each recipe is offered.
-  const [locations, areas, listed] = await Promise.all([
+  const [locations, areas, listed, planPage] = await Promise.all([
     store.listLocations({ organizationId }),
     store.listStorageAreas({ organizationId }),
     listRecipes(createPostgresRecipeStore(getDb().db), { organizationId }),
+    listProductionPlans(store, { organizationId, limit: 200 }),
   ]);
   const recipeVersions: RecipeVersionOption[] = listed.flatMap((entry) => {
     const version = entry.latestVersion;
@@ -101,6 +107,22 @@ export default async function ProductionPage({
       },
     ];
   });
+  const versionLabel = new Map(
+    recipeVersions.map((option) => [
+      option.id,
+      `${option.recipeCode} · ${option.recipeName} v${option.versionNo}`,
+    ]),
+  );
+  // `DEC-125`: a batch may be created from any plan line.
+  const planLines: BatchPlanLineOption[] = planPage.plans.flatMap((plan) =>
+    plan.lines.map((line) => ({
+      id: line.id,
+      planId: plan.id,
+      recipeVersionId: line.recipeVersionId,
+      label: `${versionLabel.get(line.recipeVersionId) ?? line.recipeVersionId} · ${plan.productionDate} × ${trimDecimal(line.plannedQty)}`,
+      plannedQty: line.plannedQty,
+    })),
+  );
 
   const counts = new Map<string, number>();
   for (const row of rows) {
@@ -208,6 +230,7 @@ export default async function ProductionPage({
           code: area.code,
           name: area.name,
         }))}
+        planLines={planLines}
         defaultLocationId={locations[0]?.id ?? ""}
       />
     </div>

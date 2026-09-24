@@ -1,6 +1,14 @@
 "use client";
 
-import { Alert, Button, SectionCard, SelectField, TextField, spacing } from "@aquarela/ui";
+import {
+  Alert,
+  Button,
+  NumberField,
+  SectionCard,
+  SelectField,
+  TextField,
+  spacing,
+} from "@aquarela/ui";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import type { FormEvent } from "react";
@@ -27,10 +35,20 @@ export interface BatchAreaOption {
   readonly name: string;
 }
 
+/** `DEC-125`: a plan line a batch can be created from. */
+export interface BatchPlanLineOption {
+  readonly id: string;
+  readonly planId: string;
+  readonly recipeVersionId: string;
+  readonly label: string;
+  readonly plannedQty: string;
+}
+
 export interface CreateBatchFormProps {
   readonly recipeVersions: readonly RecipeVersionOption[];
   readonly locations: readonly BatchLocationOption[];
   readonly areas: readonly BatchAreaOption[];
+  readonly planLines: readonly BatchPlanLineOption[];
   readonly defaultLocationId: string;
 }
 
@@ -58,6 +76,7 @@ export function CreateBatchForm({
   recipeVersions,
   locations,
   areas,
+  planLines,
   defaultLocationId,
 }: CreateBatchFormProps) {
   const router = useRouter();
@@ -66,6 +85,8 @@ export function CreateBatchForm({
   const [destinationStorageAreaId, setDestinationStorageAreaId] = useState("");
   const [workstation, setWorkstation] = useState("");
   const [plannedStart, setPlannedStart] = useState("");
+  const [planLineId, setPlanLineId] = useState("");
+  const [plannedQty, setPlannedQty] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -95,6 +116,11 @@ export function CreateBatchForm({
       setError("Enter a valid planned start date and time, or leave it blank.");
       return;
     }
+    const qty = plannedQty.trim();
+    if (qty.length > 0 && (!/^\d+(?:\.\d+)?$/.test(qty) || Number(qty) <= 0)) {
+      setError("Enter a positive planned quantity (up to 6 decimals), or leave it blank.");
+      return;
+    }
 
     setBusy(true);
     try {
@@ -108,6 +134,8 @@ export function CreateBatchForm({
           ...(destinationStorageAreaId.length === 0 ? {} : { destinationStorageAreaId }),
           ...(workstation.trim().length === 0 ? {} : { workstation: workstation.trim() }),
           ...(plannedStartIso === null ? {} : { plannedStart: plannedStartIso }),
+          ...(planLineId.length === 0 ? {} : { planLineId }),
+          ...(qty.length === 0 ? {} : { plannedQty: qty }),
         }),
       });
       if (!response.ok) {
@@ -138,6 +166,24 @@ export function CreateBatchForm({
         {error !== null ? <Alert tone="danger">{error}</Alert> : null}
 
         <SelectField
+          name="planLineId"
+          label="Create from a plan line"
+          placeholder="None — plan from scratch"
+          value={planLineId}
+          onChange={(event) => {
+            const id = event.target.value;
+            setPlanLineId(id);
+            const line = planLines.find((option) => option.id === id);
+            if (line !== undefined) {
+              setRecipeVersionId(line.recipeVersionId);
+              setPlannedQty(line.plannedQty);
+            }
+          }}
+          options={planLines.map((option) => ({ value: option.id, label: option.label }))}
+          help="Optional (DEC-125). A line fixes the recipe version and its intended quantity; the server re-validates that the line belongs to this organization and matches the recipe version."
+        />
+
+        <SelectField
           name="recipeVersionId"
           label="Recipe version"
           required
@@ -148,6 +194,17 @@ export function CreateBatchForm({
             label: `${option.recipeCode} · ${option.recipeName} v${option.versionNo}`,
           }))}
           help="Only approved versions can be produced (PROD-001). The planned snapshot is derived from this version."
+        />
+
+        <NumberField
+          name="plannedQty"
+          label="Planned quantity"
+          unit="output units"
+          min={0}
+          step="0.000001"
+          value={plannedQty}
+          onChange={(event) => setPlannedQty(event.target.value)}
+          help="Optional (DEC-125). When set, the recipe snapshot's planned inputs and output are scaled to this quantity (rounded once at B0, 6 dp). Leave blank for a single recipe batch."
         />
 
         <SelectField

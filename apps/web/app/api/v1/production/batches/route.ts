@@ -90,6 +90,8 @@ export async function POST(request: Request): Promise<Response> {
         plannedStart: parsed.input.plannedStart,
         operatorId: parsed.input.operatorId,
         destinationStorageAreaId: parsed.input.destinationStorageAreaId,
+        plannedQty: parsed.input.plannedQty,
+        planLineId: parsed.input.planLineId,
         ...(parsed.input.productionBatchId === null
           ? {}
           : { productionBatchId: parsed.input.productionBatchId }),
@@ -105,6 +107,7 @@ export async function POST(request: Request): Promise<Response> {
       productionBatchId: result.productionBatchId,
       status: result.status,
       plannedOutputQty: result.plannedOutputQty,
+      plannedQty: result.plannedQty,
       plannedInputCount: result.plannedInputs.length,
       plannedOutputCount: result.plannedOutputs.length,
       replayed: result.replayed,

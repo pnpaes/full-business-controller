@@ -10,5 +10,7 @@ const FIFTEEN_MINUTES_MS = 15 * 60_000;
  */
 export const productLimiters = {
   registerItem: createInMemoryRateLimiter({ limit: 30, windowMs: FIFTEEN_MINUTES_MS }),
+  updateItem: createInMemoryRateLimiter({ limit: 30, windowMs: FIFTEEN_MINUTES_MS }),
   registerSupplierItem: createInMemoryRateLimiter({ limit: 30, windowMs: FIFTEEN_MINUTES_MS }),
+  registerUnitConversion: createInMemoryRateLimiter({ limit: 30, windowMs: FIFTEEN_MINUTES_MS }),
 } as const;

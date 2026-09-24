@@ -1,11 +1,21 @@
-import { createPostgresMasterDataStore, getItem, type ItemDetail } from "@aquarela/application";
+import {
+  createPostgresMasterDataStore,
+  getItem,
+  updateItem,
+  type ItemDetail,
+} from "@aquarela/application";
 import { DomainError } from "@aquarela/domain";
 
+import { requireSession } from "../../../../../../lib/auth";
 import { getDb } from "../../../../../../lib/db";
+import { withMutationGuards } from "../../../../../../lib/guards";
 import { jsonError, jsonOk, mapErrors } from "../../../../../../lib/http";
 import { resolveOrganization } from "../../../../../../lib/organization";
+import { readJsonObject } from "../../../../../../lib/request";
 import { getServerSession } from "../../../../../../lib/server-session";
 
+import { parseUpdateItemBody } from "../../item-body";
+import { productLimiters } from "../../limiters";
 import { isUuid, toItemDetailResponse } from "../../product-rows";
 
 export const runtime = "nodejs";
@@ -54,5 +64,50 @@ export async function GET(
       supplierItems: response.supplierItems,
       conversions: response.conversions,
     });
+  });
+}
+
+/**
+ * Updates the mutable fields of one item (`updateItem`). Only `name`,
+ * `inventoryPolicy` and `lotTracked` are accepted; the identity fields, base
+ * unit and item type are immutable so history is never reinterpreted. Signed
+ * out → 401; a malformed id or body → 400; an unknown or cross-organization id
+ * → 400 with the command's message.
+ */
+export async function PATCH(
+  request: Request,
+  context: { readonly params: Promise<{ readonly id: string }> },
+): Promise<Response> {
+  return withMutationGuards(request, productLimiters.updateItem, async () => {
+    const { session } = await requireSession(request);
+
+    const { id } = await context.params;
+    if (!isUuid(id)) {
+      return jsonError(400);
+    }
+
+    const body = await readJsonObject(request);
+    const parsed = parseUpdateItemBody(body);
+    if (!parsed.ok) {
+      return jsonError(400);
+    }
+
+    const organizationId = resolveOrganization();
+    const store = createPostgresMasterDataStore(getDb().db);
+
+    try {
+      const updated = await updateItem(store, {
+        organizationId,
+        actorId: session.userId,
+        itemId: id,
+        ...parsed.input,
+      });
+      return jsonOk({ itemId: updated.itemId });
+    } catch (error) {
+      if (error instanceof DomainError) {
+        return jsonError(400, error.message);
+      }
+      throw error;
+    }
   });
 }

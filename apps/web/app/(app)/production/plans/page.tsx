@@ -1,4 +1,9 @@
-import { createPostgresProductionStore, listProductionPlans } from "@aquarela/application";
+import {
+  createPostgresProductionStore,
+  createPostgresRecipeStore,
+  listProductionPlans,
+  listRecipes,
+} from "@aquarela/application";
 import {
   DataTable,
   EmptyState,
@@ -21,7 +26,7 @@ import {
 } from "../../../api/v1/production/production-rows";
 
 import { CreatePlanForm } from "./create-plan-form";
-import { formatInstant, orDash, productionStatusView } from "../production-labels";
+import { formatInstant, orDash, productionStatusView, trimDecimal } from "../production-labels";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Production plans — Aquarela Business Control" };
@@ -31,6 +36,7 @@ const PLANS_LIMIT = 100;
 const COLUMNS: readonly DataTableColumn[] = [
   { key: "date", header: "Production date" },
   { key: "location", header: "Location" },
+  { key: "lines", header: "Lines" },
   { key: "status", header: "Status" },
   { key: "created", header: "Created" },
 ];
@@ -90,9 +96,33 @@ export default async function ProductionPlansPage({
   );
   const rows = toProductionPlanRows(organizationId, page.plans, locationMap);
 
+  // `DEC-125`: resolve the recipe version labels the plan lines reference.
+  const lineVersionIds = [
+    ...new Set(rows.flatMap((row) => row.lines.map((line) => line.recipeVersionId))),
+  ];
+  const versions = await Promise.all(lineVersionIds.map((id) => store.findRecipeVersion(id)));
+  const recipeIds = [...new Set(versions.flatMap((v) => (v === undefined ? [] : [v.recipeId])))];
+  const recipes = await Promise.all(recipeIds.map((id) => store.findRecipe(id)));
+  const recipeById = new Map(recipes.flatMap((r) => (r === undefined ? [] : [[r.id, r] as const])));
+  const versionLabel = new Map<string, string>();
+  for (const version of versions) {
+    if (version === undefined) continue;
+    const recipe = recipeById.get(version.recipeId);
+    versionLabel.set(version.id, `${recipe?.code ?? version.recipeId} · v${version.versionNo}`);
+  }
+
   const tableRows: DataTableRow[] = rows.map((row) => ({
     date: row.productionDate,
     location: `${orDash(row.locationCode ?? null)} · ${orDash(row.locationName ?? null)}`,
+    lines:
+      row.lines.length === 0
+        ? "—"
+        : row.lines
+            .map(
+              (line) =>
+                `${versionLabel.get(line.recipeVersionId) ?? line.recipeVersionId} × ${trimDecimal(line.plannedQty)}`,
+            )
+            .join("; "),
     status: (
       <StatusPill tone={productionStatusView(row.status).tone}>
         {productionStatusView(row.status).label}
@@ -101,12 +131,29 @@ export default async function ProductionPlansPage({
     created: formatInstant(row.createdAt),
   }));
 
+  // `DEC-125`: the create-plan form offers approved recipe versions for lines.
+  const listed = await listRecipes(createPostgresRecipeStore(getDb().db), { organizationId });
+  const recipeVersionOptions = listed.flatMap((entry) => {
+    const version = entry.latestVersion;
+    if (version === null || version.state !== "approved") {
+      return [];
+    }
+    return [
+      {
+        id: version.id,
+        recipeCode: entry.recipe.code,
+        recipeName: entry.recipe.name,
+        versionNo: version.versionNo,
+      },
+    ];
+  });
+
   return (
     <div style={contentColumn}>
       <PageHeader
         title="Production plans"
         scope="Production"
-        description="Dated plan headers a batch can link to. The plan carries no line detail or status vocabulary yet — it is a container, and the batches beneath it do the work."
+        description="Dated plans a batch can link to. Each plan may list one or more recipe versions with an intended output quantity (DEC-125); the batches beneath it do the work. The plan status stays free text (open point (f))."
       />
 
       <Tabs
@@ -137,13 +184,13 @@ export default async function ProductionPlansPage({
       >
         {tableRows.length === 0 ? (
           <EmptyState title="No production plans yet">
-            A plan appears once its date and location are recorded below. A batch links to a plan;
-            the plan itself holds no quantities, because production_plan has no line table (open
-            point (f)).
+            A plan appears once its date and location are recorded below. A plan may list one or
+            more recipe versions with an intended output quantity (DEC-125); a batch links to the
+            plan, optionally through one of its lines.
           </EmptyState>
         ) : (
           <DataTable
-            caption="Production plan headers, newest production date first."
+            caption="Production plans with their lines (recipe version × planned quantity), newest production date first."
             columns={COLUMNS}
             rows={tableRows}
           />
@@ -156,6 +203,7 @@ export default async function ProductionPlansPage({
           code: location.code,
           name: location.name,
         }))}
+        recipeVersions={recipeVersionOptions}
         defaultLocationId={locations[0]?.id ?? ""}
       />
     </div>

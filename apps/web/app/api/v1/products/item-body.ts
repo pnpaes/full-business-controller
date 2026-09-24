@@ -80,6 +80,51 @@ export function parseRegisterItemBody(
   };
 }
 
+export interface UpdateItemInput {
+  readonly name?: string;
+  readonly inventoryPolicy?: string;
+  readonly lotTracked?: boolean;
+}
+
+export type ParsedUpdateItem =
+  { readonly ok: true; readonly input: UpdateItemInput } | { readonly ok: false };
+
+/**
+ * Validates an item-update body. Only the mutable fields are recognised; an
+ * unknown-only or empty body is rejected. `code`/`sku`/`baseUnit`/`itemType`
+ * are deliberately not accepted here (they are immutable, `updateItem`).
+ */
+export function parseUpdateItemBody(body: Record<string, unknown> | undefined): ParsedUpdateItem {
+  if (body === undefined) {
+    return { ok: false };
+  }
+  const input: { name?: string; inventoryPolicy?: string; lotTracked?: boolean } = {};
+  if (body.name !== undefined) {
+    const name = readText(body, "name", 120);
+    if (name === null) {
+      return { ok: false };
+    }
+    input.name = name;
+  }
+  if (body.inventoryPolicy !== undefined) {
+    const policy = readText(body, "inventoryPolicy", 40);
+    if (policy === null || !(INVENTORY_POLICY as readonly string[]).includes(policy)) {
+      return { ok: false };
+    }
+    input.inventoryPolicy = policy;
+  }
+  if (body.lotTracked !== undefined) {
+    if (typeof body.lotTracked !== "boolean") {
+      return { ok: false };
+    }
+    input.lotTracked = body.lotTracked;
+  }
+  if (Object.keys(input).length === 0) {
+    return { ok: false };
+  }
+  return { ok: true, input };
+}
+
 export interface RegisterSupplierItemInput {
   readonly supplierId: string;
   readonly supplierSku: string;

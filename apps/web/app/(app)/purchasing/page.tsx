@@ -23,6 +23,7 @@ import { getServerSession } from "../../../lib/server-session";
 import { toReceiptRows } from "../../api/v1/receiving/receipts/receipt-http";
 import { loadReceiptRefs } from "../../api/v1/receiving/receipts/receipt-refs";
 
+import { CreateSupplierForm } from "./create-supplier-form";
 import { formatInstant, formatMoneyAmount, statusView } from "./receipt-format";
 
 export const dynamic = "force-dynamic";
@@ -52,6 +53,7 @@ export default async function PurchasingPage() {
   const receipts = await listGoodsReceipts(store, { organizationId, limit: 50 });
   const refs = await loadReceiptRefs(store, organizationId, []);
   const rows = toReceiptRows(organizationId, receipts, refs);
+  const suppliers = await store.listSuppliers(organizationId);
   const organization = await findOrganizationById(getDb().db, organizationId);
   const currency = organization?.currency ?? null;
 
@@ -166,6 +168,50 @@ export default async function PurchasingPage() {
             </tbody>
           </Table>
         )}
+      </SectionCard>
+
+      <SectionCard title="Suppliers" meta={`${suppliers.length} registered · DEC-047`}>
+        {suppliers.length === 0 ? (
+          <EmptyState title="No suppliers yet">
+            Register a supplier before recording a goods receipt from it. An ad-hoc grocery purchase
+            is recorded as a cost observation, not a supplier.
+          </EmptyState>
+        ) : (
+          <Table caption="Known suppliers for this organization." columnCount={3}>
+            <thead>
+              <tr>
+                <Th>Code</Th>
+                <Th>Name</Th>
+                <Th>Currency</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {suppliers.map((supplier) => (
+                <tr key={supplier.id}>
+                  <Td>{supplier.code}</Td>
+                  <Td>{supplier.name}</Td>
+                  <Td>{supplier.currency}</Td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        )}
+        <details style={{ marginTop: spacing[4] }}>
+          <summary
+            style={{
+              cursor: "pointer",
+              minHeight: 44,
+              display: "flex",
+              alignItems: "center",
+              fontWeight: 600,
+            }}
+          >
+            New supplier
+          </summary>
+          <div style={{ marginTop: spacing[4] }}>
+            <CreateSupplierForm defaultCurrency={currency} />
+          </div>
+        </details>
       </SectionCard>
     </div>
   );

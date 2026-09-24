@@ -4,6 +4,7 @@ import {
   createPostgresProductionStore,
   getProductionBatch,
   resolvePlannedSnapshot,
+  scalePlannedSnapshot,
 } from "@aquarela/application";
 import type { PlannedSnapshot, ProductionBatchCost } from "@aquarela/application";
 import { QUANTITY_SCALE, parseDecimal } from "@aquarela/domain";
@@ -139,11 +140,13 @@ export default async function ProductionBatchDetailPage({
   let snapshotError: string | null = null;
   if (version !== undefined && batch.status !== "completed") {
     try {
-      snapshot = await resolvePlannedSnapshot(store, {
+      const base = await resolvePlannedSnapshot(store, {
         organizationId,
         version,
         asOf: batch.plannedStart === null ? new Date() : new Date(batch.plannedStart),
       });
+      // `DEC-125`: show the scaled plan the batch was created with.
+      snapshot = batch.plannedQty === null ? base : scalePlannedSnapshot(base, batch.plannedQty);
     } catch (error) {
       snapshotError =
         error instanceof Error ? error.message : "planned snapshot could not be resolved";
@@ -259,6 +262,15 @@ export default async function ProductionBatchDetailPage({
         }}
       >
         <KpiCard label="Status" value={status.label} meta="Batch workflow" />
+        <KpiCard
+          label="Planned quantity"
+          value={batch.plannedQty === null ? "—" : trimDecimal(batch.plannedQty)}
+          meta={
+            batch.plannedQty === null
+              ? "Single recipe batch (DEC-125)"
+              : `${batchRow?.outputUnitCode ?? "unit not resolved"} intended · DEC-125`
+          }
+        />
         <KpiCard
           label="Planned output"
           value={batch.plannedOutputQty === null ? "—" : trimDecimal(batch.plannedOutputQty)}

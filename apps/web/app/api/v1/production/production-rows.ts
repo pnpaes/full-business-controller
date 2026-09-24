@@ -306,11 +306,18 @@ function readDecimal(
   return { ok: true, value: trimmed };
 }
 
+export interface CreateProductionPlanLineBody {
+  readonly recipeVersionId: string;
+  readonly plannedQty: string;
+}
+
 export interface CreateProductionPlanBody {
   readonly locationId: string;
   readonly productionDate: string;
   /** Free text (open point (f)); null when not supplied. */
   readonly status: string | null;
+  /** `DEC-125`: optional plan lines (recipe version + positive quantity). */
+  readonly lines: readonly CreateProductionPlanLineBody[];
   /** Optional deterministic id — the only idempotency path (open point (a)). */
   readonly productionPlanId: string | null;
 }
@@ -318,7 +325,7 @@ export interface CreateProductionPlanBody {
 export type ParsedCreateProductionPlan =
   { readonly ok: true; readonly input: CreateProductionPlanBody } | { readonly ok: false };
 
-/** `POST /plans` body: location, production date and optional status/deterministic id. */
+/** `POST /plans` body: location, date, optional status/lines/deterministic id. */
 export function parseCreateProductionPlanBody(
   body: Record<string, unknown> | undefined,
 ): ParsedCreateProductionPlan {
@@ -338,12 +345,37 @@ export function parseCreateProductionPlanBody(
   if (!status.ok || !productionPlanId.ok) {
     return { ok: false };
   }
+
+  const rawLines = body.lines;
+  const lines: CreateProductionPlanLineBody[] = [];
+  if (rawLines !== undefined && rawLines !== null) {
+    if (!Array.isArray(rawLines) || rawLines.length > MAX_LINES) {
+      return { ok: false };
+    }
+    for (const raw of rawLines) {
+      if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
+        return { ok: false };
+      }
+      const entry = raw as Record<string, unknown>;
+      const recipeVersionId = readText(entry, "recipeVersionId", 64);
+      const plannedQty = readDecimal(entry, "plannedQty");
+      if (recipeVersionId === null || !isUuid(recipeVersionId) || !plannedQty.ok) {
+        return { ok: false };
+      }
+      if (parseDecimal(plannedQty.value, QUANTITY_SCALE) <= 0n) {
+        return { ok: false };
+      }
+      lines.push({ recipeVersionId, plannedQty: plannedQty.value });
+    }
+  }
+
   return {
     ok: true,
     input: {
       locationId,
       productionDate,
       status: status.value,
+      lines,
       productionPlanId: productionPlanId.value,
     },
   };
@@ -357,6 +389,10 @@ export interface CreateProductionBatchBody {
   readonly plannedStart: string | null;
   readonly operatorId: string | null;
   readonly destinationStorageAreaId: string | null;
+  /** `DEC-125`: the batch's intended output quantity, or null. */
+  readonly plannedQty: string | null;
+  /** `DEC-125`: create from a plan line (validated against plan + version). */
+  readonly planLineId: string | null;
   readonly productionBatchId: string | null;
 }
 
@@ -385,15 +421,35 @@ export function parseCreateProductionBatchBody(
   const operatorId = readOptionalUuidBody(body, "operatorId");
   const destinationStorageAreaId = readOptionalUuidBody(body, "destinationStorageAreaId");
   const productionBatchId = readOptionalUuidBody(body, "productionBatchId");
+  const planLineId = readOptionalUuidBody(body, "planLineId");
   const workstation = readOptionalBodyText(body, "workstation");
   if (
     !planId.ok ||
     !operatorId.ok ||
     !destinationStorageAreaId.ok ||
     !productionBatchId.ok ||
+    !planLineId.ok ||
     !workstation.ok
   ) {
     return { ok: false };
+  }
+
+  // `DEC-125`: optional positive planned quantity.
+  let plannedQty: string | null = null;
+  const rawPlannedQty = body.plannedQty;
+  if (rawPlannedQty !== undefined && rawPlannedQty !== null) {
+    if (typeof rawPlannedQty !== "string" || rawPlannedQty.trim().length === 0) {
+      return { ok: false };
+    }
+    const trimmed = rawPlannedQty.trim();
+    try {
+      if (parseDecimal(trimmed, QUANTITY_SCALE) <= 0n) {
+        return { ok: false };
+      }
+    } catch {
+      return { ok: false };
+    }
+    plannedQty = trimmed;
   }
 
   const rawPlannedStart = body.plannedStart;
@@ -419,6 +475,8 @@ export function parseCreateProductionBatchBody(
       plannedStart,
       operatorId: operatorId.value,
       destinationStorageAreaId: destinationStorageAreaId.value,
+      plannedQty,
+      planLineId: planLineId.value,
       productionBatchId: productionBatchId.value,
     },
   };
@@ -593,6 +651,14 @@ export function parseCancelProductionBatchBody(
 
 /* ------------------------------ response rows ----------------------------- */
 
+export interface ProductionPlanLineRow {
+  readonly id: string;
+  readonly recipeVersionId: string;
+  /** numeric(19,6). */
+  readonly plannedQty: string;
+  readonly createdAt: string;
+}
+
 export interface ProductionPlanRow {
   readonly id: string;
   readonly locationId: string;
@@ -600,11 +666,13 @@ export interface ProductionPlanRow {
   readonly locationName: string | null;
   readonly productionDate: string;
   readonly status: string;
+  /** `DEC-125`: the plan's lines (recipe version + planned quantity). */
+  readonly lines: readonly ProductionPlanLineRow[];
   readonly createdAt: string;
   readonly createdBy: string | null;
 }
 
-/** Maps plan headers to HTTP rows, dropping any foreign-organization row. */
+/** Maps plan headers (and their lines) to HTTP rows, dropping foreign-org rows. */
 export function toProductionPlanRows(
   organizationId: string,
   plans: readonly ProductionPlanRecord[],
@@ -616,14 +684,20 @@ export function toProductionPlanRows(
       continue;
     }
     const location = locations.get(plan.locationId);
-    const owned = location?.organizationId === organizationId ? location : undefined;
+    const ownedLocation = location?.organizationId === organizationId ? location : undefined;
     rows.push({
       id: plan.id,
       locationId: plan.locationId,
-      locationCode: owned?.code ?? null,
-      locationName: owned?.name ?? null,
+      locationCode: ownedLocation?.code ?? null,
+      locationName: ownedLocation?.name ?? null,
       productionDate: plan.productionDate,
       status: plan.status,
+      lines: plan.lines.map((line) => ({
+        id: line.id,
+        recipeVersionId: line.recipeVersionId,
+        plannedQty: line.plannedQty,
+        createdAt: line.createdAt,
+      })),
       createdAt: plan.createdAt,
       createdBy: plan.createdBy,
     });
@@ -649,6 +723,8 @@ export interface ProductionBatchRow {
   readonly actualFinish: string | null;
   readonly destinationStorageAreaId: string | null;
   readonly plannedOutputQty: string | null;
+  /** `DEC-125`: the batch's intended output quantity, or null. */
+  readonly plannedQty: string | null;
   readonly actualOutputQty: string | null;
   /** numeric(9,6) signed fraction (not ×100). */
   readonly yieldVariancePct: string | null;
@@ -696,6 +772,7 @@ export function toProductionBatchRows(
       actualFinish: batch.actualFinish,
       destinationStorageAreaId: batch.destinationStorageAreaId,
       plannedOutputQty: batch.plannedOutputQty,
+      plannedQty: batch.plannedQty,
       actualOutputQty: batch.actualOutputQty,
       yieldVariancePct: batch.yieldVariancePct,
       outputItemId,
