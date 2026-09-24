@@ -1,7 +1,12 @@
 import {
+  createPostgresMasterDataStore,
   createPostgresRecipeStore,
+  createPostgresTaskStore,
   getRecipe,
+  listAssignableUsers,
+  listItems,
   listRecipeTests,
+  listRecipes,
   type RecipeAllergenRecordView,
   type RecipeCostComponent,
   type RecipeDetail,
@@ -9,6 +14,7 @@ import {
   type RecipeStore,
   type RecipeTestView,
 } from "@aquarela/application";
+import { ROLE_CODE } from "@aquarela/persistence";
 import {
   MONEY_SCALE,
   NotFoundError,
@@ -41,6 +47,7 @@ import { uuidOrNotFound } from "../../../../lib/route-params";
 import { getServerSession } from "../../../../lib/server-session";
 
 import { RecordRecipeTestForm } from "./record-recipe-test-form";
+import { RegisterVersionForm } from "./register-version-form";
 
 export const dynamic = "force-dynamic";
 
@@ -226,6 +233,55 @@ export default async function RecipeDetailPage({
 
   const refs = await loadRefs(store, detail);
   const allTests = await listRecipeTests(store, { organizationId, recipeId });
+
+  // The register-version form's pickers. Every option comes from an existing
+  // read service; where no read service exists (a unit catalogue, a cost-centre
+  // list) the form says so instead of inventing options.
+  const [itemPage, listedRecipes, allergens, users] = await Promise.all([
+    listItems(createPostgresMasterDataStore(getDb().db), { organizationId, limit: 200 }),
+    listRecipes(store, { organizationId }),
+    store.listAllergens(organizationId),
+    listAssignableUsers(createPostgresTaskStore(getDb().db), { organizationId }),
+  ]);
+  const itemOptions = await Promise.all(
+    itemPage.items.map(async (item) => {
+      const unit = await store.findUnit(item.baseUnitId);
+      return {
+        id: item.id,
+        code: item.code,
+        name: item.name,
+        baseUnitId: item.baseUnitId,
+        baseUnitCode: unit?.code ?? "",
+      };
+    }),
+  );
+  const subRecipeOptions = await Promise.all(
+    listedRecipes
+      .filter((entry) => entry.recipe.id !== recipeId && entry.recipe.outputItemId !== null)
+      .map(async (entry) => {
+        const outputItem =
+          entry.recipe.outputItemId === null
+            ? undefined
+            : await store.findItem(entry.recipe.outputItemId);
+        const unit =
+          outputItem === undefined ? undefined : await store.findUnit(outputItem.baseUnitId);
+        return {
+          id: entry.recipe.id,
+          code: entry.recipe.code,
+          name: entry.recipe.name,
+          baseUnitId: outputItem?.baseUnitId ?? "",
+          baseUnitCode: unit?.code ?? "",
+        };
+      }),
+  );
+  const unlinkedTests = allTests
+    .filter((test) => test.resultingRecipeVersionId === null)
+    .map((test) => ({
+      id: test.id,
+      label: `Trial on v${test.testedVersionNo} · ${instantDay(test.testedAt)}`,
+    }));
+  const nextVersionNo =
+    detail.versions.reduce((highest, entry) => Math.max(highest, entry.version.versionNo), 0) + 1;
   const testsByVersion = new Map<string, RecipeTestView[]>();
   for (const test of allTests) {
     const list = testsByVersion.get(test.recipeVersionId);
@@ -332,8 +388,9 @@ export default async function RecipeDetailPage({
       >
         {detail.versions.length === 0 ? (
           <EmptyState title="No versions yet">
-            Register a version with its lines, yield and allergens to enable the cost preview. Use
-            <code> POST /api/v1/recipes/{detail.recipe.id}/versions</code>.
+            Register the first version with the form below: its lines, quantities, yield quantities
+            and allergen declarations. The cost preview becomes available once a version is
+            approved.
           </EmptyState>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: spacing[6] }}>
@@ -485,6 +542,21 @@ export default async function RecipeDetailPage({
           </div>
         )}
       </SectionCard>
+
+      <RegisterVersionForm
+        recipeId={detail.recipe.id}
+        nextVersionNo={nextVersionNo}
+        items={itemOptions}
+        subRecipes={subRecipeOptions}
+        allergens={allergens.map((allergen) => ({
+          id: allergen.id,
+          code: allergen.code,
+          name: allergen.name,
+        }))}
+        unlinkedTests={unlinkedTests}
+        users={users.map((user) => ({ id: user.id, displayName: user.displayName }))}
+        roleCodes={ROLE_CODE}
+      />
     </div>
   );
 }

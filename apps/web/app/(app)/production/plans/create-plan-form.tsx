@@ -8,6 +8,7 @@ import {
   SectionCard,
   TextField,
   spacing,
+  typography,
 } from "@aquarela/ui";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -187,7 +188,7 @@ export function CreatePlanForm({
         />
 
         <div style={{ display: "flex", flexDirection: "column", gap: spacing[3] }}>
-          <strong style={{ fontSize: 14 }}>Plan lines (optional)</strong>
+          <strong style={{ fontSize: typography.fontSize.md }}>Plan lines (optional)</strong>
           {lines.length === 0 ? (
             <p style={{ margin: 0, opacity: 0.8 }}>
               No lines yet — the plan is a dated container. Add a line to state which approved

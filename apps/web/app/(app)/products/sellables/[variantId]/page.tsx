@@ -3,6 +3,7 @@ import {
   createPostgresProductStore,
   findProductVariant,
   listAssignmentOptions,
+  listItems,
   listProducts,
 } from "@aquarela/application";
 import {
@@ -65,6 +66,14 @@ export default async function VariantPage({
   ]);
   const organization = await createPostgresMasterDataStore(db).findOrganization(organizationId);
   const currency = organization?.currency ?? null;
+  const itemPage = await listItems(createPostgresMasterDataStore(db), {
+    organizationId,
+    limit: 200,
+  });
+  const finishedGood =
+    detail.variant.finishedGoodItemId === null
+      ? undefined
+      : itemPage.items.find((item) => item.id === detail.variant.finishedGoodItemId);
 
   const baseProducts = products
     .map(({ product }) => product)
@@ -105,7 +114,9 @@ export default async function VariantPage({
               description:
                 detail.variant.finishedGoodItemId === null
                   ? "Made to order (no stocked item)"
-                  : detail.variant.finishedGoodItemId,
+                  : finishedGood === undefined
+                    ? detail.variant.finishedGoodItemId
+                    : `${finishedGood.code} · ${finishedGood.name}`,
             },
             { term: "Active from", description: detail.variant.activeFrom },
           ]}

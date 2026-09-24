@@ -13,8 +13,15 @@ export interface ProductOption {
   readonly name: string;
 }
 
+export interface ItemOption {
+  readonly id: string;
+  readonly code: string;
+  readonly name: string;
+}
+
 export interface RegisterVariantFormProps {
   readonly products: readonly ProductOption[];
+  readonly items: readonly ItemOption[];
 }
 
 interface ErrorBody {
@@ -32,7 +39,7 @@ async function errorMessage(response: Response): Promise<string> {
  * purpose: a made-to-order variant has no stocked item, so leaving it blank is
  * legal. Idempotent on `(product, code)`.
  */
-export function RegisterVariantForm({ products }: RegisterVariantFormProps) {
+export function RegisterVariantForm({ products, items }: RegisterVariantFormProps) {
   const router = useRouter();
   const [productId, setProductId] = useState(products[0]?.id ?? "");
   const [code, setCode] = useState("");
@@ -140,14 +147,17 @@ export function RegisterVariantForm({ products }: RegisterVariantFormProps) {
         onChange={(event) => setSize(event.target.value)}
         placeholder="e.g. 8 slices"
       />
-      <TextField
+      <SelectField
         name="finishedGoodItemId"
-        label="Finished-good item id (optional)"
+        label="Finished-good item"
         value={finishedGoodItemId}
         onChange={(event) => setFinishedGoodItemId(event.target.value)}
-        help="Leave blank for a made-to-order variant; a stocked variant links its item id."
-        inputMode="text"
-        autoCapitalize="none"
+        placeholder="None — made to order"
+        options={items.map((item) => ({
+          value: item.id,
+          label: `${item.code} · ${item.name}`,
+        }))}
+        help="Optional. A stocked variant links the item its output is stocked as; leave blank for a made-to-order variant."
       />
       <div>
         <Button type="submit" loading={busy} disabled={busy}>

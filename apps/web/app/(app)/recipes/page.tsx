@@ -1,5 +1,7 @@
 import {
+  createPostgresMasterDataStore,
   createPostgresRecipeStore,
+  listItems,
   listRecipes,
   type ListedRecipe,
   type RecipeItemRecord,
@@ -95,6 +97,10 @@ export default async function RecipesPage() {
   const store = createPostgresRecipeStore(getDb().db);
   const listed = await listRecipes(store, { organizationId });
   const outputItems = await loadOutputItems(store, listed);
+  const itemPage = await listItems(createPostgresMasterDataStore(getDb().db), {
+    organizationId,
+    limit: 200,
+  });
 
   const approvedCount = listed.filter((entry) => entry.latestVersion?.state === "approved").length;
   const costedCount = listed.filter((entry) => entry.costPreview.available).length;
@@ -294,7 +300,13 @@ export default async function RecipesPage() {
         meta="Identity only — add a version next"
         headingLevel={2}
       >
-        <NewRecipeForm />
+        <NewRecipeForm
+          items={itemPage.items.map((item) => ({
+            id: item.id,
+            code: item.code,
+            name: item.name,
+          }))}
+        />
       </SectionCard>
 
       <p

@@ -1,15 +1,16 @@
 "use client";
 
-import { Alert, Button, TextField, spacing } from "@aquarela/ui";
+import { Alert, Button, SelectField, TextField, spacing } from "@aquarela/ui";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { FormEvent } from "react";
 
 const FALLBACK_ERROR = "Could not register the recipe. Check the values and try again.";
 
-function field(form: FormData, name: string): string {
-  const value = form.get(name);
-  return typeof value === "string" ? value.trim() : "";
+export interface RecipeItemOption {
+  readonly id: string;
+  readonly code: string;
+  readonly name: string;
 }
 
 /**
@@ -18,7 +19,7 @@ function field(form: FormData, name: string): string {
  * command owns the domain rules, so this only collects values and refreshes the
  * list on success. Version lines are added on the recipe page.
  */
-export function NewRecipeForm() {
+export function NewRecipeForm({ items }: { readonly items: readonly RecipeItemOption[] }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -27,9 +28,9 @@ export function NewRecipeForm() {
     event.preventDefault();
     const formElement = event.currentTarget;
     const data = new FormData(formElement);
-    const code = field(data, "code");
-    const name = field(data, "name");
-    const outputItemId = field(data, "outputItemId");
+    const code = String(data.get("code") ?? "").trim();
+    const name = String(data.get("name") ?? "").trim();
+    const outputItemId = String(data.get("outputItemId") ?? "").trim();
 
     setBusy(true);
     setError(null);
@@ -70,11 +71,20 @@ export function NewRecipeForm() {
         help="Unique within the organization."
       />
       <TextField name="name" label="Name" required disabled={busy} />
-      <TextField
+      <SelectField
         name="outputItemId"
-        label="Output item id"
+        label="Output item"
         disabled={busy}
-        help="Optional. Leave blank for a made-to-order recipe (DEC-030)."
+        placeholder="None — made to order (DEC-030)"
+        options={items.map((item) => ({
+          value: item.id,
+          label: `${item.code} · ${item.name}`,
+        }))}
+        help={
+          items.length === 0
+            ? "No items registered yet; a made-to-order recipe needs no output item."
+            : "Optional. The item one batch of this recipe produces."
+        }
       />
       <div>
         <Button type="submit" loading={busy} disabled={busy}>

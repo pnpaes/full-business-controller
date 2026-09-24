@@ -5,7 +5,7 @@ import {
 } from "@aquarela/application";
 import { MONEY_SCALE, formatDecimal, parseDecimal, rescale } from "@aquarela/domain";
 import { ITEM_TYPE, INVENTORY_POLICY } from "@aquarela/persistence";
-import { PageHeader, SectionCard, color, spacing, typography } from "@aquarela/ui";
+import { PageHeader, SectionCard, Button, color, radius, spacing, typography } from "@aquarela/ui";
 import { redirect } from "next/navigation";
 
 import { getDb } from "../../../lib/db";
@@ -206,8 +206,10 @@ export default async function ProductsPage({
                 style={{
                   minHeight: 44,
                   padding: `0 ${spacing[3]}px`,
-                  border: "1px solid #c8c2b8",
-                  borderRadius: 6,
+                  border: `1px solid ${color.border.default}`,
+                  borderRadius: radius.md,
+                  backgroundColor: color.surface.base,
+                  color: color.text.primary,
                   fontSize: typography.fontSize.md,
                 }}
               />
@@ -220,8 +222,10 @@ export default async function ProductsPage({
                 style={{
                   minHeight: 44,
                   padding: `0 ${spacing[3]}px`,
-                  border: "1px solid #c8c2b8",
-                  borderRadius: 6,
+                  border: `1px solid ${color.border.default}`,
+                  borderRadius: radius.md,
+                  backgroundColor: color.surface.base,
+                  color: color.text.primary,
                   fontSize: typography.fontSize.md,
                 }}
               >
@@ -233,22 +237,7 @@ export default async function ProductsPage({
                 ))}
               </select>
             </label>
-            <button
-              type="submit"
-              style={{
-                minHeight: 44,
-                padding: `0 ${spacing[5]}px`,
-                border: "1px solid #16243d",
-                borderRadius: 6,
-                backgroundColor: "#16243d",
-                color: "#faf6ef",
-                fontSize: typography.fontSize.md,
-                fontWeight: typography.fontWeight.semibold,
-                cursor: "pointer",
-              }}
-            >
-              Filter
-            </button>
+            <Button type="submit">Filter</Button>
           </div>
         </form>
 

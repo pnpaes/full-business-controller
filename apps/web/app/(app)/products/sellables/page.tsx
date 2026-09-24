@@ -1,4 +1,9 @@
-import { createPostgresProductStore, listProducts } from "@aquarela/application";
+import {
+  createPostgresMasterDataStore,
+  createPostgresProductStore,
+  listItems,
+  listProducts,
+} from "@aquarela/application";
 import { PRODUCT_KIND } from "@aquarela/persistence";
 import {
   Badge,
@@ -48,11 +53,19 @@ export default async function SellableProductsPage() {
 
   const organizationId = resolveOrganization();
   const store = createPostgresProductStore(getDb().db);
-  const products = await listProducts(store, { organizationId });
+  const [products, itemPage] = await Promise.all([
+    listProducts(store, { organizationId }),
+    listItems(createPostgresMasterDataStore(getDb().db), { organizationId, limit: 200 }),
+  ]);
   const productOptions = products.map(({ product }) => ({
     id: product.id,
     code: product.code,
     name: product.name,
+  }));
+  const itemOptions = itemPage.items.map((item) => ({
+    id: item.id,
+    code: item.code,
+    name: item.name,
   }));
 
   return (
@@ -116,7 +129,7 @@ export default async function SellableProductsPage() {
             New variant
           </summary>
           <div style={{ marginTop: spacing[4] }}>
-            <RegisterVariantForm products={productOptions} />
+            <RegisterVariantForm products={productOptions} items={itemOptions} />
           </div>
         </details>
       </SectionCard>
