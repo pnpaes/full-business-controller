@@ -66,15 +66,21 @@ export default async function ReconciliationPage() {
       source: summary.run.source,
       period: formatPeriod(summary.run.periodStart, summary.run.periodEnd),
     }));
-  const settlements = (await store.listSettlements({ organizationId, limit: 100 })).map(
-    (settlement) => ({
-      id: settlement.id,
-      provider: settlement.provider,
-      period: formatPeriod(settlement.periodStart, settlement.periodEnd),
-      paidAmount: settlement.paidAmount,
-      currency: settlement.currency,
-    }),
+  const settlementRows = await store.listSettlements({ organizationId, limit: 100 });
+  const settlements = settlementRows.flatMap((settlement) =>
+    settlement.paidAmount === null
+      ? []
+      : [
+          {
+            id: settlement.id,
+            provider: settlement.provider,
+            period: formatPeriod(settlement.periodStart, settlement.periodEnd),
+            paidAmount: settlement.paidAmount,
+            currency: settlement.currency,
+          },
+        ],
   );
+  const settlementsWithoutPaidAmount = settlementRows.length - settlements.length;
 
   const exceptions = rows.filter((row) => row.status === "exception").length;
   const withinTolerance = rows.filter((row) => row.status === "within_tolerance").length;
@@ -141,6 +147,15 @@ export default async function ReconciliationPage() {
           settlement, then reconcile it here.
         </Alert>
       )}
+
+      {settlementsWithoutPaidAmount > 0 ? (
+        <Alert tone="info" title="Settlements without a paid amount">
+          {settlementsWithoutPaidAmount} settlement
+          {settlementsWithoutPaidAmount === 1 ? "" : "s"} without a paid amount{" "}
+          {settlementsWithoutPaidAmount === 1 ? "is" : "are"} not offered for reconciliation: a
+          settlement with no paid amount cannot be reconciled.
+        </Alert>
+      ) : null}
 
       <SectionCard
         title="Reconciliations"

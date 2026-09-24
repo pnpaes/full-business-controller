@@ -83,7 +83,7 @@ export function RegisterOperatingCostForm({
   const [locationId, setLocationId] = useState("");
   const [costPoolId, setCostPoolId] = useState("");
   const [amount, setAmount] = useState("");
-  const [currencyText, setCurrencyText] = useState(currency ?? "NOK");
+  const [currencyText, setCurrencyText] = useState(currency ?? "");
   const [recurrence, setRecurrence] = useState(recurrences[0] ?? "monthly");
   const [behavior, setBehavior] = useState(behaviors[0] ?? "fixed");
   const [taxBasis, setTaxBasis] = useState(taxBases[0] ?? "exclusive");
@@ -214,7 +214,7 @@ export function RegisterOperatingCostForm({
             value={currencyText}
             onChange={(event) => setCurrencyText(event.target.value)}
             placeholder="NOK"
-            help="Defaults to NOK when left empty."
+            help="Leave empty to record the cost in NOK — the server's default currency."
           />
         </div>
 

@@ -11,6 +11,8 @@ import {
   TextareaField,
   spacing,
 } from "@aquarela/ui";
+import { parseDecimal } from "@aquarela/domain/decimal";
+import { QUANTITY_SCALE } from "@aquarela/domain/quantity";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { FormEvent } from "react";
@@ -80,6 +82,16 @@ interface DraftAllergen {
 }
 
 const STATES = ["draft", "submitted", "approved"] as const;
+
+/** Parses a user quantity at quantity scale; `null` when it is not a valid positive decimal. */
+function parsePositiveQuantity(value: string): bigint | null {
+  try {
+    const parsed = parseDecimal(value.trim(), QUANTITY_SCALE);
+    return parsed <= 0n ? null : parsed;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Registers a new recipe version through `POST /api/v1/recipes/[id]/versions`
@@ -176,16 +188,16 @@ export function RegisterVersionForm({
       setError("Enter a positive whole version number.");
       return;
     }
-    for (const quantity of [plannedInputQty, plannedOutputQty, approvedUsableOutput]) {
-      const trimmed = quantity.trim();
-      if (!/^\d+(?:\.\d+)?$/.test(trimmed) || Number(trimmed) <= 0) {
-        setError(
-          "Enter positive planned input, planned output and approved usable output quantities.",
-        );
-        return;
-      }
+    const plannedInput = parsePositiveQuantity(plannedInputQty);
+    const plannedOutput = parsePositiveQuantity(plannedOutputQty);
+    const approvedUsable = parsePositiveQuantity(approvedUsableOutput);
+    if (plannedInput === null || plannedOutput === null || approvedUsable === null) {
+      setError(
+        "Enter positive planned input, planned output and approved usable output quantities.",
+      );
+      return;
     }
-    if (Number(approvedUsableOutput.trim()) > Number(plannedInputQty.trim())) {
+    if (approvedUsable > plannedInput) {
       setError(
         "Approved usable output cannot exceed the planned input — the yield rate must stay within (0, 1].",
       );
@@ -206,7 +218,7 @@ export function RegisterVersionForm({
     }> = [];
     for (const line of lines) {
       const quantity = line.quantity.trim();
-      if (!/^\d+(?:\.\d+)?$/.test(quantity) || Number(quantity) <= 0) {
+      if (parsePositiveQuantity(quantity) === null) {
         setError("Enter a positive quantity for every line.");
         return;
       }
@@ -325,6 +337,10 @@ export function RegisterVersionForm({
       setPlannedOutputQty("");
       setApprovedUsableOutput("");
       setSourceRecipeTestId("");
+      setState("draft");
+      setApprovedBy("");
+      setLaborRoleCode("");
+      setLaborCostCenterId("");
       setVersionNo(String(versionNoValue + 1));
       router.refresh();
     } catch {

@@ -25,7 +25,7 @@ export interface ReconcileSettlementOption {
   readonly id: string;
   readonly provider: string;
   readonly period: string;
-  readonly paidAmount: string | null;
+  readonly paidAmount: string;
   readonly currency: string;
 }
 
@@ -69,11 +69,7 @@ export function ReconcileForm({
     })),
     ...settlements.map((settlement) => ({
       value: `settlement:${settlement.id}`,
-      label: `Settlement · ${settlement.provider} · ${settlement.period}${
-        settlement.paidAmount === null
-          ? " (no paid amount)"
-          : ` · ${settlement.paidAmount} ${settlement.currency}`
-      }`,
+      label: `Settlement · ${settlement.provider} · ${settlement.period} · ${settlement.paidAmount} ${settlement.currency}`,
     })),
   ];
 

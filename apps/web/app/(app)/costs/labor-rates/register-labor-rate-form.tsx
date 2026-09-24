@@ -88,8 +88,6 @@ export function RegisterLaborRateForm({
     );
   }
 
-  const currencyLabel = currency ?? "NOK";
-
   async function submit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     setError(null);
@@ -124,7 +122,7 @@ export function RegisterLaborRateForm({
       setSuccess(
         `Registered the ${humanize(roleCode)} rate. Loaded hourly rate: ${
           body.loadedHourlyRate ?? "—"
-        } ${currencyLabel}/hour.`,
+        }${currency === null ? "" : ` ${currency}`}/hour.`,
       );
       setBaseHourlyRate("");
       router.refresh();
@@ -149,7 +147,6 @@ export function RegisterLaborRateForm({
       inputMode="decimal"
       value={value}
       onChange={(event) => onChange(event.target.value)}
-      unit="%"
       placeholder="0.0000"
       {...(help === undefined ? {} : { help })}
     />
@@ -194,26 +191,43 @@ export function RegisterLaborRateForm({
           inputMode="decimal"
           value={baseHourlyRate}
           onChange={(event) => setBaseHourlyRate(event.target.value)}
-          unit={currencyLabel}
+          {...(currency === null ? {} : { unit: currency })}
           placeholder="0.00"
-          help="The wage before statutory additions; the loaded rate is derived from it."
+          help={
+            currency === null
+              ? "The wage before statutory additions; the loaded rate is derived from it. The rate is stored without a currency."
+              : "The wage before statutory additions; the loaded rate is derived from it."
+          }
         />
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: spacing[4] }}>
-          {pctField("feriepengerPct", "Feriepenger", feriepengerPct, setFeriepengerPct)}
+          {pctField(
+            "feriepengerPct",
+            "Feriepenger",
+            feriepengerPct,
+            setFeriepengerPct,
+            "A fraction of 1 — enter 0.12 for 12%. Leave empty to omit.",
+          )}
           {pctField(
             "employerContributionPct",
             "Employer contribution",
             employerContributionPct,
             setEmployerContributionPct,
+            "A fraction of 1 — enter 0.141 for 14.1%. Leave empty to omit.",
           )}
-          {pctField("pensionPct", "Pension", pensionPct, setPensionPct)}
+          {pctField(
+            "pensionPct",
+            "Pension",
+            pensionPct,
+            setPensionPct,
+            "A fraction of 1 — enter 0.05 for 5%. Leave empty to omit.",
+          )}
           {pctField(
             "productiveHoursPct",
             "Productive hours",
             productiveHoursPct,
             setProductiveHoursPct,
-            "Share of paid hours that are productive. Leave empty for 100% (the default — not the same as zero).",
+            "A fraction of 1 — enter 0.8 for 80%. Leave empty for the default of 1 (a full share, not the same as zero).",
           )}
         </div>
 
