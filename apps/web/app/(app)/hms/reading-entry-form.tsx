@@ -64,8 +64,9 @@ export function ReadingEntryForm({ points }: { readonly points: readonly Reading
     return (
       <SectionCard title="Record a reading" meta="fast entry">
         <Alert tone="info">
-          There is no active monitoring point in your location scope yet. Register a point first
-          (owner, general manager, location manager, kitchen or front of house).
+          There is no active monitoring point in your location scope yet. Register the first point
+          in the "Register a monitoring point" form below (owner, general manager, location manager,
+          kitchen or front of house).
         </Alert>
       </SectionCard>
     );

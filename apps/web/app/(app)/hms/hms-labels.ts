@@ -95,6 +95,25 @@ export function checklistOutcomeView(outcome: string): { tone: HmsTone; label: s
   return CHECKLIST_OUTCOME_VIEW[outcome] ?? { tone: "info", label: outcome };
 }
 
+/** Client-safe mirrors of the persistence enums (`MONITORING_POINT_KIND`,
+ * `CHECK_FREQUENCY`) for form option lists — the same no-persistence-import
+ * rule as the label maps above. Pair with the label functions below. */
+export const MONITORING_POINT_KINDS: readonly string[] = [
+  "refrigerator",
+  "freezer",
+  "cooler",
+  "hot_holding",
+  "other",
+];
+
+export const CHECK_FREQUENCIES: readonly string[] = [
+  "daily",
+  "twice_daily",
+  "weekly",
+  "monthly",
+  "other",
+];
+
 /** `monitoring_point_kind` → label (`DEC-089`). */
 export const MONITORING_POINT_KIND_LABELS: Record<string, string> = {
   refrigerator: "Refrigerator",

@@ -4,6 +4,7 @@ import {
   listLocations,
   listMonitoringPoints,
   listMonitoringReadings,
+  listStorageAreas,
 } from "@aquarela/application";
 import {
   DataTable,
@@ -27,6 +28,7 @@ import {
   loadHmsAccess,
 } from "../../api/v1/hms/access";
 import { ReadingEntryForm } from "./reading-entry-form";
+import { RegisterPointForm } from "./register-point-form";
 import {
   checkFrequencyLabel,
   formatAge,
@@ -141,9 +143,23 @@ export default async function HmsMonitoringPage() {
   const allLocations = await listLocations(createPostgresInventoryStore(getDb().db), {
     organizationId,
   });
+  const storageAreas = await listStorageAreas(createPostgresInventoryStore(getDb().db), {
+    organizationId,
+  });
   const locationLabelById = new Map(
     allLocations.map((location) => [location.id, `${location.code} · ${location.name}`]),
   );
+  // A monitoring point lives on physical equipment, never in the transit leg.
+  const registerableLocations = allLocations
+    .filter((location) => location.kind !== "virtual_transit")
+    .map((location) => ({ id: location.id, label: `${location.code} · ${location.name}` }));
+  const registerableAreas = storageAreas
+    .filter((area) => !area.isTransit)
+    .map((area) => ({
+      id: area.id,
+      locationId: area.locationId,
+      label: `${area.code} · ${area.name}`,
+    }));
 
   const pointLabelById = new Map(
     visiblePoints.map((point) => [point.id, `${point.code} · ${point.name}`]),
@@ -245,6 +261,10 @@ export default async function HmsMonitoringPage() {
         </SectionCard>
       )}
 
+      {canRecord ? (
+        <RegisterPointForm locations={registerableLocations} storageAreas={registerableAreas} />
+      ) : null}
+
       <SectionCard
         title="Monitoring points"
         meta={`${pointRows.length} ${pointRows.length === 1 ? "point" : "points"} · ${overdueCount} overdue`}
@@ -269,7 +289,7 @@ export default async function HmsMonitoringPage() {
                 <StatusPill tone="success">On cadence</StatusPill>
               ),
           }))}
-          emptyMessage="No monitoring points yet. Register one through the API or ask an owner to set the first point up."
+          emptyMessage="No monitoring points yet. Use the register form above to create the first one."
         />
       </SectionCard>
 

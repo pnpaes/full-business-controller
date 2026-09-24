@@ -93,9 +93,10 @@ export async function GET(request: Request): Promise<Response> {
 
 /**
  * Registers a monitoring point (`HMS-002`). The actor is the session user and
- * the organization the served tenant. Recording is limited to the operational
- * roles (location_manager / kitchen / front_of_house) — `admin` may read but not
- * record, since there is no implicit admin bypass.
+ * the organization the served tenant. Recording is limited to
+ * `HMS_RECORD_ROLES` (owner / general_manager / location_manager / kitchen /
+ * front_of_house, widened by `DEC-130`) — `admin` may read but not record,
+ * since there is no implicit admin bypass.
  *
  * The body carries `code`, `name`, `kind`, `unit`, `targetMin`, `targetMax`,
  * `checkFrequency`, `locationId` and an optional `storageAreaId`. A command
