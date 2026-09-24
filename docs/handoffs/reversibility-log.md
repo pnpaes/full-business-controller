@@ -1,5 +1,19 @@
 # Reversibility log
 
+- **2026-09-24 `DEC-122` task-status vocabulary alignment (uncommitted at
+  handoff time; nothing pushed)**: a pure repository edit across
+  `packages/application/src/tasks/**` and
+  `apps/web/app/{api/v1/tasks/**,(app)/tasks/**}` plus the `DEC-122` slice's
+  uncommitted `page.tsx`. Reverting the session's edits restores the previous
+  (translating) `DEC-122` slice byte-for-byte. **No migration and no schema
+  change** (the `task_status_check` constraint already permitted the schema
+  vocabulary; migrations stay through `0062`; **89 tables**) and **no data
+  written** by the alignment — the only production change is that the Postgres
+  adapter no longer rewrites `done`/`cancelled` to `resolved`/`dismissed`, so
+  rows already written by the translating slice (stored as `resolved`/
+  `dismissed`) now read back as `resolved`/`dismissed` and are handled by the
+  aligned machine directly. `db:migrate` is a no-op on re-run. Nothing applied
+  to DigitalOcean.
 - **2026-09-23 daily (location, day) close exposed (`DEC-119`; 4 commits incl.
   the `docs(decisions)` commit; nothing pushed)**: 1. `docs(decisions)`
   (`DEC-119`); 2. `test(application)` — the joining tests + the fake wiring

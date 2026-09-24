@@ -12,97 +12,86 @@ orientation and the next step. See "Handover archive" and "Update protocol".
 ## Resume here (next session)
 
 **Say "resume the work" and start here.** A fresh session must be able to
-continue from this section alone. (Rewritten by the 2026-09-23 `DEC-119` docs
-session.)
+continue from this section alone. (Rewritten by the 2026-09-24 task-status
+vocabulary-alignment session.)
 
-**State:** `main`; HEAD before this docs commit is **`a1c9ee7`** (the
-`DEC-118` docs commit). The `DEC-119` slice landed as the `docs(decisions)`,
-`test(application)` and `feat(web)` commits — plus this `docs(context)`
-handoff (the docs layers may be uncommitted at handoff time; the orchestrator
-commits them). Nothing pushed; nothing applied to DigitalOcean. Schema:
-migrations through **`0062`**; **89 tables** (no new table, no migration);
-next free decision id **`DEC-120`** (`DEC-119` is recorded and implemented).
-Baseline with `DATABASE_URL`: **3648/3648 tests** (240 files). Handoff:
-`docs/handoffs/078-…md`. **The `DEC-119` daily (location, day) close is
-delivered**: the backend already supported both scopes (`beginPeriodClose`/
-`lockPeriodClose`, `resolveClosePeriod`, the close API routes unchanged), and
-the slice added the missing `/close` register UI
-(`apps/web/app/(app)/close/**` — a server page gated on
-`PERIOD_CLOSE_READ_ROLES`, a begin form whose location selector is filtered
-to the caller's allowed locations plus a day, a role-gated company month
-option, and lock/reopen row actions with a mandatory reopen reason), a
-`Close` nav entry and a tasks-page pointer, a pure labels module with a test,
-and a joining test (unit + Postgres) creating and locking a location close
-through the **real** commands and proving `correctSalesLine` is then blocked
-for that location and day while another location is allowed — the `DEC-117`
-gate's location arm is live. `scopeLimited` (the organization-wide
-prerequisite evaluation, `DEC-107`) is surfaced in the UI. Review:
-`reviewer-qwen` + `reviewer-glm` — no blockers, no majors; two trivial minors
-declined with reasons.
+**State:** `main`; HEAD **`56a072f`** (`chore: ignore the dev dist dir …`).
+The `DEC-122` task slice is **uncommitted** (untracked
+`packages/application/src/tasks/**`, `apps/web/app/api/v1/tasks/**`, the four
+`apps/web/app/(app)/tasks/**` client files; modified
+`apps/web/app/(app)/tasks/page.tsx`, `packages/application/src/index.ts`,
+`packages/persistence/src/repositories/workflow.ts` (+ `updateTaskStatusIfCurrent`)
+and `users.ts` (+ `listAssignableUsers`)). This session aligned that slice to the
+schema vocabulary: **the `done`/`cancelled` ↔ `resolved`/`dismissed` translation
+is deleted**, the machine is now the `task_status_check` vocabulary end to end,
+and the `ponytail:` CHECK-translation ceiling note is gone. No CHECK change, **no
+migration** (63 applied, 89 public tables — `db:migrate` a no-op on re-run).
+Nothing pushed; nothing applied to DigitalOcean. Schema: migrations through
+`0062`. Next free decision id still **`DEC-120`** (the row-11 backfill posture).
+Baseline with `DATABASE_URL`: **3868/3868 tests** (254 files) — +9 over the 3859
+pre-alignment baseline; `typecheck`/`lint`/`format:check`/`build` all clean.
 
-**Next task — `DEC-120`: the row-11 backfill posture.** Rationale: `DEC-113`
-wired the sales-import mapping writer, so **new** imports populate
-`sales_line.product_variant_id`, but every already-posted `sales_line` keeps
-a null variant id, so the `DEC-108`/`DEC-109` reporting variant chain still
-resolves those rows by SKU/`external_mapping` only. Objective: decide and
-either (a) implement an **idempotent, reversible** backfill that resolves
-historical `sales_line.product_variant_id` from the existing
-SKU/`external_mapping` data (dry-run first, batched; an update of a derived
-column, not a posted money fact), or (b) record a **no-backfill** posture
-with the reason — and record the posture as **`DEC-120` in both tables of
-`12_OPEN_DECISIONS.md` before or with the implementation** (Rule 3; next
-free id). Record explicitly whether updating a derived column on a posted
-row is compatible with the append-only rule (it is not a financial or stock
-fact) or whether the resolution must instead happen at read time.
+**What changed (this session, uncommitted):**
 
-**Scope (do):** read this file; `DEC-113`, `DEC-033`, `DEC-041`, `DEC-108`,
-`DEC-109` in `12_OPEN_DECISIONS.md`; the mapping writer
-(`packages/application/src/imports/map-import-rows.ts`), the
-variant-resolution chain (`packages/application/src/reporting/**`,
-`packages/persistence/src/repositories/reporting.ts`) and the `sales_line`
-schema; keep it additive and reversible, with a `.test.ts` per branch; commit
-in layers with the rollback approach in the body (Rule 2).
+- `packages/application/src/tasks/status-machine.ts` (+ test): the machine is now
+  `open → {in_progress, blocked, dismissed}`; `in_progress → {resolved, blocked,
+dismissed}`; `blocked → {in_progress, dismissed}`; `resolved`/`dismissed`
+  terminal; unknown/unlisted → message-only `DomainError`.
+- `postgres-store.ts`: `DOMAIN_TO_STORED_STATUS`/`STORED_TO_DOMAIN_STATUS`,
+  `toStoredStatus`, `toDomainStatus` and every call deleted — statuses are stored
+  verbatim.
+- `types.ts`, `test-support.ts`, `assign-task.ts` (message now "…resolved or
+  dismissed"), `list-tasks.ts` (filter vocabulary unchanged, now the schema's),
+  `tasks.test.ts`, `tasks.postgres.test.ts`.
+- Web: `task-rows.ts` (validation accepts the schema vocabulary via
+  `TASK_STATUSES`), `route.test.ts`, `[id]/transition/route.ts` (+ test),
+  `[id]/assign/route.ts` JSDoc; `task-labels.ts` (+ test) now carries the
+  transition map and `taskAllowedTargets(status)`; `task-filters.tsx` chips;
+  `page.tsx` (status validation via `TASK_STATUSES`, per-row targets from
+  `taskAllowedTargets`).
+- **Kept unchanged:** the atomic compare-and-set `updateTaskStatusIfCurrent`, the
+  access posture, the assignee read, no `task↔approval` link, no `location_id`.
 
-**Scope (do not):** do not rewrite posted money facts or stock facts; do not
-add a migration unless the decision needs one; do not resolve recorded open
-inputs silently (do not silently decide the backfill verdict itself — that is
-what `DEC-120` records — nor I11, the OPS policy, `DEC-077`, or the
+**Next task:** commit the `DEC-122` slice — nothing above is committed yet.
+Then resume the previously-recorded next task: **`DEC-120` — the row-11 backfill
+posture** (decide and either implement an idempotent, reversible
+`sales_line.product_variant_id` backfill from SKU/`external_mapping`, dry-run
+first, or record a no-backfill posture with the reason; record it as `DEC-120` in
+both tables of `12_OPEN_DECISIONS.md` before/with the implementation). Authoritative
+inputs: `DEC-113`, `DEC-033`, `DEC-041`, `DEC-108`, `DEC-109`, the mapping writer
+(`packages/application/src/imports/map-import-rows.ts`), the variant-resolution
+chain (`packages/application/src/reporting/**`,
+`packages/persistence/src/repositories/reporting.ts`) and the `sales_line` schema.
+
+**Scope (do not):** do not rewrite posted money or stock facts; do not add a
+migration unless a decision needs one; do not resolve recorded open inputs
+silently (not the backfill verdict itself, not I11/OPS policy/`DEC-077`, not the
 provisional `DEC-105`/`DEC-106`/`DEC-107` items); do not deploy or write
 externally (`DEC-015`).
 
-**Acceptance / verification:** `export NVM_DIR="$HOME/.nvm"; . "$NVM_DIR/nvm.sh";
-nvm use 22`; then `npm run typecheck`, `npm run lint`, `npm run test` (with
-`DATABASE_URL` — current baseline **3648/3648**, 240 files), `npm run build`,
-`npm run format:check`, `npm audit --omit=dev` = 0; `db:migrate` a no-op
-(expected: no migration unless the `DEC-120` decision needs one). Commit in
-layers with the rollback approach in the body (Rule 2).
+**Note on `DEC-122` text:** the decision row's _prose_ still describes the
+machine in the OLD `done`/`cancelled` vocabulary and claims the slice "translates
+at the boundary"; the current `12_OPEN_DECISIONS.md` row (line 179) instead
+already states the schema vocabulary (`open → {in_progress, blocked, dismissed}`
+… resolved/dismissed terminal), so the recorded decision and the code now agree.
+If any `done`/`cancelled` prose for a task is found in `DEC-122` wording, correct
+it in the same pass rather than building to it.
 
-**Open decisions/inputs that shape it:** `DEC-113` recorded the **no
-historical backfill** posture provisionally and deferred the backfill
-posture, the demo variant seed and an `external_mapping` lookup index to an
-owner decision; `DEC-041` fixes the SKU-first precedence within the org;
-`DEC-033` keeps mapping conflicts blocked from posting; `DEC-108`/`DEC-109`
-define the `product_variant_id → sku → external_mapping → unmapped` chain
-that null rows fall back to (so a no-backfill posture is functionally safe
-but read-time-costlier); the append-only question above must be answered in
-the decision text, not silently.
+**Verification (this session, exact):** `export NVM_DIR="$HOME/.nvm"; .
+"$NVM_DIR/nvm.sh"; nvm use 22`; `npm run typecheck` clean; `npm run lint` clean;
+`npm run format:check` clean; `npm run build` clean;
+`DATABASE_URL=postgres://aquarela:aquarela@localhost:5432/aquarela npm run test`
+→ **254 files, 3868/3868 tests passed**; `db:migrate` a no-op (63 migrations, 89
+tables).
 
-**Step after:** the `DEC-116`/`DEC-117`/`DEC-118` follow-ups (recomputing the
-transaction header at posting time, partial/delta corrections, a persisted
-reversal reason or `adjustment_period` link, gating the exported
-`reverseSalesLine`, an approval/override path, channel-precise
-reconciliation matching); the `DEC-119` recorded-not-fixed items (the
-period-close list route's missing location filter, no route for
-`isPeriodLocked`); the remaining close-outs (`denominator_source` DB CHECK,
-per-channel packaging, the cost-card version chain, the per-item override,
-`behavior` filtering, partial-window proration); and the test-deployment
-rehearsal / golden-fixture sign-off (parked on owner inputs).
+## Next up (prioritised)
 
-**Programme direction (standing user instruction):** proceed autonomously, in
-continuous sequence — parallel background agents → adversarial review + fixes →
-concise status/documentation → commit → next task. Global ruleset
-(`~/.config/kilo/AGENTS.md`): compact context at 25 %; pausing is permitted
-above USD 20 at a clean point (committed, verified, documented).
+`docs/BUILD_ROADMAP.md` is the ordered execution tracker; §5 carries the
+open-point lists. Per-slice detail is in `docs/handoffs/`.
+
+1. **Commit the `DEC-122` task slice** (uncommitted; see "Resume here"). Then
+   **`DEC-120` — the row-11 backfill posture** (see "Resume here").
+2. **Row 13 — close + dashboards + menu engineering — COMPLETE.**
 
 ## What this is
 
@@ -152,13 +141,18 @@ Per-slice detail, commits and reconciliation are in `docs/handoffs/`.
 
 ## Current status
 
-- **As of:** 2026-09-23 — branch `main`; HEAD before this docs commit is
-  **`a1c9ee7`** (the `DEC-118` docs commit); the daily-close-exposure slice
-  (`DEC-119`) is implemented and reviewed, with its docs
-  layers landing as the `docs(decisions)`, `test(application)`,
-  `feat(web)` and this `docs(context)` handoff.
-  Lineage and full per-slice detail: `docs/handoffs/README.md` and the files
-  it lists.
+- **As of:** 2026-09-24 — branch `main`; HEAD **`56a072f`**.
+  The `DEC-122` task slice is **uncommitted and vocabulary-aligned** (the
+  `done`/`cancelled` ↔ `resolved`/`dismissed` translation is deleted; the
+  machine, the port, the in-memory fake, the Postgres adapter, the API
+  validation/row mapper and the UI labels/filters/row buttons all speak the
+  `task_status_check` vocabulary — `open`, `in_progress`, `blocked`, `resolved`,
+  `dismissed`). **No CHECK change, no migration**; the atomic compare-and-set
+  `updateTaskStatusIfCurrent` is kept. Verification (2026-09-24):
+  `typecheck`/`lint`/`format:check`/`build` clean; **3868/3868 tests with
+  `DATABASE_URL`** (254 files); `db:migrate` a no-op (63 migrations, 89 tables).
+  Lineage and full per-slice detail: `docs/handoffs/README.md` and the files it
+  lists.
 - **The daily (location, day) close is exposed operator-driven (`DEC-119`):**
   research found the backend already complete — `beginPeriodClose`/
   `lockPeriodClose` accept both scopes
