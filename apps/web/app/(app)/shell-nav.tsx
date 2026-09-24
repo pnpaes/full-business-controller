@@ -82,7 +82,8 @@ interface Area {
   readonly icon: ReactNode;
 }
 
-/** The §8.1 primary areas plus the `DEC-119` Close register, each with a line glyph. */
+/** The §8.1 primary areas plus the `DEC-119` Close register and the staff/
+ * operations areas (Workforce, Documents, HMS), each with a line glyph. */
 const AREAS: readonly Area[] = [
   {
     href: "/",
@@ -124,6 +125,18 @@ const AREAS: readonly Area[] = [
       <Glyph>
         <path d="M3 20h18" />
         <path d="M5 20V9l5 3V9l5 3V9l4 3v8" />
+      </Glyph>
+    ),
+  },
+  {
+    href: "/workforce",
+    label: "Workforce",
+    icon: (
+      <Glyph>
+        <circle cx="9" cy="8" r="3" />
+        <path d="M4 19c0-2.8 2.2-5 5-5s5 2.2 5 5" />
+        <circle cx="16.5" cy="9" r="2.4" />
+        <path d="M15.5 14.2c2.6.4 4.5 2.4 4.5 4.8" />
       </Glyph>
     ),
   },
@@ -191,6 +204,30 @@ const AREAS: readonly Area[] = [
         <path d="M3 6l1.6 1.6L7.5 4.5" />
         <path d="M3 12l1.6 1.6L7.5 10.5" />
         <path d="M3 18l1.6 1.6L7.5 16.5" />
+      </Glyph>
+    ),
+  },
+  {
+    href: "/documents",
+    label: "Documents",
+    icon: (
+      <Glyph>
+        <path d="M7 3h7l4 4v14H7z" />
+        <path d="M14 3v4h4" />
+        <path d="M10 12h5" />
+        <path d="M10 16h5" />
+      </Glyph>
+    ),
+  },
+  {
+    href: "/hms",
+    label: "HMS",
+    icon: (
+      <Glyph>
+        <rect x="6" y="4" width="12" height="17" rx="2" />
+        <path d="M9 10h6" />
+        <path d="M9 14h6" />
+        <path d="M9 18h3" />
       </Glyph>
     ),
   },
@@ -359,7 +396,8 @@ export function MobileNav() {
  * mobile, §17): Home (the operational entry), Sales and Inventory (the two
  * highest-frequency operational facts), Production (the daily workflow) and
  * Insights (the analytical entry). The lower-frequency or role-gated areas —
- * Purchasing, Costs, Close, Tasks, Administration — stay reachable through
+ * Purchasing, Costs, Close, Tasks, Workforce, Documents, HMS, Administration —
+ * stay reachable through
  * the drawer, which carries the full set. */
 const BOTTOM_NAV_HREFS: readonly string[] = [
   "/",

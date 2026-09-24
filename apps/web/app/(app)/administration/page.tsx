@@ -1,17 +1,15 @@
-import {
-  Badge,
-  EmptyState,
-  PageHeader,
-  SectionCard,
-  color,
-  spacing,
-  typography,
-} from "@aquarela/ui";
+import { Badge, PageHeader, SectionCard, color, spacing, typography } from "@aquarela/ui";
 
 export const metadata = { title: "Administration — Aquarela Business Control" };
 
-const accessAndRules = ["Users/scopes", "Tax/rules", "Units"];
-const dataAndIntegrations = ["Imports", "Integrations", "Audit", "Data quality"];
+/**
+ * Administration hub (08_UI_UX.md §8.3: users/scopes, tax/rules, units,
+ * imports, integrations, audit and data quality). Only capabilities with an
+ * existing screen and application service are linked — Imports today. The
+ * remaining domains have no application read service and no route yet, so they
+ * are listed as unavailable instead of offering controls that do nothing.
+ * No backend was added in this wave.
+ */
 
 const contentColumn = {
   display: "flex",
@@ -19,9 +17,10 @@ const contentColumn = {
   gap: spacing[6],
 } as const;
 
-const checklist = {
+const list = {
   margin: 0,
-  paddingLeft: spacing[5],
+  padding: 0,
+  listStyle: "none",
   display: "flex",
   flexDirection: "column",
   gap: spacing[2],
@@ -29,9 +28,21 @@ const checklist = {
   fontSize: typography.fontSize.md,
 } as const;
 
-const backLink = {
+const link = {
   color: color.brand.navy,
   fontWeight: typography.fontWeight.semibold,
+} as const;
+
+const backLink = {
+  ...link,
+  alignSelf: "flex-start",
+  minHeight: 44,
+  display: "inline-flex",
+  alignItems: "center",
+} as const;
+
+const muted = {
+  color: color.text.secondary,
 } as const;
 
 export default function AdministrationPage() {
@@ -40,34 +51,49 @@ export default function AdministrationPage() {
       <PageHeader
         title="Administration"
         scope="Aquarela Business Control"
-        description="Manage users and scopes, tax and unit rules, imports, integrations, audit and data quality."
+        description="Configuration and oversight areas. Only capabilities with an existing screen are linked; the rest stay listed with the reason they are not available yet."
       />
-      <SectionCard title="Access, rules and units" meta="08_UI_UX.md §8.3">
-        <ul style={checklist}>
-          {accessAndRules.map((screen) => (
-            <li key={screen}>{screen}</li>
-          ))}
+      <SectionCard title="Available" meta="Linked screens">
+        <ul style={list}>
+          <li>
+            <a href="/sales/import" style={link}>
+              Imports
+            </a>{" "}
+            — sales import history: register, stage, validate, map and preview runs at{" "}
+            <span style={muted}>/sales/import</span>.
+          </li>
         </ul>
       </SectionCard>
-      <SectionCard title="Data, integrations and audit" headingLevel={3}>
-        <ul style={checklist}>
-          {dataAndIntegrations.map((screen) => (
-            <li key={screen}>{screen}</li>
-          ))}
+      <SectionCard title="Not available yet" headingLevel={3} meta="No backend">
+        <ul style={list}>
+          <li>
+            <Badge>No backend</Badge> Users/scopes — no user, role or location scope management
+            service or screen exists yet.
+          </li>
+          <li>
+            <Badge>No backend</Badge> Tax/rules — no tax or rule configuration service or screen
+            exists yet.
+          </li>
+          <li>
+            <Badge>No backend</Badge> Units — unit registration exists in the catalog service, but
+            there is no read service or screen to list units, so nothing can be shown read-only yet.
+          </li>
+          <li>
+            <Badge>No backend</Badge> Integrations — no integration configuration service or screen
+            exists yet.
+          </li>
+          <li>
+            <Badge>No backend</Badge> Audit — no audit event service or screen exists yet.
+          </li>
+          <li>
+            <Badge>No backend</Badge> Data quality — exceptions can only be recorded by other
+            slices; there is no read service or screen to review them yet.
+          </li>
         </ul>
       </SectionCard>
-      <EmptyState
-        title="Administration is not wired to data yet"
-        action={
-          <a href="/" style={backLink}>
-            Back to Management home
-          </a>
-        }
-      >
-        <Badge>Not yet implemented</Badge> Administration needs the persistence and auth slices
-        before users, scopes, rules or imports can be managed. Until then this area lists the
-        planned screens instead of offering controls that do nothing.
-      </EmptyState>
+      <a href="/" style={backLink}>
+        Back to Management home
+      </a>
     </div>
   );
 }
