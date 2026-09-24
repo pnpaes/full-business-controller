@@ -14,6 +14,7 @@ export * from "./reconciliation";
 export * from "./reporting";
 export * from "./sales";
 export * from "./scheduling";
+export * from "./tasks";
 export * from "./recipes";
 export * from "./receiving";
 export * from "./transfers";
