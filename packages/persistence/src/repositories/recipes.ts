@@ -1,4 +1,5 @@
 import { and, asc, desc, eq, gt, ilike, isNotNull, isNull, lte, or } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 
 import type { Database } from "../client";
 import {
@@ -8,6 +9,7 @@ import {
   recipe,
   recipeAllergen,
   recipeLine,
+  recipeTest,
   recipeVersion,
   supplierItem,
   supplierPrice,
@@ -23,6 +25,8 @@ export type Allergen = typeof allergen.$inferSelect;
 export type NewAllergen = typeof allergen.$inferInsert;
 export type RecipeAllergen = typeof recipeAllergen.$inferSelect;
 export type NewRecipeAllergen = typeof recipeAllergen.$inferInsert;
+export type RecipeTest = typeof recipeTest.$inferSelect;
+export type NewRecipeTest = typeof recipeTest.$inferInsert;
 
 export async function createRecipe(db: Database, input: NewRecipe): Promise<Recipe> {
   const rows = await db.insert(recipe).values(input).returning();
@@ -302,4 +306,137 @@ export async function listCostObservationsUpTo(
       ),
     )
     .orderBy(desc(costObservation.observedAt));
+}
+
+/**
+ * A `DEC-123` recipe trial joined to the version it tried (for the recipe and
+ * version number/state) and, when the improvement loop has closed, the version
+ * the trial motivated. `recipe_test` carries no recipe link of its own, so the
+ * recipe is reached through the tried version.
+ */
+export interface RecipeTestView {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly recipeId: string;
+  readonly recipeVersionId: string;
+  readonly testedAt: Date;
+  readonly batchInputQty: string;
+  readonly actualOutputQty: string | null;
+  readonly actualDurationMinutes: number | null;
+  readonly actualCost: string | null;
+  readonly currency: string | null;
+  readonly qualityComments: string | null;
+  readonly proposedAdjustment: string | null;
+  readonly resultingRecipeVersionId: string | null;
+  readonly actorId: string;
+  readonly createdAt: Date;
+  readonly testedVersionNo: number;
+  readonly testedVersionState: string;
+  readonly resultingVersionNo: number | null;
+  readonly resultingVersionState: string | null;
+}
+
+/** The `recipe_version` self-join that resolves a trial's resulting version. */
+const resultingVersion = alias(recipeVersion, "resulting_recipe_version");
+
+/**
+ * The read projection shared by `findRecipeTestById` and the two list
+ * accessors: the trial columns plus the tried version's recipe/number/state and
+ * the resulting version's number/state (both nullable). Callers add the scope
+ * and ordering.
+ */
+function selectRecipeTests(db: Database) {
+  return db
+    .select({
+      id: recipeTest.id,
+      organizationId: recipeTest.organizationId,
+      // `recipe_version` has no organization column, so the scope is proved
+      // through the recipe it belongs to.
+      recipeId: recipeVersion.recipeId,
+      recipeVersionId: recipeTest.recipeVersionId,
+      testedAt: recipeTest.testedAt,
+      batchInputQty: recipeTest.batchInputQty,
+      actualOutputQty: recipeTest.actualOutputQty,
+      actualDurationMinutes: recipeTest.actualDurationMinutes,
+      actualCost: recipeTest.actualCost,
+      currency: recipeTest.currency,
+      qualityComments: recipeTest.qualityComments,
+      proposedAdjustment: recipeTest.proposedAdjustment,
+      resultingRecipeVersionId: recipeTest.resultingRecipeVersionId,
+      actorId: recipeTest.actorId,
+      createdAt: recipeTest.createdAt,
+      testedVersionNo: recipeVersion.versionNo,
+      testedVersionState: recipeVersion.state,
+      resultingVersionNo: resultingVersion.versionNo,
+      resultingVersionState: resultingVersion.state,
+    })
+    .from(recipeTest)
+    .innerJoin(recipeVersion, eq(recipeTest.recipeVersionId, recipeVersion.id))
+    .innerJoin(recipe, eq(recipeVersion.recipeId, recipe.id))
+    .leftJoin(resultingVersion, eq(recipeTest.resultingRecipeVersionId, resultingVersion.id));
+}
+
+/** One trial by id, or `undefined` when unknown. */
+export async function findRecipeTestById(
+  db: Database,
+  recipeTestId: string,
+): Promise<RecipeTestView | undefined> {
+  const rows = await selectRecipeTests(db).where(eq(recipeTest.id, recipeTestId)).limit(1);
+  return rows[0];
+}
+
+/**
+ * Trials of one recipe (through its versions, since `recipe_test` has no
+ * organization/recipe column), newest tested first. Organization-scoped so a
+ * caller never reads another tenant's trials.
+ */
+export async function listRecipeTestsByRecipe(
+  db: Database,
+  organizationId: string,
+  recipeId: string,
+): Promise<RecipeTestView[]> {
+  return selectRecipeTests(db)
+    .where(and(eq(recipe.organizationId, organizationId), eq(recipe.id, recipeId)))
+    .orderBy(desc(recipeTest.testedAt), desc(recipeTest.createdAt));
+}
+
+/** Trials of one version, newest tested first, scoped by the trial's organization. */
+export async function listRecipeTestsByVersion(
+  db: Database,
+  organizationId: string,
+  recipeVersionId: string,
+): Promise<RecipeTestView[]> {
+  return selectRecipeTests(db)
+    .where(
+      and(
+        eq(recipeTest.organizationId, organizationId),
+        eq(recipeTest.recipeVersionId, recipeVersionId),
+      ),
+    )
+    .orderBy(desc(recipeTest.testedAt), desc(recipeTest.createdAt));
+}
+
+/** Inserts one append-only trial fact. */
+export async function createRecipeTest(db: Database, input: NewRecipeTest): Promise<RecipeTest> {
+  const rows = await db.insert(recipeTest).values(input).returning();
+  return rows[0]!;
+}
+
+/**
+ * The improvement loop's single forward write (`DEC-123`): sets
+ * `resulting_recipe_version_id` only while it is still null. Returns the updated
+ * row, or `undefined` when the trial is unknown or already linked — the caller
+ * never edits a recorded trial's measured values.
+ */
+export async function linkRecipeTestToVersion(
+  db: Database,
+  recipeTestId: string,
+  resultingRecipeVersionId: string,
+): Promise<RecipeTest | undefined> {
+  const rows = await db
+    .update(recipeTest)
+    .set({ resultingRecipeVersionId })
+    .where(and(eq(recipeTest.id, recipeTestId), isNull(recipeTest.resultingRecipeVersionId)))
+    .returning();
+  return rows[0];
 }

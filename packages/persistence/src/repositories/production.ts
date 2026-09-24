@@ -189,6 +189,8 @@ export interface ProductionBatchPatch {
   actualFinish?: Date | null;
   actualOutputQty?: string | null;
   yieldVariancePct?: string | null;
+  /** `DEC-124`: the observed labour hours booked against the batch, `numeric(9,2)`. */
+  actualLabourHours?: string | null;
   operatorId?: string | null;
   destinationStorageAreaId?: string | null;
 }
