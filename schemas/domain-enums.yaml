@@ -159,3 +159,10 @@ employee_document_kind: [contract, certificate, id_document, other]
 document_category: [routine, guideline, policy, form, other]
 document_audience: [all_staff, managers]
 staff_document_status: [draft, published, archived]
+
+# DEC-126 (COMP-001…COMP-004): the human-review gate on a captured competitor
+# observation. An observation is `pending` on capture and may be `reviewed`
+# (admitted as intelligence) or `rejected` exactly once by a named reviewer with
+# a timestamp; only `reviewed` observations are read as intelligence. Backs
+# `competitor_observation_review_status_check`.
+competitor_review_status: [pending, reviewed, rejected]

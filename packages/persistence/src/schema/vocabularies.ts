@@ -520,3 +520,9 @@ export const STAFF_DOCUMENT_STATUS = ["draft", "published", "archived"] as const
 export const TASK_STATUS = ["open", "in_progress", "blocked", "resolved", "dismissed"] as const;
 
 export const APPROVAL_DECISION = ["approved", "rejected"] as const;
+
+// `DEC-126` (`COMP-001…004`): the human-review gate on a captured competitor
+// observation. From `schemas/domain-enums.yaml` (`competitor_review_status`).
+// `pending` is the capture default; a named reviewer moves it to `reviewed` or
+// `rejected` once, and only `reviewed` observations are read as intelligence.
+export const COMPETITOR_REVIEW_STATUS = ["pending", "reviewed", "rejected"] as const;

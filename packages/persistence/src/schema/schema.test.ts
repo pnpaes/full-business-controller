@@ -14,7 +14,7 @@ import * as schema from "./index";
 
 const tables = Object.values(schema).filter((value) => is(value, PgTable));
 
-/** The 91 in-scope Phase 1-2 tables: the 35 core tables, the slice-3
+/** The 93 in-scope Phase 1-2 tables: the 35 core tables, the slice-3
  * master-data additions (`unit_conversion`, `supplier`, `supplier_item`,
  * `cost_center`), the slice-4 receiving additions (`goods_receipt`,
  * `goods_receipt_line`), the slice-5 allergen additions (`allergen`,
@@ -51,7 +51,8 @@ const tables = Object.values(schema).filter((value) => is(value, PgTable));
  * append-only `recipe_test` table plus the nullable `recipe_version.method`
  * column, taking the count to 90. The `DEC-125` production-plan-line slice adds
  * the `production_plan_line` table plus the nullable `production_batch.planned_qty`
- * column, taking the count to 91. */
+ * column, taking the count to 91. The `DEC-126` competitor-observation slice adds
+ * the `competitor` and `competitor_observation` tables, taking the count to 93. */
 const EXPECTED_TABLES = [
   "addon_applicability",
   "adjustment_period",
@@ -66,6 +67,8 @@ const EXPECTED_TABLES = [
   "channel_fee_rule",
   "checklist_run",
   "checklist_template",
+  "competitor",
+  "competitor_observation",
   "corrective_action",
   "cost_card",
   "cost_center",
@@ -153,7 +156,6 @@ const NOT_EXPECTED_TABLES = [
   "integration_source",
   "publish_run",
   "competitor_source",
-  "competitor_observation",
   "ai_analysis_run",
   "ai_suggestion",
   // Procurement/receiving companions left to a later slice (DEC-047 needs only

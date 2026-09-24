@@ -9,6 +9,7 @@ export * from "./repositories/audit";
 export * from "./repositories/bootstrap";
 export * from "./repositories/checklists";
 export * from "./repositories/close";
+export * from "./repositories/competitor";
 export * from "./repositories/cost-card";
 export * from "./repositories/costing";
 export * from "./repositories/counts";
