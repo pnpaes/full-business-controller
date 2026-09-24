@@ -1,4 +1,4 @@
-import { and, eq, or, sql } from "drizzle-orm";
+import { and, asc, eq, or, sql } from "drizzle-orm";
 
 import type { Database } from "../client";
 import { appUser } from "../schema";
@@ -44,6 +44,34 @@ export async function findUserByIdentifier(
 export async function findUserById(db: Database, userId: string): Promise<User | undefined> {
   const rows = await db.select().from(appUser).where(eq(appUser.id, userId)).limit(1);
   return rows[0];
+}
+
+/**
+ * One row per active `app_user` in the organization, reduced to the three fields
+ * a candidate-assignee picker needs (`DEC-122`). This is the smallest honest
+ * user-directory read — there is no user-listing service — and it is
+ * organization-scoped, so a caller can never see another tenant's users. Ordered
+ * by display name (then id) for a stable, human-sensible list.
+ */
+export interface AssignableUser {
+  readonly id: string;
+  readonly displayName: string;
+  readonly username: string | null;
+}
+
+export async function listAssignableUsers(
+  db: Database,
+  organizationId: string,
+): Promise<readonly AssignableUser[]> {
+  return db
+    .select({
+      id: appUser.id,
+      displayName: appUser.displayName,
+      username: appUser.username,
+    })
+    .from(appUser)
+    .where(and(eq(appUser.organizationId, organizationId), eq(appUser.status, "active")))
+    .orderBy(asc(appUser.displayName), asc(appUser.id));
 }
 
 export async function createUser(db: Database, input: NewUser): Promise<User> {

@@ -123,6 +123,47 @@ export async function updateTask(db: Database, input: UpdateTaskInput): Promise<
   return rows[0];
 }
 
+export interface UpdateTaskStatusIfCurrentInput {
+  readonly organizationId: string;
+  readonly taskId: string;
+  /** The status the caller observed; the update matches only this value. */
+  readonly fromStatus: string;
+  readonly toStatus: string;
+  /** Audit actor; recorded as `updated_by` (the `app_user` FK is deferred). */
+  readonly actorId?: string;
+}
+
+/**
+ * The compare-and-set twin of `updateTask` for the `DEC-122` transition guard:
+ * writes `to_status` **only** when the stored status still equals `fromStatus`,
+ * organization-scoped (`DEC-061`). A concurrent transition that already moved the
+ * row updates nothing and returns `undefined`, so two racing transitions cannot
+ * both pass the application guard and both write. The statuses are stored values
+ * (the adapter owns the domain↔stored translation).
+ */
+export async function updateTaskStatusIfCurrent(
+  db: Database,
+  input: UpdateTaskStatusIfCurrentInput,
+): Promise<Task | undefined> {
+  const { organizationId, taskId, fromStatus, toStatus, actorId } = input;
+  const rows = await db
+    .update(task)
+    .set({
+      status: toStatus,
+      updatedAt: new Date(),
+      ...(actorId === undefined ? {} : { updatedBy: actorId }),
+    })
+    .where(
+      and(
+        eq(task.id, taskId),
+        eq(task.organizationId, organizationId),
+        eq(task.status, fromStatus),
+      ),
+    )
+    .returning();
+  return rows[0];
+}
+
 export interface ListTasksQuery {
   readonly organizationId: string;
   readonly status?: string;
