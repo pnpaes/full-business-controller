@@ -22,3 +22,7 @@ override.tf
 override.tf.json
 .terraformrc
 terraform.rc
+
+# Playwright CLI verification artifacts (global AGENTS.md: keep out of commits)
+storage/
+.playwright-cli/
