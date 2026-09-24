@@ -188,7 +188,8 @@ export default async function AdministrationPage() {
             exists yet.
           </li>
           <li>
-            <Badge>No backend</Badge> Audit — no audit event service or screen exists yet.
+            <Badge>No backend</Badge> Audit — events can only be written by other slices; there is
+            no read service or screen to review them yet.
           </li>
           <li>
             <Badge>No backend</Badge> Data quality — exceptions can only be recorded by other

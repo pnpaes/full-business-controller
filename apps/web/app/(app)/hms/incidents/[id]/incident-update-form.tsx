@@ -43,8 +43,8 @@ async function errorMessage(response: Response): Promise<string> {
  * The audited incident update (`DEC-090`, `DEC-095`): status (closing included),
  * severity, title, description and due date. The close instant is derived by the
  * command from `status`, so the form sends the status alone. Owner assignment is
- * not offered — no application service lists candidate users, so a picker would
- * be invented access; the gap is recorded, not faked.
+ * not offered — no HMS-scoped user-list read is wired for this screen, so a
+ * picker would be invented access; the gap is recorded, not faked.
  */
 export function IncidentUpdateForm({
   incidentId,
@@ -162,8 +162,8 @@ export function IncidentUpdateForm({
           </Button>
         </div>
         <p style={{ margin: 0, opacity: 0.8 }}>
-          Owner assignment is not offered here: no application service lists candidate users, so a
-          picker would invent data. Assign owners through the API until a user-list slice lands.
+          Owner assignment is not offered here: no HMS-scoped user-list read is wired for this
+          screen. Assign owners through the API until an HMS-scoped user list lands.
         </p>
       </form>
     </SectionCard>
