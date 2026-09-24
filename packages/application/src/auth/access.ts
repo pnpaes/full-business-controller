@@ -108,6 +108,49 @@ export async function assignRole(
   });
 }
 
+export interface RevokeRoleInput {
+  readonly organizationId: string;
+  readonly userId: string;
+  readonly roleId: string;
+  /** `null`/absent removes the organization-wide grant. */
+  readonly locationId?: string | null;
+  readonly actorId: string | null;
+  readonly request?: RequestContext;
+}
+
+/**
+ * Removes a role grant and, because a role change is a privilege change, revokes
+ * every session for that user in the same transaction (ADR-0003). The mirror of
+ * `assignRole`: audits `auth.access.role_changed` with the before/after role
+ * sets, so a grant and a revoke read the same way in the trail. Removing a grant
+ * the user does not hold is an idempotent no-op.
+ */
+export async function revokeRole(
+  store: AuthStore,
+  input: RevokeRoleInput,
+  now = new Date(),
+): Promise<void> {
+  await store.withTransaction(async (tx) => {
+    const before = await tx.listUserRoles(input.userId);
+    await tx.removeRole({
+      userId: input.userId,
+      roleId: input.roleId,
+      locationId: input.locationId ?? null,
+    });
+    const after = await tx.listUserRoles(input.userId);
+    await tx.revokeAllSessionsForUser(input.userId, now);
+    await audit(tx, {
+      organizationId: input.organizationId,
+      actorId: input.actorId,
+      action: AUTH_AUDIT_ACTIONS.accessRoleChanged,
+      entityId: input.userId,
+      before: { roles: roleSnapshot(before) },
+      after: { roles: roleSnapshot(after) },
+      ...(input.request !== undefined ? { request: input.request } : {}),
+    });
+  });
+}
+
 export interface ReplaceLocationScopesInput {
   readonly organizationId: string;
   readonly userId: string;
@@ -170,6 +213,42 @@ export async function disableUser(
       ...(input.reason !== undefined ? { reason: input.reason } : {}),
       before: { status: user?.status ?? null },
       after: { status: "disabled", revokedSessions: revoked },
+    });
+  });
+}
+
+export interface EnableUserInput {
+  readonly organizationId: string;
+  readonly userId: string;
+  readonly actorId: string | null;
+  readonly reason?: string;
+}
+
+/**
+ * The inverse of `disableUser`: reactivates a `disabled` account and revokes
+ * every session in the same transaction. Session revocation is kept for
+ * symmetry with `disableUser`; in practice it is a no-op because disabling
+ * already revoked the user's sessions and no new one can authenticate while the
+ * account is `disabled`. Audits `auth.user.enabled` with the before/after
+ * status.
+ */
+export async function enableUser(
+  store: AuthStore,
+  input: EnableUserInput,
+  now = new Date(),
+): Promise<void> {
+  await store.withTransaction(async (tx) => {
+    const user = await tx.findUserById(input.userId);
+    await tx.setUserStatus(input.userId, "active");
+    const revoked = await tx.revokeAllSessionsForUser(input.userId, now);
+    await audit(tx, {
+      organizationId: input.organizationId,
+      actorId: input.actorId,
+      action: AUTH_AUDIT_ACTIONS.userEnabled,
+      entityId: input.userId,
+      ...(input.reason !== undefined ? { reason: input.reason } : {}),
+      before: { status: user?.status ?? null },
+      after: { status: "active", revokedSessions: revoked },
     });
   });
 }

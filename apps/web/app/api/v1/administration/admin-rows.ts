@@ -2,10 +2,14 @@ import {
   DEFAULT_AUDIT_EVENT_LIMIT,
   DEFAULT_DATA_QUALITY_EXCEPTION_LIMIT,
   DEFAULT_UNIT_LIMIT,
+  DEFAULT_USER_LIMIT,
   MAX_AUDIT_EVENT_LIMIT,
   MAX_DATA_QUALITY_EXCEPTION_LIMIT,
   MAX_UNIT_LIMIT,
+  MAX_USER_LIMIT,
   type AuditEventRecord,
+  type AuthRoleRecord,
+  type AuthUserSummary,
   type DataQualityExceptionRecord,
   type MasterUnit,
 } from "@aquarela/application";
@@ -266,4 +270,168 @@ export function toAuditEventRow(record: AuditEventRecord): AuditEventRow {
     correlationId: record.correlationId,
     occurredAt: record.occurredAt,
   };
+}
+
+/* ------------------------------- users / roles ----------------------------- */
+
+export interface UserRoleRow {
+  readonly roleId: string;
+  readonly code: string;
+  readonly locationId: string | null;
+}
+
+export interface UserRow {
+  readonly id: string;
+  readonly displayName: string;
+  readonly username: string | null;
+  readonly email: string | null;
+  readonly status: string;
+  readonly totpEnabled: boolean;
+  readonly lastLoginAt: string | null;
+  readonly roles: readonly UserRoleRow[];
+  readonly locationIds: readonly string[];
+}
+
+/** The wire row for a management user: identity, status and access — never credentials. */
+export function toUserRow(summary: AuthUserSummary): UserRow {
+  return {
+    id: summary.id,
+    displayName: summary.displayName,
+    username: summary.username,
+    email: summary.email,
+    status: summary.status,
+    totpEnabled: summary.totpEnabled,
+    lastLoginAt: summary.lastLoginAt === null ? null : summary.lastLoginAt.toISOString(),
+    roles: summary.roles.map(({ roleId, code, locationId }) => ({ roleId, code, locationId })),
+    locationIds: [...summary.locationIds],
+  };
+}
+
+export interface RoleRow {
+  readonly id: string;
+  readonly code: string;
+  readonly name: string;
+  readonly description: string | null;
+}
+
+export function toRoleRow(role: AuthRoleRecord): RoleRow {
+  return { id: role.id, code: role.code, name: role.name, description: role.description };
+}
+
+export interface UsersQuery {
+  readonly limit: number;
+  readonly offset: number;
+}
+
+export type ParsedUsersQuery =
+  { readonly ok: true; readonly query: UsersQuery } | { readonly ok: false };
+
+/** Parses the `limit`/`offset` page of the user list. */
+export function parseUsersQuery(searchParams: URLSearchParams): ParsedUsersQuery {
+  const page = parsePage(searchParams, DEFAULT_USER_LIMIT, MAX_USER_LIMIT);
+  if (page === undefined) {
+    return { ok: false };
+  }
+  return { ok: true, query: { limit: page.limit, offset: page.offset } };
+}
+
+/** Upper bound on a replaced scope set, so one request cannot write unbounded rows. */
+export const MAX_LOCATION_SCOPES = 200;
+/** Longest accepted free-text reason on a status change. */
+export const MAX_REASON_LENGTH = 500;
+
+function readBodyString(
+  body: Record<string, unknown> | undefined,
+  key: string,
+): string | undefined {
+  const value = body?.[key];
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  return trimmed.length === 0 ? undefined : trimmed;
+}
+
+export interface ParsedRoleBody {
+  readonly ok: true;
+  readonly roleId: string;
+  /** `null` = the organization-wide grant. */
+  readonly locationId: string | null;
+}
+
+export type ParsedRoleBodyResult = ParsedRoleBody | { readonly ok: false };
+
+/**
+ * Parses `{ roleId, locationId? }`, the body shared by grant and revoke: both
+ * name one role grant by role id plus an optional location. An absent, `null` or
+ * empty `locationId` means the organization-wide grant.
+ */
+export function parseRoleBody(body: Record<string, unknown> | undefined): ParsedRoleBodyResult {
+  const roleId = readBodyString(body, "roleId");
+  if (roleId === undefined || !isUuid(roleId)) {
+    return { ok: false };
+  }
+  const rawLocation = body?.["locationId"];
+  if (rawLocation === undefined || rawLocation === null) {
+    return { ok: true, roleId, locationId: null };
+  }
+  if (typeof rawLocation !== "string") {
+    return { ok: false };
+  }
+  const locationId = rawLocation.trim();
+  if (locationId.length === 0) {
+    return { ok: true, roleId, locationId: null };
+  }
+  if (!isUuid(locationId)) {
+    return { ok: false };
+  }
+  return { ok: true, roleId, locationId };
+}
+
+export interface ParsedLocationScopes {
+  readonly ok: true;
+  readonly locationIds: readonly string[];
+}
+
+export type ParsedLocationScopesResult = ParsedLocationScopes | { readonly ok: false };
+
+/** Parses `{ locationIds: string[] }` — the whole scope, replacing what exists. */
+export function parseLocationScopesBody(
+  body: Record<string, unknown> | undefined,
+): ParsedLocationScopesResult {
+  const raw = body?.["locationIds"];
+  if (!Array.isArray(raw) || raw.length > MAX_LOCATION_SCOPES) {
+    return { ok: false };
+  }
+  const ids: string[] = [];
+  for (const value of raw) {
+    if (typeof value !== "string" || !isUuid(value.trim())) {
+      return { ok: false };
+    }
+    ids.push(value.trim());
+  }
+  return { ok: true, locationIds: [...new Set(ids)] };
+}
+
+export interface ParsedReason {
+  readonly ok: true;
+  readonly reason?: string;
+}
+
+export type ParsedReasonResult = ParsedReason | { readonly ok: false };
+
+/** Parses the optional `reason` on disable/enable; absent is valid, over-long is not. */
+export function parseOptionalReason(body: Record<string, unknown> | undefined): ParsedReasonResult {
+  const raw = body?.["reason"];
+  if (raw === undefined || raw === null) {
+    return { ok: true };
+  }
+  if (typeof raw !== "string") {
+    return { ok: false };
+  }
+  const reason = raw.trim();
+  if (reason.length > MAX_REASON_LENGTH) {
+    return { ok: false };
+  }
+  return reason.length === 0 ? { ok: true } : { ok: true, reason };
 }

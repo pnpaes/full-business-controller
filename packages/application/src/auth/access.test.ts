@@ -4,9 +4,11 @@ import { describe, expect, it } from "vitest";
 import {
   assignRole,
   disableUser,
+  enableUser,
   isAuthorizedFor,
   loadUserAccess,
   replaceLocationScopes,
+  revokeRole,
 } from "./access";
 import { AUTH_AUDIT_ACTIONS } from "./actions";
 import { authenticate } from "./authenticate";
@@ -105,6 +107,60 @@ describe("assignRole", () => {
   });
 });
 
+describe("revokeRole", () => {
+  it("removes the grant, revokes every session and audits before/after", async () => {
+    const store = new FakeAuthStore();
+    const user = await userWithPassword(store, "correct-password");
+    store.addRole(OWNER, "owner");
+    await store.assignRole({
+      userId: user.id,
+      roleId: OWNER,
+      locationId: "loc-1",
+      grantedBy: null,
+    });
+    const session = await issueSession(store, authDeps(), user, NOW);
+    expect(await verifySession(store, session.token, NOW)).toBeDefined();
+
+    await revokeRole(
+      store,
+      {
+        organizationId: ORG,
+        userId: user.id,
+        roleId: OWNER,
+        locationId: "loc-1",
+        actorId: "admin-1",
+      },
+      NOW,
+    );
+
+    expect((await loadUserAccess(store, user.id)).roles).toEqual([]);
+    expect(await verifySession(store, session.token, NOW)).toBeUndefined();
+    const entry = store.audits.find((row) => row.action === AUTH_AUDIT_ACTIONS.accessRoleChanged)!;
+    expect(entry.actorId).toBe("admin-1");
+    expect(entry.entityId).toBe(user.id);
+    expect(entry.before).toEqual({
+      roles: [{ roleId: OWNER, code: "owner", locationId: "loc-1" }],
+    });
+    expect(entry.after).toEqual({ roles: [] });
+  });
+
+  it("treats a missing grant as an idempotent no-op and still audits", async () => {
+    const store = new FakeAuthStore();
+    const user = await userWithPassword(store, "correct-password");
+    store.addRole(OWNER, "owner");
+
+    await revokeRole(
+      store,
+      { organizationId: ORG, userId: user.id, roleId: OWNER, actorId: null },
+      NOW,
+    );
+
+    const entry = store.audits.find((row) => row.action === AUTH_AUDIT_ACTIONS.accessRoleChanged)!;
+    expect(entry.before).toEqual({ roles: [] });
+    expect(entry.after).toEqual({ roles: [] });
+  });
+});
+
 describe("replaceLocationScopes", () => {
   it("replaces the scope exactly and audits before/after", async () => {
     const store = new FakeAuthStore();
@@ -153,5 +209,50 @@ describe("disableUser", () => {
     const entry = store.audits.find((row) => row.action === AUTH_AUDIT_ACTIONS.userDisabled)!;
     expect(entry.reason).toBe("offboarding");
     expect(entry.after).toEqual({ status: "disabled", revokedSessions: 1 });
+  });
+});
+
+describe("enableUser", () => {
+  it("reactivates the user, audits before/after and allows authentication again", async () => {
+    const store = new FakeAuthStore();
+    const user = await userWithPassword(store, "correct-password");
+    await disableUser(store, { organizationId: ORG, userId: user.id, actorId: "admin-1" }, NOW);
+
+    await enableUser(
+      store,
+      { organizationId: ORG, userId: user.id, actorId: "admin-1", reason: "returning" },
+      NOW,
+    );
+
+    expect(store.users.get(user.id)?.status).toBe("active");
+    const entry = store.audits.find((row) => row.action === AUTH_AUDIT_ACTIONS.userEnabled)!;
+    expect(entry.actorId).toBe("admin-1");
+    expect(entry.reason).toBe("returning");
+    expect(entry.before).toEqual({ status: "disabled" });
+    expect(entry.after).toEqual({ status: "active", revokedSessions: 0 });
+
+    const attempt = await authenticate(store, authDeps(), {
+      organizationId: ORG,
+      identifier: user.email ?? "",
+      password: "correct-password",
+    });
+    expect(attempt.ok).toBe(true);
+  });
+
+  it("revokes any session still open for the account, defensively", async () => {
+    const store = new FakeAuthStore();
+    const user = await userWithPassword(store, "correct-password");
+    await disableUser(store, { organizationId: ORG, userId: user.id, actorId: "admin-1" }, NOW);
+    // A session created out-of-band: `createSession` does not gate on status.
+    await store.createSession({
+      userId: user.id,
+      tokenHash: "orphan-hash",
+      expiresAt: new Date(NOW.getTime() + 60_000),
+    });
+
+    await enableUser(store, { organizationId: ORG, userId: user.id, actorId: "admin-1" }, NOW);
+
+    const entry = store.audits.find((row) => row.action === AUTH_AUDIT_ACTIONS.userEnabled)!;
+    expect(entry.after).toEqual({ status: "active", revokedSessions: 1 });
   });
 });

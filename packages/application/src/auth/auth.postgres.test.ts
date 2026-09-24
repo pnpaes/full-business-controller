@@ -184,4 +184,33 @@ describe.skipIf(!databaseUrl)("auth commands against PostgreSQL", () => {
       expect(await store.listAuditEvents({ organizationId: randomUUID() })).toEqual([]);
     });
   });
+
+  it("lists organization users with roles and scopes, and the role catalogue, through the port", async () => {
+    await inRollback(client.db, async (tx) => {
+      const store = createPostgresAuthStore(tx);
+      await assignRole(store, { organizationId: orgId, userId, roleId, actorId: null });
+      await replaceLocationScopes(store, {
+        organizationId: orgId,
+        userId,
+        locationIds: [locationId],
+        actorId: null,
+      });
+
+      const users = await store.listUsers({ organizationId: orgId, limit: 50, offset: 0 });
+      const found = users.find((row) => row.id === userId);
+      expect(found).toBeDefined();
+      expect(found!.roles.map((row) => row.code)).toContain("owner");
+      expect(found!.locationIds).toContain(locationId);
+      expect(found).not.toHaveProperty("passwordHash");
+
+      const roles = await store.listRoles(orgId);
+      expect(roles.map((row) => row.code)).toContain("owner");
+      expect(await store.listRoles(randomUUID())).toEqual([]);
+
+      // The read is organization-scoped: another tenant sees nothing.
+      expect(await store.listUsers({ organizationId: randomUUID(), limit: 50, offset: 0 })).toEqual(
+        [],
+      );
+    });
+  });
 });

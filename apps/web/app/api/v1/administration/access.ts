@@ -63,6 +63,16 @@ export const ADMIN_DATA_QUALITY_READ_ROLES = [
 /** Roles that may read the audit register (§7.3, "Users/configuration" row). */
 export const ADMIN_AUDIT_READ_ROLES = ["owner", "general_manager", "admin"] as const;
 
+/**
+ * Roles that may read and manage users, roles and location scopes (§7.1
+ * "Users/configuration" row: **Owner** grants, **Admin (Technical)** as
+ * required, every other role None). Deliberately the narrowest set on this
+ * surface — it is the only place a role or a location scope can be granted or
+ * revoked, so it is governance-level, not operational. `owner` is listed
+ * explicitly (`DEC-130`); there is no implicit admin bypass.
+ */
+export const ADMIN_USERS_ROLES = ["owner", "admin"] as const;
+
 /** Loads the caller's roles live from server data (ADR-0003). */
 export async function loadAdministrationAccess(userId: string): Promise<UserAccess> {
   return loadUserAccess(getAuthStore(), userId);

@@ -14,11 +14,46 @@ export interface AuthUser {
   readonly organizationId: string;
   readonly username: string | null;
   readonly email: string | null;
+  readonly displayName: string;
   readonly status: UserStatus;
   readonly passwordHash: string;
   readonly failedLoginCount: number;
   readonly lockedUntil: Date | null;
+  readonly lastLoginAt: Date | null;
   readonly totpEnabled: boolean;
+}
+
+/** One role as the catalogue read exposes it (no secrets, no grants). */
+export interface AuthRoleRecord {
+  readonly id: string;
+  readonly code: string;
+  readonly name: string;
+  readonly description: string | null;
+}
+
+/**
+ * One user's management row (`07_SECURITY_AND_NFR.md` §7.1 "Users/configuration"):
+ * identity, status and the access that matters to a reviewer — roles (with their
+ * optional location) and location scopes. It deliberately omits `password_hash`,
+ * every `totp_*` secret and recovery codes.
+ */
+export interface AuthUserSummary {
+  readonly id: string;
+  readonly username: string | null;
+  readonly email: string | null;
+  readonly displayName: string;
+  readonly status: UserStatus;
+  readonly totpEnabled: boolean;
+  readonly lastLoginAt: Date | null;
+  readonly roles: readonly AuthRoleAssignment[];
+  readonly locationIds: readonly string[];
+}
+
+/** The bounded, organization-scoped page the management screen reads. */
+export interface AuthUserListQuery {
+  readonly organizationId: string;
+  readonly limit: number;
+  readonly offset: number;
 }
 
 export interface AuthTotpRecord {
@@ -185,6 +220,15 @@ export interface AuthStore {
   consumeResetToken(tokenId: string, at: Date): Promise<boolean>;
   listUserRoles(userId: string): Promise<readonly AuthRoleAssignment[]>;
   listUserLocationScopes(userId: string): Promise<readonly string[]>;
+  /**
+   * One page of the organization's users with their roles and location scopes,
+   * ordered by display name (then id). Organization is always supplied
+   * (`DEC-061`); the record never carries `password_hash`, TOTP secrets or
+   * recovery codes.
+   */
+  listUsers(query: AuthUserListQuery): Promise<readonly AuthUserSummary[]>;
+  /** Every role defined for the organization (the assignable catalogue), ordered by code. */
+  listRoles(organizationId: string): Promise<readonly AuthRoleRecord[]>;
   assignRole(input: RoleAssignmentInput): Promise<void>;
   removeRole(input: RoleRemovalInput): Promise<void>;
   replaceLocationScopes(userId: string, locationIds: readonly string[]): Promise<void>;

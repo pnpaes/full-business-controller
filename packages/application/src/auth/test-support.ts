@@ -10,10 +10,13 @@ import type {
   AuthDeps,
   AuthResetTokenRecord,
   AuthRoleAssignment,
+  AuthRoleRecord,
   AuthSessionRecord,
   AuthStore,
   AuthTotpRecord,
   AuthUser,
+  AuthUserListQuery,
+  AuthUserSummary,
   CreateResetTokenInput,
   CreateSessionInput,
   RoleAssignmentInput,
@@ -61,6 +64,7 @@ export class FakeAuthStore implements AuthStore {
   >();
   readonly roleAssignments = new Map<string, AuthRoleAssignment[]>();
   readonly roleCodes = new Map<string, string>();
+  readonly roleRecords = new Map<string, AuthRoleRecord & { organizationId: string }>();
   readonly locationScopes = new Map<string, Set<string>>();
 
   addUser(overrides: Partial<AuthUser> = {}): AuthUser {
@@ -70,10 +74,12 @@ export class FakeAuthStore implements AuthStore {
       organizationId: ORG,
       username: `user_${id.slice(0, 8)}`,
       email: `user_${id.slice(0, 8)}@example.test`,
+      displayName: `User ${id.slice(0, 8)}`,
       status: "active",
       passwordHash: "unset",
       failedLoginCount: 0,
       lockedUntil: null,
+      lastLoginAt: null,
       totpEnabled: false,
       ...overrides,
     };
@@ -81,8 +87,9 @@ export class FakeAuthStore implements AuthStore {
     return user;
   }
 
-  addRole(roleId: string, code: string): void {
+  addRole(roleId: string, code: string, name = code, organizationId = ORG): void {
     this.roleCodes.set(roleId, code);
+    this.roleRecords.set(roleId, { id: roleId, organizationId, code, name, description: null });
   }
 
   /** Seeds one audit fact for the read-service tests, bypassing `writeAudit`. */
@@ -300,6 +307,31 @@ export class FakeAuthStore implements AuthStore {
 
   async listUserLocationScopes(userId: string): Promise<readonly string[]> {
     return [...(this.locationScopes.get(userId) ?? [])];
+  }
+
+  async listUsers(query: AuthUserListQuery): Promise<readonly AuthUserSummary[]> {
+    return [...this.users.values()]
+      .filter((user) => user.organizationId === query.organizationId)
+      .sort((a, b) => a.displayName.localeCompare(b.displayName) || a.id.localeCompare(b.id))
+      .slice(query.offset, query.offset + query.limit)
+      .map((user) => ({
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        displayName: user.displayName,
+        status: user.status,
+        totpEnabled: user.totpEnabled,
+        lastLoginAt: user.lastLoginAt,
+        roles: this.roleAssignments.get(user.id) ?? [],
+        locationIds: [...(this.locationScopes.get(user.id) ?? [])],
+      }));
+  }
+
+  async listRoles(organizationId: string): Promise<readonly AuthRoleRecord[]> {
+    return [...this.roleRecords.values()]
+      .filter((record) => record.organizationId === organizationId)
+      .sort((a, b) => a.code.localeCompare(b.code) || a.id.localeCompare(b.id))
+      .map(({ id, code, name, description }) => ({ id, code, name, description }));
   }
 
   async assignRole(input: RoleAssignmentInput): Promise<void> {

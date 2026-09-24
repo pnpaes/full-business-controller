@@ -1,7 +1,8 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 
 import type { Database } from "../client";
-import { role, userLocationScope, userRole } from "../schema";
+import { appUser, role, userLocationScope, userRole } from "../schema";
+import type { UserStatus } from "../schema";
 
 export type Role = typeof role.$inferSelect;
 
@@ -51,9 +52,100 @@ export async function listUserLocationScopes(
     .where(eq(userLocationScope.userId, userId));
 }
 
-/** Every role defined for the organization (the assignable set). */
+/** Every role defined for the organization (the assignable set), ordered by code. */
 export async function listAssignableRoles(db: Database, organizationId: string): Promise<Role[]> {
-  return db.select().from(role).where(eq(role.organizationId, organizationId));
+  return db
+    .select()
+    .from(role)
+    .where(eq(role.organizationId, organizationId))
+    .orderBy(asc(role.code), asc(role.id));
+}
+
+export interface OrganizationUserSummary {
+  readonly id: string;
+  readonly username: string | null;
+  readonly email: string | null;
+  readonly displayName: string;
+  readonly status: UserStatus;
+  readonly totpEnabled: boolean;
+  readonly lastLoginAt: Date | null;
+  readonly roles: readonly UserRoleAssignment[];
+  readonly locationIds: readonly string[];
+}
+
+export interface OrganizationUserListQuery {
+  readonly organizationId: string;
+  readonly limit: number;
+  readonly offset: number;
+}
+
+/**
+ * One page of the organization's users, each with their role grants and location
+ * scopes. The page is read first (ordered by display name, then id) and the
+ * roles/scopes are then fetched for exactly those user ids, so the whole read is
+ * three bounded queries regardless of page size. Only identity, status and
+ * access are selected: `password_hash`, TOTP secrets and recovery codes are
+ * never touched.
+ */
+export async function listOrganizationUsers(
+  db: Database,
+  query: OrganizationUserListQuery,
+): Promise<OrganizationUserSummary[]> {
+  const users = await db
+    .select({
+      id: appUser.id,
+      username: appUser.username,
+      email: appUser.email,
+      displayName: appUser.displayName,
+      status: appUser.status,
+      totpEnabled: appUser.totpEnabled,
+      lastLoginAt: appUser.lastLoginAt,
+    })
+    .from(appUser)
+    .where(eq(appUser.organizationId, query.organizationId))
+    .orderBy(asc(appUser.displayName), asc(appUser.id))
+    .limit(query.limit)
+    .offset(query.offset);
+  if (users.length === 0) {
+    return [];
+  }
+
+  const userIds = users.map((user) => user.id);
+  const [roleRows, scopeRows] = await Promise.all([
+    db
+      .select({
+        userId: userRole.userId,
+        roleId: userRole.roleId,
+        code: role.code,
+        locationId: userRole.locationId,
+      })
+      .from(userRole)
+      .innerJoin(role, eq(role.id, userRole.roleId))
+      .where(inArray(userRole.userId, userIds)),
+    db
+      .select({ userId: userLocationScope.userId, locationId: userLocationScope.locationId })
+      .from(userLocationScope)
+      .where(inArray(userLocationScope.userId, userIds)),
+  ]);
+
+  const rolesByUser = new Map<string, UserRoleAssignment[]>();
+  for (const row of roleRows) {
+    const list = rolesByUser.get(row.userId) ?? [];
+    list.push({ roleId: row.roleId, code: row.code, locationId: row.locationId });
+    rolesByUser.set(row.userId, list);
+  }
+  const scopesByUser = new Map<string, string[]>();
+  for (const row of scopeRows) {
+    const list = scopesByUser.get(row.userId) ?? [];
+    list.push(row.locationId);
+    scopesByUser.set(row.userId, list);
+  }
+
+  return users.map((user) => ({
+    ...user,
+    roles: rolesByUser.get(user.id) ?? [],
+    locationIds: scopesByUser.get(user.id) ?? [],
+  }));
 }
 
 /**

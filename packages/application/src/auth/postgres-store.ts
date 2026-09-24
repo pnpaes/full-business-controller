@@ -105,6 +105,14 @@ export function createPostgresAuthStore(db: Database): AuthStore {
     listUserRoles: (userId) => repo.listUserRoles(db, userId),
     listUserLocationScopes: async (userId) =>
       (await repo.listUserLocationScopes(db, userId)).map((row) => row.locationId),
+    listUsers: (query) => repo.listOrganizationUsers(db, query),
+    listRoles: async (organizationId) =>
+      (await repo.listAssignableRoles(db, organizationId)).map((row) => ({
+        id: row.id,
+        code: row.code,
+        name: row.name,
+        description: row.description,
+      })),
     assignRole: async (input) => {
       await repo.assignRole(db, input);
     },

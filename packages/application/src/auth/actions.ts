@@ -33,6 +33,8 @@ export const AUTH_AUDIT_ACTIONS = {
   accessRoleChanged: "auth.access.role_changed",
   accessScopesChanged: "auth.access.scopes_changed",
   userDisabled: "auth.user.disabled",
+  /** The inverse of `userDisabled`: the account is reactivated. */
+  userEnabled: "auth.user.enabled",
   bootstrapOwnerCreated: "auth.bootstrap.owner_created",
 } as const;
 

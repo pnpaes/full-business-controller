@@ -4,15 +4,19 @@ export type { AuthAuditAction } from "./actions";
 export {
   assignRole,
   disableUser,
+  enableUser,
   isAuthorizedFor,
   loadUserAccess,
   replaceLocationScopes,
+  revokeRole,
 } from "./access";
 export type {
   AccessRequirement,
   AssignRoleInput,
   DisableUserInput,
+  EnableUserInput,
   ReplaceLocationScopesInput,
+  RevokeRoleInput,
   UserAccess,
 } from "./access";
 
@@ -79,6 +83,12 @@ export {
 } from "./list-audit-events";
 export type { ListAuditEventsQuery } from "./list-audit-events";
 
+export { DEFAULT_USER_LIMIT, MAX_USER_LIMIT, listUsers } from "./list-users";
+export type { ListUsersQuery } from "./list-users";
+
+export { listRoles } from "./list-roles";
+export type { ListRolesQuery } from "./list-roles";
+
 export { issueSession, logout, logoutAll, verifySession } from "./session";
 export type { LogoutAllInput, LogoutInput } from "./session";
 
@@ -89,10 +99,13 @@ export type {
   AuthDeps,
   AuthResetTokenRecord,
   AuthRoleAssignment,
+  AuthRoleRecord,
   AuthSessionRecord,
   AuthStore,
   AuthTotpRecord,
   AuthUser,
+  AuthUserListQuery,
+  AuthUserSummary,
   CreateResetTokenInput,
   CreateSessionInput,
   IssuedSession,

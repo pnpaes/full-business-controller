@@ -1,9 +1,13 @@
 import {
   createPostgresDataQualityReadStore,
+  createPostgresInventoryStore,
   createPostgresMasterDataStore,
   listAuditEvents,
   listDataQualityExceptions,
+  listLocations,
+  listRoles,
   listUnits,
+  listUsers,
   loadUserAccess,
 } from "@aquarela/application";
 import {
@@ -31,10 +35,13 @@ import {
   ADMIN_AUDIT_READ_ROLES,
   ADMIN_DATA_QUALITY_READ_ROLES,
   ADMIN_UNIT_READ_ROLES,
+  ADMIN_USERS_ROLES,
   isAdministrationAuthorized,
 } from "../../api/v1/administration/access";
+import { toRoleRow, toUserRow } from "../../api/v1/administration/admin-rows";
 
 import { UnitConversionForm } from "./unit-conversion-form";
+import { UserAccessManager } from "./user-access-manager";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Administration — Aquarela Business Control" };
@@ -43,11 +50,12 @@ export const metadata = { title: "Administration — Aquarela Business Control" 
  * Administration hub (08_UI_UX.md §8.3: users/scopes, tax/rules, units,
  * imports, integrations, audit and data quality). Capabilities with an existing
  * screen and application service are linked or rendered — Imports, the
- * conversion graph, the unit register, the data-quality exception register and
- * the audit register. Each read is gated on the caller's live roles
- * (`loadUserAccess`, ADR-0003), so a role without read sees nothing rather than
- * an empty register. Users/scopes, tax/rules and integrations still have no
- * application service and no route, so they stay listed as unavailable.
+ * conversion graph, the unit register, the data-quality exception register, the
+ * audit register and the users & access management surface. Each read is gated on
+ * the caller's live roles (`loadUserAccess`, ADR-0003), so a role without read
+ * sees nothing rather than an empty register. Tax/rules and integrations still
+ * have no application service and no route, so they stay listed as unavailable;
+ * user *creation* is absent for the open security decision stated on the surface.
  */
 
 const contentColumn = {
@@ -164,6 +172,7 @@ export default async function AdministrationPage() {
   const canReadUnits = isAdministrationAuthorized(access, ADMIN_UNIT_READ_ROLES);
   const canReadDataQuality = isAdministrationAuthorized(access, ADMIN_DATA_QUALITY_READ_ROLES);
   const canReadAudit = isAdministrationAuthorized(access, ADMIN_AUDIT_READ_ROLES);
+  const canManageUsers = isAdministrationAuthorized(access, ADMIN_USERS_ROLES);
   const asOf = new Date();
   const conversions = await store.listEffectiveConversions(organizationId, asOf, null);
   const units = canReadUnits ? await listUnits(store, { organizationId }) : [];
@@ -173,6 +182,11 @@ export default async function AdministrationPage() {
       })
     : [];
   const auditEvents = canReadAudit ? await listAuditEvents(getAuthStore(), { organizationId }) : [];
+  const users = canManageUsers ? await listUsers(getAuthStore(), { organizationId }) : [];
+  const roles = canManageUsers ? await listRoles(getAuthStore(), { organizationId }) : [];
+  const locations = canManageUsers
+    ? await listLocations(createPostgresInventoryStore(getDb().db), { organizationId })
+    : [];
   const knownCodes = [
     ...new Set(conversions.flatMap((edge) => [edge.fromUnit.code, edge.toUnit.code])),
   ];
@@ -348,12 +362,22 @@ export default async function AdministrationPage() {
         </SectionCard>
       ) : null}
 
+      {canManageUsers ? (
+        <SectionCard title="Users & access" meta={`${users.length} shown · §7.1`}>
+          <UserAccessManager
+            users={users.map(toUserRow)}
+            roles={roles.map(toRoleRow)}
+            locations={locations.map((location) => ({
+              id: location.id,
+              code: location.code,
+              name: location.name,
+            }))}
+          />
+        </SectionCard>
+      ) : null}
+
       <SectionCard title="Not available yet" headingLevel={3} meta="No backend">
         <ul style={list}>
-          <li>
-            <Badge>No backend</Badge> Users/scopes — no user, role or location scope management
-            service or screen exists yet.
-          </li>
           <li>
             <Badge>No backend</Badge> Tax/rules — no tax or rule configuration service or screen
             exists yet.
