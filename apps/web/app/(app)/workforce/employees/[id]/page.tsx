@@ -370,7 +370,7 @@ export default async function EmployeeDetailPage({
             <EmployeeDocumentForm employeeId={employee.id} kinds={EMPLOYEE_DOCUMENT_KINDS} />
             {canWriteDocuments && documents.length > 0 ? (
               <EditEmployeeDocumentForm
-                employeeId={employee.id}
+                employeeName={employee.name}
                 documentId={documents[0]!.id}
                 kind={documents[0]!.kind}
                 title={documents[0]!.title}

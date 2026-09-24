@@ -143,10 +143,15 @@ export function ReconcileForm({
         <TextField
           name="tolerance"
           label="Tolerance"
+          disabled={useDefault}
           value={tolerance}
           onChange={(event) => setTolerance(event.target.value)}
           placeholder="e.g. 0.005 or 25"
-          help="A positive decimal: a relative fraction (≤ 1) or an absolute amount in the row's currency. Required unless you opt in to the DEC-026 default."
+          help={
+            useDefault
+              ? "Not used while the DEC-026 default is selected — untick the box below to enter an explicit tolerance."
+              : "A positive decimal: a relative fraction (≤ 1) or an absolute amount in the row's currency. Required unless you opt in to the DEC-026 default."
+          }
         />
         <CheckboxField
           name="useDecisionDefaultTolerance"

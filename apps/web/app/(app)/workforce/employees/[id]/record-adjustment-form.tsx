@@ -1,6 +1,6 @@
 "use client";
 
-import { Alert, Button, NumberField, SectionCard, radius, spacing } from "@aquarela/ui";
+import { Alert, Button, NumberField, SectionCard, TextField, spacing } from "@aquarela/ui";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { FormEvent } from "react";
@@ -98,22 +98,13 @@ export function RecordAdjustmentForm({
           onChange={(event) => setAdjustedHours(event.target.value)}
           help="The hours this assignment contributes after the correction (at most two decimals)."
         />
-        <label style={{ display: "flex", flexDirection: "column", gap: spacing[1] }}>
-          <span>Reason</span>
-          <input
-            name="reason"
-            required
-            value={reason}
-            onChange={(event) => setReason(event.target.value)}
-            style={{
-              minHeight: 44,
-              padding: `0 ${spacing[3]}px`,
-              borderRadius: radius.sm,
-              border: "1px solid currentColor",
-              font: "inherit",
-            }}
-          />
-        </label>
+        <TextField
+          name="reason"
+          label="Reason"
+          required
+          value={reason}
+          onChange={(event) => setReason(event.target.value)}
+        />
 
         <div>
           <Button type="submit" loading={busy} disabled={busy}>

@@ -190,7 +190,7 @@ export function RegisterLaborRateForm({
           label="Base hourly rate"
           required
           min="0"
-          step="0.01"
+          step="0.0001"
           inputMode="decimal"
           value={baseHourlyRate}
           onChange={(event) => setBaseHourlyRate(event.target.value)}

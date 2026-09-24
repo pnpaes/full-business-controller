@@ -1,6 +1,14 @@
 "use client";
 
-import { Alert, Button, DateField, SectionCard, TextField, spacing } from "@aquarela/ui";
+import {
+  Alert,
+  Button,
+  CheckboxField,
+  DateField,
+  SectionCard,
+  TextField,
+  spacing,
+} from "@aquarela/ui";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { FormEvent } from "react";
@@ -133,16 +141,12 @@ export function AmendEquipmentForm({
           onChange={(event) => setWarrantyUntil(event.target.value)}
           help="Leave empty to clear it."
         />
-        <label style={{ display: "flex", gap: spacing[2], alignItems: "center", minHeight: 44 }}>
-          <input
-            type="checkbox"
-            name="active"
-            checked={active}
-            onChange={(event) => setActive(event.target.checked)}
-            style={{ width: 20, height: 20 }}
-          />
-          Active in the register
-        </label>
+        <CheckboxField
+          name="active"
+          label="Active in the register"
+          checked={active}
+          onChange={(event) => setActive(event.target.checked)}
+        />
 
         <div>
           <Button type="submit" loading={busy} disabled={busy}>

@@ -94,6 +94,8 @@ export function RegisterOperatingCostForm({
   const [success, setSuccess] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  const trimmedCurrency = currencyText.trim();
+
   if (costCenters.length === 0) {
     return (
       <SectionCard title="Register an operating cost">
@@ -111,7 +113,6 @@ export function RegisterOperatingCostForm({
     setError(null);
     setSuccess(null);
     setBusy(true);
-    const trimmedCurrency = currencyText.trim();
     try {
       const response = await fetch("/api/v1/costing/operating-costs", {
         method: "POST",
@@ -200,12 +201,12 @@ export function RegisterOperatingCostForm({
             label="Amount"
             required
             min="0"
-            step="0.01"
+            step="0.0001"
             inputMode="decimal"
             value={amount}
             onChange={(event) => setAmount(event.target.value)}
             placeholder="0.00"
-            {...(currencyText.trim() === "" ? {} : { unit: currencyText.trim() })}
+            {...(trimmedCurrency === "" ? {} : { unit: trimmedCurrency })}
           />
           <TextField
             name="currency"

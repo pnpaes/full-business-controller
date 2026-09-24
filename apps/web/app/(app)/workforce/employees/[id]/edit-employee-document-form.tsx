@@ -16,7 +16,7 @@ import type { FormEvent } from "react";
 const FALLBACK_ERROR = "Could not amend the document. Please try again.";
 
 export interface EditEmployeeDocumentFormProps {
-  readonly employeeId: string;
+  readonly employeeName: string;
   readonly documentId: string;
   readonly kind: string;
   readonly title: string;
@@ -43,7 +43,7 @@ async function errorMessage(response: Response): Promise<string> {
  * stays untouched and the bytes remain deferred (`DEC-085`/`DEC-099`).
  */
 export function EditEmployeeDocumentForm({
-  employeeId,
+  employeeName,
   documentId,
   kind: initialKind,
   title: initialTitle,
@@ -95,10 +95,7 @@ export function EditEmployeeDocumentForm({
   }
 
   return (
-    <SectionCard
-      title="Amend a personnel document"
-      meta={`metadata only · ${employeeId.slice(0, 8)}…`}
-    >
+    <SectionCard title="Amend a personnel document" meta={`metadata only · ${employeeName}`}>
       <form
         onSubmit={submit}
         style={{ display: "flex", flexDirection: "column", gap: spacing[4], maxWidth: 640 }}
