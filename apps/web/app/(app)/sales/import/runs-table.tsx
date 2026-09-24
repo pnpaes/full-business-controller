@@ -7,7 +7,7 @@ import { formatInstant, formatPeriod, importStatusView } from "../import-labels"
 /**
  * Presentational import-run history table (08_UI_UX.md §8.3). Server component:
  * the page owns the read and maps each run into an HTTP row; this file only
- * renders. There is no post action here — slice 11 never posts.
+ * renders. Posting lives on the run detail screen, not in this table.
  */
 
 const COLUMNS: readonly DataTableColumn[] = [
@@ -61,7 +61,7 @@ export function RunsTable({ rows }: { readonly rows: readonly ImportRunRow[] }) 
 
   return (
     <DataTable
-      caption="Sales import runs, newest first. A run stops at validated/needs review in this slice; posting is row 12 and owner-gated on ADR-0008."
+      caption="Sales import runs, newest first. Open a run to validate, map, disposition and post it."
       columns={COLUMNS}
       rows={tableRows}
       rowHref={(_row, index) => {

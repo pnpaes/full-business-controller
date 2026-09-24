@@ -1,4 +1,9 @@
-import { createPostgresReconciliationStore, listReconciliations } from "@aquarela/application";
+import {
+  createPostgresImportStore,
+  createPostgresReconciliationStore,
+  listImportRuns,
+  listReconciliations,
+} from "@aquarela/application";
 import { Alert, KpiCard, PageHeader, SectionCard, Tabs, spacing } from "@aquarela/ui";
 import { redirect } from "next/navigation";
 
@@ -6,8 +11,10 @@ import { getDb } from "../../../../lib/db";
 import { resolveOrganization } from "../../../../lib/organization";
 import { getServerSession } from "../../../../lib/server-session";
 import { toReconciliationRows } from "../../../api/v1/reconciliations/reconciliation-rows";
+import { formatPeriod } from "../import-labels";
 import { isOpenReconciliation, TOLERANCE_DECISION_LABEL } from "../sales-labels";
 
+import { ReconcileForm } from "./reconcile-form";
 import { ReconciliationTable } from "./reconciliation-table";
 import { ResolveForm } from "./resolve-form";
 
@@ -33,8 +40,8 @@ const contentColumn = {
  * Recorded, not resolved: there is no tolerance-configuration table (`DEC-026`'s
  * effective-dated config), so the per-row snapshot is shown and no threshold is
  * re-applied; `reconciliation.scope_type` values are unresolved, so the label is
- * whatever the command wrote; and there is no settlement-source screen yet, so a
- * settlement is reconciled through `POST /api/v1/reconciliations/settlements`.
+ * whatever the command wrote; and `settlement.status` has no vocabulary, so a
+ * settlement is stored facts only and its reconciliation is the judgement.
  */
 export default async function ReconciliationPage() {
   const session = await getServerSession();
@@ -43,9 +50,31 @@ export default async function ReconciliationPage() {
   }
 
   const organizationId = resolveOrganization();
-  const store = createPostgresReconciliationStore(getDb().db);
+  const db = getDb().db;
+  const store = createPostgresReconciliationStore(db);
   const page = await listReconciliations(store, { organizationId, limit: 100 });
   const rows = toReconciliationRows(organizationId, page.reconciliations);
+
+  const importStore = createPostgresImportStore(db);
+  const runSummaries = await listImportRuns(importStore, { organizationId, limit: 100 });
+  const postedRuns = runSummaries
+    .filter(
+      (summary) => summary.run.status === "posted" || summary.run.status === "partially_posted",
+    )
+    .map((summary) => ({
+      id: summary.run.id,
+      source: summary.run.source,
+      period: formatPeriod(summary.run.periodStart, summary.run.periodEnd),
+    }));
+  const settlements = (await store.listSettlements({ organizationId, limit: 100 })).map(
+    (settlement) => ({
+      id: settlement.id,
+      provider: settlement.provider,
+      period: formatPeriod(settlement.periodStart, settlement.periodEnd),
+      paidAmount: settlement.paidAmount,
+      currency: settlement.currency,
+    }),
+  );
 
   const exceptions = rows.filter((row) => row.status === "exception").length;
   const withinTolerance = rows.filter((row) => row.status === "within_tolerance").length;
@@ -104,6 +133,15 @@ export default async function ReconciliationPage() {
         (max of 0.5% and 5 NOK); a missing tolerance blocks close rather than defaulting silently.
       </Alert>
 
+      {postedRuns.length > 0 || settlements.length > 0 ? (
+        <ReconcileForm runs={postedRuns} settlements={settlements} />
+      ) : (
+        <Alert tone="info" title="Nothing to reconcile yet">
+          Post a validated import run under <strong>Sales import</strong>, or record a channel
+          settlement, then reconcile it here.
+        </Alert>
+      )}
+
       <SectionCard
         title="Reconciliations"
         meta={`${rows.length} ${rows.length === 1 ? "row" : "rows"}`}
@@ -123,11 +161,10 @@ export default async function ReconciliationPage() {
         />
       ) : null}
 
-      <Alert tone="info" title="Settlement reconciliation">
-        A channel settlement is reconciled against posted sales through{" "}
-        <code>POST /api/v1/reconciliations/settlements</code>. There is no settlement-source screen
-        yet, and <code>settlement.status</code> has no vocabulary, so a settlement is stored facts
-        only and this reconciliation is the judgement.
+      <Alert tone="info" title="Settlements">
+        A settlement's <code>paid_amount</code> is the provider's own source total;{" "}
+        <code>settlement.status</code> has no vocabulary yet (recorded open point), so a settlement
+        is stored facts only and its reconciliation is the judgement.
       </Alert>
     </div>
   );

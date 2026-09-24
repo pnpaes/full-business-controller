@@ -7,6 +7,7 @@ import {
   SectionCard,
   SelectField,
   TextField,
+  color,
   spacing,
 } from "@aquarela/ui";
 import { useRouter } from "next/navigation";
@@ -233,7 +234,7 @@ export function RunActions({ runId, status, sourceSystem }: RunActionProps) {
               flexDirection: "column",
               gap: spacing[3],
               maxWidth: 720,
-              borderTop: "1px solid #e5e0d8",
+              borderTop: `1px solid ${color.border.subtle}`,
               paddingTop: spacing[4],
             }}
           >

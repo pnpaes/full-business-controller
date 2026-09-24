@@ -18,6 +18,7 @@ import {
   Th,
   color,
   spacing,
+  typography,
 } from "@aquarela/ui";
 import { notFound, redirect } from "next/navigation";
 
@@ -266,8 +267,8 @@ export default async function ImportRunDetailPage({
                   <Td>{issue.message}</Td>
                   <Td
                     style={{
-                      fontFamily: "monospace",
-                      fontSize: 12,
+                      fontFamily: typography.fontFamily.mono,
+                      fontSize: typography.fontSize.xs,
                       color: color.text.muted,
                     }}
                   >

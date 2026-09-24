@@ -9,6 +9,7 @@ import {
   SelectField,
   TextField,
   color,
+  radius,
   spacing,
   typography,
 } from "@aquarela/ui";
@@ -376,7 +377,7 @@ export function RecordReceiptForm({
                 key={line.key}
                 style={{
                   border: `1px solid ${color.border.subtle}`,
-                  borderRadius: 8,
+                  borderRadius: radius.md,
                   padding: spacing[4],
                 }}
               >

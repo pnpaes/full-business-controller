@@ -27,8 +27,8 @@ const contentColumn = {
 /**
  * Sales import history (08_UI_UX.md §8.3: upload/history). Reads the same
  * application service and row mapping as `GET /api/v1/imports/runs`, so the
- * screen and the API cannot drift. No posting is offered anywhere: a run stops
- * at `validated`/`needs_review` (posting is row 12, owner-gated on `ADR-0008`).
+ * screen and the API cannot drift. Posting happens on the run detail screen
+ * once the run is validated/needs-review (row 12, owner-gated on `ADR-0008`).
  */
 export default async function SalesImportPage() {
   const session = await getServerSession();

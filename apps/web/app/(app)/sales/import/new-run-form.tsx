@@ -1,6 +1,14 @@
 "use client";
 
-import { Alert, Button, SectionCard, TextField, TextareaField, spacing } from "@aquarela/ui";
+import {
+  Alert,
+  Button,
+  SectionCard,
+  TextField,
+  TextareaField,
+  spacing,
+  typography,
+} from "@aquarela/ui";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { FormEvent } from "react";
@@ -175,7 +183,7 @@ export function NewRunForm() {
           value={text}
           onChange={(event) => setText(event.target.value)}
           help="Columns: date;time;receipt;staff;product;variant;quantity;gross_price;discount;line_total;location. Comma decimals are accepted. The content hash is the replay guard, so identical content cannot be imported twice."
-          style={{ fontFamily: "monospace" }}
+          style={{ fontFamily: typography.fontFamily.mono }}
         />
 
         <div>
@@ -184,8 +192,8 @@ export function NewRunForm() {
           </Button>
         </div>
         <p style={{ margin: 0, opacity: 0.8 }}>
-          Staging retains every well-formed row. Validation and mapping are explicit actions on the
-          run screen; there is no post action in this slice.
+          Staging retains every well-formed row. Validation, mapping and posting are explicit
+          actions on the run screen, so nothing is written to sales until you review the run.
         </p>
       </form>
     </SectionCard>

@@ -12,6 +12,7 @@ import {
   Th,
   color,
   spacing,
+  typography,
 } from "@aquarela/ui";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -34,7 +35,7 @@ const numCell = { textAlign: "right", fontVariantNumeric: "tabular-nums" } as co
 const primaryLink = {
   color: "inherit",
   textDecoration: "none",
-  fontWeight: 600,
+  fontWeight: typography.fontWeight.semibold,
 } as const;
 
 /**
@@ -147,7 +148,12 @@ export default async function PurchasingPage() {
                         {formatInstant(row.receivedAt)}
                       </Link>
                       {row.deliveryRef === null ? null : (
-                        <span style={{ color: color.text.muted, fontSize: 12 }}>
+                        <span
+                          style={{
+                            color: color.text.muted,
+                            fontSize: typography.fontSize.xs,
+                          }}
+                        >
                           {" "}
                           · {row.deliveryRef}
                         </span>
@@ -203,7 +209,7 @@ export default async function PurchasingPage() {
               minHeight: 44,
               display: "flex",
               alignItems: "center",
-              fontWeight: 600,
+              fontWeight: typography.fontWeight.semibold,
             }}
           >
             New supplier
