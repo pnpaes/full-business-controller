@@ -29,8 +29,9 @@ the theme tokens are merged into `packages/ui/src/tokens.ts` and the contrast
 gate extended with the package's own published evidence, but the **primitives
 and every screen still need the recipe values applied** — that is the next task.
 All commits are **unpushed**; nothing applied to DigitalOcean. Decision ids:
-`DEC-129` is now the **design-system adoption**, so the storage-port decision
-previously earmarked for that id is **`DEC-130`**. Schema: migrations through
+`DEC-129` is now the **design-system adoption** and `DEC-130` the **owner
+access / HMS monitoring-log decision**, so **`DEC-131`** is reserved for the
+Users/scopes backend and the storage-port decision is **`DEC-132`**. Schema: migrations through
 **`0066`**, **93 public tables** — no migration in either workstream;
 `db:migrate` a no-op on re-run. Verification at HEAD: `typecheck`, `lint`,
 `format:check`, `build` clean;
@@ -40,7 +41,7 @@ test` → **4296/4296 tests (294 files)**. A dev server is expected on
 `LocalDevPass123`).
 
 **Next task — finish the design-system integration (`DEC-129`), stages 2 to 4,
-then the storage port as `DEC-130`.** Read the `DEC-129` row in
+then the storage port as `DEC-132`.** Read the `DEC-129` row in
 `12_OPEN_DECISIONS.md` and `docs/aquarela-design-system/{README,DESIGN-SYSTEM,INTEGRATION}.md`
 first. Those integration steps assume shadcn and Tailwind, which this repository
 does not have and must not gain (`DEC-120`, and the package's own README forbids
@@ -69,21 +70,28 @@ locale-aware Norwegian date/number/currency formatting.
 `docs/aquarela-design-system/index.html` is a **visual reference only** — its
 sample data and illustrative modules must not enter the app.
 
-**Stage 4 — the shell.** The package specifies a **light sidebar with a lavender
-active surface** (`DESIGN-SYSTEM.md` sidebar row, `shadcn-theme.css` `--sidebar`),
-which is what makes the iris legible as the active accent. That replaces the
-retained dark shell and retires the two derived token values
-(`brand.navyDeep`, `border.default`). Files: `packages/ui/src/shell.tsx`,
+**Stage 4 — the shell (corrected 2026-09-24).** An earlier revision of this
+section said the package's **light sidebar with a lavender active surface**
+(`DESIGN-SYSTEM.md` sidebar row, `shadcn-theme.css` `--sidebar`) "replaces the
+retained dark shell". **That was wrong.** The live shell is _already_ a light
+rail: `apps/web/app/(app)/layout.tsx` re-seats the frozen `NavList`/`NavItem`
+primitives onto it with `background-color: transparent !important`, so
+`navigation.background`, `navigation.backgroundHover` and `brand.navyDeep` are
+**dead for the rail** (retained only for those frozen primitives and the
+styleguide). The remaining shell work is therefore **token alignment** — check
+the rail's surface, active tint and indicator against the package's `--sidebar`
+set and make the iris the active accent — plus retiring or updating the frozen
+primitives, **not** a dark-to-light conversion. Files: `packages/ui/src/shell.tsx`,
 `apps/web/app/(app)/shell-nav.tsx`, `apps/web/app/(app)/layout.tsx` (all
 single-owner). Then extend across the remaining screens, removing only one-off
 colours that duplicate the new contract.
 
-**Then — the storage port as `DEC-130`.** `file_object` has no application port
+**Then — the storage port as `DEC-132`.** `file_object` has no application port
 (`DEC-085`/`DEC-099`, `ADR-0006`), so **all file bytes are metadata-only** today
 across documents, employee documents, incident evidence, maintenance evidence
 and payroll export — the largest remaining honest gap. Read
 `docs/adr/0006-file-storage-and-retention.md` and the `DEC-085`/`DEC-099` rows.
-Record **`DEC-130`** (both tables, whole new lines only, no literal `|` in a
+Record **`DEC-132`** (both tables, whole new lines only, no literal `|` in a
 cell) **before or with** the code; implement the port with a **local adapter**;
 add an expand-only migration only if it genuinely needs schema (rehearsed down
 path plus a runbook row); wire **one honest consumer first** (the document
@@ -125,7 +133,7 @@ open-point lists. Per-slice detail is in `docs/handoffs/`. The detailed list
 lives in the second "Next up" section below.
 
 1. **Next: the design-system integration stages 2-4 (`DEC-129`), then the
-   `DEC-130` file-bytes workstream** (see "Resume here").
+   `DEC-132` file-bytes workstream** (see "Resume here").
 2. **The operations-completion waves W1–W7 are all delivered** (W7 per
    `docs/handoffs/080-…md`); what remains is the honest-gap list, not a wave.
 
@@ -161,7 +169,7 @@ Per-slice detail, commits and reconciliation are in `docs/handoffs/`.
 - `00_README.md` … `13_AGENT_BUILD_BRIEF.md` — the specification package
   (inputs, rarely edited). Start with `00_README.md`.
 - **`12_OPEN_DECISIONS.md` — the accepted decisions (`DEC-001`…`DEC-129`);
-  the authority. New decisions are appended here (next free id `DEC-130`).**
+  the authority. New decisions are appended here (next free id `DEC-131`).**
 - `docs/phase0/` — close-out plan, calculation contract, data dictionary, golden
   fixtures, source-data request, notes. See
   `docs/phase0/CALCULATION_CONTRACT.md`.
@@ -551,18 +559,18 @@ sales_units}` in `schemas/domain-enums.yaml` and
 `docs/BUILD_ROADMAP.md` is the ordered execution tracker; §5 carries the
 open-point lists. Per-slice detail is in `docs/handoffs/`.
 
-1. **Next: W7 close-out plus opening the file-bytes workstream** — the first
-   self-contained, executable task in "Resume here" above: (a) decide the
-   app-shell search/scope placeholders in `apps/web/app/(app)/layout.tsx`
-   (wire to a real read or remove with the reason recorded — do not leave
-   them ambiguous), then (b) record the storage-port posture as **`DEC-129`**
-   in `12_OPEN_DECISIONS.md` (both tables, whole new lines only) and
-   implement the `file_object` application port with a local adapter and an
-   expand-only migration if the port needs schema, per `ADR-0006` and
-   `DEC-085`/`DEC-099` (decimal-only/HALF_UP; rehearsed reversible
-   migration + a runbook row in `docs/runbooks/persistence-migrations.md`;
-   the `EXPECTED_TABLES` update in `schema.test.ts` if the table set
-   changes).
+1. **Next: the HMS + Administration workstream the owner asked for, then the
+   design-system stages.** In order: (a) the **monitoring-point registration
+   form** — `POST /api/v1/hms/monitoring-points` and the owner's permission
+   both exist, but no screen registers a point, so `monitoring_point` is empty
+   and HMS recording is unusable in practice; (b) the **three Administration
+   read slices** — Units list, Audit review and Data-quality review, whose
+   tables and write paths already exist (`unit`, `audit_event`,
+   `data_quality_exception`) and which lack only a read service plus a screen;
+   (c) **Users/scopes** — user, role and location-scope management, the largest
+   absent Administration backend and the one needing its own decision,
+   **`DEC-131`**. Then the design-system **stages 2-4** (primitives, the three
+   named screens, shell token alignment) and the **`DEC-132`** storage port.
 2. **Then the honest-gap queue** (see the "Not yet built" bullet in Current
    status, each recorded not silently deferred): the unit-catalogue read
    service and the cost-centre list read (they still pin recipe lines to the

@@ -32,10 +32,19 @@
  * token instead of keeping a stale value.
  *
  * Two values are derived rather than taken from the design system, because
- * it defines a light sidebar (stage 2) while this stage keeps the dark
- * navigation shell: `brand.navyDeep` (the pressed/hover step below
- * `primary`) and `border.default` (the middle separator tier, between the
- * decorative `border` and the control `input`). Both are marked inline.
+ * it supplies only the decorative `border` and the control border:
+ * `border.default` (the middle separator tier) and `brand.navyDeep` (a
+ * pressed/hover step below `primary`). Both are marked inline.
+ *
+ * Correction (2026-09-24, after DEC-129 was first recorded): the live shell
+ * is ALREADY a light rail. `apps/web/app/(app)/layout.tsx` re-seats the
+ * frozen `NavList`/`NavItem` primitives onto it with
+ * `background-color: transparent !important`, so `navigation.background`
+ * and `navigation.backgroundHover` are dead for the rail and
+ * `brand.navyDeep` has no live consumer there. The design system's light
+ * sidebar is therefore already satisfied structurally; the remaining shell
+ * work is token alignment and retiring those frozen primitives, not a
+ * dark-to-light conversion.
  */
 
 /** Semantic surface tiers (design system "Color contract"): a cool neutral
@@ -94,8 +103,8 @@ export const color = {
      * high-contrast text — design system `primary` #151A2D. */
     navy: "#151A2D",
     /** Deeper neutral for pressed/hover states on navigation.
-     * ponytail: DERIVED (not in the design system, which specifies a light
-     * sidebar). Replace with the light-sidebar treatment in stage 2. */
+     * ponytail: DERIVED (not in the design system). Effectively dead for the
+     * live rail, which is light and CSS-overridden — see the file header. */
     navyDeep: "#0C0F1C",
     /** Muted plum for commercial/important data — design system `chart-5`. */
     berry: "#80518F",
@@ -116,9 +125,12 @@ export const color = {
     inset: "#F8F9FC",
   },
   navigation: {
-    /** Dark navigation shell, retained this stage on the design system's
-     * `primary` ink. The design system's own sidebar is white with a
-     * lavender active surface — that is stage 2 (`DEC-129`). */
+    /** DEAD for the live rail: the shell is already light, and
+     * `apps/web/app/(app)/layout.tsx` overrides this background with
+     * `transparent !important` when it re-seats the frozen nav primitives.
+     * Retained only for those frozen primitives and the styleguide. The
+     * design system's own sidebar is white with a lavender active surface,
+     * which the live shell already matches — see the file header. */
     background: "#151A2D",
     backgroundHover: "#0C0F1C",
     text: "#FFFFFF",
