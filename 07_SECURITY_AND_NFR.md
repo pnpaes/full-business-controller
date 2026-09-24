@@ -20,10 +20,12 @@ Authorization combines role, organization, permitted locations and sensitive-mod
 | Employee personnel documents (contracts) | Full | None | None | None | None | None | Full | None |
 | Staff document library (published) | Publish/Read | Publish/Read | Read | Read | Read | Read | As required | Read |
 | HMS incidents/corrective actions | Full | Edit (location) | Record | Record | None | None | As required | None |
-| HMS monitoring logs | Read | Read | Record | Record | None | None | As required | Read |
+| HMS monitoring logs | Record | Record | Record | Record | None | None | As required | Read |
 | Users/configuration | Owner grants | None | None | None | None | None | Technical | None |
 
 The final matrix is configurable and approved in Phase 0. Deny by default. Sensitive exports require the same scope as on-screen access.
+
+The HMS monitoring-log row was amended by `DEC-130` (2026-09-24): owner/general manager and location manager record rather than read only. The owner was locked out of recording by `HMS_RECORD_ROLES`, which was the only role set in the repository omitting `owner`; the row and the code now agree. Owner access is expressed by listing the role — there is still no implicit owner/admin bypass in `isAuthorizedFor`, and `packages/application/src/auth/roles.test.ts` guards that every `*_ROLES` set lists `owner`.
 
 `admin` is a role code that must be explicitly granted per row: there is no implicit admin bypass
 (`packages/application/src/auth/access.ts:36` — `admin` grants nothing unless it is explicitly in
