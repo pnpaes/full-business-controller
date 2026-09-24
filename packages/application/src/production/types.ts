@@ -1,7 +1,9 @@
 import type { AuditInput } from "../auth";
 import type { ConversionEdge, MasterUnit } from "../catalog";
+import type { AllocationRuleRecord, LaborRateRecord, OperatingCostRecord } from "../costing/types";
 import type { DataQualityExceptionStore } from "../data-quality";
-import type { InventoryStore } from "../inventory";
+import type { InventoryMovementListQuery, InventoryStore, StockMovementRecord } from "../inventory";
+import type { RecipeStore } from "../recipes/types";
 
 /**
  * Application-level ports and DTOs for slice-10 **production planning + batches**
@@ -94,6 +96,12 @@ export interface ProductionBatchRecord {
   readonly actualOutputQty: string | null;
   /** numeric(9,6) fraction, signed (not ×100). */
   readonly yieldVariancePct: string | null;
+  /**
+   * `DEC-124`: the labour hours actually booked against the batch,
+   * `numeric(9,2)`, nullable (not recorded for a batch completed before the
+   * column existed). No cost is derived or stored here.
+   */
+  readonly actualLabourHours: string | null;
   readonly reversalOfId: string | null;
   /** `timestamptz`, ISO. */
   readonly createdAt: string;
@@ -126,6 +134,8 @@ export interface ProductionBatchPatch {
   readonly actualOutputQty?: string | null;
   /** numeric(9,6). */
   readonly yieldVariancePct?: string | null;
+  /** numeric(9,2) hours; `DEC-124`. */
+  readonly actualLabourHours?: string | null;
   readonly operatorId?: string | null;
   readonly destinationStorageAreaId?: string | null;
 }
@@ -306,4 +316,61 @@ export interface ProductionStore extends InventoryStore, DataQualityExceptionSto
 
   /** Append-only audit fact; the caller must not pass secrets (ADR-0003 convention). */
   writeAudit(input: AuditInput): Promise<void>;
+}
+
+/**
+ * The store `computeProductionBatchCost` needs (`DEC-124`): the recipe port
+ * (so the theoretical cost reuses `computeRecipeCost` unchanged), the batch
+ * header read, the ledger movement read and the `DEC-112` labour/overhead
+ * reads. Composed by `createPostgresProductionBatchCostStore` the way
+ * `CostCardComponentStore` composes the recipe port with the costing reads.
+ *
+ * It extends `RecipeStore` rather than `ProductionStore` because
+ * `computeRecipeCost` is typed to the recipe port and its `findUnit`/`findItem`
+ * return the recipe shapes; the production store's `findUnit`/`findItem` are the
+ * inventory shapes and cannot satisfy both. The batch and movement reads are
+ * added explicitly, so no cast is needed to reuse the recipe-cost engine.
+ */
+export interface ProductionBatchCostStore extends RecipeStore {
+  /** Organization-scoped batch header (a foreign-organization id reads as undefined). */
+  findProductionBatch(query: {
+    readonly organizationId: string;
+    readonly productionBatchId: string;
+  }): Promise<ProductionBatchRecord | undefined>;
+  /** The ledger movements the query sums; filtered by source type/id for one batch. */
+  listStockMovements(query: InventoryMovementListQuery): Promise<readonly StockMovementRecord[]>;
+
+  /** `DEC-112`: the effective labour rate for a `(cost centre, role)` at an instant. */
+  findEffectiveLaborRate(query: {
+    readonly organizationId: string;
+    readonly costCenterId: string;
+    readonly roleCode: string;
+    readonly asOf: Date;
+  }): Promise<LaborRateRecord | undefined>;
+  /** The `DEC-112` allocated-overhead reads (the `resolveAllocatedUnitOverhead` port). */
+  listEffectiveOperatingCosts(query: {
+    readonly organizationId: string;
+    readonly asOf: Date;
+    readonly costPoolId?: string | null;
+  }): Promise<readonly OperatingCostRecord[]>;
+  listEffectiveAllocationRules(query: {
+    readonly organizationId: string;
+    readonly asOf: Date;
+    readonly costPoolId?: string;
+  }): Promise<readonly AllocationRuleRecord[]>;
+  countEligibleProducts(query: {
+    readonly organizationId: string;
+    readonly locationId: string;
+    readonly asOf: Date;
+  }): Promise<number>;
+  sumSalesVolume(query: {
+    readonly organizationId: string;
+    readonly locationId: string;
+    readonly from: string;
+    readonly to: string;
+  }): Promise<{
+    readonly revenue: string;
+    readonly transactions: string;
+    readonly units: string;
+  }>;
 }

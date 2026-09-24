@@ -9,6 +9,8 @@ import type {
   RecipeLineRecord,
   RecipeRecord,
   RecipeStore,
+  RecipeTestRecord,
+  RecipeTestView,
   RecipeUnit,
   RecipeVersionRecord,
 } from "./types";
@@ -80,6 +82,7 @@ function toRecipeVersion(row: repo.RecipeVersion): RecipeVersionRecord {
     approvedBy: row.approvedBy,
     approvedAt: row.approvedAt,
     notes: row.notes,
+    method: row.method,
   };
 }
 
@@ -116,6 +119,36 @@ function toAllergenDeclaration(row: repo.RecipeAllergenDeclaration): RecipeAller
     isDerived: row.isDerived,
     source: row.source,
     verifiedBy: row.verifiedBy,
+  };
+}
+
+function toRecipeTest(row: repo.RecipeTest): RecipeTestRecord {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    recipeVersionId: row.recipeVersionId,
+    testedAt: row.testedAt,
+    batchInputQty: row.batchInputQty,
+    actualOutputQty: row.actualOutputQty,
+    actualDurationMinutes: row.actualDurationMinutes,
+    actualCost: row.actualCost,
+    currency: row.currency,
+    qualityComments: row.qualityComments,
+    proposedAdjustment: row.proposedAdjustment,
+    resultingRecipeVersionId: row.resultingRecipeVersionId,
+    actorId: row.actorId,
+    createdAt: row.createdAt,
+  };
+}
+
+function toRecipeTestView(row: repo.RecipeTestView): RecipeTestView {
+  return {
+    ...toRecipeTest(row),
+    recipeId: row.recipeId,
+    testedVersionNo: row.testedVersionNo,
+    testedVersionState: row.testedVersionState,
+    resultingVersionNo: row.resultingVersionNo,
+    resultingVersionState: row.resultingVersionState,
   };
 }
 
@@ -234,6 +267,24 @@ export function createPostgresRecipeStore(db: Database): RecipeStore {
       (await repo.listRecipeAllergens(db, recipeVersionId)).map(toAllergenDeclaration),
     createRecipeAllergen: async (input) => {
       await repo.createRecipeAllergen(db, input);
+    },
+    createRecipeTest: async (input) => toRecipeTest(await repo.createRecipeTest(db, input)),
+    findRecipeTest: async (recipeTestId) => {
+      const row = await repo.findRecipeTestById(db, recipeTestId);
+      return row === undefined ? undefined : toRecipeTestView(row);
+    },
+    listRecipeTests: async (query) => {
+      const rows =
+        query.recipeVersionId !== undefined
+          ? await repo.listRecipeTestsByVersion(db, query.organizationId, query.recipeVersionId)
+          : query.recipeId !== undefined
+            ? await repo.listRecipeTestsByRecipe(db, query.organizationId, query.recipeId)
+            : [];
+      return rows.map(toRecipeTestView);
+    },
+    linkRecipeTestToVersion: async (recipeTestId, resultingRecipeVersionId) => {
+      const row = await repo.linkRecipeTestToVersion(db, recipeTestId, resultingRecipeVersionId);
+      return row === undefined ? undefined : toRecipeTest(row);
     },
     writeAudit: async (input) => {
       await repo.writeAuditEvent(db, input);

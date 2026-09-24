@@ -17,6 +17,9 @@ import { PRODUCTION_AUDIT_ACTIONS } from "./actions";
 import { resolvePlannedSnapshot } from "./recipe-snapshot";
 import type { ProductionStore } from "./types";
 
+/** `production_batch.actual_labour_hours` is `numeric(9,2)` (`DEC-124`). */
+const HOURS_SCALE = 2;
+
 export interface CompleteProductionBatchInputLine {
   readonly itemId: string;
   /** numeric(19,6), in the item base unit, `>= 0`. */
@@ -53,6 +56,12 @@ export interface CompleteProductionBatchInput {
   readonly inputs: readonly CompleteProductionBatchInputLine[];
   readonly output: CompleteProductionBatchOutput;
   readonly allowNegativeOverride?: boolean;
+  /**
+   * `DEC-124`: the labour hours actually booked against the batch,
+   * `numeric(9,2)`, optional and non-negative. Recorded as a fact on the header;
+   * no cost is derived or stored here (the cost is a read, `computeProductionBatchCost`).
+   */
+  readonly actualLabourHours?: string | null;
   /** Optional key; a retry with the same key replays instead of double-posting. */
   readonly idempotencyKey?: string | null;
 }
@@ -156,6 +165,16 @@ export async function completeProductionBatch(
   const idempotencyKey = input.idempotencyKey ?? null;
   if (idempotencyKey !== null && idempotencyKey.includes(":")) {
     throw new DomainError("idempotencyKey must not contain ':'");
+  }
+
+  // `DEC-124`: the recorded labour hours are a non-negative `numeric(9,2)` fact.
+  let actualLabourHours: string | null = null;
+  if (input.actualLabourHours !== undefined && input.actualLabourHours !== null) {
+    const hours = parseDecimal(input.actualLabourHours, HOURS_SCALE);
+    if (hours < 0n) {
+      throw new DomainError("actualLabourHours must not be negative");
+    }
+    actualLabourHours = formatDecimal(hours, HOURS_SCALE);
   }
 
   return store.withTransaction(async (tx) => {
@@ -423,6 +442,7 @@ export async function completeProductionBatch(
       actualFinish: input.actualFinish,
       actualOutputQty: formatDecimal(actualOutputQty, STOCK_QUANTITY_SCALE),
       yieldVariancePct: variancePct,
+      actualLabourHours,
     });
     if (updated === undefined) {
       throw new DomainError("production batch not found for update");
@@ -444,6 +464,7 @@ export async function completeProductionBatch(
         output_count: 1,
         movement_count: results.length,
         exception_id: varianceException?.id ?? null,
+        actual_labour_hours: actualLabourHours,
       },
     });
 

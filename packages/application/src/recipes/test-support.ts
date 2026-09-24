@@ -4,10 +4,12 @@ import type {
   AllergenRecord,
   FindVariantRecipeAssignmentQuery,
   ListRecipesQuery,
+  ListRecipeTestsQuery,
   NewAllergenRecord,
   NewRecipeAllergenRecord,
   NewRecipeLineRecord,
   NewRecipeRecord,
+  NewRecipeTestRecord,
   NewRecipeVersionRecord,
   RawCostObservation,
   RecipeAllergenRecordView,
@@ -17,6 +19,8 @@ import type {
   RecipeRecord,
   RecipeStore,
   RecipeSubRecipeEdge,
+  RecipeTestRecord,
+  RecipeTestView,
   RecipeUnit,
   RecipeVersionRecord,
   SupplierPriceCandidate,
@@ -52,9 +56,13 @@ export class FakeRecipeStore implements RecipeStore {
   readonly variantRecipeAssignments: FakeRecipeAssignment[] = [];
   readonly supplierPrices = new Map<string, SupplierPriceCandidate[]>();
   readonly observations = new Map<string, RawCostObservation[]>();
+  /** `DEC-123`: append-only recipe trials, keyed by id. */
+  readonly recipeTests = new Map<string, RecipeTestRecord>();
   readonly audits: AuditInput[] = [];
 
   private sequence = 0;
+  /** A strictly increasing clock so trial ordering is deterministic in tests. */
+  private testClock = 0;
 
   private nextId(prefix: string): string {
     this.sequence += 1;
@@ -250,6 +258,75 @@ export class FakeRecipeStore implements RecipeStore {
   createRecipeAllergen(input: NewRecipeAllergenRecord): Promise<void> {
     this.allergenDeclarations.push(input);
     return Promise.resolve();
+  }
+
+  /** Resolves a stored trial to the view shape the reads expose. */
+  private recipeTestView(record: RecipeTestRecord): RecipeTestView {
+    const tried = this.versions.find((version) => version.id === record.recipeVersionId);
+    const resulting =
+      record.resultingRecipeVersionId === null
+        ? undefined
+        : this.versions.find((version) => version.id === record.resultingRecipeVersionId);
+    return {
+      ...record,
+      recipeId: tried?.recipeId ?? "",
+      testedVersionNo: tried?.versionNo ?? 0,
+      testedVersionState: tried?.state ?? "",
+      resultingVersionNo: resulting?.versionNo ?? null,
+      resultingVersionState: resulting?.state ?? null,
+    };
+  }
+
+  createRecipeTest(input: NewRecipeTestRecord): Promise<RecipeTestRecord> {
+    this.testClock += 1;
+    const record: RecipeTestRecord = {
+      id: this.nextId("recipe-test"),
+      createdAt: new Date(Date.UTC(2026, 0, 1, 0, 0, this.testClock)),
+      resultingRecipeVersionId: null,
+      ...input,
+    };
+    this.recipeTests.set(record.id, record);
+    return Promise.resolve(record);
+  }
+
+  findRecipeTest(recipeTestId: string): Promise<RecipeTestView | undefined> {
+    const record = this.recipeTests.get(recipeTestId);
+    return Promise.resolve(record === undefined ? undefined : this.recipeTestView(record));
+  }
+
+  listRecipeTests(query: ListRecipeTestsQuery): Promise<readonly RecipeTestView[]> {
+    const rows = [...this.recipeTests.values()].filter((record) => {
+      if (record.organizationId !== query.organizationId) {
+        return false;
+      }
+      if (query.recipeVersionId !== undefined) {
+        return record.recipeVersionId === query.recipeVersionId;
+      }
+      if (query.recipeId !== undefined) {
+        const version = this.versions.find((entry) => entry.id === record.recipeVersionId);
+        return version?.recipeId === query.recipeId;
+      }
+      return false;
+    });
+    rows.sort(
+      (a, b) =>
+        b.testedAt.getTime() - a.testedAt.getTime() ||
+        b.createdAt.getTime() - a.createdAt.getTime(),
+    );
+    return Promise.resolve(rows.map((record) => this.recipeTestView(record)));
+  }
+
+  linkRecipeTestToVersion(
+    recipeTestId: string,
+    resultingRecipeVersionId: string,
+  ): Promise<RecipeTestRecord | undefined> {
+    const record = this.recipeTests.get(recipeTestId);
+    if (record === undefined || record.resultingRecipeVersionId !== null) {
+      return Promise.resolve(undefined);
+    }
+    const updated: RecipeTestRecord = { ...record, resultingRecipeVersionId };
+    this.recipeTests.set(recipeTestId, updated);
+    return Promise.resolve(updated);
   }
 
   writeAudit(input: AuditInput): Promise<void> {

@@ -60,6 +60,7 @@ function toBatch(row: repo.ProductionBatch): ProductionBatchRecord {
     plannedOutputQty: row.plannedOutputQty,
     actualOutputQty: row.actualOutputQty,
     yieldVariancePct: row.yieldVariancePct,
+    actualLabourHours: row.actualLabourHours,
     reversalOfId: row.reversalOfId,
     createdAt: row.createdAt.toISOString(),
   };
@@ -307,6 +308,9 @@ export function createPostgresProductionStore(db: Database): ProductionStore {
       }
       if (patch.yieldVariancePct !== undefined) {
         values.yieldVariancePct = patch.yieldVariancePct;
+      }
+      if (patch.actualLabourHours !== undefined) {
+        values.actualLabourHours = patch.actualLabourHours;
       }
       if (patch.operatorId !== undefined) {
         values.operatorId = patch.operatorId;

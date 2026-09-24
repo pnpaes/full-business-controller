@@ -26,6 +26,12 @@ export type {
   RecipeVersionSummary,
 } from "./reads";
 export { createPostgresRecipeStore } from "./postgres-store";
+export { listRecipeTests, recordRecipeTest } from "./recipe-tests";
+export type {
+  ListRecipeTestsInput,
+  RecordRecipeTestInput,
+  RecordRecipeTestResult,
+} from "./recipe-tests";
 export { registerAllergen } from "./register-allergen";
 export type { RegisterAllergenInput, RegisterAllergenResult } from "./register-allergen";
 export { registerRecipe } from "./register-recipe";
@@ -49,10 +55,12 @@ export type {
   AllergenRecord,
   FindVariantRecipeAssignmentQuery,
   ListRecipesQuery,
+  ListRecipeTestsQuery,
   NewAllergenRecord,
   NewRecipeAllergenRecord,
   NewRecipeLineRecord,
   NewRecipeRecord,
+  NewRecipeTestRecord,
   NewRecipeVersionRecord,
   RawCostObservation,
   RecipeAllergenRecordView,
@@ -61,6 +69,8 @@ export type {
   RecipeRecord,
   RecipeStore,
   RecipeSubRecipeEdge,
+  RecipeTestRecord,
+  RecipeTestView,
   RecipeUnit,
   RecipeVersionRecord,
   SupplierPriceCandidate,

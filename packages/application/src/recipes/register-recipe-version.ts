@@ -22,6 +22,15 @@ const COMPONENT_KINDS: readonly string[] = RECIPE_COMPONENT_KIND;
 const ALLERGEN_SOURCES: readonly string[] = ALLERGEN_SOURCE;
 const ROLE_CODES: readonly string[] = ROLE_CODE;
 
+/** Trimmed text, or null for absent/blank (`recipe_version.method`, `DEC-123`). */
+function trimToNull(value: string | null | undefined): string | null {
+  if (value === undefined || value === null) {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed.length === 0 ? null : trimmed;
+}
+
 export interface RegisterRecipeVersionLineInput {
   readonly componentKind: string;
   readonly itemId?: string | null;
@@ -64,6 +73,14 @@ export interface RegisterRecipeVersionInput {
   readonly laborCostCenterId?: string | null;
   readonly laborRoleCode?: string | null;
   readonly notes?: string | null;
+  /** `DEC-123`: free-text method/steps; trimmed, blank stored as null. */
+  readonly method?: string | null;
+  /**
+   * `DEC-123`: when registering a version from a trial, the id of the
+   * `recipe_test` it answers. Linked in the same transaction (null → value),
+   * never editing the trial's measured values.
+   */
+  readonly sourceRecipeTestId?: string | null;
   readonly lines: readonly RegisterRecipeVersionLineInput[];
   readonly allergens?: readonly RegisterRecipeVersionAllergenInput[];
 }
@@ -205,11 +222,31 @@ export async function registerRecipeVersion(
   const approvedAt =
     state === "approved" ? (input.approvedAt ?? new Date()) : (input.approvedAt ?? null);
 
+  const method = trimToNull(input.method);
+  const sourceRecipeTestId = input.sourceRecipeTestId ?? null;
+
   return store.withTransaction(async (tx) => {
     const recipe = await tx.findRecipe(input.recipeId);
     if (recipe === undefined || recipe.organizationId !== input.organizationId) {
       // Top-level lookup miss: a typed 404 (`DEC-076`), not a validation error.
       throw new NotFoundError("recipe not found in organization");
+    }
+
+    // `DEC-123`: the improvement loop's forward link. The trial must exist in
+    // this organization, be unlinked and belong to the same recipe as the new
+    // version. Validate before the insert so a bad link creates nothing; the
+    // link itself is written after the version exists.
+    if (sourceRecipeTestId !== null) {
+      const sourceTest = await tx.findRecipeTest(sourceRecipeTestId);
+      if (sourceTest === undefined || sourceTest.organizationId !== input.organizationId) {
+        throw new DomainError("source recipe test not found in organization");
+      }
+      if (sourceTest.resultingRecipeVersionId !== null) {
+        throw new DomainError("source recipe test is already linked to a version");
+      }
+      if (sourceTest.recipeId !== input.recipeId) {
+        throw new DomainError("source recipe test belongs to a different recipe");
+      }
     }
 
     const existingVersions = await tx.listRecipeVersions(input.recipeId);
@@ -310,6 +347,7 @@ export async function registerRecipeVersion(
       approvedBy,
       approvedAt,
       notes: input.notes ?? null,
+      method,
     });
 
     for (const { line } of resolvedLines) {
@@ -335,6 +373,13 @@ export async function registerRecipeVersion(
       });
     }
 
+    if (sourceRecipeTestId !== null) {
+      const linked = await tx.linkRecipeTestToVersion(sourceRecipeTestId, created.id);
+      if (linked === undefined) {
+        throw new DomainError("source recipe test is already linked to a version");
+      }
+    }
+
     await tx.writeAudit({
       organizationId: input.organizationId,
       actorId: input.actorId,
@@ -350,6 +395,7 @@ export async function registerRecipeVersion(
         allergen_count: allergenInputs.length,
         labor_cost_center_id: laborCostCenterId,
         labor_role_code: laborRoleCode,
+        source_recipe_test_id: sourceRecipeTestId,
       },
     });
 

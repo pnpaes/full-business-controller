@@ -11,6 +11,9 @@ export type {
   CompleteProductionBatchOutput,
   CompleteProductionBatchResult,
 } from "./complete-production-batch";
+export { computeProductionBatchCost } from "./compute-batch-cost";
+export type { ComputeProductionBatchCostQuery, ProductionBatchCost } from "./compute-batch-cost";
+export { createPostgresProductionBatchCostStore } from "./cost-postgres-store";
 export { createProductionBatch } from "./create-production-batch";
 export type {
   CreateProductionBatchInput,
@@ -57,6 +60,7 @@ export type {
   ProductionBatchOutputRecord,
   ProductionBatchPatch,
   ProductionBatchRecord,
+  ProductionBatchCostStore,
   ProductionPlanRecord,
   ProductionRecipeLineRecord,
   ProductionRecipeRecord,

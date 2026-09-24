@@ -88,6 +88,8 @@ export interface RecipeVersionRecord {
   readonly approvedBy: string | null;
   readonly approvedAt: Date | null;
   readonly notes: string | null;
+  /** `DEC-123`: free-text method/steps for the version (nullable, no backfill). */
+  readonly method: string | null;
 }
 
 export interface RecipeLineRecord {
@@ -126,6 +128,7 @@ export interface NewRecipeVersionRecord {
   readonly approvedBy: string | null;
   readonly approvedAt: Date | null;
   readonly notes: string | null;
+  readonly method: string | null;
 }
 
 export interface NewRecipeLineRecord {
@@ -175,6 +178,58 @@ export interface RecipeAllergenRecordView {
 export interface RecipeSubRecipeEdge {
   readonly parentRecipeId: string;
   readonly childRecipeId: string;
+}
+
+/**
+ * `DEC-123`: one append-only recipe **trial**. A trial is a fact — its measured
+ * values are never edited; only the nullable `resultingRecipeVersionId` forward
+ * link is written, once, when the version it motivated is registered.
+ */
+export interface RecipeTestRecord {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly recipeVersionId: string;
+  readonly testedAt: Date;
+  readonly batchInputQty: string;
+  readonly actualOutputQty: string | null;
+  readonly actualDurationMinutes: number | null;
+  readonly actualCost: string | null;
+  readonly currency: string | null;
+  readonly qualityComments: string | null;
+  readonly proposedAdjustment: string | null;
+  readonly resultingRecipeVersionId: string | null;
+  readonly actorId: string;
+  readonly createdAt: Date;
+}
+
+export interface NewRecipeTestRecord {
+  readonly organizationId: string;
+  readonly recipeVersionId: string;
+  readonly testedAt: Date;
+  readonly batchInputQty: string;
+  readonly actualOutputQty: string | null;
+  readonly actualDurationMinutes: number | null;
+  readonly actualCost: string | null;
+  readonly currency: string | null;
+  readonly qualityComments: string | null;
+  readonly proposedAdjustment: string | null;
+  readonly actorId: string;
+}
+
+/** A trial read back with the tried version's identity and its resulting version. */
+export interface RecipeTestView extends RecipeTestRecord {
+  readonly recipeId: string;
+  readonly testedVersionNo: number;
+  readonly testedVersionState: string;
+  readonly resultingVersionNo: number | null;
+  readonly resultingVersionState: string | null;
+}
+
+/** Scope for the trial list: an organization plus `recipeId` / `recipeVersionId`. */
+export interface ListRecipeTestsQuery {
+  readonly organizationId: string;
+  readonly recipeId?: string;
+  readonly recipeVersionId?: string;
 }
 
 /** A `supplier_price` effective at the as-of date (all rows are treated as approved). */
@@ -245,6 +300,21 @@ export interface RecipeStore {
   createAllergen(input: NewAllergenRecord): Promise<AllergenRecord>;
   listRecipeAllergens(recipeVersionId: string): Promise<readonly RecipeAllergenRecordView[]>;
   createRecipeAllergen(input: NewRecipeAllergenRecord): Promise<void>;
+  /** `DEC-123`: appends one recipe trial. */
+  createRecipeTest(input: NewRecipeTestRecord): Promise<RecipeTestRecord>;
+  /** One trial with its tried/resulting version identity, or `undefined`. */
+  findRecipeTest(recipeTestId: string): Promise<RecipeTestView | undefined>;
+  /** Trials by recipe or version, newest tested first (org-scoped). */
+  listRecipeTests(query: ListRecipeTestsQuery): Promise<readonly RecipeTestView[]>;
+  /**
+   * The improvement loop's single forward link (`DEC-123`): sets the trial's
+   * `resultingRecipeVersionId` from null only. Returns the updated trial, or
+   * `undefined` when it is unknown or already linked.
+   */
+  linkRecipeTestToVersion(
+    recipeTestId: string,
+    resultingRecipeVersionId: string,
+  ): Promise<RecipeTestRecord | undefined>;
   /** Append-only audit fact; the caller must not pass secrets (ADR-0003 convention). */
   writeAudit(input: AuditInput): Promise<void>;
 }

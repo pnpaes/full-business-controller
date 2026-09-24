@@ -75,6 +75,7 @@ function addVersion(
     approvedBy: ACTOR,
     approvedAt: JAN,
     notes: null,
+    method: null,
   });
   return id;
 }

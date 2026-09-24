@@ -1,5 +1,6 @@
 import type { AuditInput } from "../auth";
 import type { ConversionEdge, MasterUnit } from "../catalog";
+import { FakeCostingStore } from "../costing/test-support";
 import {
   createFakeDataQualityException,
   type DataQualityExceptionRecord,
@@ -8,6 +9,7 @@ import {
 import type { StockBalanceRecord, StockLotRecord, StockMovementRecord } from "../inventory";
 import { FakeInventoryStore, seedInventoryFixture } from "../inventory/test-support";
 import type { InventoryFixture } from "../inventory/test-support";
+import { FakeRecipeStore } from "../recipes/test-support";
 
 import type {
   ListProductionBatchesQuery,
@@ -16,6 +18,7 @@ import type {
   NewProductionBatchOutputRecord,
   NewProductionBatchRecord,
   NewProductionPlanRecord,
+  ProductionBatchCostStore,
   ProductionBatchInputRecord,
   ProductionBatchOutputRecord,
   ProductionBatchPatch,
@@ -41,6 +44,9 @@ function cloneBatch(
     ...(patch.actualFinish === undefined ? {} : { actualFinish: iso(patch.actualFinish) }),
     ...(patch.actualOutputQty === undefined ? {} : { actualOutputQty: patch.actualOutputQty }),
     ...(patch.yieldVariancePct === undefined ? {} : { yieldVariancePct: patch.yieldVariancePct }),
+    ...(patch.actualLabourHours === undefined
+      ? {}
+      : { actualLabourHours: patch.actualLabourHours }),
     ...(patch.operatorId === undefined ? {} : { operatorId: patch.operatorId }),
     ...(patch.destinationStorageAreaId === undefined
       ? {}
@@ -264,6 +270,7 @@ export class FakeProductionStore extends FakeInventoryStore implements Productio
       plannedOutputQty: input.plannedOutputQty,
       actualOutputQty: null,
       yieldVariancePct: null,
+      actualLabourHours: null,
       reversalOfId: null,
       createdAt: new Date().toISOString(),
     };
@@ -478,4 +485,69 @@ export function seedProductionFixture(store: FakeProductionStore): ProductionFix
     draftRecipeId,
     draftRecipeVersionId,
   };
+}
+
+/**
+ * In-memory `ProductionBatchCostStore` (`DEC-124`): the recipe port (so
+ * `computeRecipeCost` runs unchanged) with the batch/movement and `DEC-112`
+ * labour/overhead reads composed in — the `FakeCompositionStore` precedent
+ * (`assemble-cost-card-composition.test.ts`). The batch, movements and labour
+ * rate are seeded into the embedded `FakeProductionStore`/`FakeCostingStore`; the
+ * recipe, items, units, conversions and prices into the inherited recipe maps.
+ */
+export class FakeProductionBatchCostStore
+  extends FakeRecipeStore
+  implements ProductionBatchCostStore
+{
+  readonly production = new FakeProductionStore();
+  readonly costing = new FakeCostingStore();
+  eligibleProductCount = 0;
+
+  findProductionBatch(query: {
+    readonly organizationId: string;
+    readonly productionBatchId: string;
+  }): Promise<ProductionBatchRecord | undefined> {
+    return this.production.findProductionBatch(query);
+  }
+
+  listStockMovements(query: Parameters<ProductionBatchCostStore["listStockMovements"]>[0]) {
+    return this.production.listStockMovements(query);
+  }
+
+  findEffectiveLaborRate(query: {
+    readonly organizationId: string;
+    readonly costCenterId: string;
+    readonly roleCode: string;
+    readonly asOf: Date;
+  }) {
+    return this.costing.findEffectiveLaborRate(query);
+  }
+
+  listEffectiveOperatingCosts(query: {
+    readonly organizationId: string;
+    readonly asOf: Date;
+    readonly costPoolId?: string | null;
+  }) {
+    return this.costing.listEffectiveOperatingCosts(query);
+  }
+
+  listEffectiveAllocationRules(query: {
+    readonly organizationId: string;
+    readonly asOf: Date;
+    readonly costPoolId?: string;
+  }) {
+    return this.costing.listEffectiveAllocationRules(query);
+  }
+
+  countEligibleProducts(): Promise<number> {
+    return Promise.resolve(this.eligibleProductCount);
+  }
+
+  sumSalesVolume(): Promise<{
+    readonly revenue: string;
+    readonly transactions: string;
+    readonly units: string;
+  }> {
+    return Promise.resolve({ revenue: "0.0000", transactions: "0", units: "0.000000" });
+  }
 }

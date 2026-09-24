@@ -7,6 +7,7 @@ export const RECIPE_AUDIT_ACTIONS = {
   recipeRegistered: "recipes.recipe.registered",
   versionRegistered: "recipes.recipe_version.registered",
   allergenRegistered: "recipes.allergen.registered",
+  recipeTestRecorded: "recipes.recipe_test.recorded",
 } as const;
 
 export type RecipeAuditAction = (typeof RECIPE_AUDIT_ACTIONS)[keyof typeof RECIPE_AUDIT_ACTIONS];

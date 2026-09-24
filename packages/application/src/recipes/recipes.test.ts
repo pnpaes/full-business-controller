@@ -64,6 +64,7 @@ function makeVersion(
     approvedBy: ACTOR,
     approvedAt: JAN,
     notes: null,
+    method: null,
   });
   const version = store.versions[store.versions.length - 1]!;
   return version.id;

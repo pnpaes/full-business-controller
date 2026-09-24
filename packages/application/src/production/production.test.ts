@@ -601,6 +601,32 @@ describe("completeProductionBatch", () => {
       }),
     ).rejects.toThrow(/inputStorageAreaId is required/);
   });
+
+  it("stores the optional actual labour hours on the completed batch (DEC-124)", async () => {
+    const context = await setup();
+    const batchId = await runningBatch(context);
+    await completeProductionBatch(context.store, {
+      ...completeInput(context, batchId),
+      actualLabourHours: "1.50",
+    });
+
+    const batch = await context.store.findProductionBatch({
+      organizationId: context.fixture.organizationId,
+      productionBatchId: batchId,
+    });
+    expect(batch?.actualLabourHours).toBe("1.50");
+  });
+
+  it("rejects a negative actual labour hours value (DEC-124)", async () => {
+    const context = await setup();
+    const batchId = await runningBatch(context);
+    await expect(
+      completeProductionBatch(context.store, {
+        ...completeInput(context, batchId),
+        actualLabourHours: "-1.00",
+      }),
+    ).rejects.toThrow(/actualLabourHours must not be negative/);
+  });
 });
 
 describe("reads", () => {
