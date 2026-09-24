@@ -1,6 +1,6 @@
 "use client";
 
-import { Alert, Button, spacing } from "@aquarela/ui";
+import { Alert, Button, radius, spacing, typography } from "@aquarela/ui";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -20,7 +20,7 @@ async function errorMessage(response: Response): Promise<string> {
 const selectStyle = {
   minHeight: 44,
   padding: `${spacing[2]}px`,
-  borderRadius: 6,
+  borderRadius: radius.sm,
   border: "1px solid currentColor",
   font: "inherit",
   maxWidth: 200,
@@ -101,7 +101,7 @@ export function TaskRowControls({
     <div style={{ display: "flex", flexDirection: "column", gap: spacing[2], minWidth: 200 }}>
       {error !== null ? <Alert tone="danger">{error}</Alert> : null}
       <label style={{ display: "flex", flexDirection: "column", gap: spacing[1] }}>
-        <span style={{ fontSize: 13 }}>Assignee</span>
+        <span style={{ fontSize: typography.fontSize.sm }}>Assignee</span>
         <select
           aria-label="Assignee"
           value={ownerId ?? ""}

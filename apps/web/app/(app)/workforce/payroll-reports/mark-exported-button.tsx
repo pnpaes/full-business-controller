@@ -1,6 +1,6 @@
 "use client";
 
-import { Alert, Button, spacing } from "@aquarela/ui";
+import { Alert, Button, spacing, typography } from "@aquarela/ui";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -47,7 +47,7 @@ export function MarkExportedButton({ reportId }: { readonly reportId: string }) 
       <Button type="button" loading={busy} disabled={busy} onClick={markExported}>
         Mark as exported
       </Button>
-      <p style={{ margin: 0, opacity: 0.8, fontSize: 13 }}>
+      <p style={{ margin: 0, opacity: 0.8, fontSize: typography.fontSize.sm }}>
         Records the exported status only — no file is produced or attached (the storage path is
         deferred, DEC-085). Only a generated report can be exported.
       </p>

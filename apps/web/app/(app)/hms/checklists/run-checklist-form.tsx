@@ -7,7 +7,10 @@ import {
   SelectField,
   TextareaField,
   StatusPill,
+  color,
+  radius,
   spacing,
+  typography,
 } from "@aquarela/ui";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
@@ -38,9 +41,9 @@ const outcomeButton = (active: boolean) =>
     minHeight: 44,
     minWidth: 64,
     border: "1px solid currentColor",
-    borderRadius: 8,
-    background: active ? "rgba(0,0,0,0.08)" : "transparent",
-    fontWeight: active ? 600 : 400,
+    borderRadius: radius.md,
+    background: active ? color.surface.muted : "transparent",
+    fontWeight: active ? typography.fontWeight.semibold : typography.fontWeight.regular,
     cursor: "pointer",
   }) as const;
 
@@ -208,8 +211,8 @@ export function RunChecklistForm({
             <li
               key={item.key}
               style={{
-                border: "1px solid rgba(0,0,0,0.12)",
-                borderRadius: 12,
+                border: `1px solid ${color.border.default}`,
+                borderRadius: radius.lg,
                 padding: spacing[3],
                 display: "flex",
                 flexDirection: "column",
@@ -217,7 +220,7 @@ export function RunChecklistForm({
               }}
             >
               <div style={{ display: "flex", gap: spacing[2], alignItems: "baseline" }}>
-                <span style={{ fontWeight: 600 }}>
+                <span style={{ fontWeight: typography.fontWeight.semibold }}>
                   {index + 1}. {item.label}
                 </span>
                 {item.required ? <StatusPill tone="warning">Required</StatusPill> : null}

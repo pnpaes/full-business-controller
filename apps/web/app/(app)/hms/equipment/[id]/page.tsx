@@ -18,12 +18,14 @@ import { resolveOrganization } from "../../../../../lib/organization";
 import { getServerSession } from "../../../../../lib/server-session";
 
 import {
+  HMS_EQUIPMENT_WRITE_ROLES,
   HMS_MAINTENANCE_READ_ROLES,
   HMS_MAINTENANCE_RECORD_ROLES,
   isHmsAuthorized,
   loadHmsAccess,
 } from "../../../../api/v1/hms/access";
 import { formatHmsDay, formatHmsInstant, maintenanceKindLabel } from "../../hms-labels";
+import { AmendEquipmentForm } from "./amend-equipment-form";
 import { LogMaintenanceForm } from "./log-maintenance-form";
 
 export const dynamic = "force-dynamic";
@@ -126,6 +128,7 @@ export default async function EquipmentDetailPage({
   ];
 
   const canRecord = isHmsAuthorized(access, HMS_MAINTENANCE_RECORD_ROLES, equipment.locationId);
+  const canAmend = isHmsAuthorized(access, HMS_EQUIPMENT_WRITE_ROLES, equipment.locationId);
 
   return (
     <div style={contentColumn}>
@@ -170,6 +173,18 @@ export default async function EquipmentDetailPage({
           </EmptyState>
         </SectionCard>
       )}
+
+      {canAmend ? (
+        <AmendEquipmentForm
+          equipmentId={equipment.id}
+          name={equipment.name}
+          kind={equipment.kind}
+          serialNo={equipment.serialNo}
+          installedAt={equipment.installedAt}
+          warrantyUntil={equipment.warrantyUntil}
+          active={equipment.active}
+        />
+      ) : null}
     </div>
   );
 }

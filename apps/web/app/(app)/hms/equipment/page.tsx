@@ -147,7 +147,6 @@ export default async function HmsEquipmentPage() {
           <EmptyState title="Registering is not available for your role">
             Kitchen and front of house can read the register and log maintenance, but registering or
             amending equipment needs owner, general manager, location manager or admin (DEC-097).
-            Amending an existing item is API-only for now.
           </EmptyState>
         </SectionCard>
       )}

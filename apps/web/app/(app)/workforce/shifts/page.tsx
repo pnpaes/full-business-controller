@@ -16,6 +16,7 @@ import {
   SectionCard,
   StatusPill,
   spacing,
+  typography,
 } from "@aquarela/ui";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -64,7 +65,7 @@ const filterChipStyle = {
   padding: `${spacing[2]}px ${spacing[3]}px`,
   borderRadius: 999,
   border: "1px solid currentColor",
-  fontSize: 13,
+  fontSize: typography.fontSize.sm,
   textDecoration: "none",
 } as const;
 
@@ -217,7 +218,13 @@ export default async function RosterPage({
         {writableLocations.length > 1 ? (
           <Link
             href={`/workforce/shifts?from=${from}&to=${to}`}
-            style={{ ...filterChipStyle, fontWeight: rawLocationId === undefined ? 600 : 400 }}
+            style={{
+              ...filterChipStyle,
+              fontWeight:
+                rawLocationId === undefined
+                  ? typography.fontWeight.semibold
+                  : typography.fontWeight.regular,
+            }}
           >
             All locations
           </Link>
@@ -230,13 +237,16 @@ export default async function RosterPage({
               href={`/workforce/shifts?from=${from}&to=${to}&location=${location.id}`}
               style={{
                 ...filterChipStyle,
-                fontWeight: rawLocationId === location.id ? 600 : 400,
+                fontWeight:
+                  rawLocationId === location.id
+                    ? typography.fontWeight.semibold
+                    : typography.fontWeight.regular,
               }}
             >
               {location.code}
             </Link>
           ))}
-        <span style={{ fontSize: 13, opacity: 0.75 }}>
+        <span style={{ fontSize: typography.fontSize.sm, opacity: 0.75 }}>
           Window {from} → {to} (UTC days).
         </span>
       </div>

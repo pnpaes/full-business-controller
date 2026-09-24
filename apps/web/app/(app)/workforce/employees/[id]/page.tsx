@@ -21,6 +21,7 @@ import {
   SectionCard,
   StatusPill,
   spacing,
+  typography,
 } from "@aquarela/ui";
 import { notFound, redirect } from "next/navigation";
 
@@ -32,10 +33,12 @@ import {
   isEmployeeInLocationScope,
   isWorkforceAuthorized,
   loadWorkforceAccess,
+  WORKED_HOURS_READ_ROLES,
+  WORKED_HOURS_WRITE_ROLES,
   WORKFORCE_EMPLOYEE_DOCUMENT_READ_ROLES,
+  WORKFORCE_EMPLOYEE_DOCUMENT_WRITE_ROLES,
   WORKFORCE_EMPLOYEE_READ_ROLES,
   WORKFORCE_EMPLOYEE_WRITE_ROLES,
-  WORKED_HOURS_READ_ROLES,
 } from "../../../../api/v1/workforce/access";
 import { RetireEmployeeButton } from "../../retire-employee-button";
 import {
@@ -49,7 +52,9 @@ import {
   todayUtcDay,
 } from "../../workforce-labels";
 import { EditEmployeeForm } from "./edit-employee-form";
+import { EditEmployeeDocumentForm } from "./edit-employee-document-form";
 import { EmployeeDocumentForm } from "./employee-document-form";
+import { RecordAdjustmentForm } from "./record-adjustment-form";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Employee — Aquarela Business Control" };
@@ -74,8 +79,8 @@ const profileStyle = {
 function ProfileItem({ label, value }: { readonly label: string; readonly value: string }) {
   return (
     <div>
-      <div style={{ fontSize: 13, opacity: 0.75 }}>{label}</div>
-      <div style={{ fontWeight: 600 }}>{value}</div>
+      <div style={{ fontSize: typography.fontSize.sm, opacity: 0.75 }}>{label}</div>
+      <div style={{ fontWeight: typography.fontWeight.semibold }}>{value}</div>
     </div>
   );
 }
@@ -156,7 +161,9 @@ export default async function EmployeeDetailPage({
 
   const canWrite = isWorkforceAuthorized(access, WORKFORCE_EMPLOYEE_WRITE_ROLES);
   const canReadHours = isWorkforceAuthorized(access, WORKED_HOURS_READ_ROLES);
+  const canWriteHours = isWorkforceAuthorized(access, WORKED_HOURS_WRITE_ROLES);
   const canReadDocuments = isWorkforceAuthorized(access, WORKFORCE_EMPLOYEE_DOCUMENT_READ_ROLES);
+  const canWriteDocuments = isWorkforceAuthorized(access, WORKFORCE_EMPLOYEE_DOCUMENT_WRITE_ROLES);
 
   const assignments = await listShiftAssignments(schedulingStore, {
     organizationId,
@@ -323,6 +330,21 @@ export default async function EmployeeDetailPage({
         />
       </SectionCard>
 
+      {canWriteHours && assignments.length > 0 ? (
+        <RecordAdjustmentForm
+          assignmentId={assignments[0]!.id}
+          employeeName={employee.name}
+          shiftLabel={
+            shiftById.has(assignments[0]!.shiftId)
+              ? formatShiftWindow(
+                  shiftById.get(assignments[0]!.shiftId)!.startsAt,
+                  shiftById.get(assignments[0]!.shiftId)!.endsAt,
+                )
+              : assignments[0]!.shiftId
+          }
+        />
+      ) : null}
+
       <SectionCard title="Personnel documents" meta="owner / general manager / admin only">
         {canReadDocuments ? (
           <>
@@ -346,6 +368,17 @@ export default async function EmployeeDetailPage({
               emptyMessage="No personnel documents recorded for this employee yet."
             />
             <EmployeeDocumentForm employeeId={employee.id} kinds={EMPLOYEE_DOCUMENT_KINDS} />
+            {canWriteDocuments && documents.length > 0 ? (
+              <EditEmployeeDocumentForm
+                employeeId={employee.id}
+                documentId={documents[0]!.id}
+                kind={documents[0]!.kind}
+                title={documents[0]!.title}
+                issuedAt={documents[0]!.issuedAt}
+                expiresAt={documents[0]!.expiresAt}
+                kinds={EMPLOYEE_DOCUMENT_KINDS}
+              />
+            ) : null}
           </>
         ) : (
           <Alert tone="info" title="Documents are restricted">

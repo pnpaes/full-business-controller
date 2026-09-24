@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, color } from "@aquarela/ui";
+import { Button, color, typography } from "@aquarela/ui";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -54,7 +54,9 @@ export function PublishVersionButton({
         Publish
       </Button>
       {error !== null ? (
-        <span style={{ fontSize: 12, color: color.status.danger.fg }}>{error}</span>
+        <span style={{ fontSize: typography.fontSize.xs, color: color.status.danger.fg }}>
+          {error}
+        </span>
       ) : null}
     </div>
   );

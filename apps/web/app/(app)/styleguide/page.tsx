@@ -1,6 +1,8 @@
 /**
- * Living design-system styleguide (08_UI_UX.md §8.7 visual direction, §8.5
- * forms/tables, §8.4 status/warning rules).
+ * Living design-system styleguide (DEC-120: the modern editorial SaaS direction
+ * in `designer-agent-modern-saas-ui-brief.md`, superseding 08_UI_UX.md §8.7's
+ * palette/typography/watercolor; §8.5 forms/tables and §8.4 status/warning
+ * rules still govern).
  *
  * A single review surface: every token scale and every presentation primitive
  * rendered in its variants/states on one screen. Server component, no client
@@ -153,15 +155,7 @@ export default function StyleguidePage() {
       <PageHeader
         title="Design system"
         scope="Aquarela Business Control"
-        description="The living visual language: colour, typography, spacing, radius, elevation and every presentation primitive in its variants and states (08_UI_UX.md §8.7)."
-        actions={
-          <>
-            <Button variant="secondary" size="sm">
-              Export tokens
-            </Button>
-            <Button size="sm">Copy link</Button>
-          </>
-        }
+        description="The living visual language: colour, typography, spacing, radius, elevation and every presentation primitive in its variants and states (DEC-120)."
       />
 
       <Stack gap={spacing[6]}>
@@ -270,7 +264,7 @@ export default function StyleguidePage() {
         <SectionCard title="Typography" meta="typography.* tokens" headingLevel={2}>
           <Stack gap={spacing[6]}>
             <div>
-              <SubHeading hint="serif display stack">Display</SubHeading>
+              <SubHeading hint="display stack — Manrope via --font-sans">Display</SubHeading>
               <code
                 style={{
                   ...monoLabel,
@@ -311,7 +305,7 @@ export default function StyleguidePage() {
             </div>
 
             <div>
-              <SubHeading hint="system sans stack">Sans</SubHeading>
+              <SubHeading hint="sans stack — Manrope via --font-sans">Sans</SubHeading>
               <code
                 style={{
                   ...monoLabel,
@@ -425,7 +419,7 @@ export default function StyleguidePage() {
             </div>
 
             <div>
-              <SubHeading hint="tuned for cream surfaces">Elevation</SubHeading>
+              <SubHeading hint="tuned for the warm-neutral canvas">Elevation</SubHeading>
               <SwatchGrid>
                 {Object.entries(elevation).map(([name, value]) => (
                   <div
@@ -716,7 +710,7 @@ export default function StyleguidePage() {
         >
           <Stack gap={spacing[6]}>
             <div>
-              <SubHeading hint="dark navy surface, gold cue when active">
+              <SubHeading hint="dark neutral surface, lime cue when active">
                 NavList / NavItem
               </SubHeading>
               <div style={{ maxWidth: 280, borderRadius: radius.md, overflow: "hidden" }}>
@@ -740,7 +734,7 @@ export default function StyleguidePage() {
             </div>
 
             <div>
-              <SubHeading hint="sign-in, empty states and occasional section cues only">
+              <SubHeading hint="legacy §8.7 backdrop, superseded by DEC-120 — kept for sign-in and empty states only">
                 WatercolorBackdrop
               </SubHeading>
               <div
@@ -761,7 +755,8 @@ export default function StyleguidePage() {
                       color: color.text.secondary,
                     }}
                   >
-                    Watercolor blobs in berry, green and gold over the cream canvas.
+                    Watercolor blobs in berry, green and gold over the warm-neutral canvas — the
+                    legacy §8.7 direction (DEC-120 supersedes it).
                   </span>
                 </div>
               </div>
@@ -784,7 +779,7 @@ export default function StyleguidePage() {
                       color: color.text.secondary,
                     }}
                   >
-                    A surface on the cream page.
+                    A surface on the warm-neutral page.
                   </p>
                 </Card>
               ))}
@@ -798,7 +793,7 @@ export default function StyleguidePage() {
                   color: color.text.secondary,
                 }}
               >
-                Panel pairs a serif title with an optional meta line and arbitrary content.
+                Panel pairs a display title with an optional meta line and arbitrary content.
               </p>
             </Panel>
           </Stack>

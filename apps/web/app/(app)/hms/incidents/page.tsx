@@ -12,6 +12,7 @@ import {
   SectionCard,
   StatusPill,
   spacing,
+  typography,
 } from "@aquarela/ui";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -57,7 +58,7 @@ const filterChipStyle = {
   padding: `${spacing[2]}px ${spacing[3]}px`,
   borderRadius: 999,
   border: "1px solid currentColor",
-  fontSize: 13,
+  fontSize: typography.fontSize.sm,
   textDecoration: "none",
 } as const;
 
@@ -171,7 +172,11 @@ export default async function HmsIncidentsPage({
       <div style={{ display: "flex", flexWrap: "wrap", gap: spacing[2], alignItems: "center" }}>
         <Link
           href="/hms/incidents"
-          style={{ ...filterChipStyle, fontWeight: status === undefined ? 600 : 400 }}
+          style={{
+            ...filterChipStyle,
+            fontWeight:
+              status === undefined ? typography.fontWeight.semibold : typography.fontWeight.regular,
+          }}
         >
           All
         </Link>
@@ -181,7 +186,10 @@ export default async function HmsIncidentsPage({
             href={`/hms/incidents?status=${candidate}`}
             style={{
               ...filterChipStyle,
-              fontWeight: status === candidate ? 600 : 400,
+              fontWeight:
+                status === candidate
+                  ? typography.fontWeight.semibold
+                  : typography.fontWeight.regular,
             }}
           >
             {incidentStatusView(candidate).label}

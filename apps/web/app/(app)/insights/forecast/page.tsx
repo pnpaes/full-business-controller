@@ -16,6 +16,7 @@ import {
   StatusPill,
   Tabs,
   color,
+  radius,
   spacing,
   typography,
 } from "@aquarela/ui";
@@ -303,7 +304,7 @@ export default async function InsightsForecastPage({
                   key={`${suggestion.ruleId}-${index}`}
                   style={{
                     border: `1px solid ${color.border.subtle}`,
-                    borderRadius: 8,
+                    borderRadius: radius.lg,
                     padding: spacing[4],
                     display: "flex",
                     flexDirection: "column",

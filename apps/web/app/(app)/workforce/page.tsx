@@ -14,6 +14,7 @@ import {
   SectionCard,
   StatusPill,
   spacing,
+  typography,
 } from "@aquarela/ui";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -54,7 +55,7 @@ const filterChipStyle = {
   padding: `${spacing[2]}px ${spacing[3]}px`,
   borderRadius: 999,
   border: "1px solid currentColor",
-  fontSize: 13,
+  fontSize: typography.fontSize.sm,
   textDecoration: "none",
 } as const;
 
@@ -166,7 +167,11 @@ export default async function WorkforcePage({
           <Link
             key={candidate}
             href={`/workforce?show=${candidate}`}
-            style={{ ...filterChipStyle, fontWeight: show === candidate ? 600 : 400 }}
+            style={{
+              ...filterChipStyle,
+              fontWeight:
+                show === candidate ? typography.fontWeight.semibold : typography.fontWeight.regular,
+            }}
           >
             {candidate === "active" ? "Active" : candidate === "retired" ? "Retired" : "All"}
           </Link>
@@ -174,7 +179,13 @@ export default async function WorkforcePage({
         {writableLocations.length > 1 ? (
           <Link
             href={`/workforce?show=${show}`}
-            style={{ ...filterChipStyle, fontWeight: rawLocationId === undefined ? 600 : 400 }}
+            style={{
+              ...filterChipStyle,
+              fontWeight:
+                rawLocationId === undefined
+                  ? typography.fontWeight.semibold
+                  : typography.fontWeight.regular,
+            }}
           >
             All locations
           </Link>
@@ -187,7 +198,10 @@ export default async function WorkforcePage({
               href={`/workforce?show=${show}&location=${location.id}`}
               style={{
                 ...filterChipStyle,
-                fontWeight: rawLocationId === location.id ? 600 : 400,
+                fontWeight:
+                  rawLocationId === location.id
+                    ? typography.fontWeight.semibold
+                    : typography.fontWeight.regular,
               }}
             >
               {location.code}
