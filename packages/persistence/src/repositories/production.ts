@@ -1,4 +1,4 @@
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, inArray } from "drizzle-orm";
 
 import type { Database } from "../client";
 import {
@@ -6,10 +6,13 @@ import {
   productionBatchInput,
   productionBatchOutput,
   productionPlan,
+  productionPlanLine,
 } from "../schema";
 
 export type ProductionPlan = typeof productionPlan.$inferSelect;
 export type NewProductionPlan = typeof productionPlan.$inferInsert;
+export type ProductionPlanLine = typeof productionPlanLine.$inferSelect;
+export type NewProductionPlanLine = typeof productionPlanLine.$inferInsert;
 export type ProductionBatch = typeof productionBatch.$inferSelect;
 export type NewProductionBatch = typeof productionBatch.$inferInsert;
 export type ProductionBatchInput = typeof productionBatchInput.$inferSelect;
@@ -103,6 +106,65 @@ export async function listProductionPlans(
     statement.offset(query.offset);
   }
   return statement;
+}
+
+export async function createProductionPlanLine(
+  db: Database,
+  input: NewProductionPlanLine,
+): Promise<ProductionPlanLine> {
+  const rows = await db.insert(productionPlanLine).values(input).returning();
+  return rows[0]!;
+}
+
+export interface FindProductionPlanLineQuery {
+  readonly organizationId: string;
+  readonly planLineId: string;
+}
+
+/** One plan line by id, organization-scoped, or `undefined`. */
+export async function findProductionPlanLine(
+  db: Database,
+  query: FindProductionPlanLineQuery,
+): Promise<ProductionPlanLine | undefined> {
+  const rows = await db
+    .select()
+    .from(productionPlanLine)
+    .where(
+      and(
+        eq(productionPlanLine.id, query.planLineId),
+        eq(productionPlanLine.organizationId, query.organizationId),
+      ),
+    )
+    .limit(1);
+  return rows[0];
+}
+
+export interface ListProductionPlanLinesQuery {
+  readonly organizationId: string;
+  readonly planIds: readonly string[];
+}
+
+/**
+ * Lines of the given plans, organization-scoped, oldest first (`created_at`,
+ * then `id`). An empty id list returns an empty result without a query.
+ */
+export async function listProductionPlanLines(
+  db: Database,
+  query: ListProductionPlanLinesQuery,
+): Promise<ProductionPlanLine[]> {
+  if (query.planIds.length === 0) {
+    return [];
+  }
+  return db
+    .select()
+    .from(productionPlanLine)
+    .where(
+      and(
+        eq(productionPlanLine.organizationId, query.organizationId),
+        inArray(productionPlanLine.planId, [...query.planIds]),
+      ),
+    )
+    .orderBy(asc(productionPlanLine.createdAt), asc(productionPlanLine.id));
 }
 
 export async function createProductionBatch(

@@ -60,13 +60,15 @@ import { PRODUCTION_STATUS } from "./vocabularies";
  *     storage area inputs are drawn from or where WIP is held;
  *     `production_batch` has only a `destination_storage_area_id` (and it stays
  *     nullable, since no authority marks it required).
- * (f) `production_plan` has **no line/quantity table** and **no status
- *     vocabulary authority**: `production_status` in
- *     `schemas/domain-enums.yaml` describes the `production_batch` workflow
- *     (matching `DATA_DICTIONARY` §7's batch statuses), so it is enforced on
- *     `production_batch.status` only; `production_plan.status` is stored
- *     unconstrained (defaulted to the workflow's first state) pending a
- *     Phase-0 decision.
+ * (f) `production_plan` has **no status vocabulary authority**:
+ *     `production_status` in `schemas/domain-enums.yaml` describes the
+ *     `production_batch` workflow (matching `DATA_DICTIONARY` §7's batch
+ *     statuses), so it is enforced on `production_batch.status` only;
+ *     `production_plan.status` is stored unconstrained (defaulted to the
+ *     workflow's first state) pending a Phase-0 decision. `DEC-125` adds the
+ *     `production_plan_line` table + `production_batch.planned_qty`, so a plan
+ *     now states per line which approved version and how much output is
+ *     intended; the plan status itself stays unconstrained.
  * (g) There is **no yield-variance tolerance or exception store**
  *     (`PROD-003`): the accepted tolerance and the `data_quality_exception`
  *     table with its remediation workflow are both undefined, so
@@ -105,6 +107,30 @@ export const productionPlan = pgTable(
   ],
 );
 
+// `DEC-125`: a plan line states which approved recipe version and how much
+// output is intended. A line belongs to its plan (cascade); it carries no
+// status of its own and no backfill is applied to existing plans.
+export const productionPlanLine = pgTable(
+  "production_plan_line",
+  {
+    id: uuidPk(),
+    organizationId: orgId().references(() => organization.id),
+    planId: uuid("plan_id")
+      .notNull()
+      .references(() => productionPlan.id, { onDelete: "cascade" }),
+    recipeVersionId: uuid("recipe_version_id")
+      .notNull()
+      .references(() => recipeVersion.id),
+    // numeric(19,6); a line's intended output quantity, strictly positive.
+    plannedQty: quantity("planned_qty").notNull(),
+    createdAt: tstz("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    check("production_plan_line_planned_qty_check", sql`${t.plannedQty} > 0`),
+    index("production_plan_line_plan_idx").on(t.planId),
+  ],
+);
+
 export const productionBatch = pgTable(
   "production_batch",
   {
@@ -129,6 +155,9 @@ export const productionBatch = pgTable(
     // stays nullable because no authority marks it required.
     destinationStorageAreaId: uuid("destination_storage_area_id").references(() => storageArea.id),
     plannedOutputQty: quantity("planned_output_qty"),
+    // `DEC-125`: the intended output quantity of this batch (numeric(19,6)),
+    // nullable so an existing/single-recipe batch keeps the old behaviour.
+    plannedQty: quantity("planned_qty"),
     actualOutputQty: quantity("actual_output_qty"),
     // Open point (g): stored as a fact; no tolerance check, no exception store.
     yieldVariancePct: rate("yield_variance_pct"),
@@ -144,6 +173,10 @@ export const productionBatch = pgTable(
     check(
       "production_batch_planned_output_qty_check",
       sql`${t.plannedOutputQty} is null or ${t.plannedOutputQty} >= 0`,
+    ),
+    check(
+      "production_batch_planned_qty_check",
+      sql`${t.plannedQty} is null or ${t.plannedQty} > 0`,
     ),
     check(
       "production_batch_actual_output_qty_check",
