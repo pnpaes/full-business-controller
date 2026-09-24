@@ -24,6 +24,10 @@ export default tseslint.config(
       "**/node_modules/**",
       "**/dist/**",
       "**/.next/**",
+      // The dev server runs on its own dist dir (see apps/web/next.config.mjs)
+      // so a concurrent `next build` cannot clobber it; its generated types
+      // must not be linted.
+      "**/.next-dev/**",
       "**/coverage/**",
       "**/drizzle/**",
       "**/next-env.d.ts",
