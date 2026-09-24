@@ -12,86 +12,106 @@ orientation and the next step. See "Handover archive" and "Update protocol".
 ## Resume here (next session)
 
 **Say "resume the work" and start here.** A fresh session must be able to
-continue from this section alone. (Rewritten by the 2026-09-24 task-status
-vocabulary-alignment session.)
+continue from this section alone. (Rewritten by the 2026-09-24 W7
+documentation session; the W7 wave is documented in
+`docs/handoffs/080-2026-09-24-w7-ui-refinement-wave.md`.)
 
-**State:** `main`; HEAD **`56a072f`** (`chore: ignore the dev dist dir …`).
-The `DEC-122` task slice is **uncommitted** (untracked
-`packages/application/src/tasks/**`, `apps/web/app/api/v1/tasks/**`, the four
-`apps/web/app/(app)/tasks/**` client files; modified
-`apps/web/app/(app)/tasks/page.tsx`, `packages/application/src/index.ts`,
-`packages/persistence/src/repositories/workflow.ts` (+ `updateTaskStatusIfCurrent`)
-and `users.ts` (+ `listAssignableUsers`)). This session aligned that slice to the
-schema vocabulary: **the `done`/`cancelled` ↔ `resolved`/`dismissed` translation
-is deleted**, the machine is now the `task_status_check` vocabulary end to end,
-and the `ponytail:` CHECK-translation ceiling note is gone. No CHECK change, **no
-migration** (63 applied, 89 public tables — `db:migrate` a no-op on re-run).
-Nothing pushed; nothing applied to DigitalOcean. Schema: migrations through
-`0062`. Next free decision id still **`DEC-120`** (the row-11 backfill posture).
-Baseline with `DATABASE_URL`: **3868/3868 tests** (254 files) — +9 over the 3859
-pre-alignment baseline; `typecheck`/`lint`/`format:check`/`build` all clean.
+**State:** `main`; HEAD **`01a9cda`**, working tree clean. W7 — the
+UI-refinement wave of the operations-completion programme
+(`docs/ROADMAP-OPERATIONS-COMPLETION.md`) — is **complete for the screens**: every
+recorded action that has an application service plus an HTTP route is now
+reachable from a control, stale "not wired / planned" copy is purged, styling is
+on the design tokens, and WCAG 2.2 AA and 375px mobile behaviour are enforced.
+One W7 leftover is deliberately left to the next session: the app-shell search
+and scope placeholders in `apps/web/app/(app)/layout.tsx` (Part 1 below). Not
+every honest gap is closed — see "Open decisions / inputs" for what still has no
+backend at all. Six commits on `main` (`54022c7` … `01a9cda` — see the handoff for
+the list), **all unpushed**; nothing applied to DigitalOcean. This wave added
+**no new decision**; next free decision id is **`DEC-129`**. The wave builds
+on the `DEC-120` redesign, the `DEC-121` wiring and the `DEC-122` task
+workflow (decisions + earlier handoffs are the authority for those). Schema:
+migrations through **`0066`**, **93 public tables** — **no migration in W7**;
+`db:migrate` a no-op on re-run. Verification at HEAD: `typecheck`, `lint`,
+`format:check`, `build` clean;
+`DATABASE_URL=postgres://aquarela:aquarela@localhost:5432/aquarela npm run
+test` → **4276/4276 tests (294 files)**.
 
-**What changed (this session, uncommitted):**
+**Next task — W7 close-out plus opening the file-bytes workstream.** Two
+parts, in that order.
 
-- `packages/application/src/tasks/status-machine.ts` (+ test): the machine is now
-  `open → {in_progress, blocked, dismissed}`; `in_progress → {resolved, blocked,
-dismissed}`; `blocked → {in_progress, dismissed}`; `resolved`/`dismissed`
-  terminal; unknown/unlisted → message-only `DomainError`.
-- `postgres-store.ts`: `DOMAIN_TO_STORED_STATUS`/`STORED_TO_DOMAIN_STATUS`,
-  `toStoredStatus`, `toDomainStatus` and every call deleted — statuses are stored
-  verbatim.
-- `types.ts`, `test-support.ts`, `assign-task.ts` (message now "…resolved or
-  dismissed"), `list-tasks.ts` (filter vocabulary unchanged, now the schema's),
-  `tasks.test.ts`, `tasks.postgres.test.ts`.
-- Web: `task-rows.ts` (validation accepts the schema vocabulary via
-  `TASK_STATUSES`), `route.test.ts`, `[id]/transition/route.ts` (+ test),
-  `[id]/assign/route.ts` JSDoc; `task-labels.ts` (+ test) now carries the
-  transition map and `taskAllowedTargets(status)`; `task-filters.tsx` chips;
-  `page.tsx` (status validation via `TASK_STATUSES`, per-row targets from
-  `taskAllowedTargets`).
-- **Kept unchanged:** the atomic compare-and-set `updateTaskStatusIfCurrent`, the
-  access posture, the assignee read, no `task↔approval` link, no `location_id`.
+**Part 1 — the app-shell search and scope placeholders (decide, don't leave
+ambiguous).** `apps/web/app/(app)/layout.tsx` (single-owner file) still
+carries unwired search/scope placeholders. Inventory what the application
+layer actually exports first (`packages/application/src/**`), then either:
 
-**Next task:** commit the `DEC-122` slice — nothing above is committed yet.
-Then resume the previously-recorded next task: **`DEC-120` — the row-11 backfill
-posture** (decide and either implement an idempotent, reversible
-`sales_line.product_variant_id` backfill from SKU/`external_mapping`, dry-run
-first, or record a no-backfill posture with the reason; record it as `DEC-120` in
-both tables of `12_OPEN_DECISIONS.md` before/with the implementation). Authoritative
-inputs: `DEC-113`, `DEC-033`, `DEC-041`, `DEC-108`, `DEC-109`, the mapping writer
-(`packages/application/src/imports/map-import-rows.ts`), the variant-resolution
-chain (`packages/application/src/reporting/**`,
-`packages/persistence/src/repositories/reporting.ts`) and the `sales_line` schema.
+- (a) **wire** them to a real read — honest only if a real listing/search
+  read exists and is exported; or
+- (b) **remove** the placeholders and record the reason (in the commit body
+  and the handoff file) — the honest default when no read exists, per the
+  `08_UI_UX.md` §8.4 rule (every screen answers "what next" or says honestly
+  what is missing).
+  State which option was chosen and why before implementing. Scope (do): only
+  `apps/web/app/(app)/layout.tsx` plus, if (a), the minimum read plumbing under
+  `packages/application`; commit reversibly. Scope (do not): no
+  `packages/ui/**` redesign, no `shell-nav.tsx` edits bundled in, no new
+  backend service invented for the sake of (a).
 
-**Scope (do not):** do not rewrite posted money or stock facts; do not add a
-migration unless a decision needs one; do not resolve recorded open inputs
-silently (not the backfill verdict itself, not I11/OPS policy/`DEC-077`, not the
-provisional `DEC-105`/`DEC-106`/`DEC-107` items); do not deploy or write
-externally (`DEC-015`).
+**Part 2 — record the storage-port posture as `DEC-129` and implement the
+`file_object` application port.** `file_object` has no application port
+(`DEC-085`/`DEC-099`, `ADR-0006`), so **all file bytes are metadata-only**
+today across documents, employee documents, incident evidence, maintenance
+evidence and payroll export — the largest remaining honest gap.
 
-**Note on `DEC-122` text:** the decision row's _prose_ still describes the
-machine in the OLD `done`/`cancelled` vocabulary and claims the slice "translates
-at the boundary"; the current `12_OPEN_DECISIONS.md` row (line 179) instead
-already states the schema vocabulary (`open → {in_progress, blocked, dismissed}`
-… resolved/dismissed terminal), so the recorded decision and the code now agree.
-If any `done`/`cancelled` prose for a task is found in `DEC-122` wording, correct
-it in the same pass rather than building to it.
+- Read first: `docs/adr/0006-file-storage-and-retention.md`, the `DEC-085`
+  and `DEC-099` rows in `12_OPEN_DECISIONS.md`,
+  `docs/runbooks/persistence-migrations.md`, the `file_object` schema and
+  repository (migrations `0035`/`0036`).
+- Record **`DEC-129`** in `12_OPEN_DECISIONS.md` — **both tables, whole new
+  lines only** (append rows; never edit mid-row; never put a literal `|`
+  inside a cell) — **before or with** the code (Rule 3). Do not invent a
+  different id.
+- Implement the application port with a **local adapter**; add an
+  **expand-only migration** only if the port genuinely needs schema.
+  Required disciplines: decimal-only with HALF_UP (never floats); a
+  reversible additive migration with a rehearsed down path recorded in
+  `docs/runbooks/persistence-migrations.md` (add the runbook row); update
+  `EXPECTED_TABLES` in `schema.test.ts` if (and only if) the table set
+  changes.
+- Wire **one honest consumer first** (the document library is the natural
+  one — it is metadata-only today); do not attempt to wire every deferred
+  file FK in the same slice. No cloud storage integration (Spaces is a later
+  decision; local adapter only).
 
-**Verification (this session, exact):** `export NVM_DIR="$HOME/.nvm"; .
-"$NVM_DIR/nvm.sh"; nvm use 22`; `npm run typecheck` clean; `npm run lint` clean;
-`npm run format:check` clean; `npm run build` clean;
-`DATABASE_URL=postgres://aquarela:aquarela@localhost:5432/aquarela npm run test`
-→ **254 files, 3868/3868 tests passed**; `db:migrate` a no-op (63 migrations, 89
-tables).
+**Scope (do not), whole task:** do not rewrite posted money or stock facts;
+do not invent a row or a decision id silently; do not resolve other recorded
+open inputs silently; do not push; do not deploy or write externally
+(`DEC-015`).
+
+**Verification set (exact):** `export NVM_DIR="$HOME/.nvm"; .
+"$NVM_DIR/nvm.sh"; nvm use 22`; `npm run typecheck`; `npm run lint`; `npm run
+format:check`; `npm run build` — noting that `apps/web/next-env.d.ts` and
+`apps/web/tsconfig.json` are **generated artifacts** rewritten by every
+`next build`/`next dev` for the active `NEXT_DIST_DIR`; normalise with
+`git checkout -- apps/web/next-env.d.ts apps/web/tsconfig.json` before
+staging. Full suite:
+`DATABASE_URL=postgres://aquarela:aquarela@localhost:5432/aquarela npm run
+test` (≥ **4276/4276**, 294 files) — note
+`packages/application/src/scheduling/scheduling.postgres.test.ts` has a known
+same-instant ordering flake (passes on re-run). `npm run db:migrate` a no-op
+re-run (or, if a migration landed: the rehearsed down path plus a runbook row
+before finishing). Commit in layers with the rollback approach in each body
+(Rule 2).
 
 ## Next up (prioritised)
 
 `docs/BUILD_ROADMAP.md` is the ordered execution tracker; §5 carries the
-open-point lists. Per-slice detail is in `docs/handoffs/`.
+open-point lists. Per-slice detail is in `docs/handoffs/`. The detailed list
+lives in the second "Next up" section below.
 
-1. **Commit the `DEC-122` task slice** (uncommitted; see "Resume here"). Then
-   **`DEC-120` — the row-11 backfill posture** (see "Resume here").
-2. **Row 13 — close + dashboards + menu engineering — COMPLETE.**
+1. **Next: W7 close-out + the `DEC-129` file-bytes workstream** (see
+   "Resume here").
+2. **The operations-completion waves W1–W7 are all delivered** (W7 per
+   `docs/handoffs/080-…md`); what remains is the honest-gap list, not a wave.
 
 ## What this is
 
@@ -111,7 +131,12 @@ reconciliation, complete); the `DEC-072`–`DEC-085` low-risk implementations; t
 `DEC-086`–`DEC-094` programme (HMS monitoring/incidents/checklists/equipment/
 compliance export; the `employee` + personnel-documents slice; the staff document
 library; the schema-only workflow platform); and row 14 (workforce/scheduling —
-14a shifts, 14b-1 worked hours, 14b-2 payroll report), which is **complete**.
+14a shifts, 14b-1 worked hours, 14b-2 payroll report), which is **complete**;
+and the operations-completion programme (`docs/ROADMAP-OPERATIONS-COMPLETION.md`,
+waves W1–W7 — wiring, master-data authoring, recipes, production, tasks/
+administration, intelligence/simulation, UI refinement; `DEC-120`–`DEC-128`)
+which is **delivered as a wave programme**, with an enumerated honest-gap list
+in "Next up" / Current status.
 
 Per-slice detail, commits and reconciliation are in `docs/handoffs/`.
 
@@ -119,8 +144,8 @@ Per-slice detail, commits and reconciliation are in `docs/handoffs/`.
 
 - `00_README.md` … `13_AGENT_BUILD_BRIEF.md` — the specification package
   (inputs, rarely edited). Start with `00_README.md`.
-- **`12_OPEN_DECISIONS.md` — the accepted decisions (`DEC-001`…`DEC-119`); the
-  authority. New decisions are appended here (next free id `DEC-120`).**
+- **`12_OPEN_DECISIONS.md` — the accepted decisions (`DEC-001`…`DEC-128`);
+  the authority. New decisions are appended here (next free id `DEC-129`).**
 - `docs/phase0/` — close-out plan, calculation contract, data dictionary, golden
   fixtures, source-data request, notes. See
   `docs/phase0/CALCULATION_CONTRACT.md`.
@@ -141,18 +166,34 @@ Per-slice detail, commits and reconciliation are in `docs/handoffs/`.
 
 ## Current status
 
-- **As of:** 2026-09-24 — branch `main`; HEAD **`56a072f`**.
-  The `DEC-122` task slice is **uncommitted and vocabulary-aligned** (the
-  `done`/`cancelled` ↔ `resolved`/`dismissed` translation is deleted; the
-  machine, the port, the in-memory fake, the Postgres adapter, the API
-  validation/row mapper and the UI labels/filters/row buttons all speak the
-  `task_status_check` vocabulary — `open`, `in_progress`, `blocked`, `resolved`,
-  `dismissed`). **No CHECK change, no migration**; the atomic compare-and-set
-  `updateTaskStatusIfCurrent` is kept. Verification (2026-09-24):
-  `typecheck`/`lint`/`format:check`/`build` clean; **3868/3868 tests with
-  `DATABASE_URL`** (254 files); `db:migrate` a no-op (63 migrations, 89 tables).
-  Lineage and full per-slice detail: `docs/handoffs/README.md` and the files it
-  lists.
+- **As of:** 2026-09-24 — branch `main`; HEAD **`01a9cda`**, working tree
+  clean. **W7 — the UI-refinement wave of the operations-completion
+  programme — is complete** and it is the newest work-log entry: six commits
+  (`54022c7` reconcile forms, `5227552` costing/inventory authoring,
+  `f3201ff` workforce/HMS/document actions, `733ee83` review findings,
+  `c202c39` honesty corrections, `01a9cda` recipe-version registration +
+  item pickers — the verbatim list is in
+  `docs/handoffs/080-2026-09-24-w7-ui-refinement-wave.md`), all **unpushed**,
+  covering
+  sales, purchasing, inventory, costs, workforce, HMS, documents, tasks,
+  recipes, products and production across the six programme groups, with
+  tokens/WCAG 2.2 AA/375px enforced and every stale "not wired / planned"
+  label purged. **No new decision added** in the wave (next free id
+  **`DEC-129`**); **no migration** (through `0066`, **93 tables**);
+  `01a9cda`'s group re-ran from scratch after an abandoned subagent (see the
+  handoff's process facts). Lineage and full per-slice detail:
+  `docs/handoffs/README.md` and the files it lists.
+- **The operations-completion waves W1–W7 are delivered** (`DEC-120` redesign
+  through `DEC-128` recorded and implemented; per-wave detail lives in the
+  decisions rows and the handoff archive — not restated here). The prior
+  entries below record the programme's earlier completed slices.
+- **W7 verification (2026-09-24, at `01a9cda`):** `typecheck`, `lint`,
+  `format:check`, `build` clean (build under a unique `NEXT_DIST_DIR`);
+  **4276/4276 tests with `DATABASE_URL`** (294 files); `db:migrate` a no-op.
+  Review: `reviewer-qwen` (adversarial) + `reviewer-glm` (code-level) —
+  **no blockers, no majors**; accepted minors listed in
+  `docs/handoffs/080-…md`, with one declined item (an `opacity` token scale)
+  and its reason recorded there.
 - **The daily (location, day) close is exposed operator-driven (`DEC-119`):**
   research found the backend already complete — `beginPeriodClose`/
   `lockPeriodClose` accept both scopes
@@ -398,40 +439,41 @@ sales_units}` in `schemas/domain-enums.yaml` and
   (`DEC-087`/`DEC-099`); the staff document library (`DEC-088`/`DEC-100`, the
   first versioned entity); the workflow platform (`DEC-094`/`DEC-101`,
   schema-only). The `job`/worker/outbox layer stays gated on `ADR-0004`.
-- **Schema:** migrations through **`0062`**; **89 tables** (all additive, tested
-  down paths). Next free decision id **`DEC-120`** (`DEC-108`–`DEC-119` are
-  recorded; `DEC-114`–`DEC-119` are implemented).
-- **Verification (2026-09-23, at the `DEC-119` tree):** `typecheck`, `lint`,
-  `format:check`, `build` clean; **3648/3648 tests with `DATABASE_URL`**
-  (240 files); `npm audit --omit=dev` = 0; `db:migrate` through `0062` a no-op
-  on re-run; 89 public base tables. (One full-suite run mid-session under
-  heavy load reported two file-level failures with all tests passing; a clean
-  re-run gave 240/240 files and 3648/3648 tests — a transient load artefact,
-  recorded in the handoff; an earlier
-  test that did not reproduce across three subsequent runs is recorded in
-  `docs/handoffs/069-…md` for CI watchfulness.)
-- **Not yet built:** the deferred `DEC-112` items (the `other_variable_cost`
-  source; the `production_*`/time denominators
-  `production_hours`/`production_minutes`/`recorded_time`/`operating_hours`,
-  which fail closed; a `denominator_source` DB CHECK; per-channel packaging;
-  the cost-card version chain; the per-item cost-selection override; the
-  period-overlap operating-cost read; `behavior` filtering; partial-window
-  proration); the org-wide volume scope for `organization`/`company_wide`
-  allocation rules (`DEC-114` recorded gap); the `DEC-119` recorded-not-fixed
-  items (the period-close list route's missing location filter, no route for
-  `isPeriodLocked`), partial/delta corrections, a persisted reversal reason
-  or `adjustment_period` link, an approval/override
-  path for a gated reversal, channel-precise reconciliation matching and
-  recomputing the transaction header at posting time (the
-  `DEC-116`/`DEC-117`/`DEC-118` recorded follow-ups), gating the exported
-  `reverseSalesLine`
-  primitive, the row-11 backfill posture, the receipt→ledger wiring
-  (gated on the OPS destination `storage_area_id` policy) and rows 15–18
-  (blocked: data / `ADR-0009`–`0011`). The deferred file FKs
-  (`goods_receipt.evidence_file_id`, `cost_observation.receipt_file_id`,
-  `operating_cost.evidence_file_id`, `settlement.source_file_id`,
-  `waste_event.photo_file_id`) stay plain uuids — `file_object` exists
-  (`DEC-085`, migration `0035`) but has no application port.
+- **Schema:** migrations through **`0066`**; **93 tables** (all additive,
+  tested down paths). Next free decision id **`DEC-129`** (`DEC-120`–`DEC-128`
+  are recorded and implemented).
+- **Verification (2026-09-24, at `01a9cda`):** `typecheck`, `lint`,
+  `format:check`, `build` clean; **4276/4276 tests with `DATABASE_URL`**
+  (294 files); `db:migrate` a no-op through `0066`; 93 public base tables.
+  (Known flake, re-observed in this wave:
+  `packages/application/src/scheduling/scheduling.postgres.test.ts` can fail
+  on an audit same-instant ordering assertion and passes on re-run.)
+- **Not yet built (the honest-gap list after W7 — do not imply the programme
+  is finished):** `file_object` has **no application port** (`DEC-085`/
+  `DEC-099`, `ADR-0006`), so **all file bytes are metadata-only** across
+  documents, employee documents, incident evidence, maintenance evidence and
+  payroll export — the largest remaining gap, affecting the most screens
+  (next task = the `DEC-129` posture + the port); the app-shell **search and
+  scope placeholders** in `apps/web/app/(app)/layout.tsx` are still unwired
+  (single-owner file); **no unit-catalogue read service** anywhere (unit
+  pickers impossible; recipe lines pinned to the component's base unit); **no
+  cost-centre list read** (the `DEC-112` cost centre stays a paste-the-id
+  field); `calculatePriceScenario` has **no HTTP route** (no price-scenario
+  creation UI possible); incident **owner assignment** has no HMS-scoped
+  user-list read (`listAssignableUsers` is not wired there); **Administration**
+  has no identity/configuration backend (users, roles, scopes, tax, units
+  read, audit read, data-quality read, integrations); planning/forecast
+  **tracking** has no backend (the insights card stays honest). Standing
+  items: per-process **rate limiter** needs a shared store; **reset-token
+  delivery** is a no-op stub; `WF-003` self-assignment deferred (`DEC-102`);
+  six golden fixtures **unsigned**; the `task`↔`approval` link is open; the
+  worker/outbox layer is gated on `ADR-0004`. The deferred `DEC-112` items
+  (the `other_variable_cost` source, the `production_*`/time denominators, a
+  `denominator_source` DB CHECK, per-channel packaging, the cost-card version
+  chain, the per-item cost-selection override, partial-window proration,
+  `behavior` filtering), the org-wide volume scope (`DEC-114` gap) and the
+  `DEC-116`/`DEC-117`/`DEC-118` recorded follow-ups remain recorded in their
+  decision rows and handoffs — not restated here.
 - **Dev server (session-scoped):** `DATABASE_URL=postgres://aquarela:aquarela@localhost:5432/aquarela`,
   `ORGANIZATION_ID=1448a476-32f2-426f-b153-11a851011e48`; sign in `owner` /
   `LocalDevPass123`; MFA disabled for `owner`; demo data seeded including the
@@ -447,75 +489,54 @@ sales_units}` in `schemas/domain-enums.yaml` and
 `docs/BUILD_ROADMAP.md` is the ordered execution tracker; §5 carries the
 open-point lists. Per-slice detail is in `docs/handoffs/`.
 
-1. **Next: `DEC-120` — the row-11 backfill posture.** `DEC-113` wired the
-   sales-import mapping writer, so **new** imports populate
-   `sales_line.product_variant_id`, but every already-posted `sales_line`
-   keeps a null variant id, so the `DEC-108`/`DEC-109` reporting variant
-   chain still resolves those rows by SKU/`external_mapping` only. Decide and
-   either (a) implement an **idempotent, reversible** backfill that resolves
-   historical `sales_line.product_variant_id` from the existing
-   SKU/`external_mapping` data (dry-run first, batched; an update of a
-   derived column, not a posted money fact), or (b) record a **no-backfill**
-   posture with the reason; record the posture as `DEC-120` in both tables of
-   `12_OPEN_DECISIONS.md` before or with the implementation (Rule 3); keep it
-   additive and reversible, with a `.test.ts` per branch. Record explicitly
-   whether updating a derived column on a posted row is compatible with
-   append-only (it is not a financial or stock fact) or whether resolution
-   must instead happen at read time. Inputs to read first: `DEC-113`,
-   `DEC-033`, `DEC-041`, `DEC-108`, `DEC-109`, the mapping writer
-   (`packages/application/src/imports/map-import-rows.ts`), the
-   variant-resolution chain (`packages/application/src/reporting/**`,
-   `packages/persistence/src/repositories/reporting.ts`) and the `sales_line`
-   schema.
-2. **Row 13 — close + dashboards + menu engineering — COMPLETE.** The close
-   half: 13a `period_close` (`REC-003`, `REC-006`, `DEC-027`, `DEC-105`,
-   migrations `0057`/`0058`) and 13b prerequisites + `adjustment_period`
-   (`REC-005`, `DEC-106`/`DEC-107`, migration `0059`), committed
-   `415297b`…`956ceb6`. The reporting half: 13c sales & margin (`RPT-001`–`003`,
-   `FND-006`, `DEC-108`), 13d menu engineering (`RPT-005`, `DEC-109`) and
-   13e/13f `RPT-004` operations (`DEC-110`) — all no-migration. **The cost-card
-   composition assembler is delivered** (`DEC-111`, `182342b`…`0ee79f7`)
-   **and three of the four component resolvers** (`DEC-112`,
-   `8cf86c9`…`8bf8c71`) — direct labour, channel variable cost and allocated
-   overhead now resolve from production data; `otherVariableCost` stays
-   explicit. **The row-11 import mapping writer is delivered** (`DEC-113`,
-   `fd277ff`…`cba124a` — `sales_line.product_variant_id` is populated at
-   import time). **The sales-derived volume-based allocation denominators are
-   delivered** (`DEC-114` — `revenue`/`transactions`/`sales_units`, no
-   migration) **and the allocation pool recurrence→period normalisation is
-   delivered** (`DEC-115`, no migration). **The correction/reversal posting
-   wiring is delivered** (`DEC-116`, no migration), **the `DEC-028`
-   downstream-reconciliation reversal gate is delivered** (`DEC-117`,
-   no migration) **and the settlement reconciliation now nets line-level
-   reversals** (`DEC-118`, no migration). **The daily (location, day) close
-   is exposed operator-driven** (`DEC-119`, no migration — the `/close`
-   register UI plus the joining test; the backend was already complete).
-   Then the `DEC-120` row-11 backfill posture (listed first above), the
-   remaining deferred `DEC-112`/`DEC-114`/`DEC-115` close-outs, the `DEC-119`
-   recorded-not-fixed items (the period-close list route's missing location
-   filter, no route for `isPeriodLocked`), partial/delta
-   corrections, a persisted reversal reason or `adjustment_period` link,
-   and the `DEC-116`/`DEC-117`/`DEC-118` review follow-ups (gating the
-   exported `reverseSalesLine`, an approval/override path, channel-precise
-   reconciliation matching, recomputing the transaction header at posting
-   time).
-3. **Receipt→ledger wiring — the lead item, gated:** on the **OPS receipt
+1. **Next: W7 close-out plus opening the file-bytes workstream** — the first
+   self-contained, executable task in "Resume here" above: (a) decide the
+   app-shell search/scope placeholders in `apps/web/app/(app)/layout.tsx`
+   (wire to a real read or remove with the reason recorded — do not leave
+   them ambiguous), then (b) record the storage-port posture as **`DEC-129`**
+   in `12_OPEN_DECISIONS.md` (both tables, whole new lines only) and
+   implement the `file_object` application port with a local adapter and an
+   expand-only migration if the port needs schema, per `ADR-0006` and
+   `DEC-085`/`DEC-099` (decimal-only/HALF_UP; rehearsed reversible
+   migration + a runbook row in `docs/runbooks/persistence-migrations.md`;
+   the `EXPECTED_TABLES` update in `schema.test.ts` if the table set
+   changes).
+2. **Then the honest-gap queue** (see the "Not yet built" bullet in Current
+   status, each recorded not silently deferred): the unit-catalogue read
+   service and the cost-centre list read (they still pin recipe lines to the
+   component's base unit and keep the `DEC-112` cost centre a paste-the-id
+   field), `calculatePriceScenario`'s HTTP route (no price-scenario UI
+   possible without it), the HMS-scoped user-list read for incident owner
+   assignment, the Administration identity/configuration backend, and
+   planning/forecast tracking.
+3. **Rows 13/12/11 and the close-outs delivered — COMPLETE.** Row 13 (close
+   13a/13b + reporting 13c/13d/13e-f), the cost-card composition chain
+   (`DEC-111`/`DEC-112`), the row-11 import mapping writer (`DEC-113`), the
+   volume denominators + recurrence normalisation (`DEC-114`/`DEC-115`), the
+   correction/reversal wiring (`DEC-116`), the reversal gate (`DEC-117`),
+   the settlement netting (`DEC-118`) and the operator-driven daily close
+   (`DEC-119`) — all delivered, per their decision rows and handoffs. The
+   recorded follow-ups (posture gaps listed above) remain open, not silently
+   deferred.
+4. **Receipt→ledger wiring — the lead item, gated:** on the **OPS receipt
    destination `storage_area_id` policy** (a recorded owner input). If it has
    not landed it stays blocked; do not resolve the policy silently
    (`post-stock-movement.ts`; `docs/BUILD_ROADMAP.md` §5 slice-8 entry).
-4. **Owner/OPS/data inputs** (gate the remaining roadmap items): the OPS
+5. **Owner/OPS/data inputs** (gate the remaining roadmap items): the OPS
    `storage_area_id` policy; the FIN variance-tolerance thresholds; the
    privacy-review retention periods per file class; history/grain quality (I11);
    the deployment prerequisite inputs; the six golden-fixture signatures; the
    **WF-003 self-assignment login model**; the **`DEC-102`/`DEC-103`/`DEC-104`
    provisional items**.
-5. **Test-deployment rehearsal** (`docs/runbooks/deployment.md`) — staging first
+6. **Test-deployment rehearsal** (`docs/runbooks/deployment.md`) — staging first
    with sanitized/synthetic data only; parked on the deployment prerequisite
    inputs.
-6. **Golden-fixture sign-off** — the six fixtures are prepared as machine-readable
+7. **Golden-fixture sign-off** — the six fixtures are prepared as machine-readable
    JSON under `tests/fixtures/` (`DEC-065`); finance + product owner sign (the
    "verified" gate); `I8`/`I9` still gate the real rates behind them.
-7. **Rows 15–18** — blocked (data / `ADR-0009`–`0011`).
+8. **Rows 15–18 and the competitor/planning waves** — competitor manual
+   observations landed in the completion programme (see the decisions rows);
+   rows 15–18 remain blocked (data / `ADR-0009`–`0011`).
 
 ## Open decisions / inputs (do not block development)
 
@@ -573,9 +594,10 @@ Full detail for each item lives in its slice's handoff file and in
   excluded from popularity units, no add-on roll-up, and labour/fees/overhead/
   forecast-reliability/strategic-role have no per-product attribution. The
   row-11 mapping writer is now delivered (`DEC-113`), so
-  `sales_line.product_variant_id` is populated at import time; the **no
-  backfill** posture (and the demo variant seed / `external_mapping` lookup
-  index) is deferred to an owner decision. 13d also records: waste annotations are
+  `sales_line.product_variant_id` is populated at import time; historical
+  rows keep the **no-backfill** posture (they resolve by SKU/
+  `external_mapping` at read time; the demo variant seed / `external_mapping`
+  lookup index remain deferred). 13d also records: waste annotations are
   **`moving_average`-only** (`DEC-068`), and that filter also excludes
   non-`moving_average` events from the **quantity** sum (inert while those
   methods are unimplemented); `waste_event.currency` is not cross-checked
@@ -793,7 +815,7 @@ created out of band first (see `docs/runbooks/deployment.md`).
 - `README.md` — the index of all per-slice handovers, newest first.
 - `NNN-YYYY-MM-DD-*.md` — one verbatim work-log entry per slice (commits,
   verification, review reconciliation), numbered chronologically (`001` oldest).
-  Newest: `078-2026-09-23-daily-location-close-exposed-dec-119.md`.
+  Newest: `080-2026-09-24-w7-ui-refinement-wave.md`.
 - `reversibility-log.md` — the per-slice commit list, migration down paths and
   ledger-row rollback notes.
 - `context-sections-archive-2026-09-22.md` — the pre-refactor `Resume here`,

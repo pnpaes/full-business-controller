@@ -1,5 +1,21 @@
 # Reversibility log
 
+- **2026-09-24 W7 UI-refinement wave (6 commits, HEAD `01a9cda`; nothing
+  pushed)**: `54022c7`, `5227552`, `f3201ff`, `733ee83`, `c202c39`,
+  `01a9cda` — all web-layer changes under `apps/web/**` only (new forms and
+  actions over routes/commands that already existed, copy corrections, token
+  conformance, pickers replacing raw-UUID inputs). Each is **independently
+  revertible with `git revert <sha>`**, in any order — no shared
+  migration/schema objects. **No migration, no schema change and no data
+  written by the wave** (migrations stay through `0066`; **93 tables**;
+  `db:migrate` a no-op on re-run): forms call the existing `POST`/`PATCH`
+  routes, which append ordinary rows through the existing commands — not
+  slice side effects; the two-copy fixes (`c202c39`) change no behaviour at
+  all. Staging caveat (not a rollback concern):
+  `apps/web/next-env.d.ts` and `apps/web/tsconfig.json` are generated
+  artifacts rewritten by every `next build`/`next dev` — normalise with
+  `git checkout -- apps/web/next-env.d.ts apps/web/tsconfig.json` before
+  staging any commit. Nothing applied to DigitalOcean.
 - **2026-09-24 `DEC-122` task-status vocabulary alignment (uncommitted at
   handoff time; nothing pushed)**: a pure repository edit across
   `packages/application/src/tasks/**` and

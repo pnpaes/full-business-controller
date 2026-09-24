@@ -5,7 +5,7 @@ completes the product as a full operations tool. Every implementing agent is
 pointed at this file first.
 
 - **Authority:** this file is a derived brief. The decisions in
-  `12_OPEN_DECISIONS.md` (`DEC-001`…`DEC-119`), the ADRs in `docs/adr/` and the
+  `12_OPEN_DECISIONS.md` (`DEC-001`…`DEC-128`), the ADRs in `docs/adr/` and the
   calculation contract (`docs/phase0/CALCULATION_CONTRACT.md`) govern. `CONTEXT.md`
   keeps the live orientation; `docs/BUILD_ROADMAP.md` the ordered slice backlog;
   `08_UI_UX.md` the interface rules; `11_REQUIREMENTS_CATALOG.md` the requirement
@@ -13,7 +13,7 @@ pointed at this file first.
   does not restate them.
 - **Do not commit.** The orchestrator commits. Layers with a rollback note in the
   commit body (Rule 2).
-- **Next free decision id:** `DEC-120` (check `12_OPEN_DECISIONS.md` live before claiming one).
+- **Next free decision id:** `DEC-129` (check `12_OPEN_DECISIONS.md` live before claiming one).
 
 ## 1. Objective
 
@@ -31,40 +31,28 @@ and `08_UI_UX.md`). New capability is **additive** and recorded as a decision
 not exist it is either built properly or recorded as blocked with the reason —
 never stubbed behind a working-looking UI.
 
-## 2. Where we are (status, 2026-09-23)
+## 2. Where we are (status, 2026-09-24 — post-W7)
 
-Schema through migration `0062`, 89 tables; baseline 3648/3648 tests with
-`DATABASE_URL` (240 files); detail in `CONTEXT.md` "Current status" and
-`docs/handoffs/`.
+Waves **W1–W7 are delivered** (`DEC-120` redesign, `DEC-121` wiring, `DEC-122`
+task workflow, `DEC-123`–`DEC-128` close-outs; W7 completed as six commits
+ending at HEAD `01a9cda` — see `docs/handoffs/080-2026-09-24-w7-ui-refinement-wave.md`).
+Schema through migration `0066`, 93 tables; baseline 4276/4276 tests with
+`DATABASE_URL` (294 files); detail in `CONTEXT.md` "Current status" and
+`docs/handoffs/`. The programme's screens are complete and honest; what
+remains is the enumerated honest-gap list below, **not** another wave.
 
-| State | Content |
+| State | Content (remaining after W7) |
 | --- | --- |
-| **Wired** (UI + API + backend) | Sales (import/transactions/reconciliation), inventory (counts/transfers/waste/balances), purchasing (receipts), production (plans/batches), products/items, costs (cost-cards, price scenarios/versions, operating costs, allocation, labour rates, fee rules), Insights reports/menu-engineering/operations, `/close` register (`DEC-119`), auth/account |
-| **Built-but-unwired** (backend complete, no UI, no nav entry) | Document library (`DEC-088`/`DEC-100`), HMS (`DEC-089`–`DEC-093`: monitoring, incidents, corrective actions, checklists, equipment/maintenance, compliance export), Workforce employees (`DEC-087`/`DEC-099`), Shifts (`DEC-102`), Worked hours (`DEC-103`), Payroll reports (`DEC-104`) |
-| **Stub** | Insights landing (in progress), Tasks (schema-only platform, `DEC-094`/`DEC-101`, access unset), Administration (landing page only) |
-| **No backend at all** | Planning (`FCST/PLAN`), Competitors (`COMP-001…004`), task workflow (a `task`/`approval` slice with list/decide/transition), identity/configuration management |
+| **Delivered end to end** | Sales (import/transactions/reconciliation + reconcile forms), inventory, purchasing, production (plans/batches/costing/variance), products/variants + item pickers, recipes (incl. version registration and tests), costs (cost-cards, price versions, operating costs, allocation, labour rates, fee rules), Insights reports/menu-engineering/operations, `/close` register, Workforce/HMS/Documents screens, the `DEC-122` task workflow, Management home + shell on the design tokens |
+| **Backend exists, honest gap in front** | `file_object` (no application port — **all file bytes metadata-only** across documents/employee documents/incident evidence/maintenance evidence/payroll export: the largest remaining gap); `calculatePriceScenario` (application layer exists, **no HTTP route** → no price-scenario creation UI); Administration (audit **write** exists via `packages/application/src/auth/audit.ts`, but no read/list service or screen); incident owner assignment (no HMS-scoped user-list read — the tasks module's `listAssignableUsers` is not wired there) |
+| **No read/service at all** | Unit-catalogue read service (recipe lines pinned to the component's base unit); cost-centre list read (`DEC-112` cost centre stays paste-the-id); Administration identity/configuration backend (users, roles, scopes, tax, units read, data-quality read, integrations); planning/forecast **tracking** (the insights card stays honest) |
+| **Standing infrastructure gaps** | App-shell search/scope placeholders in `apps/web/app/(app)/layout.tsx` (single-owner; the immediate next task); per-process rate limiter needs a shared store; reset-token delivery a no-op stub; `WF-003` self-assignment deferred (`DEC-102`); six golden fixtures unsigned; the `task`↔`approval` link open; worker/outbox gated on `ADR-0004` |
 
-**Recorded blockers (list-work items; do not work around them silently):**
-
-- **`file_object` has no application port** (`DEC-085`/`DEC-099`): the five
-  deferred file FKs (receipt evidence, cost-observation receipt, operating-cost
-  evidence, settlement source, waste photo) stay plain uuids; staff-document
-  and personnel-document bytes cannot be uploaded/scanned/retained. A storage
-  port slice is a prerequisite for document UX and `WF-007`.
-- **`task`/`approval` access is unset** (`DEC-101`): no access-matrix row, no
-  transition guard, no `location_id`, no task↔approval link (`HMS-001` conflict).
-- **`WF-003` self-assignment login model** — must a self-assigning employee
-  hold an `app_user` login? Owner input; self-assignment is fail-closed today (`DEC-102`).
-- **The org-wide location-scope gap** — most pre-HMS routes do not pass
-  `locationId` to `isAuthorizedFor`; the close list route is not
-  location-filtered (`DEC-105`); HMS routes are the only fully enforcing ones.
-- Other recorded gaps (do not invent resolutions): `DEC-105`–`DEC-110`, `DEC-112`
-  deferred items (the `other_variable_cost` source, the `production_*`/time
-  allocation denominators, per-channel packaging, the cost-card version chain),
-  `DEC-114` org-wide volume scope, `DEC-116`–`DEC-118` follow-ups, the row-11
-  backfill posture (`DEC-120`, next free id), the receipt→ledger wiring gated on
-  the OPS destination `storage_area_id` policy, and rows 15–18 (blocked:
-  data / `ADR-0009`–`0011`).
+**Still-recorded blockers and deferred items (do not resolve silently):** the
+`DEC-105`–`DEC-118` provisional/deferred clauses, the
+`DEC-112`/`DEC-114` deferred close-outs, the receipt→ledger wiring gated on
+the OPS destination `storage_area_id` policy, and rows 15–18 (blocked: data /
+`ADR-0009`–`0011`). Full list in `CONTEXT.md` "Open decisions / inputs".
 
 ## 3. The workstreams
 
@@ -72,6 +60,10 @@ Each workstream states what already exists so agents do not rebuild it. Every
 slice follows §4 Method and records its decision ids.
 
 ### W1 — Wiring (backend complete, UI missing)
+
+- **Status (2026-09-24): DELIVERED** — the `DEC-121` wiring wave landed the
+  Documents, HMS and Workforce screens; W7 verified them. The file-bytes gap
+  (metadata-only listings) remains and opens the `DEC-129` workstream.
 
 - **Objective:** every complete backend becomes a reachable, working screen.
 - **Backend already exists:** document library (`/api/v1/documents/**`,
@@ -99,6 +91,11 @@ slice follows §4 Method and records its decision ids.
 
 ### W2 — Master-data authoring
 
+- **Status (2026-09-24): DELIVERED** — W7 added the operating-cost, labour-rate,
+  cost-pool and allocation-rule forms and replaced raw-UUID inputs with item
+  pickers; recorded gaps (no unit-catalogue read, no cost-centre list read)
+  are stated in the forms, not faked.
+
 - **Objective:** simple, fast create/edit for all master data: products and
   variants, items and supplier items/prices, suppliers, locations and storage
   areas, channels, units and conversions, tax rules, labour rates, cost pools,
@@ -120,6 +117,11 @@ slice follows §4 Method and records its decision ids.
   single-owner (§5), so route authoring through that owner as a batch.
 
 ### W3 — Recipes (the recipe book)
+
+- **Status (2026-09-24): DELIVERED** — recipe tests (`DEC-123`) and version
+  registration (W7's `register-version-form.tsx` over the existing route and
+  `registerRecipeVersion` command) delivered; unit and cost-centre reads
+  remain missing and are stated in the form.
 
 - **Objective:** a complete recipe book: full detail (ingredients with
   quantities and units, allergens, method, production time, yield), versioning,
@@ -146,6 +148,10 @@ slice follows §4 Method and records its decision ids.
 
 ### W4 — Production (plan → actual → realistic cost)
 
+- **Status (2026-09-24): DELIVERED** — production batch costing and variance
+  (`DEC-124`) and plan lines / `planned_qty` (`DEC-125`) delivered and
+  verified wired in W7.
+
 - **Objective:** dated plan → batch (quantities, expected yield/time); the
   **actual** production registered (actual in/out quantities, actual hours,
   actual ingredient consumption, waste); then the **realistic cost** computed
@@ -169,6 +175,13 @@ slice follows §4 Method and records its decision ids.
   postures respected (record deviations and versioning decisions).
 
 ### W5 — Tasks + Administration
+
+- **Status (2026-09-24): DELIVERED, with one recorded gap** — the task
+  workflow slice is live (`DEC-122`, aligned to the schema status
+  vocabulary); Administration is wired to what exists, but the
+  identity/configuration backend (users, roles, scopes, tax, units read,
+  audit read, data-quality read, integrations) has **no backend** and stays
+  an honest listed gap.
 
 - **Objective:** a minimal `task`/`approval` slice wired to the Tasks screen;
   Administration wired to what exists; identity/configuration management built
@@ -194,6 +207,11 @@ slice follows §4 Method and records its decision ids.
 - **Dependencies:** none hard; the access matrix decision should land early because W6's advisories and W1's `HMS-001` action links may need `task` rows.
 
 ### W6 — Intelligence and simulation
+
+- **Status (2026-09-24): DELIVERED** — trends/benchmarks, forecast and what-if
+  simulation landed (see the decisions rows); competitor manual observations
+  delivered; planning/forecast **tracking** has no backend and the insights
+  card says so honestly.
 
 - **Objective:** trends/benchmarks over history; predictability/forecast with
   stated confidence and method; suggestions and advisories (advisory only,
@@ -226,6 +244,15 @@ slice follows §4 Method and records its decision ids.
   approved-version path (`PRICE-002/003`) already exists.
 
 ### W7 — UI refinement
+
+- **Status (2026-09-24): COMPLETE** — six commits (`54022c7`…`01a9cda`;
+  `docs/handoffs/080-2026-09-24-w7-ui-refinement-wave.md`): every section
+  reachable, every recorded action present, stale "not wired / planned" copy
+  purged, tokens/WCAG 2.2 AA/375px enforced, two reviews (qwen adversarial +
+  glm code-level) with no blockers/majors. **Remaining close-out item:** the
+  app-shell search/scope placeholders in `apps/web/app/(app)/layout.tsx`
+  (single-owner) — wire or remove with the reason recorded; see `CONTEXT.md`
+  "Resume here".
 
 - **Objective:** a pass over every screen for simplicity, hierarchy, workflow
   and completeness, per `08_UI_UX.md` §8.4–§8.6 and the design brief.
@@ -320,6 +347,17 @@ stall on it otherwise.
 | 3 | W4 production (actual hours join from row-14 data now wired; recipe versions known; cost composition post-`DEC-111/112` posture confirmed) | Depends on the earlier waves' data surfaces |
 | 4 | W6 intelligence/simulation, including what-if (builds on realistic actuals) | The models are only honest once actuals exist |
 | 5 | W7 UI refinement pass + the remaining close-outs (per `docs/BUILD_ROADMAP.md` §5) and the recorded follow-ups (partial corrections, `DEC-119` recorded-not-fixed items) | Polish and close-outs after all surfaces exist |
+
+**Delivery status (2026-09-24):** all five waves were delivered under the
+`DEC-120`–`DEC-128` slab plus W7's six commits; the wave-era blockers the
+table contemplated (wiring, tasks access, recipes, competitors, what-if) are
+recorded as delivered in this file and `CONTEXT.md`. The `file_object`
+storage-port slice — planned for Wave 1 and deliberately deferred past W7 —
+is now the **lead open item** (the `DEC-129` posture plus the application
+port with a local adapter; see `CONTEXT.md` "Resume here"), followed by the
+honest-gap list in §2. The programme is **not** done-done: golden fixtures
+remain unsigned, owner inputs outstanding, and the gaps above stand as
+recorded.
 
 **Definition of done (programme):**
 
