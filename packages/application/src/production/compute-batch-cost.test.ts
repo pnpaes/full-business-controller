@@ -108,6 +108,7 @@ function seedBatch(store: FakeProductionBatchCostStore, overrides: BatchOverride
     actualFinish: FINISH,
     operatorId: null,
     destinationStorageAreaId: null,
+    plannedQty: null,
     plannedOutputQty: "2.000000",
     actualOutputQty: overrides.actualOutputQty ?? "2.000000",
     yieldVariancePct: overrides.yieldVariancePct ?? "0.000000",

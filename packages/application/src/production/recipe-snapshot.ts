@@ -4,6 +4,7 @@ import {
   DomainError,
   Quantity,
   Unit,
+  scaleQuantityByRatio,
   type UnitConversionEdge,
 } from "@aquarela/domain";
 
@@ -221,5 +222,34 @@ export async function resolvePlannedSnapshot(
         plannedQty: input.version.plannedOutputQty,
       },
     ],
+  };
+}
+
+/**
+ * Scales a planned snapshot to a batch's intended output quantity (`DEC-125`):
+ * every planned quantity is multiplied by `plannedQty / snapshot.plannedOutputQty`
+ * and rounded **once** at B0 (6 dp, HALF_UP) through `scaleQuantityByRatio` —
+ * never at intermediate algebra. The scaled planned output is exactly
+ * `plannedQty`, and the recipe version's single-batch quantities are unchanged
+ * when `plannedQty` equals `snapshot.plannedOutputQty`. `plannedQty` must be
+ * positive (the caller validates it); the version's `planned_output_qty` is
+ * positive by schema check.
+ */
+export function scalePlannedSnapshot(
+  snapshot: PlannedSnapshot,
+  plannedQty: string,
+): PlannedSnapshot {
+  const denominator = snapshot.plannedOutputQty;
+  return {
+    ...snapshot,
+    plannedOutputQty: scaleQuantityByRatio(snapshot.plannedOutputQty, plannedQty, denominator),
+    inputs: snapshot.inputs.map((line) => ({
+      ...line,
+      plannedQty: scaleQuantityByRatio(line.plannedQty, plannedQty, denominator),
+    })),
+    outputs: snapshot.outputs.map((line) => ({
+      ...line,
+      plannedQty: scaleQuantityByRatio(line.plannedQty, plannedQty, denominator),
+    })),
   };
 }

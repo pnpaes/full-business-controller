@@ -22,6 +22,7 @@ export type {
 export { createProductionPlan } from "./create-production-plan";
 export type {
   CreateProductionPlanInput,
+  CreateProductionPlanLineInput,
   CreateProductionPlanResult,
 } from "./create-production-plan";
 export { getProductionBatch } from "./get-production-batch";
@@ -39,7 +40,7 @@ export {
 } from "./list-production-plans";
 export type { ListProductionPlansQuery, ProductionPlanPage } from "./list-production-plans";
 export { createPostgresProductionStore } from "./postgres-store";
-export { convertToBaseUnit, resolvePlannedSnapshot } from "./recipe-snapshot";
+export { convertToBaseUnit, resolvePlannedSnapshot, scalePlannedSnapshot } from "./recipe-snapshot";
 export type { PlannedInputLine, PlannedOutputLine, PlannedSnapshot } from "./recipe-snapshot";
 export { releaseProductionBatch } from "./release-production-batch";
 export type {
@@ -55,12 +56,14 @@ export type {
   NewProductionBatchInputRecord,
   NewProductionBatchOutputRecord,
   NewProductionBatchRecord,
+  NewProductionPlanLineRecord,
   NewProductionPlanRecord,
   ProductionBatchInputRecord,
   ProductionBatchOutputRecord,
   ProductionBatchPatch,
   ProductionBatchRecord,
   ProductionBatchCostStore,
+  ProductionPlanLineRecord,
   ProductionPlanRecord,
   ProductionRecipeLineRecord,
   ProductionRecipeRecord,

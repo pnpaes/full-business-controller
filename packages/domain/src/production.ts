@@ -27,6 +27,41 @@ import { QUANTITY_SCALE } from "./quantity";
 const RATE_SCALE = 6;
 
 /**
+ * Scales a quantity by the exact ratio `numerator / denominator`, rounding
+ * **once** at B0 (6 dp, HALF_UP):
+ *
+ * ```
+ * scaled = round(quantity × numerator / denominator, 6 dp)   # B0
+ * ```
+ *
+ * `DEC-125`: the ratio is `planned_qty / recipe_version.planned_output_qty`,
+ * used to scale a recipe version's single-batch planned snapshot to a batch's
+ * intended output quantity. The multiply and divide are combined into one
+ * HALF_UP step, so B0 is crossed exactly once — never at intermediate algebra.
+ * `denominator` must be positive (a zero planned output makes the ratio
+ * undefined); `quantity` and `numerator` must not be negative.
+ */
+export function scaleQuantityByRatio(
+  quantity: string,
+  numerator: string,
+  denominator: string,
+): string {
+  const qty = parseDecimal(quantity, QUANTITY_SCALE);
+  const num = parseDecimal(numerator, QUANTITY_SCALE);
+  const den = parseDecimal(denominator, QUANTITY_SCALE);
+  if (qty < 0n) {
+    throw new DomainError("quantity must not be negative");
+  }
+  if (num < 0n) {
+    throw new DomainError("numerator must not be negative");
+  }
+  if (den <= 0n) {
+    throw new DomainError("denominator must be positive");
+  }
+  return formatDecimal(divideRoundHalfUp(qty * num, den), QUANTITY_SCALE);
+}
+
+/**
  * `yield_rate = output_qty / input_qty`, at 6 dp HALF_UP (CALCULATION_CONTRACT
  * §6; `production_batch.yield_variance_pct` is `numeric(9,6)`). `inputQty` must
  * be positive (a zero planned input makes the ratio undefined) and `outputQty`

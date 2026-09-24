@@ -42,7 +42,10 @@ import type { RecipeStore } from "../recipes/types";
  * (e) no WIP/source-draw storage area: outputs use the batch's
  *     `destination_storage_area_id`, consumption uses a caller-supplied area,
  *     and an absent area fails clearly;
- * (f) `production_plan` has no line/quantity table, so a plan is a dated header;
+ * (f) `production_plan` has no status vocabulary authority (`DEC-125` adds the
+ *     `production_plan_line` table and `production_batch.planned_qty`, so a plan
+ *     now states per line which approved version and how much output is
+ *     intended; the plan status itself stays free text);
  * (g) no yield-variance tolerance threshold (`PROD-003`): the `DEC-080`
  *     exception store now exists and a `yield_variance` exception is recorded
  *     unconditionally on a non-zero yield variance (provisional, no threshold
@@ -60,9 +63,30 @@ export interface ProductionPlanRecord {
   readonly productionDate: string;
   /** No vocabulary authority for the plan; stored as given (open point (f)). */
   readonly status: string;
+  /** `DEC-125`: the plan's lines, oldest first. Empty for a header with no lines. */
+  readonly lines: readonly ProductionPlanLineRecord[];
   /** `timestamptz`, ISO. */
   readonly createdAt: string;
   readonly createdBy: string | null;
+}
+
+/** One `production_plan_line` row (`DEC-125`): a recipe version + intended qty. */
+export interface ProductionPlanLineRecord {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly planId: string;
+  readonly recipeVersionId: string;
+  /** numeric(19,6), strictly positive (`production_plan_line_planned_qty_check`). */
+  readonly plannedQty: string;
+  /** `timestamptz`, ISO. */
+  readonly createdAt: string;
+}
+
+export interface NewProductionPlanLineRecord {
+  readonly organizationId: string;
+  readonly planId: string;
+  readonly recipeVersionId: string;
+  readonly plannedQty: string;
 }
 
 export interface NewProductionPlanRecord {
@@ -93,6 +117,11 @@ export interface ProductionBatchRecord {
   readonly destinationStorageAreaId: string | null;
   /** numeric(19,6). */
   readonly plannedOutputQty: string | null;
+  /**
+   * `DEC-125`: the batch's intended output quantity (numeric(19,6)), null for a
+   * batch without a planned quantity (the previous single-batch behaviour).
+   */
+  readonly plannedQty: string | null;
   readonly actualOutputQty: string | null;
   /** numeric(9,6) fraction, signed (not ×100). */
   readonly yieldVariancePct: string | null;
@@ -120,6 +149,8 @@ export interface NewProductionBatchRecord {
   readonly plannedStart: string | null;
   readonly operatorId: string | null;
   readonly destinationStorageAreaId: string | null;
+  /** numeric(19,6). The batch's intended output quantity (`DEC-125`), or null. */
+  readonly plannedQty: string | null;
   /** numeric(19,6). */
   readonly plannedOutputQty: string | null;
 }
@@ -284,6 +315,18 @@ export interface ProductionStore extends InventoryStore, DataQualityExceptionSto
   }): Promise<ProductionPlanRecord | undefined>;
   listProductionPlans(query: ListProductionPlansQuery): Promise<readonly ProductionPlanRecord[]>;
   createProductionPlan(input: NewProductionPlanRecord): Promise<ProductionPlanRecord>;
+
+  /** `DEC-125`: the lines of the given plans, organization-scoped, oldest first. */
+  listProductionPlanLines(query: {
+    readonly organizationId: string;
+    readonly planIds: readonly string[];
+  }): Promise<readonly ProductionPlanLineRecord[]>;
+  createProductionPlanLine(input: NewProductionPlanLineRecord): Promise<ProductionPlanLineRecord>;
+  /** One line by id, organization-scoped, or `undefined` (the `planLineId` check). */
+  findProductionPlanLine(query: {
+    readonly organizationId: string;
+    readonly planLineId: string;
+  }): Promise<ProductionPlanLineRecord | undefined>;
 
   findProductionBatch(query: {
     readonly organizationId: string;

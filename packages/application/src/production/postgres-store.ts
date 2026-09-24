@@ -12,11 +12,13 @@ import type {
   NewProductionBatchInputRecord,
   NewProductionBatchOutputRecord,
   NewProductionBatchRecord,
+  NewProductionPlanLineRecord,
   NewProductionPlanRecord,
   ProductionBatchInputRecord,
   ProductionBatchOutputRecord,
   ProductionBatchPatch,
   ProductionBatchRecord,
+  ProductionPlanLineRecord,
   ProductionPlanRecord,
   ProductionRecipeLineRecord,
   ProductionRecipeRecord,
@@ -31,16 +33,51 @@ function isNodeDatabase(db: Database): db is NodeDatabase {
 
 const iso = (value: Date | null): string | null => (value === null ? null : value.toISOString());
 
-function toPlan(row: repo.ProductionPlan): ProductionPlanRecord {
+function toPlan(
+  row: repo.ProductionPlan,
+  lines: readonly ProductionPlanLineRecord[],
+): ProductionPlanRecord {
   return {
     id: row.id,
     organizationId: row.organizationId,
     locationId: row.locationId,
     productionDate: row.productionDate,
     status: row.status,
+    lines,
     createdAt: row.createdAt.toISOString(),
     createdBy: row.createdBy,
   };
+}
+
+function toPlanLine(row: repo.ProductionPlanLine): ProductionPlanLineRecord {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    planId: row.planId,
+    recipeVersionId: row.recipeVersionId,
+    plannedQty: row.plannedQty,
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
+/** Lines of the given plans, grouped by `planId`, in one organization-scoped read. */
+async function loadPlanLines(
+  db: Database,
+  organizationId: string,
+  planIds: readonly string[],
+): Promise<Map<string, ProductionPlanLineRecord[]>> {
+  const rows = await repo.listProductionPlanLines(db, { organizationId, planIds: [...planIds] });
+  const byPlan = new Map<string, ProductionPlanLineRecord[]>();
+  for (const row of rows) {
+    const line = toPlanLine(row);
+    const list = byPlan.get(line.planId);
+    if (list === undefined) {
+      byPlan.set(line.planId, [line]);
+    } else {
+      list.push(line);
+    }
+  }
+  return byPlan;
 }
 
 function toBatch(row: repo.ProductionBatch): ProductionBatchRecord {
@@ -58,6 +95,7 @@ function toBatch(row: repo.ProductionBatch): ProductionBatchRecord {
     operatorId: row.operatorId,
     destinationStorageAreaId: row.destinationStorageAreaId,
     plannedOutputQty: row.plannedOutputQty,
+    plannedQty: row.plannedQty,
     actualOutputQty: row.actualOutputQty,
     yieldVariancePct: row.yieldVariancePct,
     actualLabourHours: row.actualLabourHours,
@@ -233,18 +271,27 @@ export function createPostgresProductionStore(db: Database): ProductionStore {
         organizationId: query.organizationId,
         productionPlanId: query.productionPlanId,
       });
-      return row === undefined ? undefined : toPlan(row);
+      if (row === undefined) {
+        return undefined;
+      }
+      const lines = await loadPlanLines(db, query.organizationId, [row.id]);
+      return toPlan(row, lines.get(row.id) ?? []);
     },
-    listProductionPlans: async (query: ListProductionPlansQuery) =>
-      (
-        await repo.listProductionPlans(db, {
-          organizationId: query.organizationId,
-          ...(query.locationId === undefined ? {} : { locationId: query.locationId }),
-          ...(query.status === undefined ? {} : { status: query.status }),
-          ...(query.limit === undefined ? {} : { limit: query.limit }),
-          ...(query.offset === undefined ? {} : { offset: query.offset }),
-        })
-      ).map(toPlan),
+    listProductionPlans: async (query: ListProductionPlansQuery) => {
+      const rows = await repo.listProductionPlans(db, {
+        organizationId: query.organizationId,
+        ...(query.locationId === undefined ? {} : { locationId: query.locationId }),
+        ...(query.status === undefined ? {} : { status: query.status }),
+        ...(query.limit === undefined ? {} : { limit: query.limit }),
+        ...(query.offset === undefined ? {} : { offset: query.offset }),
+      });
+      const lines = await loadPlanLines(
+        db,
+        query.organizationId,
+        rows.map((row) => row.id),
+      );
+      return rows.map((row) => toPlan(row, lines.get(row.id) ?? []));
+    },
     createProductionPlan: async (input: NewProductionPlanRecord) =>
       toPlan(
         await repo.createProductionPlan(db, {
@@ -255,7 +302,31 @@ export function createPostgresProductionStore(db: Database): ProductionStore {
           createdBy: input.createdBy,
           ...(input.id === undefined ? {} : { id: input.id }),
         }),
+        [],
       ),
+    listProductionPlanLines: async (query) =>
+      (
+        await repo.listProductionPlanLines(db, {
+          organizationId: query.organizationId,
+          planIds: [...query.planIds],
+        })
+      ).map(toPlanLine),
+    createProductionPlanLine: async (input: NewProductionPlanLineRecord) =>
+      toPlanLine(
+        await repo.createProductionPlanLine(db, {
+          organizationId: input.organizationId,
+          planId: input.planId,
+          recipeVersionId: input.recipeVersionId,
+          plannedQty: input.plannedQty,
+        }),
+      ),
+    findProductionPlanLine: async (query) => {
+      const row = await repo.findProductionPlanLine(db, {
+        organizationId: query.organizationId,
+        planLineId: query.planLineId,
+      });
+      return row === undefined ? undefined : toPlanLine(row);
+    },
 
     findProductionBatch: async (query) => {
       const row = await repo.findProductionBatch(db, {
@@ -288,6 +359,7 @@ export function createPostgresProductionStore(db: Database): ProductionStore {
           plannedStart: input.plannedStart === null ? null : new Date(input.plannedStart),
           operatorId: input.operatorId,
           destinationStorageAreaId: input.destinationStorageAreaId,
+          plannedQty: input.plannedQty,
           plannedOutputQty: input.plannedOutputQty,
           ...(input.id === undefined ? {} : { id: input.id }),
         }),

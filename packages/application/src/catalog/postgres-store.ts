@@ -7,6 +7,7 @@ import type {
   ConversionEdge,
   MasterDataStore,
   MasterItem,
+  MasterSupplierRecord,
   MasterUnit,
   SupplierItemDetail,
   SupplierItemRecord,
@@ -19,6 +20,27 @@ function isNodeDatabase(db: Database): db is NodeDatabase {
 
 const SUPPLIER_SKU_CONSTRAINT = "supplier_item_supplier_id_supplier_sku_key";
 const SUPPLIER_SKU_CONFLICT_MESSAGE = "supplier SKU already registered for this supplier";
+
+const UNIT_CONVERSION_CONFLICT_MESSAGE =
+  "a conversion for this unit pair is already effective for this scope";
+
+/** SQLSTATE `23P01` is an exclusion-constraint violation (overlapping window). */
+const EXCLUSION_VIOLATION = "23P01";
+/** SQLSTATE `23505` is a unique-constraint violation (same version tuple). */
+const UNIQUE_VIOLATION = "23505";
+
+/**
+ * Translates a `unit_conversion` overlap (`23P01`, the gist exclusion
+ * constraints) or version-tuple collision (`23505`) into the command's domain
+ * failure, so a concurrent insert never leaks a raw driver error.
+ */
+function isUnitConversionConflict(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) {
+    return false;
+  }
+  const { code } = error as { code?: string };
+  return code === EXCLUSION_VIOLATION || code === UNIQUE_VIOLATION;
+}
 
 /**
  * Translates the `supplier_item` unique-constraint violation (SQLSTATE 23505)
@@ -123,6 +145,19 @@ function toSupplierItem(row: repo.SupplierItem): SupplierItemRecord {
   };
 }
 
+function toSupplierRecord(row: repo.Supplier): MasterSupplierRecord {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    code: row.code,
+    name: row.name,
+    contact: row.contact,
+    terms: row.terms,
+    currency: row.currency,
+    active: row.active,
+  };
+}
+
 /** Adapts the persistence repositories to the `MasterDataStore` port. */
 export function createPostgresMasterDataStore(db: Database): MasterDataStore {
   return {
@@ -193,6 +228,73 @@ export function createPostgresMasterDataStore(db: Database): MasterDataStore {
         }
         throw error;
       }
+    },
+    updateItem: async (input) => {
+      const existing = await repo.findItemWithUnitById(db, input.itemId);
+      if (existing === undefined) {
+        return;
+      }
+      const changes: { name?: string; inventoryPolicy?: string; lotTracked?: boolean } = {};
+      if (input.name !== undefined) {
+        changes.name = input.name;
+      }
+      if (input.inventoryPolicy !== undefined) {
+        changes.inventoryPolicy = input.inventoryPolicy;
+      }
+      if (input.lotTracked !== undefined) {
+        changes.lotTracked = input.lotTracked;
+      }
+      // ponytail: the persistence layer is frozen this wave, so the update is
+      // expressed as an id-targeted upsert through the exported table rather
+      // than a repository `updateItem`. All not-null columns are supplied from
+      // the read; the `set` applies only the mutable fields. Promote this to a
+      // real repository update when persistence is editable again.
+      await db
+        .insert(repo.item)
+        .values({
+          id: existing.id,
+          organizationId: existing.organizationId,
+          code: existing.code,
+          sku: existing.sku,
+          name: existing.name,
+          itemType: existing.itemType,
+          baseUnitId: existing.baseUnitId,
+          inventoryPolicy: existing.inventoryPolicy,
+          lotTracked: existing.lotTracked,
+          activeFrom: existing.activeFrom,
+        })
+        .onConflictDoUpdate({ target: repo.item.id, set: changes })
+        .returning();
+    },
+    findSupplierByCode: async (organizationId, code) => {
+      const row = await repo.findSupplierByCode(db, organizationId, code);
+      return row === undefined ? undefined : toSupplierRecord(row);
+    },
+    createSupplier: async (input) =>
+      toSupplierRecord(
+        await repo.createSupplier(db, {
+          organizationId: input.organizationId,
+          code: input.code,
+          name: input.name,
+          contact: input.contact ?? null,
+          terms: input.terms ?? null,
+          currency: input.currency,
+          active: input.active ?? true,
+        }),
+      ),
+    createUnitConversion: async (input) => {
+      try {
+        const row = await repo.createUnitConversion(db, input);
+        return { id: row.id };
+      } catch (error) {
+        if (isUnitConversionConflict(error)) {
+          throw new DomainError(UNIT_CONVERSION_CONFLICT_MESSAGE);
+        }
+        throw error;
+      }
+    },
+    writeAudit: async (input) => {
+      await repo.writeAuditEvent(db, input);
     },
     listEffectiveConversions: async (
       organizationId: string,

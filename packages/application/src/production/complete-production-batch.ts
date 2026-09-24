@@ -14,7 +14,7 @@ import { postStockMovements } from "../inventory";
 import type { StockBalanceKey } from "../inventory";
 import { assertIsoInstant, isBlank } from "../inventory/validation";
 import { PRODUCTION_AUDIT_ACTIONS } from "./actions";
-import { resolvePlannedSnapshot } from "./recipe-snapshot";
+import { resolvePlannedSnapshot, scalePlannedSnapshot } from "./recipe-snapshot";
 import type { ProductionStore } from "./types";
 
 /** `production_batch.actual_labour_hours` is `numeric(9,2)` (`DEC-124`). */
@@ -216,11 +216,18 @@ export async function completeProductionBatch(
     if (version === undefined) {
       throw new DomainError("recipe version not found");
     }
-    const snapshot = await resolvePlannedSnapshot(tx, {
+    const baseSnapshot = await resolvePlannedSnapshot(tx, {
       organizationId: input.organizationId,
       version,
       asOf: new Date(input.actualFinish),
     });
+    // `DEC-125`: a batch planned with a quantity scales the recipe version's
+    // single-batch snapshot, so completion validates and variances against the
+    // same scaled plan (the stored `planned_output_qty` is the scaled figure).
+    const snapshot =
+      batch.plannedQty === null
+        ? baseSnapshot
+        : scalePlannedSnapshot(baseSnapshot, batch.plannedQty);
 
     if (batch.destinationStorageAreaId === null) {
       throw new DomainError(

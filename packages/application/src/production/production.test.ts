@@ -650,6 +650,7 @@ describe("reads", () => {
       locationId: "loc-other",
       productionDate: "2026-05-01",
       status: "planned",
+      lines: [],
       createdAt: AT,
       createdBy: null,
     });
@@ -699,5 +700,259 @@ describe("input line typing", () => {
       movementId: null,
     };
     expect(line.plannedQty).toBe("1.000000");
+  });
+});
+
+/** Approves the fixture's draft version so a second approved version exists. */
+function approveDraft(context: Context): string {
+  const { store, fixture } = context;
+  const version = store.recipeVersions.get(fixture.draftRecipeVersionId)!;
+  store.recipeVersions.set(fixture.draftRecipeVersionId, { ...version, state: "approved" });
+  return fixture.draftRecipeVersionId;
+}
+
+describe("createProductionPlan with lines (DEC-125)", () => {
+  it("writes the lines in the plan transaction and returns them on read", async () => {
+    const { store, fixture } = await setup();
+    const created = await createProductionPlan(store, {
+      organizationId: fixture.organizationId,
+      actorId: ACTOR,
+      locationId: fixture.locationId,
+      productionDate: "2026-03-01",
+      lines: [{ recipeVersionId: fixture.recipeVersionId, plannedQty: "60.000000" }],
+    });
+    const page = await listProductionPlans(store, { organizationId: fixture.organizationId });
+    const plan = page.plans.find((row) => row.id === created.productionPlanId);
+    expect(plan?.lines).toHaveLength(1);
+    expect(plan?.lines[0]?.recipeVersionId).toBe(fixture.recipeVersionId);
+    expect(plan?.lines[0]?.plannedQty).toBe("60.000000");
+    expect(plan?.lines[0]?.organizationId).toBe(fixture.organizationId);
+  });
+
+  it("rejects a non-positive planned quantity", async () => {
+    const { store, fixture } = await setup();
+    await expect(
+      createProductionPlan(store, {
+        organizationId: fixture.organizationId,
+        actorId: ACTOR,
+        locationId: fixture.locationId,
+        productionDate: "2026-03-01",
+        lines: [{ recipeVersionId: fixture.recipeVersionId, plannedQty: "0" }],
+      }),
+    ).rejects.toThrow(/plannedQty must be positive/);
+  });
+
+  it("rejects an unknown recipe version and a foreign-organization one", async () => {
+    const { store, fixture } = await setup();
+    await expect(
+      createProductionPlan(store, {
+        organizationId: fixture.organizationId,
+        actorId: ACTOR,
+        locationId: fixture.locationId,
+        productionDate: "2026-03-01",
+        lines: [{ recipeVersionId: "missing", plannedQty: "1.000000" }],
+      }),
+    ).rejects.toThrow(/recipe version not found in organization/);
+
+    store.recipes.set(fixture.recipeId, {
+      ...store.recipes.get(fixture.recipeId)!,
+      organizationId: "org-other",
+    });
+    await expect(
+      createProductionPlan(store, {
+        organizationId: fixture.organizationId,
+        actorId: ACTOR,
+        locationId: fixture.locationId,
+        productionDate: "2026-03-01",
+        lines: [{ recipeVersionId: fixture.recipeVersionId, plannedQty: "1.000000" }],
+      }),
+    ).rejects.toThrow(/recipe version not found in organization/);
+  });
+
+  it("rolls the lines back with the header when a later line is rejected", async () => {
+    const { store, fixture } = await setup();
+    await expect(
+      createProductionPlan(store, {
+        organizationId: fixture.organizationId,
+        actorId: ACTOR,
+        locationId: fixture.locationId,
+        productionDate: "2026-03-01",
+        lines: [
+          { recipeVersionId: fixture.recipeVersionId, plannedQty: "1.000000" },
+          { recipeVersionId: "missing", plannedQty: "1.000000" },
+        ],
+      }),
+    ).rejects.toThrow(/recipe version not found/);
+    expect(store.productionPlans.size).toBe(0);
+    expect(store.productionPlanLines.size).toBe(0);
+  });
+});
+
+describe("createProductionBatch planned quantity (DEC-125)", () => {
+  it("scales the snapshot by plannedQty / plannedOutputQty, rounding once at B0", async () => {
+    const context = await setup();
+    const created = await createProductionBatch(context.store, {
+      organizationId: context.fixture.organizationId,
+      actorId: ACTOR,
+      locationId: context.fixture.locationId,
+      recipeVersionId: context.fixture.recipeVersionId,
+      plannedQty: "0.333333",
+    });
+    // 0.500000 × 0.333333 / 1.000000 = 0.1666665 → HALF_UP at 6 dp → 0.166667.
+    expect(created.plannedQty).toBe("0.333333");
+    expect(created.plannedOutputQty).toBe("0.333333");
+    expect(created.plannedInputs).toEqual([
+      { itemId: context.fixture.itemId, unitId: context.fixture.unitId, plannedQty: "0.166667" },
+    ]);
+    expect(created.plannedOutputs[0]?.plannedQty).toBe("0.333333");
+
+    const batch = context.store.productionBatches.get(created.productionBatchId);
+    expect(batch?.plannedQty).toBe("0.333333");
+    expect(batch?.plannedOutputQty).toBe("0.333333");
+  });
+
+  it("scales exactly when the ratio is a whole multiple", async () => {
+    const context = await setup();
+    const created = await createProductionBatch(context.store, {
+      organizationId: context.fixture.organizationId,
+      actorId: ACTOR,
+      locationId: context.fixture.locationId,
+      recipeVersionId: context.fixture.recipeVersionId,
+      plannedQty: "60.000000",
+    });
+    expect(created.plannedOutputQty).toBe("60.000000");
+    expect(created.plannedInputs[0]?.plannedQty).toBe("30.000000");
+    expect(created.plannedOutputs[0]?.plannedQty).toBe("60.000000");
+  });
+
+  it("rejects a non-positive planned quantity", async () => {
+    const context = await setup();
+    await expect(
+      createProductionBatch(context.store, {
+        organizationId: context.fixture.organizationId,
+        actorId: ACTOR,
+        locationId: context.fixture.locationId,
+        recipeVersionId: context.fixture.recipeVersionId,
+        plannedQty: "0.000000",
+      }),
+    ).rejects.toThrow(/plannedQty must be positive/);
+  });
+
+  it("is byte-identical to before when neither plannedQty nor planLineId is supplied", async () => {
+    const context = await setup();
+    const created = await createProductionBatch(context.store, {
+      organizationId: context.fixture.organizationId,
+      actorId: ACTOR,
+      locationId: context.fixture.locationId,
+      recipeVersionId: context.fixture.recipeVersionId,
+    });
+    expect(created.plannedQty).toBeNull();
+    expect(created.plannedOutputQty).toBe("1.000000");
+    expect(created.plannedInputs[0]?.plannedQty).toBe("0.500000");
+    expect(context.store.productionBatches.get(created.productionBatchId)?.plannedQty).toBeNull();
+  });
+});
+
+describe("createProductionBatch from a plan line (DEC-125)", () => {
+  async function planWithLine(context: Context, recipeVersionId: string, qty: string) {
+    const plan = await createProductionPlan(context.store, {
+      organizationId: context.fixture.organizationId,
+      actorId: ACTOR,
+      locationId: context.fixture.locationId,
+      productionDate: "2026-03-01",
+      lines: [{ recipeVersionId, plannedQty: qty }],
+    });
+    const lines = await context.store.listProductionPlanLines({
+      organizationId: context.fixture.organizationId,
+      planIds: [plan.productionPlanId],
+    });
+    return { planId: plan.productionPlanId, line: lines[0]! };
+  }
+
+  it("links the batch to the line and uses the line's quantity", async () => {
+    const context = await setup();
+    const { planId, line } = await planWithLine(
+      context,
+      context.fixture.recipeVersionId,
+      "60.000000",
+    );
+    const created = await createProductionBatch(context.store, {
+      organizationId: context.fixture.organizationId,
+      actorId: ACTOR,
+      locationId: context.fixture.locationId,
+      recipeVersionId: context.fixture.recipeVersionId,
+      planLineId: line.id,
+    });
+    expect(created.plannedQty).toBe("60.000000");
+    expect(created.plannedOutputQty).toBe("60.000000");
+    expect(created.plannedInputs[0]?.plannedQty).toBe("30.000000");
+    expect(context.store.productionBatches.get(created.productionBatchId)?.planId).toBe(planId);
+  });
+
+  it("rejects an unknown line and a foreign-organization line", async () => {
+    const context = await setup();
+    await expect(
+      createProductionBatch(context.store, {
+        organizationId: context.fixture.organizationId,
+        actorId: ACTOR,
+        locationId: context.fixture.locationId,
+        recipeVersionId: context.fixture.recipeVersionId,
+        planLineId: "missing-line",
+      }),
+    ).rejects.toThrow(/plan line not found in organization/);
+
+    context.store.productionPlanLines.set("foreign-line", {
+      id: "foreign-line",
+      organizationId: "org-other",
+      planId: "plan-other",
+      recipeVersionId: context.fixture.recipeVersionId,
+      plannedQty: "1.000000",
+      createdAt: AT,
+    });
+    await expect(
+      createProductionBatch(context.store, {
+        organizationId: context.fixture.organizationId,
+        actorId: ACTOR,
+        locationId: context.fixture.locationId,
+        recipeVersionId: context.fixture.recipeVersionId,
+        planLineId: "foreign-line",
+      }),
+    ).rejects.toThrow(/plan line not found in organization/);
+  });
+
+  it("rejects a line whose recipe version does not match the batch", async () => {
+    const context = await setup();
+    const otherVersion = approveDraft(context);
+    const { line } = await planWithLine(context, otherVersion, "10.000000");
+    await expect(
+      createProductionBatch(context.store, {
+        organizationId: context.fixture.organizationId,
+        actorId: ACTOR,
+        locationId: context.fixture.locationId,
+        recipeVersionId: context.fixture.recipeVersionId,
+        planLineId: line.id,
+      }),
+    ).rejects.toThrow(/recipe version does not match/);
+  });
+
+  it("rejects a line that belongs to a different plan", async () => {
+    const context = await setup();
+    const { line } = await planWithLine(context, context.fixture.recipeVersionId, "5.000000");
+    const other = await createProductionPlan(context.store, {
+      organizationId: context.fixture.organizationId,
+      actorId: ACTOR,
+      locationId: context.fixture.locationId,
+      productionDate: "2026-03-02",
+    });
+    await expect(
+      createProductionBatch(context.store, {
+        organizationId: context.fixture.organizationId,
+        actorId: ACTOR,
+        locationId: context.fixture.locationId,
+        recipeVersionId: context.fixture.recipeVersionId,
+        planId: other.productionPlanId,
+        planLineId: line.id,
+      }),
+    ).rejects.toThrow(/does not belong to the plan/);
   });
 });

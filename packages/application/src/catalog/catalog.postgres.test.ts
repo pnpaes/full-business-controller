@@ -13,8 +13,11 @@ import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createPostgresMasterDataStore } from "./postgres-store";
+import { registerSupplier } from "./register-supplier";
 import { registerSupplierItem } from "./register-supplier-item";
+import { registerUnitConversion } from "./register-unit-conversion";
 import { resolveConversion } from "./resolve-conversion";
+import { updateItem } from "./update-item";
 
 const databaseUrl = process.env.DATABASE_URL;
 const suffix = randomUUID().replace(/-/g, "").slice(0, 12);
@@ -130,6 +133,97 @@ describe.skipIf(!databaseUrl)("catalog commands against PostgreSQL", () => {
         fromUnitId: kilo[0]!.id,
         toUnitId: gram[0]!.id,
         asOf: new Date("2026-09-19T00:00:00.000Z"),
+      });
+      expect(resolved.factor).toBe("1000.000000");
+    });
+  });
+
+  it("updates an item's mutable fields through the port", async () => {
+    await inRollback(client.db, async (tx) => {
+      const base = await tx
+        .insert(unit)
+        .values({ organizationId: orgId, code: `g3_${suffix}`, dimension: "mass", isBase: true })
+        .returning();
+      const created = await tx
+        .insert(item)
+        .values({
+          organizationId: orgId,
+          code: `upd_${suffix}`,
+          sku: `UPD_${suffix}`,
+          name: "Before",
+          itemType: "ingredient",
+          baseUnitId: base[0]!.id,
+        })
+        .returning();
+
+      const store = createPostgresMasterDataStore(tx);
+      await updateItem(store, {
+        organizationId: orgId,
+        actorId: randomUUID(),
+        itemId: created[0]!.id,
+        name: "After",
+        lotTracked: true,
+      });
+
+      const read = await store.findCatalogItem(created[0]!.id);
+      expect(read).toMatchObject({
+        name: "After",
+        lotTracked: true,
+        code: `upd_${suffix}`,
+        sku: `UPD_${suffix}`,
+      });
+    });
+  });
+
+  it("registers a supplier through the port, idempotent on code", async () => {
+    await inRollback(client.db, async (tx) => {
+      const store = createPostgresMasterDataStore(tx);
+      const first = await registerSupplier(store, {
+        organizationId: orgId,
+        actorId: randomUUID(),
+        code: `sup2_${suffix}`,
+        name: "Supplier Two",
+        currency: "NOK",
+      });
+      const second = await registerSupplier(store, {
+        organizationId: orgId,
+        actorId: randomUUID(),
+        code: `sup2_${suffix}`,
+        name: "Ignored",
+      });
+
+      expect(first.created).toBe(true);
+      expect(second.created).toBe(false);
+      expect(second.supplierId).toBe(first.supplierId);
+    });
+  });
+
+  it("registers a global unit conversion through the port", async () => {
+    await inRollback(client.db, async (tx) => {
+      const gram = await tx
+        .insert(unit)
+        .values({ organizationId: orgId, code: `g4_${suffix}`, dimension: "mass", isBase: true })
+        .returning();
+      const kilo = await tx
+        .insert(unit)
+        .values({ organizationId: orgId, code: `kg4_${suffix}`, dimension: "mass", isBase: false })
+        .returning();
+
+      const store = createPostgresMasterDataStore(tx);
+      const { conversionId } = await registerUnitConversion(store, {
+        organizationId: orgId,
+        actorId: randomUUID(),
+        fromUnitCode: `kg4_${suffix}`,
+        toUnitCode: `g4_${suffix}`,
+        factor: "1000",
+      });
+      expect(conversionId).toBeTruthy();
+
+      const resolved = await resolveConversion(store, {
+        organizationId: orgId,
+        fromUnitId: kilo[0]!.id,
+        toUnitId: gram[0]!.id,
+        asOf: new Date(),
       });
       expect(resolved.factor).toBe("1000.000000");
     });

@@ -1,3 +1,4 @@
+import type { AuditInput } from "../auth";
 import type {
   CatalogItemPage,
   CatalogItemRecord,
@@ -6,12 +7,16 @@ import type {
   MasterDataStore,
   MasterItem,
   MasterSupplier,
+  MasterSupplierRecord,
   MasterUnit,
   NewMasterItem,
+  NewMasterSupplier,
   NewMasterUnit,
   NewSupplierItem,
+  NewUnitConversionRecord,
   SupplierItemDetail,
   SupplierItemRecord,
+  UpdateItemRecord,
 } from "./types";
 
 /**
@@ -30,9 +35,11 @@ export class FakeMasterDataStore implements MasterDataStore {
   readonly catalogItems = new Map<string, CatalogItemRecord>();
   readonly organizations = new Map<string, string>();
   readonly suppliers = new Map<string, MasterSupplier>();
+  readonly supplierMasters: MasterSupplierRecord[] = [];
   readonly supplierItems: SupplierItemRecord[] = [];
   readonly supplierItemDetails: SupplierItemDetail[] = [];
   readonly conversions: ConversionEdge[] = [];
+  readonly audits: AuditInput[] = [];
 
   private unitSequence = 0;
   private itemSequence = 0;
@@ -192,6 +199,68 @@ export class FakeMasterDataStore implements MasterDataStore {
     };
     this.supplierItems.push(record);
     return Promise.resolve(record);
+  }
+
+  updateItem(input: UpdateItemRecord): Promise<void> {
+    const catalog = this.catalogItems.get(input.itemId);
+    if (catalog !== undefined) {
+      this.catalogItems.set(input.itemId, {
+        ...catalog,
+        ...(input.name === undefined ? {} : { name: input.name }),
+        ...(input.inventoryPolicy === undefined ? {} : { inventoryPolicy: input.inventoryPolicy }),
+        ...(input.lotTracked === undefined ? {} : { lotTracked: input.lotTracked }),
+      });
+    }
+    return Promise.resolve();
+  }
+
+  findSupplierByCode(
+    organizationId: string,
+    code: string,
+  ): Promise<MasterSupplierRecord | undefined> {
+    return Promise.resolve(
+      this.supplierMasters.find(
+        (row) => row.organizationId === organizationId && row.code === code,
+      ),
+    );
+  }
+
+  createSupplier(input: NewMasterSupplier): Promise<MasterSupplierRecord> {
+    const record: MasterSupplierRecord = {
+      id: `supplier-${this.supplierMasters.length + 1}`,
+      organizationId: input.organizationId,
+      code: input.code,
+      name: input.name,
+      contact: input.contact ?? null,
+      terms: input.terms ?? null,
+      currency: input.currency,
+      active: input.active ?? true,
+    };
+    this.supplierMasters.push(record);
+    this.suppliers.set(record.id, { id: record.id, organizationId: record.organizationId });
+    return Promise.resolve(record);
+  }
+
+  createUnitConversion(input: NewUnitConversionRecord): Promise<{ id: string }> {
+    const id = `conversion-${this.conversions.length + 1}`;
+    const fromUnit = this.units.get(input.fromUnitId);
+    const toUnit = this.units.get(input.toUnitId);
+    if (fromUnit !== undefined && toUnit !== undefined) {
+      this.conversions.push({
+        fromUnit,
+        toUnit,
+        factor: input.factor,
+        itemId: input.itemId,
+        effectiveFrom: input.effectiveFrom,
+        effectiveTo: input.effectiveTo,
+      });
+    }
+    return Promise.resolve({ id });
+  }
+
+  writeAudit(input: AuditInput): Promise<void> {
+    this.audits.push(input);
+    return Promise.resolve();
   }
 
   listEffectiveConversions(

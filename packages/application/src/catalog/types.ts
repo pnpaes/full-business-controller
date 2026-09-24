@@ -1,5 +1,7 @@
 import type { UnitDimension } from "@aquarela/domain";
 
+import type { AuditInput } from "../auth";
+
 /**
  * Application-level ports and DTOs for slice-3 catalog / procurement master
  * data. The store is a narrow port over persistence so the commands can be
@@ -91,6 +93,52 @@ export interface MasterSupplier {
   readonly organizationId: string;
 }
 
+/** The supplier master-data record (structural subset of the persistence row). */
+export interface MasterSupplierRecord {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly code: string;
+  readonly name: string;
+  readonly contact: string | null;
+  readonly terms: string | null;
+  readonly currency: string;
+  readonly active: boolean;
+}
+
+export interface NewMasterSupplier {
+  readonly organizationId: string;
+  readonly code: string;
+  readonly name: string;
+  readonly contact?: string | null;
+  readonly terms?: string | null;
+  readonly currency: string;
+  readonly active?: boolean;
+}
+
+/**
+ * The mutable item fields `updateItem` accepts. Identity (`code`/`sku`), the
+ * base unit and the item type are deliberately absent: they anchor historical
+ * stock/cost facts and identity resolution, so changing them would reinterpret
+ * history rather than correct a label.
+ */
+export interface UpdateItemRecord {
+  readonly itemId: string;
+  readonly name?: string;
+  readonly inventoryPolicy?: string;
+  readonly lotTracked?: boolean;
+}
+
+/** A new `unit_conversion` row; `itemId` null is the org-wide global scope. */
+export interface NewUnitConversionRecord {
+  readonly organizationId: string;
+  readonly fromUnitId: string;
+  readonly toUnitId: string;
+  readonly factor: string;
+  readonly itemId: string | null;
+  readonly effectiveFrom: Date;
+  readonly effectiveTo: Date | null;
+}
+
 /** The served organization's display currency for monetary reads. */
 export interface CatalogOrganizationRecord {
   readonly id: string;
@@ -165,6 +213,15 @@ export interface MasterDataStore {
     supplierSku: string,
   ): Promise<SupplierItemRecord | undefined>;
   createSupplierItem(input: NewSupplierItem): Promise<SupplierItemRecord>;
+  /** Applies the mutable item fields to one existing item. */
+  updateItem(input: UpdateItemRecord): Promise<void>;
+  /** `supplier.code` is unique per organization. */
+  findSupplierByCode(
+    organizationId: string,
+    code: string,
+  ): Promise<MasterSupplierRecord | undefined>;
+  createSupplier(input: NewMasterSupplier): Promise<MasterSupplierRecord>;
+  createUnitConversion(input: NewUnitConversionRecord): Promise<{ readonly id: string }>;
   /**
    * Effective conversions for the organization at `asOf`. A non-null `itemId`
    * includes global edges and edges scoped to that item; null/absent returns
@@ -175,4 +232,6 @@ export interface MasterDataStore {
     asOf: Date,
     itemId: string | null,
   ): Promise<readonly ConversionEdge[]>;
+  /** Append-only audit fact; the caller must not pass secrets (ADR-0003 convention). */
+  writeAudit(input: AuditInput): Promise<void>;
 }

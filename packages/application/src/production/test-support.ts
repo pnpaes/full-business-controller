@@ -17,12 +17,14 @@ import type {
   NewProductionBatchInputRecord,
   NewProductionBatchOutputRecord,
   NewProductionBatchRecord,
+  NewProductionPlanLineRecord,
   NewProductionPlanRecord,
   ProductionBatchCostStore,
   ProductionBatchInputRecord,
   ProductionBatchOutputRecord,
   ProductionBatchPatch,
   ProductionBatchRecord,
+  ProductionPlanLineRecord,
   ProductionPlanRecord,
   ProductionRecipeLineRecord,
   ProductionRecipeRecord,
@@ -63,6 +65,8 @@ interface ProductionSnapshot {
   readonly stockMovements: Map<string, StockMovementRecord>;
   readonly stockLots: Map<string, StockLotRecord>;
   readonly audits: AuditInput[];
+  readonly productionPlans: Map<string, ProductionPlanRecord>;
+  readonly productionPlanLines: Map<string, ProductionPlanLineRecord>;
   readonly productionBatches: Map<string, ProductionBatchRecord>;
   readonly productionBatchInputs: ProductionBatchInputRecord[];
   readonly productionBatchOutputs: ProductionBatchOutputRecord[];
@@ -78,6 +82,7 @@ interface ProductionSnapshot {
  */
 export class FakeProductionStore extends FakeInventoryStore implements ProductionStore {
   readonly productionPlans = new Map<string, ProductionPlanRecord>();
+  readonly productionPlanLines = new Map<string, ProductionPlanLineRecord>();
   readonly productionBatches = new Map<string, ProductionBatchRecord>();
   readonly productionBatchInputs: ProductionBatchInputRecord[] = [];
   readonly productionBatchOutputs: ProductionBatchOutputRecord[] = [];
@@ -114,6 +119,8 @@ export class FakeProductionStore extends FakeInventoryStore implements Productio
       stockMovements: new Map(this.stockMovements),
       stockLots: new Map(this.stockLots),
       audits: [...this.audits],
+      productionPlans: new Map(this.productionPlans),
+      productionPlanLines: new Map(this.productionPlanLines),
       productionBatches: new Map(this.productionBatches),
       productionBatchInputs: [...this.productionBatchInputs],
       productionBatchOutputs: [...this.productionBatchOutputs],
@@ -130,6 +137,11 @@ export class FakeProductionStore extends FakeInventoryStore implements Productio
     for (const [key, value] of snapshot.stockLots) this.stockLots.set(key, value);
     this.audits.length = 0;
     this.audits.push(...snapshot.audits);
+    this.productionPlans.clear();
+    for (const [key, value] of snapshot.productionPlans) this.productionPlans.set(key, value);
+    this.productionPlanLines.clear();
+    for (const [key, value] of snapshot.productionPlanLines)
+      this.productionPlanLines.set(key, value);
     this.productionBatches.clear();
     for (const [key, value] of snapshot.productionBatches) this.productionBatches.set(key, value);
     this.productionBatchInputs.length = 0;
@@ -182,9 +194,10 @@ export class FakeProductionStore extends FakeInventoryStore implements Productio
     readonly productionPlanId: string;
   }): Promise<ProductionPlanRecord | undefined> {
     const plan = this.productionPlans.get(query.productionPlanId);
-    return Promise.resolve(
-      plan !== undefined && plan.organizationId === query.organizationId ? plan : undefined,
-    );
+    if (plan === undefined || plan.organizationId !== query.organizationId) {
+      return Promise.resolve(undefined);
+    }
+    return Promise.resolve({ ...plan, lines: this.linesFor(plan.id) });
   }
 
   listProductionPlans(query: ListProductionPlansQuery): Promise<readonly ProductionPlanRecord[]> {
@@ -204,7 +217,50 @@ export class FakeProductionStore extends FakeInventoryStore implements Productio
     if (query.limit !== undefined) {
       rows = rows.slice(0, query.limit);
     }
-    return Promise.resolve(rows);
+    return Promise.resolve(rows.map((plan) => ({ ...plan, lines: this.linesFor(plan.id) })));
+  }
+
+  private linesFor(planId: string): readonly ProductionPlanLineRecord[] {
+    return [...this.productionPlanLines.values()]
+      .filter((line) => line.planId === planId)
+      .sort((a, b) => {
+        if (a.createdAt !== b.createdAt) {
+          return a.createdAt < b.createdAt ? -1 : 1;
+        }
+        return a.id < b.id ? -1 : 1;
+      });
+  }
+
+  listProductionPlanLines(query: {
+    readonly organizationId: string;
+    readonly planIds: readonly string[];
+  }): Promise<readonly ProductionPlanLineRecord[]> {
+    const ids = new Set(query.planIds);
+    return Promise.resolve(
+      [...this.productionPlanLines.values()].filter(
+        (line) => line.organizationId === query.organizationId && ids.has(line.planId),
+      ),
+    );
+  }
+
+  createProductionPlanLine(input: NewProductionPlanLineRecord): Promise<ProductionPlanLineRecord> {
+    const record: ProductionPlanLineRecord = {
+      id: this.nextProductionId("plan-line"),
+      createdAt: new Date().toISOString(),
+      ...input,
+    };
+    this.productionPlanLines.set(record.id, record);
+    return Promise.resolve(record);
+  }
+
+  findProductionPlanLine(query: {
+    readonly organizationId: string;
+    readonly planLineId: string;
+  }): Promise<ProductionPlanLineRecord | undefined> {
+    const line = this.productionPlanLines.get(query.planLineId);
+    return Promise.resolve(
+      line !== undefined && line.organizationId === query.organizationId ? line : undefined,
+    );
   }
 
   createProductionPlan(input: NewProductionPlanRecord): Promise<ProductionPlanRecord> {
@@ -214,6 +270,7 @@ export class FakeProductionStore extends FakeInventoryStore implements Productio
       locationId: input.locationId,
       productionDate: input.productionDate,
       status: input.status,
+      lines: [],
       createdBy: input.createdBy,
       createdAt: new Date().toISOString(),
     };
@@ -267,6 +324,7 @@ export class FakeProductionStore extends FakeInventoryStore implements Productio
       actualFinish: null,
       operatorId: input.operatorId,
       destinationStorageAreaId: input.destinationStorageAreaId,
+      plannedQty: input.plannedQty,
       plannedOutputQty: input.plannedOutputQty,
       actualOutputQty: null,
       yieldVariancePct: null,

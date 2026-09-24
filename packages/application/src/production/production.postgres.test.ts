@@ -377,4 +377,109 @@ describe.skipIf(!databaseUrl)("production vertical against PostgreSQL", () => {
       expect(exceptions[0]?.detectedAt).toBeInstanceOf(Date);
     });
   });
+
+  it("stores plan lines, scopes them by organization and cascades on plan delete (DEC-125)", async () => {
+    await inRollback(client.db, async (tx) => {
+      const fixture = await seedFixture(tx, orgId);
+      const store = createPostgresProductionStore(tx);
+      const actorId = randomUUID();
+
+      const plan = await createProductionPlan(store, {
+        organizationId: orgId,
+        actorId,
+        locationId: fixture.locationId,
+        productionDate: "2026-03-01",
+        lines: [{ recipeVersionId: fixture.recipeVersionId, plannedQty: "60.000000" }],
+      });
+      const read = await store.findProductionPlan({
+        organizationId: orgId,
+        productionPlanId: plan.productionPlanId,
+      });
+      expect(read?.lines).toHaveLength(1);
+      expect(read?.lines[0]).toMatchObject({
+        organizationId: orgId,
+        planId: plan.productionPlanId,
+        recipeVersionId: fixture.recipeVersionId,
+        plannedQty: "60.000000",
+      });
+
+      // A foreign organization cannot read the lines.
+      const foreign = await store.listProductionPlanLines({
+        organizationId: randomUUID(),
+        planIds: [plan.productionPlanId],
+      });
+      expect(foreign).toHaveLength(0);
+
+      // Deleting the plan removes its lines (ON DELETE cascade).
+      const before = await tx.execute<{ n: number }>(
+        `select count(*)::int as n from production_plan_line where plan_id = '${plan.productionPlanId}'`,
+      );
+      expect(before.rows[0]?.n).toBe(1);
+      await tx.execute(`delete from production_plan where id = '${plan.productionPlanId}'`);
+      const after = await tx.execute<{ n: number }>(
+        `select count(*)::int as n from production_plan_line where plan_id = '${plan.productionPlanId}'`,
+      );
+      expect(after.rows[0]?.n).toBe(0);
+    });
+  });
+
+  it("scales the persisted planned snapshot from a batch planned quantity (DEC-125)", async () => {
+    await inRollback(client.db, async (tx) => {
+      const fixture = await seedFixture(tx, orgId);
+      const store = createPostgresProductionStore(tx);
+      const actorId = randomUUID();
+      await seedStock(store, orgId, fixture, actorId);
+
+      const created = await createProductionBatch(store, {
+        organizationId: orgId,
+        actorId,
+        locationId: fixture.locationId,
+        recipeVersionId: fixture.recipeVersionId,
+        destinationStorageAreaId: fixture.storageAreaId,
+        plannedQty: "60.000000",
+      });
+      expect(created.plannedQty).toBe("60.000000");
+      expect(created.plannedOutputQty).toBe("60.000000");
+      expect(created.plannedInputs[0]?.plannedQty).toBe("30.000000");
+
+      const header = await store.findProductionBatch({
+        organizationId: orgId,
+        productionBatchId: created.productionBatchId,
+      });
+      expect(header?.plannedQty).toBe("60.000000");
+      expect(header?.plannedOutputQty).toBe("60.000000");
+
+      // Completing with the scaled actuals persists the scaled planned line.
+      await releaseProductionBatch(store, {
+        organizationId: orgId,
+        actorId,
+        productionBatchId: created.productionBatchId,
+      });
+      await startProductionBatch(store, {
+        organizationId: orgId,
+        actorId,
+        productionBatchId: created.productionBatchId,
+        actualStart: "2026-03-01T08:30:00.000Z",
+      });
+      await completeProductionBatch(store, {
+        organizationId: orgId,
+        actorId,
+        productionBatchId: created.productionBatchId,
+        actualFinish: "2026-03-01T10:00:00.000Z",
+        inputStorageAreaId: fixture.storageAreaId,
+        inputs: [{ itemId: fixture.inputItemId, actualQty: "30.000000" }],
+        output: { itemId: fixture.outputItemId, actualQty: "60.000000" },
+      });
+
+      const inputs = await store.listProductionBatchInputs({
+        organizationId: orgId,
+        productionBatchId: created.productionBatchId,
+      });
+      expect(inputs[0]).toMatchObject({
+        plannedQty: "30.000000",
+        actualQty: "30.000000",
+        varianceQty: "0.000000",
+      });
+    });
+  });
 });

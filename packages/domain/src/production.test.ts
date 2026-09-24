@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { DomainError } from "./errors";
-import { outputUnitCost, yieldRate, yieldVariancePct } from "./production";
+import { outputUnitCost, scaleQuantityByRatio, yieldRate, yieldVariancePct } from "./production";
 
 describe("yieldRate", () => {
   it("derives the actual output/input ratio at 6 dp", () => {
@@ -64,5 +64,33 @@ describe("outputUnitCost", () => {
 
   it("rejects a negative input cost", () => {
     expect(() => outputUnitCost("-1.0000", "1")).toThrow(/inputCost must not be negative/);
+  });
+});
+
+describe("scaleQuantityByRatio (DEC-125)", () => {
+  it("scales by numerator / denominator, rounding once at B0", () => {
+    expect(scaleQuantityByRatio("0.500000", "60.000000", "1.000000")).toBe("30.000000");
+    // 0.500000 × 0.333333 / 1.000000 = 0.1666665 → HALF_UP → 0.166667.
+    expect(scaleQuantityByRatio("0.500000", "0.333333", "1.000000")).toBe("0.166667");
+    // The ratio cancels: a version's planned output scaled to itself is exact.
+    expect(scaleQuantityByRatio("4.000000", "4.000000", "4.000000")).toBe("4.000000");
+  });
+
+  it("never rounds the intermediate product", () => {
+    // 1/3 of 3 exactly = 1: a two-step (factor then multiply) would drift.
+    expect(scaleQuantityByRatio("3.000000", "1.000000", "3.000000")).toBe("1.000000");
+    expect(scaleQuantityByRatio("1.000000", "1.000000", "3.000000")).toBe("0.333333");
+  });
+
+  it("rejects a non-positive denominator and a negative numerator", () => {
+    expect(() => scaleQuantityByRatio("1.000000", "1.000000", "0")).toThrow(
+      /denominator must be positive/,
+    );
+    expect(() => scaleQuantityByRatio("1.000000", "-1.000000", "1.000000")).toThrow(
+      /numerator must not be negative/,
+    );
+    expect(() => scaleQuantityByRatio("-1.000000", "1.000000", "1.000000")).toThrow(
+      /quantity must not be negative/,
+    );
   });
 });
