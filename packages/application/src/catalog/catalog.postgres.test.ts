@@ -3,6 +3,7 @@ import {
   createSupplier,
   findSupplierItemBySku,
   item,
+  organization,
   type DatabaseTransaction,
   type DbClient,
   type NodeDatabase,
@@ -195,6 +196,25 @@ describe.skipIf(!databaseUrl)("catalog commands against PostgreSQL", () => {
       expect(first.created).toBe(true);
       expect(second.created).toBe(false);
       expect(second.supplierId).toBe(first.supplierId);
+    });
+  });
+
+  it("lists only the organization's units through the port, ordered by code", async () => {
+    await inRollback(client.db, async (tx) => {
+      const other = await tx
+        .insert(organization)
+        .values({ legalName: `Catalog other IT ${suffix}` })
+        .returning();
+      await tx.insert(unit).values([
+        { organizationId: orgId, code: `zz_${suffix}`, dimension: "mass", isBase: false },
+        { organizationId: orgId, code: `aa_${suffix}`, dimension: "volume", isBase: false },
+        { organizationId: other[0]!.id, code: `mm_${suffix}`, dimension: "count", isBase: false },
+      ]);
+
+      const store = createPostgresMasterDataStore(tx);
+      const rows = await store.listUnits({ organizationId: orgId });
+      expect(rows.map((row) => row.code)).toEqual([`aa_${suffix}`, `zz_${suffix}`]);
+      expect(rows.some((row) => row.dimension === "count")).toBe(false);
     });
   });
 

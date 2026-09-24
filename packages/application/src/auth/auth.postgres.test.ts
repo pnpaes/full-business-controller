@@ -151,4 +151,37 @@ describe.skipIf(!databaseUrl)("auth commands against PostgreSQL", () => {
       expect(access.locationIds).toContain(locationId);
     });
   });
+
+  it("reads the audit register organization-scoped through the port", async () => {
+    await inRollback(client.db, async (tx) => {
+      const store = createPostgresAuthStore(tx);
+      await store.writeAudit({
+        organizationId: orgId,
+        actorId: userId,
+        action: "login_success",
+        entityType: "app_user",
+        entityId: userId,
+      });
+      await store.writeAudit({
+        organizationId: orgId,
+        actorId: userId,
+        action: "role_granted",
+        entityType: "app_user",
+        entityId: userId,
+      });
+
+      const rows = await store.listAuditEvents({ organizationId: orgId, entityType: "app_user" });
+      expect(rows.map((row) => row.action).sort()).toEqual(["login_success", "role_granted"]);
+      expect(rows.every((row) => row.organizationId === orgId)).toBe(true);
+
+      const filtered = await store.listAuditEvents({
+        organizationId: orgId,
+        action: "role_granted",
+      });
+      expect(filtered).toHaveLength(1);
+      expect(filtered[0]?.action).toBe("role_granted");
+
+      expect(await store.listAuditEvents({ organizationId: randomUUID() })).toEqual([]);
+    });
+  });
 });

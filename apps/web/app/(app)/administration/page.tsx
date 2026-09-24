@@ -1,9 +1,18 @@
-import { createPostgresMasterDataStore } from "@aquarela/application";
+import {
+  createPostgresDataQualityReadStore,
+  createPostgresMasterDataStore,
+  listAuditEvents,
+  listDataQualityExceptions,
+  listUnits,
+  loadUserAccess,
+} from "@aquarela/application";
 import {
   Badge,
+  DataTable,
   EmptyState,
   PageHeader,
   SectionCard,
+  StatusPill,
   Table,
   Td,
   Th,
@@ -13,9 +22,17 @@ import {
 } from "@aquarela/ui";
 import { redirect } from "next/navigation";
 
+import { getAuthStore } from "../../../lib/auth";
 import { getDb } from "../../../lib/db";
 import { resolveOrganization } from "../../../lib/organization";
 import { getServerSession } from "../../../lib/server-session";
+
+import {
+  ADMIN_AUDIT_READ_ROLES,
+  ADMIN_DATA_QUALITY_READ_ROLES,
+  ADMIN_UNIT_READ_ROLES,
+  isAdministrationAuthorized,
+} from "../../api/v1/administration/access";
 
 import { UnitConversionForm } from "./unit-conversion-form";
 
@@ -24,11 +41,13 @@ export const metadata = { title: "Administration — Aquarela Business Control" 
 
 /**
  * Administration hub (08_UI_UX.md §8.3: users/scopes, tax/rules, units,
- * imports, integrations, audit and data quality). Only capabilities with an
- * existing screen and application service are linked — Imports today. The
- * remaining domains have no application read service and no route yet, so they
- * are listed as unavailable instead of offering controls that do nothing.
- * No backend was added in this wave.
+ * imports, integrations, audit and data quality). Capabilities with an existing
+ * screen and application service are linked or rendered — Imports, the
+ * conversion graph, the unit register, the data-quality exception register and
+ * the audit register. Each read is gated on the caller's live roles
+ * (`loadUserAccess`, ADR-0003), so a role without read sees nothing rather than
+ * an empty register. Users/scopes, tax/rules and integrations still have no
+ * application service and no route, so they stay listed as unavailable.
  */
 
 const contentColumn = {
@@ -76,6 +95,63 @@ function trimDecimal(value: string): string {
   return trimmed.length === 0 ? "0" : trimmed;
 }
 
+/** Locale-aware Norwegian date (§7.8: locale-aware presentation, canonical storage). */
+const norwegianDate = new Intl.DateTimeFormat("nb-NO", {
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+});
+
+/** ISO instant or `yyyy-mm-dd` day → `dd.MM.yyyy`; `null`/unparseable → an em dash. */
+function formatNorwegianDate(value: string | null): string {
+  if (value === null) {
+    return "—";
+  }
+  const date = value.length === 10 ? new Date(`${value}T00:00:00Z`) : new Date(value);
+  return Number.isNaN(date.getTime()) ? "—" : norwegianDate.format(date);
+}
+
+const norwegianDateTime = new Intl.DateTimeFormat("nb-NO", {
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
+/** ISO instant → `dd.MM.yyyy HH:mm`; unparseable → an em dash. */
+function formatNorwegianDateTime(value: string): string {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "—" : norwegianDateTime.format(date);
+}
+
+type PillTone = "success" | "warning" | "danger" | "info";
+
+/** Exception severity → status tone (`low`/`medium`/`high`/`critical`). */
+function severityTone(severity: string): PillTone {
+  switch (severity) {
+    case "critical":
+    case "high":
+      return "danger";
+    case "medium":
+      return "warning";
+    default:
+      return "info";
+  }
+}
+
+/** Exception status → status tone (`open`/`acknowledged`/`resolved`/`dismissed`). */
+function exceptionStatusTone(status: string): PillTone {
+  switch (status) {
+    case "open":
+      return "warning";
+    case "resolved":
+      return "success";
+    default:
+      return "info";
+  }
+}
+
 export default async function AdministrationPage() {
   const session = await getServerSession();
   if (session === undefined) {
@@ -84,8 +160,19 @@ export default async function AdministrationPage() {
 
   const organizationId = resolveOrganization();
   const store = createPostgresMasterDataStore(getDb().db);
+  const access = await loadUserAccess(getAuthStore(), session.userId);
+  const canReadUnits = isAdministrationAuthorized(access, ADMIN_UNIT_READ_ROLES);
+  const canReadDataQuality = isAdministrationAuthorized(access, ADMIN_DATA_QUALITY_READ_ROLES);
+  const canReadAudit = isAdministrationAuthorized(access, ADMIN_AUDIT_READ_ROLES);
   const asOf = new Date();
   const conversions = await store.listEffectiveConversions(organizationId, asOf, null);
+  const units = canReadUnits ? await listUnits(store, { organizationId }) : [];
+  const exceptions = canReadDataQuality
+    ? await listDataQualityExceptions(createPostgresDataQualityReadStore(getDb().db), {
+        organizationId,
+      })
+    : [];
+  const auditEvents = canReadAudit ? await listAuditEvents(getAuthStore(), { organizationId }) : [];
   const knownCodes = [
     ...new Set(conversions.flatMap((edge) => [edge.fromUnit.code, edge.toUnit.code])),
   ];
@@ -168,6 +255,99 @@ export default async function AdministrationPage() {
         </details>
       </SectionCard>
 
+      {canReadUnits ? (
+        <SectionCard title="Units" meta={`${units.length} shown · FND-003`}>
+          {units.length === 0 ? (
+            <EmptyState title="No units registered yet">
+              Units of measure are registered by the catalogue service. None exist for this
+              organization yet.
+            </EmptyState>
+          ) : (
+            <DataTable
+              caption="Units of measure registered for this organization, ordered by code."
+              columns={[
+                { key: "code", header: "Code" },
+                { key: "dimension", header: "Dimension" },
+                { key: "base", header: "Base unit" },
+              ]}
+              rows={units.map((unit) => ({
+                code: unit.code,
+                dimension: unit.dimension,
+                base: unit.isBase ? <Badge>base</Badge> : "—",
+              }))}
+              emptyMessage="No units registered yet."
+            />
+          )}
+        </SectionCard>
+      ) : null}
+
+      {canReadDataQuality ? (
+        <SectionCard title="Data quality" meta={`${exceptions.length} shown · DQ-001`}>
+          {exceptions.length === 0 ? (
+            <EmptyState title="No exceptions recorded yet">
+              The data-quality rules (completeness, freshness, reconciliation, variance) have not
+              recorded an exception for this organization yet.
+            </EmptyState>
+          ) : (
+            <DataTable
+              caption="Data-quality exceptions for this organization, newest first."
+              columns={[
+                { key: "rule", header: "Rule" },
+                { key: "entity", header: "Entity" },
+                { key: "severity", header: "Severity" },
+                { key: "status", header: "Status" },
+                { key: "detected", header: "Detected" },
+                { key: "due", header: "Due" },
+              ]}
+              rows={exceptions.map((row) => ({
+                rule: row.ruleCode,
+                entity: `${row.entityType} · ${row.entityId.slice(0, 8)}`,
+                severity: <StatusPill tone={severityTone(row.severity)}>{row.severity}</StatusPill>,
+                status: (
+                  <StatusPill tone={exceptionStatusTone(row.status)}>{row.status}</StatusPill>
+                ),
+                detected: formatNorwegianDate(row.detectedAt),
+                due: formatNorwegianDate(row.dueDate),
+              }))}
+              emptyMessage="No exceptions recorded yet."
+            />
+          )}
+        </SectionCard>
+      ) : null}
+
+      {canReadAudit ? (
+        <SectionCard title="Audit" meta={`${auditEvents.length} shown · §7.3`}>
+          {auditEvents.length === 0 ? (
+            <EmptyState title="No audit events recorded yet">
+              Audit events are appended by every create, update, retire, post, approve, reject,
+              reverse, close, export and security change. None exist for this organization yet.
+            </EmptyState>
+          ) : (
+            <DataTable
+              caption="Audit events for this organization, newest first."
+              columns={[
+                { key: "time", header: "Time" },
+                { key: "action", header: "Action" },
+                { key: "entity", header: "Entity" },
+                { key: "actor", header: "Actor" },
+                { key: "reason", header: "Reason" },
+              ]}
+              rows={auditEvents.map((row) => ({
+                time: formatNorwegianDateTime(row.occurredAt),
+                action: row.action,
+                entity:
+                  row.entityId === null
+                    ? row.entityType
+                    : `${row.entityType} · ${row.entityId.slice(0, 8)}`,
+                actor: row.actorId === null ? "—" : row.actorId.slice(0, 8),
+                reason: row.reason ?? "—",
+              }))}
+              emptyMessage="No audit events recorded yet."
+            />
+          )}
+        </SectionCard>
+      ) : null}
+
       <SectionCard title="Not available yet" headingLevel={3} meta="No backend">
         <ul style={list}>
           <li>
@@ -179,21 +359,8 @@ export default async function AdministrationPage() {
             exists yet.
           </li>
           <li>
-            <Badge>No backend</Badge> Units — unit registration exists in the catalog service, and
-            the org-wide conversion graph is listed and extended in the section above; there is
-            still no read service to list the units themselves, so they stay unlisted.
-          </li>
-          <li>
             <Badge>No backend</Badge> Integrations — no integration configuration service or screen
             exists yet.
-          </li>
-          <li>
-            <Badge>No backend</Badge> Audit — events can only be written by other slices; there is
-            no read service or screen to review them yet.
-          </li>
-          <li>
-            <Badge>No backend</Badge> Data quality — exceptions can only be recorded by other
-            slices; there is no read service or screen to review them yet.
           </li>
         </ul>
       </SectionCard>

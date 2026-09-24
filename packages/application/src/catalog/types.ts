@@ -139,6 +139,14 @@ export interface NewUnitConversionRecord {
   readonly effectiveTo: Date | null;
 }
 
+/** Unit filters for the store read (the read-side companion of `createUnit`). */
+export interface UnitListQuery {
+  readonly organizationId: string;
+  readonly dimension?: UnitDimension;
+  readonly limit?: number;
+  readonly offset?: number;
+}
+
 /** The served organization's display currency for monetary reads. */
 export interface CatalogOrganizationRecord {
   readonly id: string;
@@ -191,6 +199,11 @@ export interface MasterDataStore {
   /** `unit.code` is unique per organization. */
   findUnitByCode(organizationId: string, code: string): Promise<MasterUnit | undefined>;
   createUnit(input: NewMasterUnit): Promise<MasterUnit>;
+  /**
+   * Organization units ordered by `code` (then `id`), optionally filtered by
+   * dimension. The organization is always supplied (`DEC-061`).
+   */
+  listUnits(query: UnitListQuery): Promise<readonly MasterUnit[]>;
   findItem(itemId: string): Promise<MasterItem | undefined>;
   /** `item.code` is unique per organization. */
   findItemByCode(organizationId: string, code: string): Promise<MasterItem | undefined>;

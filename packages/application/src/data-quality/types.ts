@@ -45,3 +45,30 @@ export interface DataQualityExceptionStore {
     input: NewDataQualityExceptionRecord,
   ): Promise<DataQualityExceptionRecord>;
 }
+
+/**
+ * The read-side filters for the exception register (`07_SECURITY_AND_NFR.md`
+ * §7.9: exceptions carry severity, owner, due date and status). Organization is
+ * required and never optional (`DEC-061`).
+ */
+export interface DataQualityExceptionListQuery {
+  readonly organizationId: string;
+  readonly status?: string;
+  readonly severity?: string;
+  readonly entityType?: string;
+  readonly limit?: number;
+  readonly offset?: number;
+}
+
+/**
+ * The read port for the exception register, kept separate from the producer port
+ * above so the count/production/transfer stores that extend
+ * `DataQualityExceptionStore` are not forced to implement a read they never use.
+ * The Postgres adapter delegates to the persistence repository; the producer
+ * port's comment already notes that reads live there.
+ */
+export interface DataQualityExceptionReadStore {
+  listDataQualityExceptions(
+    query: DataQualityExceptionListQuery,
+  ): Promise<readonly DataQualityExceptionRecord[]>;
+}

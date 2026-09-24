@@ -1,11 +1,31 @@
 import * as repo from "@aquarela/persistence";
 import type { Database, NodeDatabase } from "@aquarela/persistence";
 
-import type { AuthStore, CreateSessionInput } from "./types";
+import type { AuditEventRecord, AuthStore, CreateSessionInput } from "./types";
 
 /** A transaction handle has no `transaction` method of its own. */
 function isNodeDatabase(db: Database): db is NodeDatabase {
   return typeof (db as NodeDatabase).transaction === "function";
+}
+
+/** `audit_event` row → port record; `occurred_at` becomes an ISO string. */
+function toAuditEventRecord(row: repo.AuditEvent): AuditEventRecord {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    actorId: row.actorId,
+    impersonationContext: row.impersonationContext,
+    action: row.action,
+    entityType: row.entityType,
+    entityId: row.entityId,
+    entityVersion: row.entityVersion,
+    before: row.before,
+    after: row.after,
+    reason: row.reason,
+    requestId: row.requestId,
+    correlationId: row.correlationId,
+    occurredAt: row.occurredAt.toISOString(),
+  };
 }
 
 /**
@@ -99,5 +119,19 @@ export function createPostgresAuthStore(db: Database): AuthStore {
     writeAudit: async (input) => {
       await repo.writeAuditEvent(db, input);
     },
+    listAuditEvents: async (query) =>
+      (
+        await repo.listAuditEvents(db, {
+          organizationId: query.organizationId,
+          ...(query.entityType === undefined ? {} : { entityType: query.entityType }),
+          ...(query.entityId === undefined ? {} : { entityId: query.entityId }),
+          ...(query.action === undefined ? {} : { action: query.action }),
+          ...(query.actorId === undefined ? {} : { actorId: query.actorId }),
+          ...(query.from === undefined ? {} : { from: new Date(query.from) }),
+          ...(query.to === undefined ? {} : { to: new Date(query.to) }),
+          ...(query.limit === undefined ? {} : { limit: query.limit }),
+          ...(query.offset === undefined ? {} : { offset: query.offset }),
+        })
+      ).map(toAuditEventRecord),
   };
 }

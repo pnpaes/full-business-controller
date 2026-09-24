@@ -16,6 +16,7 @@ import type {
   NewUnitConversionRecord,
   SupplierItemDetail,
   SupplierItemRecord,
+  UnitListQuery,
   UpdateItemRecord,
 } from "./types";
 
@@ -41,11 +42,20 @@ export class FakeMasterDataStore implements MasterDataStore {
   readonly conversions: ConversionEdge[] = [];
   readonly audits: AuditInput[] = [];
 
+  /** Owning organization per unit id, so `listUnits` can scope by tenant. */
+  private readonly unitOrganizations = new Map<string, string>();
+
   private unitSequence = 0;
   private itemSequence = 0;
 
   addConversion(edge: ConversionEdge): void {
     this.conversions.push(edge);
+  }
+
+  /** Seeds one unit for `organizationId` (the read fixture `createUnit` cannot tag). */
+  addUnit(record: MasterUnit, organizationId: string): void {
+    this.units.set(record.id, record);
+    this.unitOrganizations.set(record.id, organizationId);
   }
 
   addCatalogItem(record: CatalogItemRecord): void {
@@ -77,7 +87,21 @@ export class FakeMasterDataStore implements MasterDataStore {
       isBase: input.isBase ?? false,
     };
     this.units.set(record.id, record);
+    this.unitOrganizations.set(record.id, input.organizationId);
     return Promise.resolve(record);
+  }
+
+  listUnits(query: UnitListQuery): Promise<readonly MasterUnit[]> {
+    const matching = [...this.units.values()]
+      .filter((row) => this.unitOrganizations.get(row.id) === query.organizationId)
+      .filter((row) => query.dimension === undefined || row.dimension === query.dimension)
+      .sort((a, b) => a.code.localeCompare(b.code) || a.id.localeCompare(b.id));
+    const offset = query.offset ?? 0;
+    return Promise.resolve(
+      query.limit === undefined
+        ? matching.slice(offset)
+        : matching.slice(offset, offset + query.limit),
+    );
   }
 
   findItem(itemId: string): Promise<MasterItem | undefined> {

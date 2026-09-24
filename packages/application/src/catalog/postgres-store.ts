@@ -184,6 +184,7 @@ export function createPostgresMasterDataStore(db: Database): MasterDataStore {
       });
       return toMasterUnit(row);
     },
+    listUnits: async (query) => (await repo.listUnits(db, query)).map(toMasterUnit),
     findItem: async (itemId) => {
       const row = await repo.findItemById(db, itemId);
       return row === undefined ? undefined : toMasterItem(row);

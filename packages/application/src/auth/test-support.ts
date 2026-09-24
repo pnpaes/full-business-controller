@@ -4,6 +4,8 @@ import { generateTotpSecret, hashPassword, hashRecoveryCodes, sealSecret } from 
 import type { UserStatus } from "@aquarela/persistence";
 
 import type {
+  AuditEventListQuery,
+  AuditEventRecord,
   AuditInput,
   AuthDeps,
   AuthResetTokenRecord,
@@ -49,6 +51,7 @@ export class FakeAuthStore implements AuthStore {
     { id: string; userId: string; tokenHash: string; expiresAt: Date; revokedAt: Date | null }
   >();
   readonly audits: AuditInput[] = [];
+  readonly auditEvents: AuditEventRecord[] = [];
   readonly failures: Array<{ userId: string; lockedUntil: Date | null }> = [];
   readonly successes: string[] = [];
   readonly passwordUpdates: string[] = [];
@@ -80,6 +83,11 @@ export class FakeAuthStore implements AuthStore {
 
   addRole(roleId: string, code: string): void {
     this.roleCodes.set(roleId, code);
+  }
+
+  /** Seeds one audit fact for the read-service tests, bypassing `writeAudit`. */
+  addAuditEvent(record: AuditEventRecord): void {
+    this.auditEvents.push(record);
   }
 
   actions(): string[] {
@@ -330,6 +338,38 @@ export class FakeAuthStore implements AuthStore {
 
   async writeAudit(input: AuditInput): Promise<void> {
     this.audits.push(input);
+    this.auditEvents.push({
+      id: randomUUID(),
+      organizationId: input.organizationId,
+      actorId: input.actorId,
+      impersonationContext: null,
+      action: input.action,
+      entityType: input.entityType,
+      entityId: input.entityId,
+      entityVersion: null,
+      before: input.before ?? null,
+      after: input.after ?? null,
+      reason: input.reason ?? null,
+      requestId: input.requestId ?? null,
+      correlationId: null,
+      occurredAt: new Date().toISOString(),
+    });
+  }
+
+  async listAuditEvents(query: AuditEventListQuery): Promise<readonly AuditEventRecord[]> {
+    const matching = this.auditEvents
+      .filter((row) => row.organizationId === query.organizationId)
+      .filter((row) => query.entityType === undefined || row.entityType === query.entityType)
+      .filter((row) => query.entityId === undefined || row.entityId === query.entityId)
+      .filter((row) => query.action === undefined || row.action === query.action)
+      .filter((row) => query.actorId === undefined || row.actorId === query.actorId)
+      .filter((row) => query.from === undefined || row.occurredAt >= query.from)
+      .filter((row) => query.to === undefined || row.occurredAt <= query.to)
+      .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt) || b.id.localeCompare(a.id));
+    const offset = query.offset ?? 0;
+    return query.limit === undefined
+      ? matching.slice(offset)
+      : matching.slice(offset, offset + query.limit);
   }
 }
 

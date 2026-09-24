@@ -59,6 +59,39 @@ export async function findUnitByCode(
   return rows[0];
 }
 
+export interface ListUnitsQuery {
+  readonly organizationId: string;
+  readonly dimension?: string;
+  readonly limit?: number;
+  readonly offset?: number;
+}
+
+/**
+ * Units for one organization, ordered by `code` (then `id`), with an optional
+ * dimension filter. The organization is never optional (`DEC-061`), so the read
+ * can never cross tenants; paging is applied after the ordering.
+ */
+export async function listUnits(db: Database, query: ListUnitsQuery): Promise<Unit[]> {
+  const statement = db
+    .select()
+    .from(unit)
+    .where(
+      and(
+        eq(unit.organizationId, query.organizationId),
+        query.dimension === undefined ? undefined : eq(unit.dimension, query.dimension),
+      ),
+    )
+    .orderBy(asc(unit.code), asc(unit.id))
+    .$dynamic();
+  if (query.limit !== undefined) {
+    statement.limit(query.limit);
+  }
+  if (query.offset !== undefined) {
+    statement.offset(query.offset);
+  }
+  return statement;
+}
+
 /** `item.code` is unique per organization (`item_organization_id_code_key`). */
 export async function findItemByCode(
   db: Database,

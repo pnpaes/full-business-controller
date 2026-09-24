@@ -47,6 +47,44 @@ export interface AuditInput {
   readonly after?: unknown;
 }
 
+/**
+ * One `audit_event` row as the review read sees it (`07_SECURITY_AND_NFR.md`
+ * §7.3). `occurred_at` crosses the port as an ISO string like every other
+ * `timestamptz`; the diffs and impersonation context stay `unknown` (jsonb).
+ */
+export interface AuditEventRecord {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly actorId: string | null;
+  readonly impersonationContext: unknown;
+  readonly action: string;
+  readonly entityType: string;
+  readonly entityId: string | null;
+  readonly entityVersion: number | null;
+  readonly before: unknown;
+  readonly after: unknown;
+  readonly reason: string | null;
+  readonly requestId: string | null;
+  readonly correlationId: string | null;
+  /** `timestamptz`, ISO. */
+  readonly occurredAt: string;
+}
+
+/** Audit-review filters; organization is required and never optional (`DEC-061`). */
+export interface AuditEventListQuery {
+  readonly organizationId: string;
+  readonly entityType?: string;
+  readonly entityId?: string;
+  readonly action?: string;
+  readonly actorId?: string;
+  /** Inclusive lower bound on `occurred_at`; an ISO instant (the port convention). */
+  readonly from?: string;
+  /** Inclusive upper bound on `occurred_at`; an ISO instant. */
+  readonly to?: string;
+  readonly limit?: number;
+  readonly offset?: number;
+}
+
 export interface AuthResetTokenRecord {
   readonly id: string;
   readonly userId: string;
@@ -152,6 +190,11 @@ export interface AuthStore {
   replaceLocationScopes(userId: string, locationIds: readonly string[]): Promise<void>;
   setUserStatus(userId: string, status: UserStatus): Promise<void>;
   writeAudit(input: AuditInput): Promise<void>;
+  /**
+   * Audit facts for one organization, newest first (§7.3). The read is
+   * organization-scoped (`DEC-061`) and paginated by the caller.
+   */
+  listAuditEvents(query: AuditEventListQuery): Promise<readonly AuditEventRecord[]>;
 }
 
 export interface AuthDeps {

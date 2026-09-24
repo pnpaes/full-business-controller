@@ -72,10 +72,19 @@ export type {
 
 export { createPostgresAuthStore } from "./postgres-store";
 
+export {
+  DEFAULT_AUDIT_EVENT_LIMIT,
+  MAX_AUDIT_EVENT_LIMIT,
+  listAuditEvents,
+} from "./list-audit-events";
+export type { ListAuditEventsQuery } from "./list-audit-events";
+
 export { issueSession, logout, logoutAll, verifySession } from "./session";
 export type { LogoutAllInput, LogoutInput } from "./session";
 
 export type {
+  AuditEventListQuery,
+  AuditEventRecord,
   AuditInput,
   AuthDeps,
   AuthResetTokenRecord,

@@ -24,6 +24,8 @@ export type {
 } from "./register-unit-conversion";
 export { registerUnit } from "./register-unit";
 export type { RegisterUnitInput, RegisterUnitResult } from "./register-unit";
+export { DEFAULT_UNIT_LIMIT, MAX_UNIT_LIMIT, listUnits } from "./list-units";
+export type { ListUnitsQuery } from "./list-units";
 export { CATALOG_AUDIT_ACTIONS } from "./actions";
 export type {
   CatalogItemPage,
@@ -43,5 +45,6 @@ export type {
   NewUnitConversionRecord,
   SupplierItemDetail,
   SupplierItemRecord,
+  UnitListQuery,
   UpdateItemRecord,
 } from "./types";
