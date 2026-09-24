@@ -238,8 +238,17 @@ describe("POST /api/v1/hms/monitoring-points/[id]/readings", () => {
     expect(application.recordMonitoringReading).not.toHaveBeenCalled();
   });
 
-  it("returns 403 for a role outside the operational record set", async () => {
+  it("lets the owner record (DEC-130)", async () => {
     vi.mocked(application.loadUserAccess).mockResolvedValue(access(["owner"]));
+
+    const response = await POST(postRequest(validBody), context());
+
+    expect(response.status).toBe(200);
+    expect(application.recordMonitoringReading).toHaveBeenCalled();
+  });
+
+  it("returns 403 for a role outside the record set", async () => {
+    vi.mocked(application.loadUserAccess).mockResolvedValue(access(["purchasing"]));
 
     const response = await POST(postRequest(validBody), context());
 

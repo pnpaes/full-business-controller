@@ -234,10 +234,13 @@ export default async function HmsMonitoringPage() {
           }))}
         />
       ) : (
-        <SectionCard title="Record a reading" meta="operational roles only">
+        <SectionCard
+          title="Record a reading"
+          meta="owner, general manager, location manager, kitchen, front of house"
+        >
           <EmptyState title="Recording is not available for your role">
-            Recording a reading needs an operational role (location manager, kitchen or front of
-            house). You can still read the points and history below.
+            Recording a reading needs owner, general manager, location manager, kitchen or front of
+            house. You can still read the points and history below.
           </EmptyState>
         </SectionCard>
       )}

@@ -23,8 +23,20 @@ export const HMS_READ_ROLES = [
   "analyst",
 ] as const;
 
-/** Operational roles (location_manager / kitchen / front_of_house) that may record. */
-export const HMS_RECORD_ROLES = ["location_manager", "kitchen", "front_of_house"] as const;
+/**
+ * Roles that may write a monitoring record: owner and general manager alongside
+ * the operational roles (location_manager / kitchen / front_of_house). This one
+ * set gates both writes — recording a reading
+ * (`monitoring-points/[id]/readings`) and registering a monitoring point
+ * (`monitoring-points`). `analyst` reads but never records.
+ */
+export const HMS_RECORD_ROLES = [
+  "owner",
+  "general_manager",
+  "location_manager",
+  "kitchen",
+  "front_of_house",
+] as const;
 
 /**
  * Role sets for the HMS incident register (`HMS-003`, `DEC-090`), per the
