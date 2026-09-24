@@ -1,0 +1,59 @@
+/* Aquarela 0.1.0. Merge into the EXISTING global CSS identified by shadcn info.
+   Full CSS colors: do not wrap these variables in hsl() or oklch().
+   Light theme only. Keep any existing .dark block separate until it is designed.
+   No imports or application-wide selectors are replaced by this snippet. */
+:root {
+  --background: #f1f3f8;
+  --foreground: #151a2d;
+  --card: #ffffff;
+  --card-foreground: #151a2d;
+  --popover: #ffffff;
+  --popover-foreground: #151a2d;
+  --primary: #151a2d;
+  --primary-foreground: #ffffff;
+  --secondary: #f1f3f8;
+  --secondary-foreground: #353c50;
+  --muted: #f8f9fc;
+  --muted-foreground: #626b7e;
+  --accent: #eeecff;
+  --accent-foreground: #5742ba;
+  --destructive: #ac303a;
+  --destructive-foreground: #ffffff;
+  --border: #e5e8f0;
+  --input: #858da0;
+  --ring: #5742ba;
+  --chart-1: #5742ba;
+  --chart-2: #315faa;
+  --chart-3: #256442;
+  --chart-4: #80550c;
+  --chart-5: #80518f;
+  --sidebar: #ffffff;
+  --sidebar-foreground: #626b7e;
+  --sidebar-primary: #151a2d;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #eeecff;
+  --sidebar-accent-foreground: #5742ba;
+  --sidebar-border: #e5e8f0;
+  --sidebar-ring: #5742ba;
+  --brand: #5742ba;
+  --brand-foreground: #ffffff;
+  --brand-soft: #eeecff;
+  --brand-soft-foreground: #5742ba;
+  --success: #e7f4ec;
+  --success-foreground: #256442;
+  --warning: #fff3d9;
+  --warning-foreground: #80550c;
+  --danger: #ffeded;
+  --danger-foreground: #ac303a;
+  --info: #eaf1ff;
+  --info-foreground: #315faa;
+  --radius: 0.625rem;
+  --font-aquarela: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --aq-control-height: 2.5rem;
+  --aq-table-row-height: 3.5rem;
+  --aq-motion-fast: 120ms;
+  --aq-motion-normal: 180ms;
+}
+@media (prefers-reduced-motion: reduce) {
+  :root { --aq-motion-fast: 0ms; --aq-motion-normal: 0ms; }
+}
