@@ -468,16 +468,84 @@ export default async function InsightsPage() {
         </SectionCard>
       </div>
 
+      {/* The what-if simulation: a live model over the same cost/price/recipe
+          data. It is not a report of facts, so it sits outside the previews
+          grid and states plainly that it is a model. */}
+      <SectionCard
+        title="What-if simulation"
+        meta="Model · assumptions, provenance and unmodelled terms shown"
+        actions={
+          <a href="/insights/simulation" style={actionLink}>
+            Open simulation
+          </a>
+        }
+      >
+        <div style={{ display: "flex", flexDirection: "column", gap: spacing[2] }}>
+          <p style={paragraph}>
+            Model the effect of changing production volume, prices, wages, the menu and headcount
+            over the existing cost, price and recipe data. Every result is labelled as a model and
+            carries its assumptions, its provenance and the terms it cannot model.
+          </p>
+        </div>
+      </SectionCard>
+
+      {/* The analytical layer (W6): trends, benchmarks and the advisory
+          forecast, each a real screen reading the same application services. */}
+      <div className="in-previews">
+        <SectionCard
+          title="Trends"
+          meta="W6 · period over period"
+          actions={
+            <a href="/insights/trends" style={actionLink}>
+              Open trends
+            </a>
+          }
+        >
+          <p style={paragraph}>
+            Each period&apos;s value against the previous one, with the absolute and relative change
+            and a direction. The method and the flat band are stated on the screen.
+          </p>
+        </SectionCard>
+        <SectionCard
+          title="Benchmarks"
+          meta="W6 · internal only"
+          actions={
+            <a href="/insights/benchmarks" style={actionLink}>
+              Open benchmarks
+            </a>
+          }
+        >
+          <p style={paragraph}>
+            Each location, product or channel against the organization aggregate and the peer median
+            — internal data only, never an external market comparison.
+          </p>
+        </SectionCard>
+        <SectionCard
+          title="Forecast & suggestions"
+          meta="W6 · model, not fact"
+          actions={
+            <a href="/insights/forecast" style={actionLink}>
+              Open forecast
+            </a>
+          }
+        >
+          <p style={paragraph}>
+            An advisory linear-trend projection with its ±1 residual-σ band and backtested accuracy,
+            plus the rule-based suggestions with their evidence and next action. Never auto-applied.
+          </p>
+        </SectionCard>
+      </div>
+
       {/* Planned screens, honestly labelled: no backend exists, so nothing is
           charted with placeholders. */}
       <div className="in-planned">
-        <SectionCard title="Planning" meta="Planned · Phase 4">
+        <SectionCard title="Planning" meta="Forecast live · tracking planned">
           <div style={{ display: "flex", flexDirection: "column", gap: spacing[2] }}>
-            <StatusPill tone="info">Planned</StatusPill>
+            <StatusPill tone="info">Forecast built, tracking planned</StatusPill>
             <p style={paragraph}>
-              Forecast-versus-actual comparison, suggestions and overrides. There is no backend
-              behind this screen yet — it is scheduled for Phase 4 and needs forecast history before
-              accuracy or seasonality can be shown, so nothing is charted here.
+              An advisory forecast and the rule-based suggestions are live (see Forecast &amp;
+              suggestions). Forecast-versus-actual tracking, overrides and seasonality are not built
+              yet — they need forecast history accumulated over time, so nothing is charted here.
             </p>
           </div>
         </SectionCard>
