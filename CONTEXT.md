@@ -12,81 +12,89 @@ orientation and the next step. See "Handover archive" and "Update protocol".
 ## Resume here (next session)
 
 **Say "resume the work" and start here.** A fresh session must be able to
-continue from this section alone. (Rewritten by the 2026-09-24 W7
-documentation session; the W7 wave is documented in
-`docs/handoffs/080-2026-09-24-w7-ui-refinement-wave.md`.)
+continue from this section alone. (Rewritten by the 2026-09-24 design-system
+session; the W7 wave is documented in
+`docs/handoffs/080-2026-09-24-w7-ui-refinement-wave.md`, and the design-system
+adoption in `DEC-129`.)
 
-**State:** `main`; HEAD **`f3adeb8`**, working tree clean. W7 — the
-UI-refinement wave of the operations-completion programme
-(`docs/ROADMAP-OPERATIONS-COMPLETION.md`) — is **complete for the screens**: every
-recorded action that has an application service plus an HTTP route is now
-reachable from a control, stale "not wired / planned" copy is purged, styling is
-on the design tokens, and WCAG 2.2 AA and 375px mobile behaviour are enforced.
-One W7 leftover is deliberately left to the next session: the app-shell search
-and scope placeholders in `apps/web/app/(app)/layout.tsx` (Part 1 below). Not
-every honest gap is closed — see "Open decisions / inputs" for what still has no
-backend at all. Seven commits on `main` (`54022c7` … `01a9cda` plus the
-review-fix commit `f3adeb8` — see the handoff for the list), **all
-unpushed**; nothing applied to DigitalOcean. This wave added
-**no new decision**; next free decision id is **`DEC-129`**. The wave builds
-on the `DEC-120` redesign, the `DEC-121` wiring and the `DEC-122` task
-workflow (decisions + earlier handoffs are the authority for those). Schema:
-migrations through **`0066`**, **93 public tables** — **no migration in W7**;
+**State:** `main`; HEAD **`cfdb68a`**, working tree clean. Two workstreams are
+live. (1) **W7** — the UI-refinement wave of the operations-completion programme
+(`docs/ROADMAP-OPERATIONS-COMPLETION.md`) — is **complete for the screens**:
+every recorded action that has an application service plus an HTTP route is now
+reachable from a control, stale "not wired / planned" copy is purged, and WCAG
+2.2 AA and 375px mobile behaviour are enforced. Its one leftover is the
+app-shell search and scope placeholders in `apps/web/app/(app)/layout.tsx`.
+(2) **The Aquarela design-system integration (`DEC-129`) is at stage 1 of 4**:
+the theme tokens are merged into `packages/ui/src/tokens.ts` and the contrast
+gate extended with the package's own published evidence, but the **primitives
+and every screen still need the recipe values applied** — that is the next task.
+All commits are **unpushed**; nothing applied to DigitalOcean. Decision ids:
+`DEC-129` is now the **design-system adoption**, so the storage-port decision
+previously earmarked for that id is **`DEC-130`**. Schema: migrations through
+**`0066`**, **93 public tables** — no migration in either workstream;
 `db:migrate` a no-op on re-run. Verification at HEAD: `typecheck`, `lint`,
 `format:check`, `build` clean;
 `DATABASE_URL=postgres://aquarela:aquarela@localhost:5432/aquarela npm run
-test` → **4276/4276 tests (294 files)**.
+test` → **4296/4296 tests (294 files)**. A dev server is expected on
+`http://localhost:3000` (`NEXT_DIST_DIR=.next-dev`; sign in `owner` /
+`LocalDevPass123`).
 
-**Next task — W7 close-out plus opening the file-bytes workstream.** Two
-parts, in that order.
+**Next task — finish the design-system integration (`DEC-129`), stages 2 to 4,
+then the storage port as `DEC-130`.** Read the `DEC-129` row in
+`12_OPEN_DECISIONS.md` and `docs/aquarela-design-system/{README,DESIGN-SYSTEM,INTEGRATION}.md`
+first. Those integration steps assume shadcn and Tailwind, which this repository
+does not have and must not gain (`DEC-120`, and the package's own README forbids
+running init or changing primitive libraries), so **merge the recipe VALUES into
+the existing inline-style components** — never add a dependency, a Tailwind
+config or a CSS file. The package's `component-recipes.ts` is Tailwind class
+strings, so translate the values it encodes, do not paste the classes.
 
-**Part 1 — the app-shell search and scope placeholders (decide, don't leave
-ambiguous).** `apps/web/app/(app)/layout.tsx` (single-owner file) still
-carries unwired search/scope placeholders. Inventory what the application
-layer actually exports first (`packages/application/src/**`), then either:
+**Stage 2 — primitives.**
+`packages/ui/src/{primitives,components,patterns,modal,shell,charts}.tsx`: the
+3px solid focus ring with a 2px offset (never an opacity-modified ring), control
+heights 40/32/48 via `geometry.controlHeight`, table header 40 and row 56 via
+`geometry.tableRowHeight`, radii 6/10/16/24, disabled opacity 0.45, 120ms hover
+and 180ms panel transitions, and the semantic Badge/StatusPill variants
+(success, warning, danger, info, neutral, brand-soft) plus the `brand-soft`
+button variant. Preserve every existing prop, ref, event handler and behaviour.
+Fix the login password field's missing `autocomplete="current-password"` in the
+same pass.
 
-- (a) **wire** them to a real read — honest only if a real listing/search
-  read exists and is exported; or
-- (b) **remove** the placeholders and record the reason (in the commit body
-  and the handoff file) — the honest default when no read exists, per the
-  `08_UI_UX.md` §8.4 rule (every screen answers "what next" or says honestly
-  what is missing).
-  State which option was chosen and why before implementing. Scope (do): only
-  `apps/web/app/(app)/layout.tsx` plus, if (a), the minimum read plumbing under
-  `packages/application`; commit reversibly. Scope (do not): no
-  `packages/ui/**` redesign, no `shell-nav.tsx` edits bundled in, no new
-  backend service invented for the sake of (a).
+**Stage 3 — the three named screens, verified before extending:** the overview
+(management home, `apps/web/app/(app)/page.tsx`), the inventory table
+(`apps/web/app/(app)/inventory/**`) and the product form
+(`apps/web/app/(app)/products/**`, including `register-item-form.tsx`). Check
+375 / 768 / 1280 widths, keyboard and screen-reader labels, 200% zoom and
+locale-aware Norwegian date/number/currency formatting.
+`docs/aquarela-design-system/index.html` is a **visual reference only** — its
+sample data and illustrative modules must not enter the app.
 
-**Part 2 — record the storage-port posture as `DEC-129` and implement the
-`file_object` application port.** `file_object` has no application port
-(`DEC-085`/`DEC-099`, `ADR-0006`), so **all file bytes are metadata-only**
-today across documents, employee documents, incident evidence, maintenance
-evidence and payroll export — the largest remaining honest gap.
+**Stage 4 — the shell.** The package specifies a **light sidebar with a lavender
+active surface** (`DESIGN-SYSTEM.md` sidebar row, `shadcn-theme.css` `--sidebar`),
+which is what makes the iris legible as the active accent. That replaces the
+retained dark shell and retires the two derived token values
+(`brand.navyDeep`, `border.default`). Files: `packages/ui/src/shell.tsx`,
+`apps/web/app/(app)/shell-nav.tsx`, `apps/web/app/(app)/layout.tsx` (all
+single-owner). Then extend across the remaining screens, removing only one-off
+colours that duplicate the new contract.
 
-- Read first: `docs/adr/0006-file-storage-and-retention.md`, the `DEC-085`
-  and `DEC-099` rows in `12_OPEN_DECISIONS.md`,
-  `docs/runbooks/persistence-migrations.md`, the `file_object` schema and
-  repository (migrations `0035`/`0036`).
-- Record **`DEC-129`** in `12_OPEN_DECISIONS.md` — **both tables, whole new
-  lines only** (append rows; never edit mid-row; never put a literal `|`
-  inside a cell) — **before or with** the code (Rule 3). Do not invent a
-  different id.
-- Implement the application port with a **local adapter**; add an
-  **expand-only migration** only if the port genuinely needs schema.
-  Required disciplines: decimal-only with HALF_UP (never floats); a
-  reversible additive migration with a rehearsed down path recorded in
-  `docs/runbooks/persistence-migrations.md` (add the runbook row); update
-  `EXPECTED_TABLES` in `schema.test.ts` if (and only if) the table set
-  changes.
-- Wire **one honest consumer first** (the document library is the natural
-  one — it is metadata-only today); do not attempt to wire every deferred
-  file FK in the same slice. No cloud storage integration (Spaces is a later
-  decision; local adapter only).
+**Then — the storage port as `DEC-130`.** `file_object` has no application port
+(`DEC-085`/`DEC-099`, `ADR-0006`), so **all file bytes are metadata-only** today
+across documents, employee documents, incident evidence, maintenance evidence
+and payroll export — the largest remaining honest gap. Read
+`docs/adr/0006-file-storage-and-retention.md` and the `DEC-085`/`DEC-099` rows.
+Record **`DEC-130`** (both tables, whole new lines only, no literal `|` in a
+cell) **before or with** the code; implement the port with a **local adapter**;
+add an expand-only migration only if it genuinely needs schema (rehearsed down
+path plus a runbook row); wire **one honest consumer first** (the document
+library). No cloud storage — Spaces is a later decision.
 
-**Scope (do not), whole task:** do not rewrite posted money or stock facts;
-do not invent a row or a decision id silently; do not resolve other recorded
-open inputs silently; do not push; do not deploy or write externally
-(`DEC-015`).
+**Scope (do not), whole task:** do not weaken any assertion in
+`packages/ui/src/tokens.test.ts` (add or extend only); do not add a dependency,
+a Tailwind config or a CSS file; do not change a workflow, business rule or
+component behaviour; do not rewrite posted money or stock facts; do not resolve
+other recorded open inputs silently; do not push; do not deploy or write
+externally (`DEC-015`).
 
 **Verification set (exact):** `export NVM_DIR="$HOME/.nvm"; .
 "$NVM_DIR/nvm.sh"; nvm use 22`; `npm run typecheck`; `npm run lint`; `npm run
@@ -96,12 +104,19 @@ format:check`; `npm run build` — noting that `apps/web/next-env.d.ts` and
 `git checkout -- apps/web/next-env.d.ts apps/web/tsconfig.json` before
 staging. Full suite:
 `DATABASE_URL=postgres://aquarela:aquarela@localhost:5432/aquarela npm run
-test` (≥ **4276/4276**, 294 files) — note
+test` (≥ **4296/4296**, 294 files) — note
 `packages/application/src/scheduling/scheduling.postgres.test.ts` has a known
-same-instant ordering flake (passes on re-run). `npm run db:migrate` a no-op
-re-run (or, if a migration landed: the rehearsed down path plus a runbook row
-before finishing). Commit in layers with the rollback approach in each body
-(Rule 2).
+same-instant ordering flake (passes on re-run). **Visual work additionally
+requires the browser check:** drive the changed screens with the
+`playwright-cli` wrapper (`~/.bun/bin/playwright-cli`; call it by name, do not
+bypass it with a raw `node`), screenshot at laptop, tablet and mobile widths
+into the gitignored `storage/tmp/`, **read the PNGs back with the Read tool**
+before claiming a layout is correct, then delete them. `playwright-cli` and
+`shadcn` are both installed at home level but were absent from this session's
+skill list — the skill registry is a session-start snapshot, so use them as
+CLIs. `npm run db:migrate` a no-op re-run (or, if a migration landed: the
+rehearsed down path plus a runbook row before finishing). Commit in layers with
+the rollback approach in each body (Rule 2).
 
 ## Next up (prioritised)
 
@@ -109,8 +124,8 @@ before finishing). Commit in layers with the rollback approach in each body
 open-point lists. Per-slice detail is in `docs/handoffs/`. The detailed list
 lives in the second "Next up" section below.
 
-1. **Next: W7 close-out + the `DEC-129` file-bytes workstream** (see
-   "Resume here").
+1. **Next: the design-system integration stages 2-4 (`DEC-129`), then the
+   `DEC-130` file-bytes workstream** (see "Resume here").
 2. **The operations-completion waves W1–W7 are all delivered** (W7 per
    `docs/handoffs/080-…md`); what remains is the honest-gap list, not a wave.
 
@@ -145,8 +160,8 @@ Per-slice detail, commits and reconciliation are in `docs/handoffs/`.
 
 - `00_README.md` … `13_AGENT_BUILD_BRIEF.md` — the specification package
   (inputs, rarely edited). Start with `00_README.md`.
-- **`12_OPEN_DECISIONS.md` — the accepted decisions (`DEC-001`…`DEC-128`);
-  the authority. New decisions are appended here (next free id `DEC-129`).**
+- **`12_OPEN_DECISIONS.md` — the accepted decisions (`DEC-001`…`DEC-129`);
+  the authority. New decisions are appended here (next free id `DEC-130`).**
 - `docs/phase0/` — close-out plan, calculation contract, data dictionary, golden
   fixtures, source-data request, notes. See
   `docs/phase0/CALCULATION_CONTRACT.md`.
@@ -167,6 +182,39 @@ Per-slice detail, commits and reconciliation are in `docs/handoffs/`.
 
 ## Current status
 
+- **2026-09-24 design-system integration, stage 1 (`1e6b548`, `8a85f60`,
+  `9fdb9e6`, `cfdb68a`):** the user supplied the Aquarela backoffice design
+  system v0.1.0 as `docs/aquarela-design-system/` and asked to apply it "using
+  the installed shadcn skill". Reconnaissance established that **this repository
+  is not a shadcn app and has no Tailwind** — no `components.json`, no
+  `tailwind.config.*`, no `tailwindcss`/`class-variance-authority`/`@radix-ui`
+  dependency, no CSS file — so the package's integration steps (which target an
+  existing `tailwindCssFile`, an existing Button CVA and `shadcn info`) cannot
+  be followed as written, and the package's own README forbids the
+  re-platforming route ("do not run init, apply a preset, reinstall components,
+  or change primitive libraries"). The **values** were therefore merged into the
+  existing token architecture with the structure unchanged, which keeps ~86
+  consumer files and the contrast gate working: `shadcn-theme.css`,
+  `tokens.json` and `component-recipes.ts` are the sources. Recorded as
+  **`DEC-129`** (provisional, owner confirmation required). Three deviations,
+  each forced by a gate this repository already enforced and each re-derived in
+  `tokens.test.ts`: the package's status foregrounds (1.005–1.12:1 apart) and
+  washes (1.008–1.021 from its own canvas) fail the existing pairwise and
+  wash-separation assertions, so both sets were retuned in lightness only; and
+  the package's chart series fail the categorical pairwise assertion while
+  `shell.tsx` indexes that array positionally, so the product ladder is kept and
+  the iris is adopted as the selection/focus/accent colour. Manrope is retained
+  (the package's prose says Inter but it ships Manrope, and the app already
+  self-hosts it). **Stage 1 is the token layer only** — the primitives and every
+  screen still need the recipe values applied (see "Resume here"). Verification:
+  `typecheck`, `lint`, `format:check`, `build` clean; **4296/4296 tests** (294
+  files), up 20 with the package's own published pairs now re-derived in the
+  gate. Also: the design-system package is now **tracked** (it was untracked
+  while `DEC-129` and the code cited it by path), `storage/` and
+  `.playwright-cli/` are gitignored, 1.6 GB of stale `.next-verify-*` build
+  directories were reclaimed, and the dev server was verified on port 3000 with
+  a Playwright screenshot (read back) showing the merged palette live. Each
+  commit reverts independently.
 - **2026-09-24 W7 review follow-up (`f3adeb8`):** a four-track review of
   the range `e12116c..HEAD` (security, business logic, dead code,
   duplication) found **six findings** — all from the business-logic and
@@ -179,9 +227,9 @@ findings from the W7 review` (5 files, all under `apps/web/app/(app)/**`;
   and the `security`-agent dead-pin fact are recorded in
   `docs/handoffs/080-2026-09-24-w7-ui-refinement-wave.md`. Reverts
   independently with `git revert f3adeb8`.
-- **As of:** 2026-09-24 — branch `main`; HEAD **`f3adeb8`**, working tree
+- **As of:** 2026-09-24 — branch `main`; HEAD **`cfdb68a`**, working tree
   clean. **W7 — the UI-refinement wave of the operations-completion
-  programme — is complete** and it is the newest work-log entry: six commits
+  programme — is complete**, followed by the design-system stage 1 above: six commits
   (`54022c7` reconcile forms, `5227552` costing/inventory authoring,
   `f3201ff` workforce/HMS/document actions, `733ee83` review findings,
   `c202c39` honesty corrections, `01a9cda` recipe-version registration +
@@ -674,6 +722,23 @@ cost` (the `DEC-067`/`DEC-008` valuation is asymmetric); the waste reasons axis
   `f3adeb8` only made each screen honest about what it stores; reconciling
   the two stances needs a recorded decision, and it should be taken before
   any multi-currency work.
+- **Design system: owner confirmation, the font contradiction and two derived
+  values (awaiting owner/TECH; `DEC-129` is provisional):** the package states
+  that its palette and wordmark are **proposed** and that no Aquarela brand
+  assets were supplied, so `DEC-129` needs owner confirmation of the palette and
+  the wordmark. The package contradicts itself on typography —
+  `DESIGN-SYSTEM.md`, `README.md` and `shadcn-theme.css` say Inter while
+  `fonts.css` and `fonts/` ship Manrope, and `README.md` claims no font files
+  are bundled while they are — so **Manrope is retained** pending resolution.
+  Two token values are **derived rather than taken from the package**
+  (`brand.navyDeep`, `border.default`) because the package specifies a light
+  sidebar and only two border tiers; the stage-4 light sidebar retires both. The
+  package's own `VALIDATION.md` evidence does not satisfy this repository's
+  contrast gate, so the merged status and chart values deviate from its
+  published values deliberately (see `DEC-129`).
+- **Login password field lacks `autocomplete="current-password"` (minor, found
+  by the stage-1 browser check):** a WCAG 1.3.5 / autofill gap on the sign-in
+  screen; fix it with the shared field primitive in stage 2.
 - **Row 14 (provisional, awaiting owner/OPS):** `DEC-104` — the "remaining
   planned shifts run as scheduled" assumption is **not** implemented (only
   `{assigned, completed}` shifts count, so a pre-month-end payroll report
