@@ -1,6 +1,7 @@
 import {
   createPostgresInventoryStore,
   createPostgresMasterDataStore,
+  createPostgresReceivingStore,
   getItem,
   getStockBalanceAsOf,
   type ConversionEdge,
@@ -26,6 +27,8 @@ import { getDb } from "../../../../lib/db";
 import { resolveOrganization } from "../../../../lib/organization";
 import { uuidOrNotFound } from "../../../../lib/route-params";
 import { getServerSession } from "../../../../lib/server-session";
+
+import { RegisterSupplierPackForm } from "./register-supplier-pack-form";
 
 export const dynamic = "force-dynamic";
 
@@ -264,6 +267,7 @@ export default async function ItemDetailPage({
   const { item, supplierItems, conversions } = detail;
   const organization = await catalogStore.findOrganization(organizationId);
   const currency = organization?.currency ?? null;
+  const suppliers = await createPostgresReceivingStore(getDb().db).listSuppliers(organizationId);
 
   const inventoryStore = createPostgresInventoryStore(getDb().db);
   const asOf = new Date().toISOString();
@@ -361,6 +365,36 @@ export default async function ItemDetailPage({
       </SectionCard>
 
       <SupplierPacksSection packs={supplierItems} baseUnitCode={item.baseUnitCode} />
+
+      <SectionCard title="Register a supplier pack" meta="PROC-001 · create">
+        <details>
+          <summary
+            style={{
+              cursor: "pointer",
+              minHeight: 44,
+              display: "flex",
+              alignItems: "center",
+              fontSize: typography.fontSize.md,
+              fontWeight: typography.fontWeight.semibold,
+              color: color.brand.navy,
+            }}
+          >
+            New supplier pack
+          </summary>
+          <div style={{ marginTop: spacing[4] }}>
+            <RegisterSupplierPackForm
+              itemId={item.id}
+              baseUnitCode={item.baseUnitCode}
+              suppliers={suppliers.map((supplier) => ({
+                id: supplier.id,
+                code: supplier.code,
+                name: supplier.name,
+              }))}
+            />
+          </div>
+        </details>
+      </SectionCard>
+
       <ConversionsSection conversions={conversions} />
 
       <SectionCard

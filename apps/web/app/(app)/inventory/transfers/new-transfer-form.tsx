@@ -1,11 +1,9 @@
 "use client";
 
-import { Alert, Button, SectionCard, spacing } from "@aquarela/ui";
+import { Alert, Button, SectionCard, SelectField, spacing } from "@aquarela/ui";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import type { FormEvent } from "react";
-
-import { SelectField } from "../form-controls";
 
 const FALLBACK_ERROR = "Could not request the transfer. Please try again.";
 

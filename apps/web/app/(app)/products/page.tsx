@@ -4,7 +4,7 @@ import {
   type ListItemsResult,
 } from "@aquarela/application";
 import { MONEY_SCALE, formatDecimal, parseDecimal, rescale } from "@aquarela/domain";
-import { ITEM_TYPE } from "@aquarela/persistence";
+import { ITEM_TYPE, INVENTORY_POLICY } from "@aquarela/persistence";
 import { PageHeader, SectionCard, color, spacing, typography } from "@aquarela/ui";
 import { redirect } from "next/navigation";
 
@@ -13,6 +13,7 @@ import { resolveOrganization } from "../../../lib/organization";
 import { getServerSession } from "../../../lib/server-session";
 
 import { ItemsTable, type ItemTableRow } from "./items-table";
+import { RegisterItemForm } from "./register-item-form";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Products — Aquarela Business Control" };
@@ -163,6 +164,27 @@ export default async function ProductsPage({
         scope="Aquarela Business Control"
         description="Items and their supplier packs, base units and current cost. Select an item for its conversions and stock."
       />
+
+      <SectionCard title="Register an item" meta="W2 · create">
+        <details>
+          <summary
+            style={{
+              cursor: "pointer",
+              minHeight: 44,
+              display: "flex",
+              alignItems: "center",
+              fontSize: typography.fontSize.md,
+              fontWeight: typography.fontWeight.semibold,
+              color: color.brand.navy,
+            }}
+          >
+            New item
+          </summary>
+          <div style={{ marginTop: spacing[4] }}>
+            <RegisterItemForm itemTypes={ITEM_TYPE} inventoryPolicies={INVENTORY_POLICY} />
+          </div>
+        </details>
+      </SectionCard>
 
       <SectionCard
         title="Items"

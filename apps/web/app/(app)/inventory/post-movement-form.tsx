@@ -1,13 +1,20 @@
 "use client";
 
-import { Alert, Button, SectionCard, TextField, spacing, typography } from "@aquarela/ui";
+import {
+  Alert,
+  Button,
+  CheckboxField,
+  SectionCard,
+  SelectField,
+  TextField,
+  spacing,
+  typography,
+} from "@aquarela/ui";
 import { formatDecimal, parseDecimal } from "@aquarela/domain/decimal";
 import { QUANTITY_SCALE } from "@aquarela/domain/quantity";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import type { FormEvent } from "react";
-
-import { CheckboxField, SelectField } from "./form-controls";
 
 const FALLBACK_ERROR = "Could not post the movement. Please try again.";
 

@@ -1,11 +1,17 @@
 "use client";
 
-import { Alert, Button, SectionCard, TextField, TextareaField, spacing } from "@aquarela/ui";
+import {
+  Alert,
+  Button,
+  SectionCard,
+  SelectField,
+  TextField,
+  TextareaField,
+  spacing,
+} from "@aquarela/ui";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import type { FormEvent } from "react";
-
-import { SelectField } from "../../form-controls";
 
 const FALLBACK_ERROR = "Could not complete the action. Please try again.";
 

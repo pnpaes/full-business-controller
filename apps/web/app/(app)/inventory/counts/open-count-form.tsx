@@ -1,11 +1,17 @@
 "use client";
 
-import { Alert, Button, SectionCard, TextField, spacing } from "@aquarela/ui";
+import {
+  Alert,
+  Button,
+  CheckboxField,
+  SectionCard,
+  SelectField,
+  TextField,
+  spacing,
+} from "@aquarela/ui";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { FormEvent } from "react";
-
-import { CheckboxField, SelectField } from "../form-controls";
 
 const FALLBACK_ERROR = "Could not open the count. Please try again.";
 

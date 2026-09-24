@@ -1,11 +1,9 @@
 "use client";
 
-import { Alert, Button, TextField, spacing } from "@aquarela/ui";
+import { Alert, Button, CheckboxField, SelectField, TextField, spacing } from "@aquarela/ui";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { FormEvent } from "react";
-
-import { CheckboxField, SelectField } from "./form-controls";
 
 const FALLBACK_ERROR = "Could not register the storage area. Please try again.";
 
