@@ -55,7 +55,7 @@ const paragraph = {
 const actionLink = {
   display: "inline-flex",
   alignItems: "center",
-  minHeight: geometry.touchTarget,
+  minHeight: geometry.controlHeight.sm,
   color: color.accent.deep,
   fontWeight: typography.fontWeight.semibold,
   fontSize: typography.fontSize.sm,
@@ -115,6 +115,15 @@ const pageCss = `
     padding-top: ${spacing[4]}px;
   }
   .in-planned { grid-template-columns: minmax(0, 1fr); }
+}
+/* Coarse pointers keep the 44px touch target on the card-header action links,
+ * whose resting height is the 32px control height (DEC-129 keeps both). The
+ * global rule in uiGlobalCss only reaches .aquarela-btn/.aquarela-field,
+ * so a page-scoped class is required here. */
+@media (pointer: coarse) {
+  .in-action-link {
+    min-height: ${geometry.touchTarget}px !important; /* inline styles win otherwise */
+  }
 }
 `;
 
@@ -351,7 +360,7 @@ export default async function InsightsPage() {
           title="Sales & margin report"
           meta={`RPT-001 · ${meta}`}
           actions={
-            <a href="/insights/reports" style={actionLink}>
+            <a href="/insights/reports" className="in-action-link" style={actionLink}>
               Open reports
             </a>
           }
@@ -392,7 +401,7 @@ export default async function InsightsPage() {
           title="Menu engineering"
           meta={`RPT-005 · ${meta}`}
           actions={
-            <a href="/insights/menu-engineering" style={actionLink}>
+            <a href="/insights/menu-engineering" className="in-action-link" style={actionLink}>
               Open matrix
             </a>
           }
@@ -430,7 +439,7 @@ export default async function InsightsPage() {
           title="Operations"
           meta={`RPT-004 · ${meta}`}
           actions={
-            <a href="/insights/operations" style={actionLink}>
+            <a href="/insights/operations" className="in-action-link" style={actionLink}>
               Open report
             </a>
           }
@@ -480,7 +489,7 @@ export default async function InsightsPage() {
         title="What-if simulation"
         meta="Model · assumptions, provenance and unmodelled terms shown"
         actions={
-          <a href="/insights/simulation" style={actionLink}>
+          <a href="/insights/simulation" className="in-action-link" style={actionLink}>
             Open simulation
           </a>
         }
@@ -501,7 +510,7 @@ export default async function InsightsPage() {
           title="Trends"
           meta="W6 · period over period"
           actions={
-            <a href="/insights/trends" style={actionLink}>
+            <a href="/insights/trends" className="in-action-link" style={actionLink}>
               Open trends
             </a>
           }
@@ -515,7 +524,7 @@ export default async function InsightsPage() {
           title="Benchmarks"
           meta="W6 · internal only"
           actions={
-            <a href="/insights/benchmarks" style={actionLink}>
+            <a href="/insights/benchmarks" className="in-action-link" style={actionLink}>
               Open benchmarks
             </a>
           }
@@ -529,7 +538,7 @@ export default async function InsightsPage() {
           title="Forecast & suggestions"
           meta="W6 · model, not fact"
           actions={
-            <a href="/insights/forecast" style={actionLink}>
+            <a href="/insights/forecast" className="in-action-link" style={actionLink}>
               Open forecast
             </a>
           }
@@ -558,7 +567,7 @@ export default async function InsightsPage() {
           title="Competitors"
           meta="Live · reviewed observations only"
           actions={
-            <a href="/insights/competitors" style={actionLink}>
+            <a href="/insights/competitors" className="in-action-link" style={actionLink}>
               Open competitors
             </a>
           }

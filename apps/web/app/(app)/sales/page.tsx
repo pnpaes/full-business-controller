@@ -24,10 +24,24 @@ const contentColumn = {
 const linkStyle = {
   display: "inline-flex",
   alignItems: "center",
-  minHeight: geometry.touchTarget,
+  minHeight: geometry.controlHeight.sm,
   color: color.brand.berry,
   fontWeight: typography.fontWeight.semibold,
 } as const;
+
+/**
+ * Page-scoped styling inline styles cannot express. Coarse pointers keep the
+ * 44px touch target on the action links, whose resting height is the 32px
+ * control height (DEC-129 keeps both). The global rule in `uiGlobalCss` only
+ * reaches `.aquarela-btn`/`.aquarela-field`, so a page-scoped class is required.
+ */
+const pageCss = `
+@media (pointer: coarse) {
+  .sales-action-link {
+    min-height: ${geometry.touchTarget}px !important; /* inline styles win otherwise */
+  }
+}
+`;
 
 /**
  * Sales landing (08_UI_UX.md §8.3). Links the three row-12 surfaces: the row-11
@@ -38,6 +52,8 @@ const linkStyle = {
 export default function SalesPage() {
   return (
     <div style={contentColumn}>
+      <style dangerouslySetInnerHTML={{ __html: pageCss }} />
+
       <PageHeader
         title="Sales"
         scope="Aquarela Business Control"
@@ -61,7 +77,7 @@ export default function SalesPage() {
           is idempotent on the external transaction/line keys, so a retry cannot duplicate a
           transaction.
         </p>
-        <Link href="/sales/import" style={linkStyle}>
+        <Link href="/sales/import" className="sales-action-link" style={linkStyle}>
           Open sales import →
         </Link>
       </SectionCard>
@@ -72,7 +88,7 @@ export default function SalesPage() {
           count. Open a transaction to see its lines, the captured applied tax rate and each line's
           option kind and mapping state.
         </p>
-        <Link href="/sales/transactions" style={linkStyle}>
+        <Link href="/sales/transactions" className="sales-action-link" style={linkStyle}>
           Open transactions →
         </Link>
       </SectionCard>
@@ -85,7 +101,7 @@ export default function SalesPage() {
           missing tolerance blocks close rather than defaulting silently.
         </p>
         <div style={{ display: "flex", alignItems: "center", gap: spacing[3] }}>
-          <Link href="/sales/reconciliation" style={linkStyle}>
+          <Link href="/sales/reconciliation" className="sales-action-link" style={linkStyle}>
             Open reconciliation →
           </Link>
           <Badge>DEC-026 · DEC-035</Badge>
