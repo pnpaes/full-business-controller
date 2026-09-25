@@ -1,5 +1,37 @@
 # Reversibility log
 
+- **2026-09-25 design-system + storage-port wave (8 commits; nothing
+  pushed)**: in chronological order `c451c38` (docs — the `DEC-129` shell
+   claim corrected, decision ids `DEC-130`/`DEC-131` reallocated),
+  `ca32ca2` (docs — the HMS + Administration documentation pass;
+   docs-only), `223651c` (`feat(ui)` — the design-system recipes on the
+   primitives, `packages/ui/**`), `4ad6c5d` (`feat(ui)` — the shell re-seated
+   on the light sidebar contract inline, the dead re-seating layer removed),
+   `889089f` (`fix(ui)` — the stale nav-hover styling), `da430a6`
+   (docs — eight stale styleguide claims corrected), `9de4c5c`
+   (`feat(files)` — the **DEC-132** storage port:
+   `packages/application/src/files/**` + the two document routes) and
+   `4e2736c` (docs — the `DEC-132` row) — **each independently revertible
+   with `git revert <sha>`, in any order**: `DEC-129` commits touch only
+   `packages/ui/**` and docs, and `DEC-132` touches the new files package
+   plus its two routes. **The storage port needs no migration rollback:**
+   `file_object` is unchanged (its columns came from `DEC-085`,
+   migrations `0035`/`0036`, already reverted-under separately), so the
+   only runtime artifact is blob files under the gitignored
+   `FILE_STORAGE_ROOT` written by the upload route — data written by
+   ordinary operator actions through the existing commands, not slice
+   side effects; the port's transaction compensation already removes the
+   bytes if the metadata write fails, and reverting the code simply stops
+   new uploads while existing metadata rows stay coherent. The
+   `VERIFY-1` dev-seed data recorded by `ca32ca2` lives in the unpushed
+   dev database only — not a migration concern. **No migration, no schema
+   change by the wave** — migrations stay through `0066`; **93 tables**;
+   `db:migrate` a no-op on re-run. Four follow-on agents were in flight
+   with nothing committed at handoff time (two design-system screen
+   rollouts, two fixers) — their output, when committed, will be its own
+   entries. Nothing pushed; nothing applied to DigitalOcean. Details and
+   the in-flight census: [handoff
+   081](081-2026-09-25-design-system-and-storage-port-wave.md).
 - **2026-09-24 W7 review-fix commit `f3adeb8` (nothing pushed)**:
   `f3adeb8` `fix(web): resolve the six findings from the W7 review` — 5
   files, all under `apps/web/app/(app)/**`; **presentation and validation
