@@ -3,6 +3,7 @@
 export { isNullColumn } from "./columns";
 export * from "./vocabularies";
 export * from "./adjustment-period";
+export * from "./integrations";
 export * from "./organization";
 export * from "./identity";
 export * from "./catalog";

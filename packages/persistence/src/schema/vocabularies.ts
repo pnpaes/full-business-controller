@@ -526,3 +526,18 @@ export const APPROVAL_DECISION = ["approved", "rejected"] as const;
 // `pending` is the capture default; a named reviewer moves it to `reviewed` or
 // `rejected` once, and only `reviewed` observations are read as intelligence.
 export const COMPETITOR_REVIEW_STATUS = ["pending", "reviewed", "rejected"] as const;
+
+// `INTG-001`/`DEC-137` (`ADR-0011`): the operations an integration source may
+// be allowed to perform. `read` is always permitted; every `write_*` is gated
+// on `terms_status = 'approved'` by
+// `integration_source_write_requires_approved_terms_check`. From
+// `schemas/domain-enums.yaml` (`allowed_operation`), exported now that the
+// `integration_source` table needs it, so `vocabularies.test.ts`'s
+// `UNEXPORTED_YAML_KEYS` guard shrinks accordingly.
+export const ALLOWED_OPERATION = [
+  "read",
+  "write_price",
+  "write_menu_product",
+  "write_stock",
+  "write_accounting",
+] as const;

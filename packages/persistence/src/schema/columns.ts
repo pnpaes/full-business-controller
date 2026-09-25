@@ -76,6 +76,15 @@ export const enumCheck = (column: AnyPgColumn, values: readonly string[]): SQL =
     sql`, `,
   )})`;
 
+/**
+ * `array['a','b',...]::text[]` built from a code-controlled vocabulary array,
+ * for array-containment (`<@`) and overlap (`&&`) checks. Like `enumCheck`,
+ * values are quoted literals rendered into DDL — never request input — and
+ * embedded quotes are escaped.
+ */
+export const textArrayLiteral = (values: readonly string[]): SQL =>
+  sql.raw(`array[${values.map((value) => `'${value.replace(/'/g, "''")}'`).join(", ")}]::text[]`);
+
 /** `<to> is null or <to> > <from>` for effective-dated / active-range pairs. */
 export const rangeCheck = (from: AnyPgColumn, to: AnyPgColumn): SQL =>
   sql`${to} is null or ${to} > ${from}`;

@@ -19,6 +19,7 @@ export * from "./repositories/equipment";
 export * from "./repositories/file-object";
 export * from "./repositories/imports";
 export * from "./repositories/incidents";
+export * from "./repositories/integrations";
 export * from "./repositories/inventory";
 export * from "./repositories/master-data";
 export * from "./repositories/monitoring";

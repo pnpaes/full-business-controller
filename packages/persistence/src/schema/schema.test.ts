@@ -54,7 +54,9 @@ const tables = Object.values(schema).filter((value) => is(value, PgTable));
  * column, taking the count to 91. The `DEC-126` competitor-observation slice adds
  * the `competitor` and `competitor_observation` tables, taking the count to 93.
  * The `DEC-135` shared rate-limit counter store adds the `rate_limit_counter`
- * table, taking the count to 94. */
+ * table, taking the count to 94. The `INTG-001`/`DEC-137` read-only integrations
+ * registry adds the `integration_source` table, taking the count to 95
+ * (`publish_run` stays deferred on `ADR-0004`). */
 const EXPECTED_TABLES = [
   "addon_applicability",
   "adjustment_period",
@@ -94,6 +96,7 @@ const EXPECTED_TABLES = [
   "import_profile",
   "import_run",
   "import_staging_row",
+  "integration_source",
   "item",
   "labor_rate",
   "location",
@@ -156,7 +159,8 @@ const EXPECTED_TABLES = [
  * notes (or the draft) but deliberately not in the Phase 1-2 core. Asserting
  * their absence keeps a half-added table from silently passing review. */
 const NOT_EXPECTED_TABLES = [
-  "integration_source",
+  // `INTG-002` publishing execution stays deferred on `ADR-0004`; `INTG-001`
+  // `integration_source` is now in scope (`DEC-137`).
   "publish_run",
   "competitor_source",
   "ai_analysis_run",

@@ -12,6 +12,7 @@ export * from "./files";
 export * from "./hms";
 export * from "./inventory";
 export * from "./imports";
+export * from "./integrations";
 export * from "./production";
 export * from "./products";
 export * from "./reconciliation";
