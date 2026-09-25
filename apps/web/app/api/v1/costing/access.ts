@@ -55,6 +55,21 @@ export const CHANNEL_FEE_RULE_READ_ROLES = COST_CARD_READ_ROLES;
  */
 export const COST_CENTER_READ_ROLES = COST_CARD_READ_ROLES;
 
+/**
+ * Roles that may **propose** (calculate) a price scenario, drawn from the
+ * `07_SECURITY_AND_NFR.md` §7.1 **Prices** row: owner/general manager
+ * **Approve**, location manager **Propose**. Calculating a scenario is the
+ * Propose action; approving it is a separate gate (and remains the only path
+ * that creates a `price_version`, PRICE-002/003). Every other matrix role is
+ * None (kitchen, front_of_house, purchasing), Review (finance) or Read
+ * (analyst), so none is a write-set member here. `owner` and `general_manager`
+ * are listed because Approve is a superset of Propose, and `owner` must be
+ * listed explicitly — there is no implicit owner bypass (DEC-130). Finance's
+ * "Review" and admin's "As required" are deliberately **not** included pending
+ * an owner decision, the same provisional posture as DEC-111.
+ */
+export const PRICE_SCENARIO_WRITE_ROLES = ["owner", "general_manager", "location_manager"] as const;
+
 /** Loads the caller's roles and location scope live from server data (ADR-0003). */
 export async function loadCostingAccess(userId: string): Promise<UserAccess> {
   return loadUserAccess(getAuthStore(), userId);
