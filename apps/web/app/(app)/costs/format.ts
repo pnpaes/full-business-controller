@@ -1,10 +1,10 @@
-import {
-  MONEY_SCALE,
-  QUANTITY_SCALE,
-  formatDecimal,
-  parseDecimal,
-  rescale,
-} from "@aquarela/domain";
+// Import the auth-free domain subpaths, not the barrel: `register-channel-fee-
+// rule-form.tsx` is a client component that imports this module, and the barrel
+// re-exports `./auth` (argon2 / `node:crypto`), which webpack cannot bundle for
+// the browser. Server callers are unaffected.
+import { formatDecimal, parseDecimal, rescale } from "@aquarela/domain/decimal";
+import { MONEY_SCALE } from "@aquarela/domain/money";
+import { QUANTITY_SCALE } from "@aquarela/domain/quantity";
 
 /**
  * Display formatting for the Costs screens. All money/quantity strings are
