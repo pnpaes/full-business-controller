@@ -18,13 +18,16 @@ storage port are per-slice documented in
 `docs/handoffs/081-2026-09-25-design-system-and-storage-port-wave.md`, and
 the close-out commits in `docs/handoffs/reversibility-log.md`.)
 
-**State:** branch `main`; HEAD **`9842d81`**, working tree clean. All commits
+**State:** branch `main`; HEAD **`2da9ba5`**, working tree clean. All commits
 are **unpushed**; nothing applied to DigitalOcean. **4735/4735 tests (335
 files)**. Migrations through **`0068`**; **94 public tables** (the `0068`
 slice added a nullable column, not a table); `db:migrate` a no-op on re-run.
 Decision ids recorded through **`DEC-136`**; the **next free id is
-`DEC-137`**. Verification at HEAD: `typecheck`, `lint`, `format:check`,
-`build` clean;
+`DEC-137`**. The 2026-09-25 concurrency audit landed as `2da9ba5` (docs-only;
+the `DEC-135` rollback pair `2a4a189`+`5013011` and the untrustworthy-alone
+caveat are now recorded in `docs/handoffs/reversibility-log.md`; its findings
+are in the work log below). Verification at HEAD: `typecheck`, `lint`,
+`format:check`, `build` clean;
 `DATABASE_URL=postgres://aquarela:aquarela@localhost:5432/aquarela npm run
 test` → **4735/4735 (335 files)**. Note
 `packages/application/src/scheduling/scheduling.postgres.test.ts` has a
@@ -180,6 +183,33 @@ Per-slice detail, commits and reconciliation are in `docs/handoffs/`.
 
 ## Current status
 
+- **2026-09-25 — the concurrency audit (`2da9ba5` HEAD, docs-only):**
+  audited the git history for damage from two sessions that ran
+  concurrently in this one worktree earlier that day, and recorded the
+  rollback truth the collision had left out. **Findings:** `main` is
+  linear and intact — no history rewrite, no rebase, no force-push, no
+  lost commits; working tree clean; HEAD verified green this session
+  (`typecheck` clean, `next build` exit 0, `DATABASE_URL=… npm run test`
+  → **4735/4735 (335 files)**). **Evidence:** `git reflog` shows two
+  `reset: moving to HEAD` collisions on HEAD at 11:46:02 and 11:49:18;
+  `2a4a189` (the `DEC-135` shared rate-limit store) was committed with a
+  narrow pathspec and left HEAD broken in two ways — the committed
+  per-route `limiters.ts` were async while call sites stayed synchronous
+  (all reporting/analytics/simulation traffic denied) and migration
+  `0067` landed without the drizzle table definition/barrel/
+  `EXPECTED_TABLES`; `5013011` completed the layer fix-forward (no
+  amend); the `next build` break from the client form importing the
+  `@aquarela/domain` barrel was fixed by `3054512`. Nine dangling commits
+  are all superseded Sep-19–24 stash WIP, not concurrency loss; no
+  `.git/index.lock` and no in-progress git op. **Changed this session:**
+  `2da9ba5` recorded the `DEC-135` pair (`2a4a189`+`5013011`) and
+  `1a791eb` in `docs/handoffs/reversibility-log.md` with the rule that
+  `2a4a189` alone is not trustworthy, and corrected the stale
+  "rate-limiter shared store" open item in
+  `docs/handoffs/081-…wave.md`. **Rollback:** `git revert 2da9ba5`
+  (docs-only, no migration, no schema change). **Next:** the Integrations
+  Administration backend (unchanged).
+
 - **2026-09-25 — the `DEC-129`/`DEC-132` wave and the close-out (`9842d81`
   HEAD, newest first: `3054512`, `6bfd5cd`, `67ee852`, `bef5459`,
   `ac98d87`, `9c2c976`, `358bc58`, `4c423c5`, `2805deb`, then the 081 wave
@@ -301,14 +331,15 @@ findings from the W7 review` (5 files, all under `apps/web/app/(app)/**`;
   and the `security`-agent dead-pin fact are recorded in
   `docs/handoffs/080-2026-09-24-w7-ui-refinement-wave.md`. Reverts
   independently with `git revert f3adeb8`.
-- **As of:** 2026-09-25 — branch `main`; HEAD **`9842d81`**, working tree
+- **As of:** 2026-09-25 — branch `main`; HEAD **`2da9ba5`**, working tree
   clean. **4735/4735 tests (335
   files)**; migrations through **`0068`**
   (**93 tables**); nothing pushed; nothing applied to DigitalOcean.
   **Delivered:** the `DEC-129` design-system completion, the `DEC-132`
-  storage port and the 2026-09-25 close-out wave at the top of this log;
-  W7 and the HMS + Administration entries above (the verbatim W7 list is
-  in `docs/handoffs/080-2026-09-24-w7-ui-refinement-wave.md`). **In
+  storage port, the 2026-09-25 close-out wave at the top of this log and
+  the docs-only concurrency audit (`2da9ba5`); W7 and the HMS +
+  Administration entries above (the verbatim W7 list is in
+  `docs/handoffs/080-2026-09-24-w7-ui-refinement-wave.md`). **In
   flight: nothing** — the wave's background agents all landed and are
   committed; the next step (Integrations, planning/forecast tracking,
   standing items) is in "Resume here". Next free decision id **`DEC-137`**.
