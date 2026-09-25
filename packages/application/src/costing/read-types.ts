@@ -4,6 +4,7 @@ import type {
   SnapshotComponentRecord,
 } from "./cost-card-types";
 import type { PriceScenarioRecord } from "./price-scenario-types";
+import type { TaxReadStore } from "../tax/read-types";
 import type {
   AllocationRuleRecord,
   CostCenterRecord,
@@ -81,7 +82,7 @@ export interface CostCardDetailRecord {
   readonly history: readonly CostCardHistoryEntry[];
 }
 
-export interface CostingReadStore {
+export interface CostingReadStore extends TaxReadStore {
   findOrganization(organizationId: string): Promise<CostingOrganizationRefRecord | undefined>;
   findProductVariant(productVariantId: string): Promise<CostingRefRecord | undefined>;
   findLocation(locationId: string): Promise<CostingRefRecord | undefined>;

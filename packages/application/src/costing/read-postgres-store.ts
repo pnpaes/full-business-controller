@@ -29,6 +29,7 @@ import type {
   LaborRateRecord,
   OperatingCostRecord,
 } from "./types";
+import type { TaxRuleRecord, TaxRuleSummaryRecord } from "../tax/read-types";
 
 /**
  * Read adapter for `CostingReadStore`: maps the persistence rows to the read
@@ -288,6 +289,45 @@ export function createPostgresCostingReadStore(db: Database): CostingReadStore {
       });
       return rows.map(toChannelList);
     },
+    listTaxRules: async (query_) => {
+      const rows = await query().taxRule.findMany({
+        where: (table, { and, eq }) =>
+          and(
+            eq(table.organizationId, query_.organizationId),
+            query_.appliesTo === undefined ? undefined : eq(table.appliesTo, query_.appliesTo),
+            query_.scopeType === undefined ? undefined : eq(table.scopeType, query_.scopeType),
+          ),
+        orderBy: (table, { asc }) => [asc(table.code), asc(table.id)],
+        limit: query_.limit,
+        offset: query_.offset,
+        columns: {
+          id: true,
+          organizationId: true,
+          code: true,
+          name: true,
+          ratePct: true,
+          taxBasis: true,
+          taxTreatment: true,
+          recoverable: true,
+          appliesTo: true,
+          scopeType: true,
+        },
+      });
+      return rows.map(toTaxRuleSummary);
+    },
+    listEffectiveTaxRules: async (query_) => {
+      const rows = await query().taxRule.findMany({
+        where: (table, { and, eq, lte, or, isNull, gt }) =>
+          and(
+            eq(table.organizationId, query_.organizationId),
+            query_.appliesTo === undefined ? undefined : eq(table.appliesTo, query_.appliesTo),
+            lte(table.effectiveFrom, query_.asOf),
+            or(isNull(table.effectiveTo), gt(table.effectiveTo, query_.asOf)),
+          ),
+        orderBy: (table, { asc }) => [asc(table.code), asc(table.id)],
+      });
+      return rows.map(toTaxRule);
+    },
   };
 }
 
@@ -331,5 +371,56 @@ function toChannelList(row: {
     code: row.code,
     name: row.name,
     isDelivery: row.isDelivery,
+  };
+}
+
+function toTaxRuleSummary(row: {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly code: string;
+  readonly name: string;
+  readonly ratePct: string;
+  readonly taxBasis: string;
+  readonly taxTreatment: string;
+  readonly recoverable: boolean;
+  readonly appliesTo: string;
+  readonly scopeType: string;
+}): TaxRuleSummaryRecord {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    code: row.code,
+    name: row.name,
+    ratePct: row.ratePct,
+    taxBasis: row.taxBasis,
+    taxTreatment: row.taxTreatment,
+    recoverable: row.recoverable,
+    appliesTo: row.appliesTo,
+    scopeType: row.scopeType,
+  };
+}
+
+function toTaxRule(row: {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly code: string;
+  readonly name: string;
+  readonly ratePct: string;
+  readonly taxBasis: string;
+  readonly taxTreatment: string;
+  readonly recoverable: boolean;
+  readonly appliesTo: string;
+  readonly scopeType: string;
+  readonly locationId: string | null;
+  readonly channelId: string | null;
+  readonly effectiveFrom: Date;
+  readonly effectiveTo: Date | null;
+}): TaxRuleRecord {
+  return {
+    ...toTaxRuleSummary(row),
+    locationId: row.locationId,
+    channelId: row.channelId,
+    effectiveFrom: row.effectiveFrom,
+    effectiveTo: row.effectiveTo,
   };
 }

@@ -23,6 +23,7 @@ const TABS: readonly CostsTab[] = [
   { href: "/costs/labor-rates", label: "Labour rates" },
   { href: "/costs/cost-pools", label: "Cost pools" },
   { href: "/costs/allocation-rules", label: "Allocation rules" },
+  { href: "/costs/channel-fee-rules", label: "Channel fees" },
 ];
 
 function matches(pathname: string, href: string): boolean {

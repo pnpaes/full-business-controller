@@ -19,6 +19,7 @@ import type {
   LaborRateRecord,
   OperatingCostRecord,
 } from "./types";
+import type { TaxRuleRecord, TaxRuleSummaryRecord } from "../tax/read-types";
 
 /**
  * In-memory `CostingReadStore` for the read-service unit suite. It holds the
@@ -42,6 +43,7 @@ export class FakeCostingReadStore implements CostingReadStore {
   readonly laborRates: LaborRateRecord[] = [];
   readonly costPools = new Map<string, CostPoolRecord>();
   readonly allocationRules: AllocationRuleReadRecord[] = [];
+  readonly taxRules = new Map<string, TaxRuleRecord>();
   /** `allocation_rule` carries no own organization; the fake tracks the pool's. */
   readonly allocationRuleOrganizations = new Map<string, string>();
 
@@ -190,6 +192,46 @@ export class FakeCostingReadStore implements CostingReadStore {
     this.allocationRuleOrganizations.set(rule.id, organizationId);
   }
 
+  listTaxRules(query: {
+    readonly organizationId: string;
+    readonly appliesTo?: string;
+    readonly scopeType?: string;
+    readonly limit: number;
+    readonly offset: number;
+  }): Promise<readonly TaxRuleSummaryRecord[]> {
+    const rows = this.taxRulesByCode()
+      .filter(
+        (rule) =>
+          rule.organizationId === query.organizationId &&
+          (query.appliesTo === undefined || rule.appliesTo === query.appliesTo) &&
+          (query.scopeType === undefined || rule.scopeType === query.scopeType),
+      )
+      .slice(query.offset, query.offset + query.limit);
+    return Promise.resolve(rows.map(toTaxRuleSummary));
+  }
+
+  listEffectiveTaxRules(query: {
+    readonly organizationId: string;
+    readonly asOf: Date;
+    readonly appliesTo?: string;
+  }): Promise<readonly TaxRuleRecord[]> {
+    const at = query.asOf.getTime();
+    const rows = this.taxRulesByCode().filter(
+      (rule) =>
+        rule.organizationId === query.organizationId &&
+        (query.appliesTo === undefined || rule.appliesTo === query.appliesTo) &&
+        rule.effectiveFrom.getTime() <= at &&
+        (rule.effectiveTo === null || rule.effectiveTo.getTime() > at),
+    );
+    return Promise.resolve(rows);
+  }
+
+  private taxRulesByCode(): TaxRuleRecord[] {
+    return [...this.taxRules.values()].sort((a, b) =>
+      a.code < b.code ? -1 : a.code > b.code ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0,
+    );
+  }
+
   private costCardsNewestFirst(): CostCardRecord[] {
     return [...this.costCards.values()].sort((a, b) =>
       a.calculatedAt < b.calculatedAt ? 1 : a.calculatedAt > b.calculatedAt ? -1 : 0,
@@ -201,6 +243,22 @@ function isOwned<T extends { readonly organizationId: string }>(
   organizationId: string,
 ): (record: T) => boolean {
   return (record) => record.organizationId === organizationId;
+}
+
+/** The picker projection: drops the scope columns and the effective window. */
+function toTaxRuleSummary(rule: TaxRuleRecord): TaxRuleSummaryRecord {
+  return {
+    id: rule.id,
+    organizationId: rule.organizationId,
+    code: rule.code,
+    name: rule.name,
+    ratePct: rule.ratePct,
+    taxBasis: rule.taxBasis,
+    taxTreatment: rule.taxTreatment,
+    recoverable: rule.recoverable,
+    appliesTo: rule.appliesTo,
+    scopeType: rule.scopeType,
+  };
 }
 
 export interface CostingReadFixture {

@@ -13,16 +13,20 @@ import {
   listOperatingCosts,
   listPriceScenarios,
   listPriceVersions,
+  listTaxRules,
   MAX_CHANNEL_LIMIT,
   MAX_COST_CENTER_LIMIT,
+  MAX_TAX_RULE_LIMIT,
   type CostCenterRecord,
 } from "@aquarela/application";
 import {
   costCardRefRequest,
+  listChannelFeeRules,
   loadCostingRefs,
   priceScenarioRefRequest,
   priceVersionRefRequest,
   toAllocationRuleRows,
+  toChannelFeeRuleRows,
   toChannelRows,
   toCostCardDetailView,
   toCostCardRows,
@@ -33,7 +37,9 @@ import {
   toPriceScenarioRows,
   toPriceVersionRow,
   toPriceVersionRows,
+  toTaxRuleRows,
   type AllocationRuleRow,
+  type ChannelFeeRuleRow,
   type ChannelRow,
   type CostCardDetailView,
   type CostCardRow,
@@ -42,6 +48,7 @@ import {
   type OperatingCostRow,
   type PriceScenarioRow,
   type PriceVersionRow,
+  type TaxRuleRow,
 } from "../../api/v1/costing/costing-views";
 import { getDb } from "../../../lib/db";
 import { resolveOrganization } from "../../../lib/organization";
@@ -202,4 +209,29 @@ export async function loadChannels(context: CostingReadContext): Promise<readonl
   const { organizationId, store } = context;
   const channels = await listChannels(store, { organizationId, limit: MAX_CHANNEL_LIMIT });
   return toChannelRows(organizationId, channels);
+}
+
+/**
+ * The organization's tax rules (`DATA_DICTIONARY` §1, PRICE-005), ordered by
+ * code. Bounded at the read's hard cap for the same reason as `loadChannels`:
+ * a truncated picker would silently hide a valid rule.
+ */
+export async function loadTaxRules(context: CostingReadContext): Promise<readonly TaxRuleRow[]> {
+  const { organizationId, store } = context;
+  const rules = await listTaxRules(store, { organizationId, limit: MAX_TAX_RULE_LIMIT });
+  return toTaxRuleRows(organizationId, rules);
+}
+
+/**
+ * The organization's channel fee rules (`DEC-112`), newest effective window
+ * first, with each rule's channel name resolved — the Costs screen's read of
+ * the same rows `/api/v1/costing/channel-fee-rules` serves.
+ */
+export async function loadChannelFeeRules(
+  context: CostingReadContext,
+): Promise<readonly ChannelFeeRuleRow[]> {
+  const { organizationId, store } = context;
+  const rules = await listChannelFeeRules(getDb().db, organizationId);
+  const refs = await loadCostingRefs(store, { channelIds: rules.map((rule) => rule.channelId) });
+  return toChannelFeeRuleRows(organizationId, rules, refs);
 }

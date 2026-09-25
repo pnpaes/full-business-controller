@@ -18,6 +18,7 @@ import type {
   PriceScenarioRecord,
   PriceVersionRecord,
   SnapshotComponentRecord,
+  TaxRuleSummaryRecord,
 } from "@aquarela/application";
 
 /**
@@ -687,6 +688,40 @@ export function toChannelRows(
       code: channel.code,
       name: channel.name,
       isDelivery: channel.isDelivery,
+    }));
+}
+
+/* --------------------------------- tax rules -------------------------------- */
+
+export interface TaxRuleRow {
+  readonly id: string;
+  readonly code: string;
+  readonly name: string;
+  readonly ratePct: string;
+  readonly taxBasis: string;
+  readonly taxTreatment: string;
+  readonly recoverable: boolean;
+  readonly appliesTo: string;
+  readonly scopeType: string;
+}
+
+/** The organization's tax rules as the picker serializes them (PRICE-005). */
+export function toTaxRuleRows(
+  organizationId: string,
+  rules: readonly TaxRuleSummaryRecord[],
+): readonly TaxRuleRow[] {
+  return rules
+    .filter((rule) => rule.organizationId === organizationId)
+    .map((rule) => ({
+      id: rule.id,
+      code: rule.code,
+      name: rule.name,
+      ratePct: rule.ratePct,
+      taxBasis: rule.taxBasis,
+      taxTreatment: rule.taxTreatment,
+      recoverable: rule.recoverable,
+      appliesTo: rule.appliesTo,
+      scopeType: rule.scopeType,
     }));
 }
 

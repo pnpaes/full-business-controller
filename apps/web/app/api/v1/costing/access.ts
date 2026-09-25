@@ -65,6 +65,16 @@ export const COST_CENTER_READ_ROLES = COST_CARD_READ_ROLES;
 export const CHANNEL_READ_ROLES = COST_CENTER_READ_ROLES;
 
 /**
+ * Tax rules are the classification master data every costing surface binds to
+ * (a `channel_fee_rule.tax_rule_id`, the picker behind `PRICE-006`), so listing
+ * them is a **Read** action on the same `07_SECURITY_AND_NFR.md` "Recipes/cost
+ * cards" row (`| Recipes/cost cards | Approve | Read | Draft/record | None |
+ * Read | Review | As required | Read |`). Aliased to the cost-centre read set so
+ * the surfaces cannot drift and `owner` is inherited, never retyped (DEC-130).
+ */
+export const TAX_RULE_READ_ROLES = COST_CENTER_READ_ROLES;
+
+/**
  * Roles that may **propose** (calculate) a price scenario, drawn from the
  * `07_SECURITY_AND_NFR.md` §7.1 **Prices** row: owner/general manager
  * **Approve**, location manager **Propose**. Calculating a scenario is the

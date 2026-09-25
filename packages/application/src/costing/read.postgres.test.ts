@@ -7,6 +7,7 @@ import {
   operatingCost,
   product,
   productVariant,
+  taxRule,
   unit,
   type DatabaseTransaction,
   type DbClient,
@@ -37,6 +38,8 @@ import { registerAllocationRule } from "./register-allocation-rule";
 import { registerCostPool } from "./register-cost-pool";
 import { registerLaborRate } from "./register-labor-rate";
 import { registerOperatingCost } from "./register-operating-cost";
+import { listTaxRules } from "../tax/list-tax-rules";
+import { resolveTaxRule } from "../tax/resolve-tax-rule";
 
 const databaseUrl = process.env.DATABASE_URL;
 const suffix = randomUUID().replace(/-/g, "").slice(0, 12);
@@ -306,6 +309,81 @@ describe.skipIf(!databaseUrl)("costing reads against PostgreSQL", () => {
 
       const firstPage = await listChannels(reads, { organizationId: orgId, limit: 1, offset: 1 });
       expect(firstPage.map((row) => row.code)).toEqual([`chan_${suffix}`]);
+    });
+  });
+
+  it("lists tax rules and resolves the channel override against PostgreSQL", async () => {
+    await inRollback(client.db, async (tx) => {
+      const reads = createPostgresCostingReadStore(tx);
+      const asOf = new Date("2026-06-01T00:00:00Z");
+
+      const defaults = await tx
+        .insert(taxRule)
+        .values({
+          organizationId: orgId,
+          code: `vat_default_${suffix}`,
+          name: "Default 25",
+          ratePct: "0.250000",
+          taxBasis: "exclusive",
+          appliesTo: "product",
+          scopeType: "company_wide",
+          effectiveFrom: new Date("2026-01-01T00:00:00Z"),
+        })
+        .returning();
+      await tx.insert(taxRule).values([
+        {
+          organizationId: orgId,
+          code: `vat_takeaway_${suffix}`,
+          name: "Takeaway 15",
+          ratePct: "0.150000",
+          taxBasis: "inclusive",
+          appliesTo: "product",
+          scopeType: "channel",
+          channelId,
+          effectiveFrom: new Date("2026-01-01T00:00:00Z"),
+        },
+        {
+          organizationId: otherOrgId,
+          code: `vat_foreign_${suffix}`,
+          name: "Foreign",
+          ratePct: "0.100000",
+          taxBasis: "exclusive",
+          appliesTo: "product",
+          effectiveFrom: new Date("2026-01-01T00:00:00Z"),
+        },
+        {
+          organizationId: orgId,
+          code: `vat_expired_${suffix}`,
+          name: "Expired",
+          ratePct: "0.990000",
+          taxBasis: "exclusive",
+          appliesTo: "product",
+          effectiveFrom: new Date("2025-01-01T00:00:00Z"),
+          effectiveTo: new Date("2026-01-01T00:00:00Z"),
+        },
+      ]);
+
+      const listed = await listTaxRules(reads, { organizationId: orgId, limit: 200 });
+      expect(listed.map((row) => row.code).sort()).toEqual(
+        [`vat_default_${suffix}`, `vat_expired_${suffix}`, `vat_takeaway_${suffix}`].sort(),
+      );
+      // The picker projection never carries the scope/effective columns.
+      expect(listed.every((row) => !("effectiveFrom" in row))).toBe(true);
+
+      const effective = await reads.listEffectiveTaxRules({ organizationId: orgId, asOf });
+      expect(effective.map((row) => row.code).sort()).toEqual(
+        [`vat_default_${suffix}`, `vat_takeaway_${suffix}`].sort(),
+      );
+
+      const resolved = await resolveTaxRule(reads, {
+        organizationId: orgId,
+        asOf,
+        itemTaxRuleId: defaults[0]!.id,
+        channelId,
+      });
+      expect(resolved.source).toBe("channel_override");
+      expect(resolved.rule.code).toBe(`vat_takeaway_${suffix}`);
+      expect(resolved.ratePct).toBe("0.150000");
     });
   });
 

@@ -19,6 +19,7 @@ export * from "./reporting";
 export * from "./sales";
 export * from "./scheduling";
 export * from "./simulation";
+export * from "./tax";
 export * from "./tasks";
 export * from "./recipes";
 export * from "./receiving";
