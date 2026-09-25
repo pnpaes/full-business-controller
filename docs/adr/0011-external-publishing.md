@@ -1,7 +1,9 @@
 # ADR-0011 — External publishing
 
-- **Status:** Proposed (needs owner + tech-lead acceptance)
-- This ADR is a proposal; implementation must not rely on it until status is `Accepted`.
+- **Status:** Accepted (2026-09-25)
+- Accepted 2026-09-25 by the owner + tech lead (in-session, revertible). INTG-001, the per-source
+  integrations registry, is in scope; INTG-002 publishing execution remains gated on `ADR-0004`
+  (still `Proposed`).
 - **Date:** 2026-09-14
 - **Deciders:** TECH, BUS
 - **Related:** DEC-002, DEC-015, ADR-0008
@@ -70,6 +72,11 @@ publishing must never become a second source of truth or a silent bidirectional 
 
 ## Open items
 
-- Decide which operations are approved per source (POS, Medusa/Sanity first; Wolt/Fiken later).
-- Confirm each source's write-API availability and terms before enabling a write operation.
+- Which operations are approved per source is decided as **read-only** for all registered sources
+  (`DEC-137`, 2026-09-25): Frontline POS, Wolt, Foodora, Medusa, Sanity (credentials owner TECH) and
+  Fiken (credentials owner FIN); `terms_status='pending'` and no write operation enabled.
+- Enabling a write operation per source still awaits each vendor's confirmed write-API availability
+  and terms (I15/I18; credentials owners are named but write terms are not confirmed).
+- Publishing execution (job/outbox) remains gated on `ADR-0004` (`Proposed`); INTG-002's
+  `publish_run` is not built.
 - Rehearse the rollback path for each enabled operation before it goes live.
