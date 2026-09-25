@@ -3,6 +3,7 @@ import {
   createPostgresFileObjectsStore,
   createPostgresWorkforceStore,
   findEmployee,
+  findFileObject,
   listEmployeeDocuments,
   storeFileObject,
 } from "@aquarela/application";
@@ -11,7 +12,11 @@ import { DomainError, NotFoundError } from "@aquarela/domain";
 import { requireSession } from "../../../../../../../lib/auth";
 import { getDb } from "../../../../../../../lib/db";
 import { getFileStorage } from "../../../../../../../lib/file-storage";
-import { isMultipart, parseUploadForm } from "../../../../../../../lib/file-upload";
+import {
+  isMultipart,
+  parseUploadForm,
+  rejectOversizeUpload,
+} from "../../../../../../../lib/file-upload";
 import { withMutationGuards } from "../../../../../../../lib/guards";
 import { jsonError, jsonOk, mapErrors } from "../../../../../../../lib/http";
 import { resolveOrganization } from "../../../../../../../lib/organization";
@@ -159,6 +164,11 @@ export async function POST(
     let parsedBody;
     let fileObjectId: string | null = null;
     if (isMultipart(request)) {
+      const oversize = rejectOversizeUpload(request, EMPLOYEE_DOCUMENT_UPLOAD_POLICY);
+      if (oversize !== undefined) {
+        return oversize;
+      }
+
       let form: FormData;
       try {
         form = await request.formData();
@@ -206,6 +216,15 @@ export async function POST(
       }
       parsedBody = parsed;
       fileObjectId = parsed.input.fileObjectId;
+      if (fileObjectId !== null) {
+        const file = await findFileObject(createPostgresFileObjectsStore(getDb().db), {
+          organizationId,
+          fileObjectId,
+        });
+        if (file === undefined) {
+          return jsonError(404);
+        }
+      }
     }
 
     let document;

@@ -1,5 +1,7 @@
 import type { StoredFile } from "@aquarela/application";
 
+import { jsonError } from "./http";
+
 /**
  * Shared multipart-upload parsing and download framing for the file-storage
  * consumers wired after the document library (`DEC-132`, extended by `DEC-133`).
@@ -74,6 +76,50 @@ export async function parseUploadForm(
     return { ok: false, reason: "size" };
   }
   return { ok: true, upload: { filename, mime, bytes } };
+}
+
+/**
+ * Multipart framing and non-file fields (boundaries, part headers, the `notes`
+ * field, metadata) add bytes beyond the file itself, so the pre-body
+ * `Content-Length` check below allows this much on top of the policy cap: a file
+ * *at* the cap is not rejected for its envelope. It is deliberately small — a
+ * body declaring more than `maxBytes` plus this allowance cannot hold a
+ * policy-sized file.
+ */
+export const MULTIPART_OVERHEAD_ALLOWANCE_BYTES = 16 * 1024;
+
+/**
+ * Rejects a `multipart/form-data` request whose declared `Content-Length` cannot
+ * hold a policy-sized file, **before** `request.formData()` reads the body, so an
+ * honest oversized upload never allocates the whole body in memory. Returns the
+ * 413 response to send back, or `undefined` when the caller should read the body
+ * and parse it with `parseUploadForm`.
+ *
+ * Residual, stated honestly: `Content-Length` is caller-supplied. A client that
+ * omits it (a chunked body) or lies about it (declares a small length and then
+ * sends more) still reaches `request.formData()`, where the only size check is
+ * the post-read one in `parseUploadForm` — which buffers first. This guard
+ * removes the cheap memory-exhaustion lever (an honest, large declared body); it
+ * does not remove the class. Next 15 route handlers enforce no request-body limit
+ * of their own, so a complete control would be a per-route body limit at the
+ * edge, which is not available in this Next version.
+ */
+export function rejectOversizeUpload(
+  request: Request,
+  policy: FileUploadPolicy,
+): Response | undefined {
+  if (!isMultipart(request)) {
+    return undefined;
+  }
+  const raw = request.headers.get("content-length");
+  if (raw === null) {
+    return undefined;
+  }
+  const length = Number(raw);
+  if (!Number.isInteger(length) || length < 0) {
+    return undefined;
+  }
+  return length > policy.maxBytes + MULTIPART_OVERHEAD_ALLOWANCE_BYTES ? jsonError(413) : undefined;
 }
 
 /**

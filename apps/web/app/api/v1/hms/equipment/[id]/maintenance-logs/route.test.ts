@@ -14,6 +14,7 @@ vi.mock("@aquarela/application", async (importOriginal) => {
     createPostgresHmsStore: vi.fn(() => ({})),
     createPostgresFileObjectsStore: vi.fn(() => ({})),
     findEquipment: vi.fn(),
+    findFileObject: vi.fn(),
     listMaintenanceLogs: vi.fn(),
     recordMaintenanceLog: vi.fn(),
     storeFileObject: vi.fn(),
@@ -152,11 +153,37 @@ function uploadRequest(
   });
 }
 
+/**
+ * A multipart-shaped request whose `Content-Length` is far over the policy cap,
+ * with a spy on `formData`. The route must reject from the header before ever
+ * reading the body.
+ */
+function oversizeRequest(maxBytes: number): {
+  readonly request: Request;
+  readonly formData: ReturnType<typeof vi.fn>;
+} {
+  const formData = vi.fn(async () => {
+    throw new Error("formData must not be reached");
+  });
+  const request = {
+    url: `http://localhost${PATH}`,
+    method: "POST",
+    headers: new Headers({
+      "content-type": "multipart/form-data; boundary=----x",
+      "content-length": String(maxBytes + 1024 * 1024),
+      "sec-fetch-site": "same-origin",
+    }),
+    formData,
+  } as unknown as Request;
+  return { request, formData };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(application.createPostgresHmsStore).mockReturnValue({} as never);
   vi.mocked(application.createPostgresFileObjectsStore).mockReturnValue({} as never);
   vi.mocked(application.findEquipment).mockResolvedValue(equipmentRecord());
+  vi.mocked(application.findFileObject).mockResolvedValue(fileRecord());
   vi.mocked(application.listMaintenanceLogs).mockResolvedValue([]);
   vi.mocked(application.recordMaintenanceLog).mockResolvedValue(maintenanceLogRecord());
   vi.mocked(application.storeFileObject).mockResolvedValue(fileRecord());
@@ -403,6 +430,29 @@ describe("POST /api/v1/hms/equipment/[id]/maintenance-logs", () => {
     expect(application.recordMaintenanceLog).not.toHaveBeenCalled();
   });
 
+  it("resolves a client fileObjectId organization-scoped before recording it", async () => {
+    const response = await POST(postRequest({ ...validBody, fileObjectId: FILE_ID }), context());
+
+    expect(response.status).toBe(200);
+    expect(application.findFileObject).toHaveBeenCalledWith(expect.anything(), {
+      organizationId: ORG,
+      fileObjectId: FILE_ID,
+    });
+    expect(application.recordMaintenanceLog).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ fileObjectId: FILE_ID }),
+    );
+  });
+
+  it("returns 404 for an unknown or cross-organization fileObjectId", async () => {
+    vi.mocked(application.findFileObject).mockResolvedValue(undefined);
+
+    const response = await POST(postRequest({ ...validBody, fileObjectId: FILE_ID }), context());
+
+    expect(response.status).toBe(404);
+    expect(application.recordMaintenanceLog).not.toHaveBeenCalled();
+  });
+
   it("maps a DomainError to 400 with its message", async () => {
     vi.mocked(application.recordMaintenanceLog).mockRejectedValue(
       new DomainError("kind must be one of service, repair, inspection"),
@@ -467,6 +517,16 @@ describe("POST /api/v1/hms/equipment/[id]/maintenance-logs (multipart upload)", 
     const response = await POST(uploadRequest(undefined, { bytes }), context());
 
     expect(response.status).toBe(400);
+    expect(application.storeFileObject).not.toHaveBeenCalled();
+  });
+
+  it("rejects an oversize multipart body from Content-Length without reading it", async () => {
+    const { request, formData } = oversizeRequest(HMS_MAINTENANCE_UPLOAD_POLICY.maxBytes);
+
+    const response = await POST(request, context());
+
+    expect(response.status).toBe(413);
+    expect(formData).not.toHaveBeenCalled();
     expect(application.storeFileObject).not.toHaveBeenCalled();
   });
 

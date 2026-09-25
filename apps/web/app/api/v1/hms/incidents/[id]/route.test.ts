@@ -131,6 +131,31 @@ function uploadRequest(
   });
 }
 
+/**
+ * A multipart-shaped request whose `Content-Length` is far over the policy cap,
+ * with a spy on `formData`. The route must reject from the header before ever
+ * reading the body.
+ */
+function oversizeRequest(maxBytes: number): {
+  readonly request: Request;
+  readonly formData: ReturnType<typeof vi.fn>;
+} {
+  const formData = vi.fn(async () => {
+    throw new Error("formData must not be reached");
+  });
+  const request = {
+    url: `http://localhost${PATH}`,
+    method: "PATCH",
+    headers: new Headers({
+      "content-type": "multipart/form-data; boundary=----x",
+      "content-length": String(maxBytes + 1024 * 1024),
+      "sec-fetch-site": "same-origin",
+    }),
+    formData,
+  } as unknown as Request;
+  return { request, formData };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(application.createPostgresHmsStore).mockReturnValue({} as never);
@@ -406,6 +431,16 @@ describe("PATCH /api/v1/hms/incidents/[id] (evidence upload, DEC-134)", () => {
     const response = await PATCH(uploadRequest({ title: "Renamed" }, { bytes }), context());
 
     expect(response.status).toBe(400);
+    expect(application.storeFileObject).not.toHaveBeenCalled();
+  });
+
+  it("rejects an oversize multipart body from Content-Length without reading it", async () => {
+    const { request, formData } = oversizeRequest(HMS_INCIDENT_UPLOAD_POLICY.maxBytes);
+
+    const response = await PATCH(request, context());
+
+    expect(response.status).toBe(413);
+    expect(formData).not.toHaveBeenCalled();
     expect(application.storeFileObject).not.toHaveBeenCalled();
   });
 

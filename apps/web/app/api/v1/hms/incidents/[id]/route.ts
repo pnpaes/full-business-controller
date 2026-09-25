@@ -10,7 +10,11 @@ import { DomainError, NotFoundError } from "@aquarela/domain";
 import { requireSession } from "../../../../../../lib/auth";
 import { getDb } from "../../../../../../lib/db";
 import { getFileStorage } from "../../../../../../lib/file-storage";
-import { isMultipart, parseUploadForm } from "../../../../../../lib/file-upload";
+import {
+  isMultipart,
+  parseUploadForm,
+  rejectOversizeUpload,
+} from "../../../../../../lib/file-upload";
 import { withMutationGuards } from "../../../../../../lib/guards";
 import { jsonError, jsonOk, mapErrors } from "../../../../../../lib/http";
 import { resolveOrganization } from "../../../../../../lib/organization";
@@ -141,6 +145,11 @@ export async function PATCH(
     let parsedBody;
     let fileObjectId: string | null = null;
     if (isMultipart(request)) {
+      const oversize = rejectOversizeUpload(request, HMS_INCIDENT_UPLOAD_POLICY);
+      if (oversize !== undefined) {
+        return oversize;
+      }
+
       let form: FormData;
       try {
         form = await request.formData();

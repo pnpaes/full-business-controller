@@ -9,6 +9,7 @@ vi.mock("@aquarela/application", async (importOriginal) => {
     DEFAULT_PAYROLL_REPORT_LIMIT: 50,
     createPostgresSchedulingStore: vi.fn(() => ({})),
     createPostgresFileObjectsStore: vi.fn(() => ({})),
+    findFileObject: vi.fn(),
     findPayrollReport: vi.fn(),
     markPayrollReportExported: vi.fn(),
     storeFileObject: vi.fn(),
@@ -119,10 +120,36 @@ function uploadRequest(
   });
 }
 
+/**
+ * A multipart-shaped request whose `Content-Length` is far over the policy cap,
+ * with a spy on `formData`. The route must reject from the header before ever
+ * reading the body.
+ */
+function oversizeRequest(maxBytes: number): {
+  readonly request: Request;
+  readonly formData: ReturnType<typeof vi.fn>;
+} {
+  const formData = vi.fn(async () => {
+    throw new Error("formData must not be reached");
+  });
+  const request = {
+    url: `http://localhost${PATH}`,
+    method: "POST",
+    headers: new Headers({
+      "content-type": "multipart/form-data; boundary=----x",
+      "content-length": String(maxBytes + 1024 * 1024),
+      "sec-fetch-site": "same-origin",
+    }),
+    formData,
+  } as unknown as Request;
+  return { request, formData };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(application.createPostgresSchedulingStore).mockReturnValue({} as never);
   vi.mocked(application.createPostgresFileObjectsStore).mockReturnValue({} as never);
+  vi.mocked(application.findFileObject).mockResolvedValue(fileRecord());
   vi.mocked(application.findPayrollReport).mockResolvedValue(reportRecord({ status: "generated" }));
   vi.mocked(application.storeFileObject).mockResolvedValue(fileRecord());
   vi.mocked(application.markPayrollReportExported).mockResolvedValue(reportRecord());
@@ -151,6 +178,19 @@ describe("POST /api/v1/workforce/payroll-reports/[id]/export", () => {
       ok: true,
       payrollReport: { id: REPORT_ID, status: "exported", exportFileId: EXPORT_FILE_ID },
     });
+    expect(application.findFileObject).toHaveBeenCalledWith(expect.anything(), {
+      organizationId: ORG,
+      fileObjectId: EXPORT_FILE_ID,
+    });
+  });
+
+  it("returns 404 for an unknown or cross-organization exportFileId and does not export", async () => {
+    vi.mocked(application.findFileObject).mockResolvedValue(undefined);
+
+    const response = await POST(postRequest({ exportFileId: EXPORT_FILE_ID }), context());
+
+    expect(response.status).toBe(404);
+    expect(application.markPayrollReportExported).not.toHaveBeenCalled();
   });
 
   it("marks the report exported with no file link when the body is absent", async () => {
@@ -290,6 +330,16 @@ describe("POST /api/v1/workforce/payroll-reports/[id]/export (multipart upload)"
     const response = await POST(uploadRequest(bytes), context());
 
     expect(response.status).toBe(400);
+    expect(application.storeFileObject).not.toHaveBeenCalled();
+  });
+
+  it("rejects an oversize multipart body from Content-Length without reading it", async () => {
+    const { request, formData } = oversizeRequest(PAYROLL_EXPORT_UPLOAD_POLICY.maxBytes);
+
+    const response = await POST(request, context());
+
+    expect(response.status).toBe(413);
+    expect(formData).not.toHaveBeenCalled();
     expect(application.storeFileObject).not.toHaveBeenCalled();
   });
 

@@ -35,6 +35,8 @@ import * as application from "@aquarela/application";
 
 import { requireSession } from "../../../../../../../lib/auth";
 
+import { DOCUMENT_UPLOAD_POLICY } from "../../../document-rows";
+
 import { POST } from "./route";
 
 const ORG = "org-1";
@@ -117,6 +119,31 @@ function uploadRequest(
     headers: { "sec-fetch-site": "same-origin" },
     body: form,
   });
+}
+
+/**
+ * A multipart-shaped request whose `Content-Length` is far over the policy cap,
+ * with a spy on `formData`. The route must reject from the header before ever
+ * reading the body.
+ */
+function oversizeRequest(maxBytes: number): {
+  readonly request: Request;
+  readonly formData: ReturnType<typeof vi.fn>;
+} {
+  const formData = vi.fn(async () => {
+    throw new Error("formData must not be reached");
+  });
+  const request = {
+    url: `http://localhost${PATH}`,
+    method: "POST",
+    headers: new Headers({
+      "content-type": "multipart/form-data; boundary=----x",
+      "content-length": String(maxBytes + 1024 * 1024),
+      "sec-fetch-site": "same-origin",
+    }),
+    formData,
+  } as unknown as Request;
+  return { request, formData };
 }
 
 beforeEach(() => {
@@ -221,6 +248,26 @@ describe("POST /api/v1/documents/[id]/versions/upload", () => {
 
   it("returns 400 for an empty upload", async () => {
     const response = await POST(uploadRequest(new Uint8Array(0)), context());
+
+    expect(response.status).toBe(400);
+    expect(application.storeFileObject).not.toHaveBeenCalled();
+  });
+
+  it("rejects an oversize multipart body from Content-Length without reading it", async () => {
+    const { request, formData } = oversizeRequest(DOCUMENT_UPLOAD_POLICY.maxBytes);
+
+    const response = await POST(request, context());
+
+    expect(response.status).toBe(413);
+    expect(formData).not.toHaveBeenCalled();
+    expect(application.storeFileObject).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 and stores nothing for a MIME type outside the document allow-list", async () => {
+    const response = await POST(
+      uploadRequest(new TextEncoder().encode("x"), "notes.txt", "text/plain"),
+      context(),
+    );
 
     expect(response.status).toBe(400);
     expect(application.storeFileObject).not.toHaveBeenCalled();

@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { contentDisposition, parseVersionUploadForm } from "./document-rows";
+import {
+  DOCUMENT_UPLOAD_POLICY,
+  contentDisposition,
+  parseVersionUploadForm,
+} from "./document-rows";
 
 const file = (bytes: Uint8Array, name: string, type = "application/pdf"): FormData => {
   const form = new FormData();
@@ -24,14 +28,20 @@ describe("parseVersionUploadForm", () => {
     expect(parsed.input.notes).toBe("first revision");
   });
 
-  it("falls back to a generic type when the file carries none", async () => {
+  it("rejects a file whose declared type is outside the document allow-list", async () => {
     const form = file(new TextEncoder().encode("x"), "notes.bin", "");
 
-    const parsed = await parseVersionUploadForm(form);
+    expect((await parseVersionUploadForm(form)).ok).toBe(false);
+  });
 
-    expect(parsed.ok).toBe(true);
-    if (!parsed.ok) return;
-    expect(parsed.input.mime).toBe("application/octet-stream");
+  it("rejects an oversize file before it reaches the storage port", async () => {
+    const form = file(
+      new Uint8Array(DOCUMENT_UPLOAD_POLICY.maxBytes + 1),
+      "huge.pdf",
+      "application/pdf",
+    );
+
+    expect((await parseVersionUploadForm(form)).ok).toBe(false);
   });
 
   it("treats a blank notes field as absent", async () => {

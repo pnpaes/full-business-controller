@@ -12,6 +12,8 @@ import {
 
 import { isUuid } from "../hms/hms-rows";
 
+import { parseUploadForm, type FileUploadPolicy } from "../../../../lib/file-upload";
+
 export { isUuid };
 
 /**
@@ -35,7 +37,6 @@ const MAX_LIMIT = 200;
 const MAX_TEXT = 200;
 const MAX_VOCAB = 32;
 const MAX_NOTES = 2000;
-const MAX_FILENAME = 255;
 
 /**
  * The retention class a document-library file is stored under (`DEC-132`).
@@ -44,6 +45,29 @@ const MAX_FILENAME = 255;
  * item (`ADR-0006`).
  */
 export const DOCUMENT_FILE_RETENTION_POLICY = "document_library";
+
+/**
+ * Upload policy for the document-library version upload (`DEC-132`): what a staff
+ * document library actually holds — PDFs, the common Word/Excel/PowerPoint
+ * formats (legacy and OOXML) and images — capped at 10 MiB, matching every other
+ * `DEC-132`/`DEC-133` consumer. A file whose caller-declared type is outside this
+ * set, or over the cap, is rejected and stores nothing.
+ */
+export const DOCUMENT_UPLOAD_POLICY: FileUploadPolicy = {
+  allowedMime: [
+    "application/pdf",
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.ms-powerpoint",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  ],
+  maxBytes: 10 * 1024 * 1024,
+};
 
 function readPositiveInteger(raw: string | null): number | undefined | "invalid" {
   if (raw === null) {
@@ -443,28 +467,17 @@ export type ParsedVersionUpload =
 /**
  * `POST /documents/[id]/versions/upload` body (`DEC-132`): a `multipart/form-data`
  * form with a required `file` part and an optional `notes` text field. The file
- * must be non-empty and carry a name of at most `MAX_FILENAME`; a missing type
- * falls back to `application/octet-stream`. Reading the bytes here keeps the
- * route free of the form layout, and an empty or malformed upload is a 400
- * before anything reaches the storage port.
+ * part is parsed by the shared `parseUploadForm` against `DOCUMENT_UPLOAD_POLICY`
+ * (type allow-list and 10 MiB cap — the same guard every other `DEC-132`/`DEC-133`
+ * consumer uses), so a disallowed type or an oversize file stores nothing.
+ * Reading the bytes here keeps the route free of the form layout, and an
+ * empty or malformed upload is a 400 before anything reaches the storage port.
  */
 export async function parseVersionUploadForm(form: FormData): Promise<ParsedVersionUpload> {
-  const file = form.get("file");
-  if (file === null || typeof file === "string") {
+  const parsedUpload = await parseUploadForm(form, DOCUMENT_UPLOAD_POLICY);
+  if (!parsedUpload.ok) {
     return { ok: false };
   }
-  const filename = typeof file.name === "string" ? file.name.trim() : "";
-  if (filename.length === 0 || filename.length > MAX_FILENAME) {
-    return { ok: false };
-  }
-  const bytes = new Uint8Array(await file.arrayBuffer());
-  if (bytes.byteLength === 0) {
-    return { ok: false };
-  }
-  const mime =
-    typeof file.type === "string" && file.type.trim().length > 0
-      ? file.type.trim()
-      : "application/octet-stream";
 
   const rawNotes = form.get("notes");
   let notes: string | null = null;
@@ -476,7 +489,15 @@ export async function parseVersionUploadForm(form: FormData): Promise<ParsedVers
     notes = trimmed.length === 0 ? null : trimmed;
   }
 
-  return { ok: true, input: { filename, mime, bytes, notes } };
+  return {
+    ok: true,
+    input: {
+      filename: parsedUpload.upload.filename,
+      mime: parsedUpload.upload.mime,
+      bytes: parsedUpload.upload.bytes,
+      notes,
+    },
+  };
 }
 
 export interface AcknowledgeBody {

@@ -1,6 +1,7 @@
 import {
   createPostgresFileObjectsStore,
   createPostgresSchedulingStore,
+  findFileObject,
   findPayrollReport,
   markPayrollReportExported,
   storeFileObject,
@@ -10,7 +11,11 @@ import { DomainError, NotFoundError } from "@aquarela/domain";
 import { requireSession } from "../../../../../../../lib/auth";
 import { getDb } from "../../../../../../../lib/db";
 import { getFileStorage } from "../../../../../../../lib/file-storage";
-import { isMultipart, parseUploadForm } from "../../../../../../../lib/file-upload";
+import {
+  isMultipart,
+  parseUploadForm,
+  rejectOversizeUpload,
+} from "../../../../../../../lib/file-upload";
 import { withMutationGuards } from "../../../../../../../lib/guards";
 import { jsonError, jsonOk } from "../../../../../../../lib/http";
 import { resolveOrganization } from "../../../../../../../lib/organization";
@@ -71,6 +76,11 @@ export async function POST(
     const store = createPostgresSchedulingStore(getDb().db);
 
     if (isMultipart(request)) {
+      const oversize = rejectOversizeUpload(request, PAYROLL_EXPORT_UPLOAD_POLICY);
+      if (oversize !== undefined) {
+        return oversize;
+      }
+
       let form: FormData;
       try {
         form = await request.formData();
@@ -135,6 +145,16 @@ export async function POST(
     const parsed = parseMarkPayrollReportExportedBody(await readJsonObject(request));
     if (!parsed.ok) {
       return jsonError(400);
+    }
+
+    if (parsed.input.exportFileId !== undefined) {
+      const file = await findFileObject(createPostgresFileObjectsStore(getDb().db), {
+        organizationId,
+        fileObjectId: parsed.input.exportFileId,
+      });
+      if (file === undefined) {
+        return jsonError(404);
+      }
     }
 
     let report;

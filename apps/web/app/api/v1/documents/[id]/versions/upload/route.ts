@@ -10,6 +10,7 @@ import { DomainError, NotFoundError } from "@aquarela/domain";
 import { requireSession } from "../../../../../../../lib/auth";
 import { getDb } from "../../../../../../../lib/db";
 import { getFileStorage } from "../../../../../../../lib/file-storage";
+import { rejectOversizeUpload } from "../../../../../../../lib/file-upload";
 import { withMutationGuards } from "../../../../../../../lib/guards";
 import { jsonError, jsonOk } from "../../../../../../../lib/http";
 import { resolveOrganization } from "../../../../../../../lib/organization";
@@ -17,6 +18,7 @@ import { resolveOrganization } from "../../../../../../../lib/organization";
 import { DOCUMENT_MANAGE_ROLES, isDocumentAuthorized, loadDocumentAccess } from "../../../access";
 import {
   DOCUMENT_FILE_RETENTION_POLICY,
+  DOCUMENT_UPLOAD_POLICY,
   isUuid,
   parseVersionUploadForm,
 } from "../../../document-rows";
@@ -58,6 +60,11 @@ export async function POST(
     const { id } = await context.params;
     if (!isUuid(id)) {
       return jsonError(400);
+    }
+
+    const oversize = rejectOversizeUpload(request, DOCUMENT_UPLOAD_POLICY);
+    if (oversize !== undefined) {
+      return oversize;
     }
 
     let form: FormData;
