@@ -7,7 +7,9 @@ vi.mock("@aquarela/application", async (importOriginal) => {
   return {
     ...actual,
     createPostgresHmsStore: vi.fn(() => ({})),
+    createPostgresTaskStore: vi.fn(() => ({})),
     findIncident: vi.fn(),
+    listAssignableUsers: vi.fn(),
     listCorrectiveActions: vi.fn(),
     recordCorrectiveAction: vi.fn(),
     loadUserAccess: vi.fn(),
@@ -37,6 +39,7 @@ const LOCATION = "11111111-1111-4111-8111-111111111111";
 const OTHER_LOCATION = "33333333-3333-4333-8333-333333333333";
 const INCIDENT_ID = "22222222-2222-4222-8222-222222222222";
 const ACTION_ID = "55555555-5555-4555-8555-555555555555";
+const OWNER_ID = "66666666-6666-4666-8666-666666666666";
 const PATH = `/api/v1/hms/incidents/${INCIDENT_ID}/corrective-actions`;
 
 function incidentRecord(overrides: Partial<IncidentRecord> = {}): IncidentRecord {
@@ -107,6 +110,9 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(application.createPostgresHmsStore).mockReturnValue({} as never);
   vi.mocked(application.findIncident).mockResolvedValue(incidentRecord());
+  vi.mocked(application.listAssignableUsers).mockResolvedValue([
+    { id: OWNER_ID, displayName: "Bo", username: "bo" },
+  ]);
   vi.mocked(application.listCorrectiveActions).mockResolvedValue([]);
   vi.mocked(application.recordCorrectiveAction).mockResolvedValue(actionRecord());
   vi.mocked(application.loadUserAccess).mockResolvedValue(access(["owner"]));
@@ -247,6 +253,7 @@ describe("POST /api/v1/hms/incidents/[id]/corrective-actions", () => {
     const response = await POST(postRequest(validBody), context());
 
     expect(response.status).toBe(200);
+    expect(application.listAssignableUsers).not.toHaveBeenCalled();
     expect(application.recordCorrectiveAction).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
@@ -263,6 +270,36 @@ describe("POST /api/v1/hms/incidents/[id]/corrective-actions", () => {
       correctiveActionId: ACTION_ID,
       status: "open",
     });
+  });
+
+  it("assigns an active owner at creation", async () => {
+    vi.mocked(application.recordCorrectiveAction).mockResolvedValue(
+      actionRecord({ ownerId: OWNER_ID }),
+    );
+
+    const response = await POST(postRequest({ ...validBody, ownerId: OWNER_ID }), context());
+
+    expect(response.status).toBe(200);
+    expect(application.listAssignableUsers).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ organizationId: ORG }),
+    );
+    expect(application.recordCorrectiveAction).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ ownerId: OWNER_ID }),
+    );
+  });
+
+  it("returns 400 for an owner that is not an active user in the organization", async () => {
+    vi.mocked(application.listAssignableUsers).mockResolvedValue([]);
+
+    const response = await POST(postRequest({ ...validBody, ownerId: OWNER_ID }), context());
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "ownerId must be an active user in the organization",
+    });
+    expect(application.recordCorrectiveAction).not.toHaveBeenCalled();
   });
 
   it("lets a location_manager scoped to the incident's location record one", async () => {

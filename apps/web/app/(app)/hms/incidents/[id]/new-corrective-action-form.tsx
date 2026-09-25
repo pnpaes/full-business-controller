@@ -1,6 +1,14 @@
 "use client";
 
-import { Alert, Button, DateField, SectionCard, TextareaField, spacing } from "@aquarela/ui";
+import {
+  Alert,
+  Button,
+  DateField,
+  SectionCard,
+  SelectField,
+  TextareaField,
+  spacing,
+} from "@aquarela/ui";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { FormEvent } from "react";
@@ -18,13 +26,23 @@ async function errorMessage(response: Response): Promise<string> {
 
 /**
  * Adds a corrective action to the incident (`HMS-004`, `DEC-090`). The incident
- * link is the path id; the action opens `open` with no owner — this form does
- * not offer an owner picker — and progresses on the corrective actions screen.
+ * link is the path id; the action opens `open` and progresses on the corrective
+ * actions screen. The owner is optional: options are the organization's active
+ * users, loaded server-side and passed as props from the same candidate-assignee
+ * read the register and incident pickers use; the `Unassigned` placeholder
+ * leaves it empty.
  */
-export function NewCorrectiveActionForm({ incidentId }: { readonly incidentId: string }) {
+export function NewCorrectiveActionForm({
+  incidentId,
+  owners,
+}: {
+  readonly incidentId: string;
+  readonly owners: readonly { readonly id: string; readonly label: string }[];
+}) {
   const router = useRouter();
   const [description, setDescription] = useState("");
   const [dueDate, setDueDate] = useState("");
+  const [ownerId, setOwnerId] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -46,7 +64,7 @@ export function NewCorrectiveActionForm({ incidentId }: { readonly incidentId: s
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           description: description.trim(),
-          ownerId: null,
+          ownerId: ownerId.length > 0 ? ownerId : null,
           dueDate: dueDate.trim().length > 0 ? dueDate.trim() : null,
         }),
       });
@@ -57,6 +75,7 @@ export function NewCorrectiveActionForm({ incidentId }: { readonly incidentId: s
       setSuccess("Corrective action added. Progress it from the corrective actions screen.");
       setDescription("");
       setDueDate("");
+      setOwnerId("");
       router.refresh();
     } catch {
       setError(FALLBACK_ERROR);
@@ -66,7 +85,7 @@ export function NewCorrectiveActionForm({ incidentId }: { readonly incidentId: s
   }
 
   return (
-    <SectionCard title="Add corrective action" meta="opens open · no owner yet">
+    <SectionCard title="Add corrective action" meta="opens open · owner optional">
       <form
         onSubmit={submit}
         style={{ display: "flex", flexDirection: "column", gap: spacing[4], maxWidth: 640 }}
@@ -80,6 +99,15 @@ export function NewCorrectiveActionForm({ incidentId }: { readonly incidentId: s
           required
           value={description}
           onChange={(event) => setDescription(event.target.value)}
+        />
+        <SelectField
+          name="ownerId"
+          label="Owner"
+          value={ownerId}
+          onChange={(event) => setOwnerId(event.target.value)}
+          placeholder="Unassigned"
+          options={owners.map((owner) => ({ value: owner.id, label: owner.label }))}
+          help="An owner must be an active user in the organization."
         />
         <DateField
           name="dueDate"

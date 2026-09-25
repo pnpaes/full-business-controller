@@ -1,6 +1,8 @@
 import {
   createPostgresHmsStore,
+  createPostgresTaskStore,
   findIncident,
+  listAssignableUsers,
   listCorrectiveActions,
   recordCorrectiveAction,
 } from "@aquarela/application";
@@ -110,7 +112,10 @@ export async function GET(
  * `DEC-090`) — create is limited to owner / general_manager / location_manager /
  * admin (`DEC-095`). The actor is the session user; the incident link is the
  * path id, so the body can only carry `description` and the optional
- * `ownerId`/`dueDate`. A malformed body or a non-UUID id is a 400.
+ * `ownerId`/`dueDate`. An `ownerId` must name an active user of the served
+ * organization (the same candidate-assignee read the owner picker uses) — an
+ * unknown or cross-organization id is a 400, never written as a dangling
+ * reference. A malformed body or a non-UUID id is a 400.
  *
  * The incident is resolved org-scoped for every caller — an unknown or
  * cross-organization id is a 404 (the command has no incident lookup of its
@@ -148,6 +153,16 @@ export async function POST(
     }
     if (!isHmsAuthorized(access, HMS_CORRECTIVE_ACTION_CREATE_ROLES, incident.locationId)) {
       return jsonError(403);
+    }
+
+    const nextOwnerId = parsed.input.ownerId;
+    if (nextOwnerId !== null) {
+      const owners = await listAssignableUsers(createPostgresTaskStore(getDb().db), {
+        organizationId,
+      });
+      if (!owners.some((owner) => owner.id === nextOwnerId)) {
+        return jsonError(400, "ownerId must be an active user in the organization");
+      }
     }
 
     let action;

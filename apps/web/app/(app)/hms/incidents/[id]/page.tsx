@@ -229,18 +229,24 @@ export default async function IncidentDetailPage({
   ];
 
   const canEdit = isHmsAuthorized(access, HMS_INCIDENT_EDIT_ROLES, incident.locationId);
+  const canCreateAction = isHmsAuthorized(
+    access,
+    HMS_CORRECTIVE_ACTION_CREATE_ROLES,
+    incident.locationId,
+  );
   // The owner picker's options are the organization's active users (the same
   // candidate-assignee read the task picker uses). An owner who is no longer
   // active stays listed so the current assignment is not silently rewritten.
-  const ownerOptions = canEdit
-    ? (await listAssignableUsers(createPostgresTaskStore(getDb().db), { organizationId })).map(
-        (user) => ({
-          id: user.id,
-          label:
-            user.username === null ? user.displayName : `${user.displayName} · ${user.username}`,
-        }),
-      )
-    : [];
+  const ownerOptions =
+    canEdit || canCreateAction
+      ? (await listAssignableUsers(createPostgresTaskStore(getDb().db), { organizationId })).map(
+          (user) => ({
+            id: user.id,
+            label:
+              user.username === null ? user.displayName : `${user.displayName} · ${user.username}`,
+          }),
+        )
+      : [];
   if (
     canEdit &&
     incident.ownerId !== null &&
@@ -251,11 +257,6 @@ export default async function IncidentDetailPage({
       label: actorLabelById.get(incident.ownerId) ?? incident.ownerId,
     });
   }
-  const canCreateAction = isHmsAuthorized(
-    access,
-    HMS_CORRECTIVE_ACTION_CREATE_ROLES,
-    incident.locationId,
-  );
   const canReadActions = isHmsAuthorized(access, HMS_CORRECTIVE_ACTION_READ_ROLES);
 
   return (
@@ -353,7 +354,9 @@ export default async function IncidentDetailPage({
         </SectionCard>
       ) : null}
 
-      {canCreateAction ? <NewCorrectiveActionForm incidentId={incident.id} /> : null}
+      {canCreateAction ? (
+        <NewCorrectiveActionForm incidentId={incident.id} owners={ownerOptions} />
+      ) : null}
     </div>
   );
 }
