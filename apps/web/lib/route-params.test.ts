@@ -25,4 +25,13 @@ describe("uuidOrNotFound", () => {
   it("trims surrounding whitespace around a valid UUID", () => {
     expect(uuidOrNotFound(`  ${VALID}  `)).toBe(VALID);
   });
+
+  it("renders 404 for a missing value (a runtime-only case TypeScript hides)", () => {
+    expect(() => uuidOrNotFound(undefined)).toThrow();
+    expect(() => uuidOrNotFound(null)).toThrow();
+  });
+
+  it("renders 404 for a blank value", () => {
+    expect(() => uuidOrNotFound("   ")).toThrow();
+  });
 });

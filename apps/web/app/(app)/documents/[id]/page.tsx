@@ -100,14 +100,14 @@ const downloadLinkStyle = {
 export default async function DocumentPage({
   params,
 }: {
-  readonly params: Promise<{ readonly documentId: string }>;
+  readonly params: Promise<{ readonly id: string }>;
 }) {
   const session = await getServerSession();
   if (session === undefined) {
     redirect("/login");
   }
 
-  const { documentId: rawId } = await params;
+  const { id: rawId } = await params;
   const documentId = uuidOrNotFound(rawId);
   const organizationId = resolveOrganization();
   const store = createPostgresDocumentsStore(getDb().db);
