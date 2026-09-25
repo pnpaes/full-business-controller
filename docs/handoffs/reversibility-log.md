@@ -1,5 +1,25 @@
 # Reversibility log
 
+- **2026-09-25 design-system + storage-port wave close-out (10 commits;
+  nothing pushed)**: the four in-flight agents from [handoff
+  081](081-2026-09-25-design-system-and-storage-port-wave.md) and the two
+  later workstreams all landed and were committed.
+  `2805deb`, `4c423c5`, `358bc58` — the a11y/touch-target work;
+  **design-system/a11y presentation only**; `git revert <sha>` each,
+  independently. **No migration.** `9c2c976`, `ac98d87`, `bef5459` — the
+  tax-rule authoring slice; `git revert <sha>` each. **No migration**
+  (`tax_rule` already had every column). `67ee852`, `6bfd5cd` — the
+  receiving `applied_tax_rate` provenance slice;
+  **`goods_receipt_line.applied_tax_rate`; the rollback is run
+  `packages/persistence/drizzle/0068_goods_receipt_line_applied_tax_rate_down.sql`
+  (back up first — the drop loses the captured rates on rows recorded
+  after `0068`), then `git revert 67ee852`; `6bfd5cd` is a type-only
+  revert.** `3054512` — the build fix keeping the domain barrel out of
+  the client bundle; **`git revert 3054512`; no migration, no schema
+  change.** Migrations now through `0068`; the `0068` down path was
+  rehearsed on a scratch DB (recorded in the commit body and
+  `docs/runbooks/persistence-migrations.md`). Nothing
+  pushed; nothing applied to DigitalOcean.
 - **2026-09-25 design-system + storage-port wave (8 commits; nothing
   pushed)**: in chronological order `c451c38` (docs — the `DEC-129` shell
    claim corrected, decision ids `DEC-130`/`DEC-131` reallocated),

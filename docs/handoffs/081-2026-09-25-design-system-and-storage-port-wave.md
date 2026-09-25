@@ -128,22 +128,35 @@ a clean no-op on re-run; `EXPECTED_TABLES` unchanged.
   self-assignment (`DEC-102`), unsigned golden fixtures, the
   `task`↔`approval` link, the worker/outbox layer gated on `ADR-0004` — and
   now the four deferred storage consumers listed under `9de4c5c`.
-- **In flight at the time of writing — four agents running in this
-  worktree with nothing committed. Do not treat any of this as done; check
-  `git status`/the commit log before assuming anything below landed:**
-  1. A **fixer** on the two measured overflow defects: the shell's
-     `.aq-canvas` is content-box with `width: 100%` plus padding, so
-     **every page overflows** its viewport (measured 1344/816/407 against
-     the 1280/768/375 targets), and `PageHeader`'s actions row does not
-     wrap at 375.
-  2. A **designer** extending the design system to `sales`, `purchasing`
-     and `costs` (the DEC-129 stage-3 screen rollout).
-  3. A second **designer** extending it to `recipes`, `production`,
-     `insights`, `close`, `tasks`, `administration`, `account` and
-     `documents`.
-  4. A **fixer** correcting copy that still says "`file_object` has no
-     application port" — now false at the platform level (the consumers
-     remain deferred, so only the claim is stale, not the honoured gaps).
+- **Landed after the four in-flight agents.** Every agent the mid-wave
+  census below recorded, plus the two workstreams added later, has landed
+  and been committed. All of the following are **committed — nothing is
+  pushed and nothing is applied to DigitalOcean**:
+  1. The **a11y/touch-target work**: `2805deb` (purchasing/costs
+      standalone link targets), `4c423c5` (skip-link focus + drawer focus
+      return), `358bc58` (right-size the insights/sales action links to
+      `controlHeight.sm` with a `pointer: coarse` 44px override; recorded
+      the design-system limitation that the coarse-pointer rule is
+      class-scoped to `.aquarela-btn`/`.aquarela-field`).
+  2. The **tax-rule authoring slice**: `9c2c976` (create/supersede
+      commands, routes, Administration register + form; `DEC-136`
+      recorded as provisional), `ac98d87` (eight review-found defects:
+      the overlap key aligned to the resolver's equivalence classes, the
+      conditional supersede `effective_to IS NULL`, `scope_type='storage'`
+      refused, location-scope labels, `fractionToPercentDisplay` leading
+      zeros, 23505→400, blank optional strings rejected), `bef5459`
+      (in-memory fake aligned to the conditional `endTaxRule` contract).
+  3. The **receiving `applied_tax_rate` provenance slice**: `67ee852`
+      (migration `0068`, `goods_receipt_line.applied_tax_rate`, nullable
+      expand-only, the `DEC-075` capture-verbatim precedent, rehearsed
+      down path), `6bfd5cd` (read DTO optional→required). Migrations now
+      run through `0068`.
+  4. The **build fix by the resuming session**: `3054512` (kept the
+      domain barrel out of the client bundle — `app/(app)/costs/format.ts`
+      imported `@aquarela/domain`, whose barrel re-exports node-only
+      `auth`, breaking `next build`; it now uses the
+      `@aquarela/domain/decimal|money|quantity` subpaths, with matching
+      vitest subpath aliases).
 - **Process findings (recorded so the next session does not relearn them):**
   1. Concurrent agents **share one `playwright-cli` session**, which
      silently invalidated one agent's browser verification when another
