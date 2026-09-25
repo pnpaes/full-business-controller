@@ -17,4 +17,6 @@ export const administrationLimiters = createSharedLimiters("administration", {
   replaceLocationScopes: { limit: 120, windowMs: FIFTEEN_MINUTES_MS },
   disableUser: { limit: 120, windowMs: FIFTEEN_MINUTES_MS },
   enableUser: { limit: 120, windowMs: FIFTEEN_MINUTES_MS },
+  createIntegrationSource: { limit: 120, windowMs: FIFTEEN_MINUTES_MS },
+  updateIntegrationSource: { limit: 120, windowMs: FIFTEEN_MINUTES_MS },
 });

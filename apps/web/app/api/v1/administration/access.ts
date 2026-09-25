@@ -73,6 +73,18 @@ export const ADMIN_AUDIT_READ_ROLES = ["owner", "general_manager", "admin"] as c
  */
 export const ADMIN_USERS_ROLES = ["owner", "admin"] as const;
 
+/**
+ * Roles that may read and configure the integrations registry (`INTG-001`,
+ * `DEC-137`, `ADR-0011`). The registry records who owns an external system's
+ * credentials and what data may move, which is configuration, not operational
+ * data, so the honest matrix row is §7.1 **"Users/configuration"** — **owner**
+ * grants, **admin** ("Technical") as required, every other role None. It shares
+ * the users/scopes set (the closest existing read of the same row) and gates
+ * both the read and the write for the same reason. `owner` is listed explicitly
+ * (`DEC-130`); there is no implicit owner/admin bypass.
+ */
+export const ADMIN_INTEGRATIONS_ROLES = ["owner", "admin"] as const;
+
 /** Loads the caller's roles live from server data (ADR-0003). */
 export async function loadAdministrationAccess(userId: string): Promise<UserAccess> {
   return loadUserAccess(getAuthStore(), userId);

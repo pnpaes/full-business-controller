@@ -1,12 +1,14 @@
 import {
   createPostgresCostingReadStore,
   createPostgresDataQualityReadStore,
+  createPostgresIntegrationSourceStore,
   createPostgresInventoryStore,
   createPostgresMasterDataStore,
   createPostgresTaxStore,
   listAuditEvents,
   listChannels,
   listDataQualityExceptions,
+  listIntegrationSources,
   listLocations,
   listRoles,
   listTaxRuleRegister,
@@ -39,15 +41,21 @@ import { getServerSession } from "../../../lib/server-session";
 import {
   ADMIN_AUDIT_READ_ROLES,
   ADMIN_DATA_QUALITY_READ_ROLES,
+  ADMIN_INTEGRATIONS_ROLES,
   ADMIN_UNIT_READ_ROLES,
   ADMIN_USERS_ROLES,
   isAdministrationAuthorized,
 } from "../../api/v1/administration/access";
-import { toRoleRow, toUserRow } from "../../api/v1/administration/admin-rows";
+import {
+  toIntegrationSourceRow,
+  toRoleRow,
+  toUserRow,
+} from "../../api/v1/administration/admin-rows";
 import { TAX_RULE_READ_ROLES, isCostingAuthorized } from "../../api/v1/costing/access";
 import { toChannelRows } from "../../api/v1/costing/costing-views";
 import { TAX_RULE_WRITE_ROLES } from "../../api/v1/costing/tax-rules/access";
 
+import { IntegrationRegister } from "./integration-register";
 import { TaxRuleForm } from "./tax-rule-form";
 import { fractionToPercentDisplay, taxScopeLabel } from "./tax-rule-labels";
 import { TaxRuleRegister, type TaxRuleRow } from "./tax-rule-register";
@@ -62,12 +70,13 @@ export const metadata = { title: "Administration — Aquarela Business Control" 
  * imports, integrations, audit and data quality). Capabilities with an existing
  * screen and application service are linked or rendered — Imports, the
  * conversion graph, the unit register, the tax-rule register and its authoring
- * form, the data-quality exception register, the audit register and the users &
- * access management surface. Each read is gated on the caller's live roles
- * (`loadUserAccess`, ADR-0003), so a role without read sees nothing rather than
- * an empty register. Integrations still has no application service and no route,
- * so it stays listed as unavailable; user *creation* is absent for the open
- * security decision stated on the surface.
+ * form, the data-quality exception register, the audit register, the users &
+ * access management surface and the read-only integration-source registry
+ * (`INTG-001`). Each read is gated on the caller's live roles (`loadUserAccess`,
+ * ADR-0003), so a role without read sees nothing rather than an empty register.
+ * Integrations is configuration only: publishing execution (`INTG-002`) is not
+ * built (`ADR-0004`), and user *creation* is absent for the open security
+ * decision stated on the surface.
  */
 
 const contentColumn = {
@@ -197,6 +206,9 @@ export default async function AdministrationPage() {
   const canReadDataQuality = isAdministrationAuthorized(access, ADMIN_DATA_QUALITY_READ_ROLES);
   const canReadAudit = isAdministrationAuthorized(access, ADMIN_AUDIT_READ_ROLES);
   const canManageUsers = isAdministrationAuthorized(access, ADMIN_USERS_ROLES);
+  // Integrations read and write share the owner/admin configuration set, so one
+  // flag drives both the section and its register form.
+  const canReadIntegrations = isAdministrationAuthorized(access, ADMIN_INTEGRATIONS_ROLES);
   const asOf = new Date();
   const conversions = await store.listEffectiveConversions(organizationId, asOf, null);
   const units = canReadUnits ? await listUnits(store, { organizationId }) : [];
@@ -210,6 +222,13 @@ export default async function AdministrationPage() {
   const roles = canManageUsers ? await listRoles(getAuthStore(), { organizationId }) : [];
   const locations = canManageUsers
     ? await listLocations(createPostgresInventoryStore(getDb().db), { organizationId })
+    : [];
+  // Integration-source registry (INTG-001, DEC-137): configuration only. The
+  // read is org-scoped (DEC-061); publishing (INTG-002) is not built.
+  const integrationSources = canReadIntegrations
+    ? await listIntegrationSources(createPostgresIntegrationSourceStore(getDb().db), {
+        organizationId,
+      })
     : [];
 
   // Tax rules: read on the costing read set, authored on the configuration set.
@@ -492,15 +511,25 @@ export default async function AdministrationPage() {
         </SectionCard>
       ) : null}
 
-      <SectionCard title="Not available yet" headingLevel={3} meta="No backend">
-        <ul style={list}>
-          <li>
-            <Badge>No backend</Badge> Integrations — blocked on owner approval: ADR-0011 is still
-            proposed and per-source write approval with a named credentials owner is unset
-            (DEC-015), so no integration configuration service or screen is built yet.
-          </li>
-        </ul>
-      </SectionCard>
+      {canReadIntegrations ? (
+        <SectionCard
+          title="Integrations"
+          meta={`${integrationSources.length} registered · INTG-001`}
+        >
+          <p style={{ ...muted, margin: `0 0 ${spacing[4]}px` }}>
+            The registry records <em>who owns the credentials</em>, <em>what data may move</em> and
+            whether the source&rsquo;s terms are approved. It is configuration, not a live
+            connector: publishing execution (INTG-002) is not built and is gated on ADR-0004, and a
+            write operation stays disabled until the source&rsquo;s terms are approved (DEC-015 /
+            DEC-137).
+          </p>
+          <IntegrationRegister
+            rows={integrationSources.map(toIntegrationSourceRow)}
+            canWrite={canReadIntegrations}
+          />
+        </SectionCard>
+      ) : null}
+
       <a href="/" style={backLink}>
         Back to Management home
       </a>

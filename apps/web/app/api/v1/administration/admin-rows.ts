@@ -1,16 +1,20 @@
 import {
   DEFAULT_AUDIT_EVENT_LIMIT,
   DEFAULT_DATA_QUALITY_EXCEPTION_LIMIT,
+  DEFAULT_INTEGRATION_SOURCE_LIMIT,
   DEFAULT_UNIT_LIMIT,
   DEFAULT_USER_LIMIT,
   MAX_AUDIT_EVENT_LIMIT,
   MAX_DATA_QUALITY_EXCEPTION_LIMIT,
+  MAX_INTEGRATION_SOURCE_LIMIT,
   MAX_UNIT_LIMIT,
   MAX_USER_LIMIT,
   type AuditEventRecord,
   type AuthRoleRecord,
   type AuthUserSummary,
   type DataQualityExceptionRecord,
+  type IntegrationSourceFieldsInput,
+  type IntegrationSourceRecord,
   type MasterUnit,
 } from "@aquarela/application";
 import { UNIT_DIMENSIONS, type UnitDimension } from "@aquarela/domain";
@@ -434,4 +438,164 @@ export function parseOptionalReason(body: Record<string, unknown> | undefined): 
     return { ok: false };
   }
   return reason.length === 0 ? { ok: true } : { ok: true, reason };
+}
+
+/* ------------------------------ integrations ------------------------------ */
+
+export interface IntegrationSourcesQuery {
+  readonly limit: number;
+  readonly offset: number;
+}
+
+export type ParsedIntegrationSourcesQuery =
+  { readonly ok: true; readonly query: IntegrationSourcesQuery } | { readonly ok: false };
+
+/** Parses the `limit`/`offset` page of the integration-source register. */
+export function parseIntegrationSourcesQuery(
+  searchParams: URLSearchParams,
+): ParsedIntegrationSourcesQuery {
+  const page = parsePage(
+    searchParams,
+    DEFAULT_INTEGRATION_SOURCE_LIMIT,
+    MAX_INTEGRATION_SOURCE_LIMIT,
+  );
+  if (page === undefined) {
+    return { ok: false };
+  }
+  return { ok: true, query: { limit: page.limit, offset: page.offset } };
+}
+
+export interface IntegrationSourceRow {
+  readonly id: string;
+  readonly name: string;
+  readonly systemType: string;
+  readonly direction: string;
+  readonly allowedOperations: readonly string[];
+  readonly credentialsOwner: string;
+  readonly rateLimitNote: string | null;
+  readonly termsStatus: string;
+  readonly active: boolean;
+}
+
+/**
+ * The wire row for the registry list: the configuration fields the
+ * Administration screen shows. No credentials exist on the row (the owner is a
+ * name, not a secret), and the organization id is omitted.
+ */
+export function toIntegrationSourceRow(record: IntegrationSourceRecord): IntegrationSourceRow {
+  return {
+    id: record.id,
+    name: record.name,
+    systemType: record.systemType,
+    direction: record.direction,
+    allowedOperations: [...record.allowedOperations],
+    credentialsOwner: record.credentialsOwner,
+    rateLimitNote: record.rateLimitNote,
+    termsStatus: record.termsStatus,
+    active: record.active,
+  };
+}
+
+/** Reads an optional string body field; absent/`null` → `undefined`, present-but-not-a-non-empty-string → `"invalid"`. */
+function readOptionalBodyString(
+  body: Record<string, unknown> | undefined,
+  key: string,
+): string | undefined | "invalid" {
+  const value = body?.[key];
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  if (typeof value !== "string") {
+    return "invalid";
+  }
+  const trimmed = value.trim();
+  return trimmed.length === 0 ? "invalid" : trimmed;
+}
+
+/** True when `key` is present, not `null`, and its value is not a string. */
+function isPresentNonNullNonString(
+  body: Record<string, unknown> | undefined,
+  key: string,
+): boolean {
+  return (
+    Object.prototype.hasOwnProperty.call(body ?? {}, key) &&
+    body?.[key] !== null &&
+    typeof body?.[key] !== "string"
+  );
+}
+
+export type ParsedIntegrationSourceBody =
+  { readonly ok: true; readonly fields: IntegrationSourceFieldsInput } | { readonly ok: false };
+
+/**
+ * Parses the create/update body: `name`, `systemType` and `credentialsOwner`
+ * are required non-empty strings; `direction`, `termsStatus`, `allowedOperations`
+ * and `active` are optional, and `rateLimitNote` is optional-and-nullable. The
+ * shape is checked here; the vocabulary, the `ALLOWED_OPERATION` subset and the
+ * `DEC-015` write-requires-approved-terms invariant remain the application
+ * command's authority (`normalizeIntegrationSourceFields`), so this parser stays
+ * a permissive wire boundary rather than a second validator.
+ */
+export function parseIntegrationSourceBody(
+  body: Record<string, unknown> | undefined,
+): ParsedIntegrationSourceBody {
+  const name = readBodyString(body, "name");
+  const systemType = readBodyString(body, "systemType");
+  const credentialsOwner = readBodyString(body, "credentialsOwner");
+  if (name === undefined || systemType === undefined || credentialsOwner === undefined) {
+    return { ok: false };
+  }
+
+  const direction = readOptionalBodyString(body, "direction");
+  if (direction === "invalid") {
+    return { ok: false };
+  }
+  const termsStatus = readOptionalBodyString(body, "termsStatus");
+  if (termsStatus === "invalid") {
+    return { ok: false };
+  }
+
+  const rawOperations = body?.["allowedOperations"];
+  let allowedOperations: readonly string[] | undefined;
+  if (rawOperations === undefined || rawOperations === null) {
+    allowedOperations = undefined;
+  } else if (Array.isArray(rawOperations)) {
+    const operations: string[] = [];
+    for (const operation of rawOperations) {
+      if (typeof operation !== "string" || operation.trim().length === 0) {
+        return { ok: false };
+      }
+      operations.push(operation.trim());
+    }
+    allowedOperations = operations;
+  } else {
+    return { ok: false };
+  }
+
+  if (isPresentNonNullNonString(body, "rateLimitNote")) {
+    return { ok: false };
+  }
+  const rawNote = body?.["rateLimitNote"];
+  const rateLimitNote =
+    typeof rawNote === "string" ? (rawNote.trim().length === 0 ? null : rawNote.trim()) : undefined;
+
+  const rawActive = body?.["active"];
+  if (rawActive !== undefined && rawActive !== null && typeof rawActive !== "boolean") {
+    return { ok: false };
+  }
+  const active = typeof rawActive === "boolean" ? rawActive : undefined;
+
+  return {
+    ok: true,
+    fields: {
+      name,
+      systemType,
+      ...(direction === undefined ? {} : { direction }),
+      ...(allowedOperations === undefined ? {} : { allowedOperations }),
+      credentialsOwner,
+      ...(rateLimitNote === undefined ? {} : { rateLimitNote }),
+      ...(termsStatus === undefined ? {} : { termsStatus }),
+      ...(active === undefined ? {} : { active }),
+    },
+  };
 }
