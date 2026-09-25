@@ -18,9 +18,8 @@ async function errorMessage(response: Response): Promise<string> {
 
 /**
  * Adds a corrective action to the incident (`HMS-004`, `DEC-090`). The incident
- * link is the path id; the action opens `open` with no owner (the same
- * no-user-list gap as the incident form) and progresses on the corrective
- * actions screen.
+ * link is the path id; the action opens `open` with no owner — this form does
+ * not offer an owner picker — and progresses on the corrective actions screen.
  */
 export function NewCorrectiveActionForm({ incidentId }: { readonly incidentId: string }) {
   const router = useRouter();

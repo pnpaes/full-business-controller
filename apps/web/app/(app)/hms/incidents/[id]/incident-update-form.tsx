@@ -42,22 +42,26 @@ async function errorMessage(response: Response): Promise<string> {
 
 /**
  * The audited incident update (`DEC-090`, `DEC-095`): status (closing included),
- * severity, title, description and due date. The close instant is derived by the
- * command from `status`, so the form sends the status alone. Owner assignment is
- * not offered — no HMS-scoped user-list read is wired for this screen, so a
- * picker would be invented access; the gap is recorded, not faked.
+ * severity, owner, title, description and due date. The close instant is derived
+ * by the command from `status`, so the form sends the status alone. Owner
+ * options are the organization's active users, from the same candidate-assignee
+ * read the task picker uses; the field is optional and choosing "Unassigned"
+ * clears the owner.
  */
 export function IncidentUpdateForm({
   incidentId,
+  owners,
   current,
 }: {
   readonly incidentId: string;
+  readonly owners: readonly { readonly id: string; readonly label: string }[];
   readonly current: {
     readonly status: string;
     readonly severity: string;
     readonly title: string;
     readonly description: string | null;
     readonly dueDate: string | null;
+    readonly ownerId: string | null;
   };
 }) {
   const router = useRouter();
@@ -66,6 +70,7 @@ export function IncidentUpdateForm({
   const [title, setTitle] = useState(current.title);
   const [description, setDescription] = useState(current.description ?? "");
   const [dueDate, setDueDate] = useState(current.dueDate ?? "");
+  const [ownerId, setOwnerId] = useState(current.ownerId ?? "");
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -91,6 +96,11 @@ export function IncidentUpdateForm({
           title: title.trim(),
           description: description.trim().length > 0 ? description.trim() : null,
           dueDate: dueDate.trim().length > 0 ? dueDate.trim() : null,
+          // Only send the owner when it changed, so an unrelated edit does not
+          // re-validate (or clear) an existing owner.
+          ...(ownerId === (current.ownerId ?? "")
+            ? {}
+            : { ownerId: ownerId.length > 0 ? ownerId : null }),
         }),
       });
       if (!response.ok) {
@@ -111,7 +121,7 @@ export function IncidentUpdateForm({
   }
 
   return (
-    <SectionCard title="Update or close" meta="audited · owner assignment not offered (see note)">
+    <SectionCard title="Update or close" meta="audited · owner assignable">
       <form
         onSubmit={submit}
         style={{ display: "flex", flexDirection: "column", gap: spacing[4], maxWidth: 640 }}
@@ -135,6 +145,15 @@ export function IncidentUpdateForm({
           value={severity}
           onChange={(event) => setSeverity(event.target.value)}
           options={SEVERITIES.map((option) => ({ ...option }))}
+        />
+        <SelectField
+          name="ownerId"
+          label="Owner"
+          value={ownerId}
+          onChange={(event) => setOwnerId(event.target.value)}
+          placeholder="Unassigned"
+          options={owners.map((owner) => ({ value: owner.id, label: owner.label }))}
+          help="An owner must be an active user in the organization."
         />
         <TextField
           name="title"
@@ -163,8 +182,8 @@ export function IncidentUpdateForm({
           </Button>
         </div>
         <p style={{ margin: 0, color: color.ink.tertiary }}>
-          Owner assignment is not offered here: no HMS-scoped user-list read is wired for this
-          screen. Assign owners through the API until an HMS-scoped user list lands.
+          The owner list is the organization&apos;s active users. Choose <em>Unassigned</em> to
+          clear the owner.
         </p>
       </form>
     </SectionCard>

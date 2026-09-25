@@ -7,6 +7,8 @@ vi.mock("@aquarela/application", async (importOriginal) => {
   return {
     ...actual,
     createPostgresHmsStore: vi.fn(() => ({})),
+    createPostgresTaskStore: vi.fn(() => ({})),
+    listAssignableUsers: vi.fn(),
     listIncidents: vi.fn(),
     registerIncident: vi.fn(),
     loadUserAccess: vi.fn(),
@@ -87,6 +89,8 @@ const validBody = {
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(application.createPostgresHmsStore).mockReturnValue({} as never);
+  vi.mocked(application.createPostgresTaskStore).mockReturnValue({} as never);
+  vi.mocked(application.listAssignableUsers).mockResolvedValue([]);
   vi.mocked(application.listIncidents).mockResolvedValue([]);
   vi.mocked(application.registerIncident).mockResolvedValue(incidentRecord());
   vi.mocked(application.loadUserAccess).mockResolvedValue(access(["kitchen"]));
@@ -304,6 +308,35 @@ describe("POST /api/v1/hms/incidents", () => {
     const response = await POST(postRequest(validBody));
 
     expect(response.status).toBe(403);
+    expect(application.registerIncident).not.toHaveBeenCalled();
+  });
+
+  it("accepts an owner who is an active user of the organization", async () => {
+    const ownerId = "55555555-5555-4555-8555-555555555555";
+    vi.mocked(application.listAssignableUsers).mockResolvedValue([
+      { id: ownerId, displayName: "Bo", username: "bo" },
+    ]);
+
+    const response = await POST(postRequest({ ...validBody, ownerId }));
+
+    expect(response.status).toBe(200);
+    expect(application.registerIncident).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ ownerId }),
+    );
+  });
+
+  it("rejects an owner who is unknown or in another organization", async () => {
+    vi.mocked(application.listAssignableUsers).mockResolvedValue([]);
+
+    const response = await POST(
+      postRequest({ ...validBody, ownerId: "55555555-5555-4555-8555-555555555555" }),
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "ownerId must be an active user in the organization",
+    });
     expect(application.registerIncident).not.toHaveBeenCalled();
   });
 

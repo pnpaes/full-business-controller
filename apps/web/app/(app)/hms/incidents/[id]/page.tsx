@@ -2,7 +2,9 @@ import {
   createPostgresFileObjectsStore,
   createPostgresHmsStore,
   createPostgresInventoryStore,
+  createPostgresTaskStore,
   findIncident,
+  listAssignableUsers,
   listCorrectiveActions,
   listFileObjects,
   listLocations,
@@ -227,6 +229,28 @@ export default async function IncidentDetailPage({
   ];
 
   const canEdit = isHmsAuthorized(access, HMS_INCIDENT_EDIT_ROLES, incident.locationId);
+  // The owner picker's options are the organization's active users (the same
+  // candidate-assignee read the task picker uses). An owner who is no longer
+  // active stays listed so the current assignment is not silently rewritten.
+  const ownerOptions = canEdit
+    ? (await listAssignableUsers(createPostgresTaskStore(getDb().db), { organizationId })).map(
+        (user) => ({
+          id: user.id,
+          label:
+            user.username === null ? user.displayName : `${user.displayName} · ${user.username}`,
+        }),
+      )
+    : [];
+  if (
+    canEdit &&
+    incident.ownerId !== null &&
+    !ownerOptions.some((option) => option.id === incident.ownerId)
+  ) {
+    ownerOptions.push({
+      id: incident.ownerId,
+      label: actorLabelById.get(incident.ownerId) ?? incident.ownerId,
+    });
+  }
   const canCreateAction = isHmsAuthorized(
     access,
     HMS_CORRECTIVE_ACTION_CREATE_ROLES,
@@ -249,12 +273,14 @@ export default async function IncidentDetailPage({
       {canEdit ? (
         <IncidentUpdateForm
           incidentId={incident.id}
+          owners={ownerOptions}
           current={{
             status: incident.status,
             severity: incident.severity,
             title: incident.title,
             description: incident.description,
             dueDate: incident.dueDate,
+            ownerId: incident.ownerId,
           }}
         />
       ) : (

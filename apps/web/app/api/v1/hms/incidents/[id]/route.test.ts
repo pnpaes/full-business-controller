@@ -8,7 +8,9 @@ vi.mock("@aquarela/application", async (importOriginal) => {
     ...actual,
     createPostgresHmsStore: vi.fn(() => ({})),
     createPostgresFileObjectsStore: vi.fn(() => ({})),
+    createPostgresTaskStore: vi.fn(() => ({})),
     findIncident: vi.fn(),
+    listAssignableUsers: vi.fn(),
     storeFileObject: vi.fn(),
     updateIncident: vi.fn(),
     loadUserAccess: vi.fn(),
@@ -160,7 +162,9 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(application.createPostgresHmsStore).mockReturnValue({} as never);
   vi.mocked(application.createPostgresFileObjectsStore).mockReturnValue({} as never);
+  vi.mocked(application.createPostgresTaskStore).mockReturnValue({} as never);
   vi.mocked(application.findIncident).mockResolvedValue(incidentRecord());
+  vi.mocked(application.listAssignableUsers).mockResolvedValue([]);
   vi.mocked(application.updateIncident).mockResolvedValue(incidentRecord());
   vi.mocked(application.storeFileObject).mockResolvedValue(fileRecord());
   vi.mocked(application.loadUserAccess).mockResolvedValue(access(["owner"]));
@@ -292,6 +296,37 @@ describe("PATCH /api/v1/hms/incidents/[id]", () => {
 
     expect(response.status).toBe(200);
     expect(application.updateIncident).toHaveBeenCalled();
+  });
+
+  it("accepts an owner who is an active user of the organization", async () => {
+    const ownerId = "55555555-5555-4555-8555-555555555555";
+    vi.mocked(application.listAssignableUsers).mockResolvedValue([
+      { id: ownerId, displayName: "Bo", username: "bo" },
+    ]);
+    vi.mocked(application.updateIncident).mockResolvedValue(incidentRecord({ ownerId }));
+
+    const response = await PATCH(patchRequest({ ownerId }), context());
+
+    expect(response.status).toBe(200);
+    expect(application.updateIncident).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ incidentId: INCIDENT_ID, ownerId }),
+    );
+  });
+
+  it("rejects an owner who is unknown or in another organization", async () => {
+    vi.mocked(application.listAssignableUsers).mockResolvedValue([]);
+
+    const response = await PATCH(
+      patchRequest({ ownerId: "55555555-5555-4555-8555-555555555555" }),
+      context(),
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "ownerId must be an active user in the organization",
+    });
+    expect(application.updateIncident).not.toHaveBeenCalled();
   });
 
   it("returns 403 for kitchen, which may not edit or close an incident", async () => {

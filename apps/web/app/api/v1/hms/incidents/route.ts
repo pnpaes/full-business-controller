@@ -1,4 +1,10 @@
-import { createPostgresHmsStore, listIncidents, registerIncident } from "@aquarela/application";
+import {
+  createPostgresHmsStore,
+  createPostgresTaskStore,
+  listAssignableUsers,
+  listIncidents,
+  registerIncident,
+} from "@aquarela/application";
 import { DomainError, NotFoundError } from "@aquarela/domain";
 
 import { requireSession } from "../../../../../lib/auth";
@@ -100,10 +106,12 @@ export async function GET(request: Request): Promise<Response> {
  *
  * The body carries `locationId`, `category`, `severity`, `occurredAt`, an
  * optional `reportedAt` (defaulting to now), optional `ownerId`/`dueDate`/
- * `description`, `title` and `involvesPersonalData`. A command rejection
- * (unknown category/severity, malformed instant) is a 400. A location-scoped
- * caller may only register an incident at a location in their scope (403
- * otherwise).
+ * `description`, `title` and `involvesPersonalData`. An `ownerId` must name an
+ * active user of the served organization (the same candidate-assignee read the
+ * owner picker uses) — an unknown or cross-organization id is a 400. A command
+ * rejection (unknown category/severity, malformed instant) is a 400. A
+ * location-scoped caller may only register an incident at a location in their
+ * scope (403 otherwise).
  */
 export async function POST(request: Request): Promise<Response> {
   return withMutationGuards(request, hmsLimiters.registerIncident, async () => {
@@ -120,6 +128,15 @@ export async function POST(request: Request): Promise<Response> {
 
     const organizationId = resolveOrganization();
     const store = createPostgresHmsStore(getDb().db);
+
+    if (parsed.input.ownerId !== null) {
+      const owners = await listAssignableUsers(createPostgresTaskStore(getDb().db), {
+        organizationId,
+      });
+      if (!owners.some((owner) => owner.id === parsed.input.ownerId)) {
+        return jsonError(400, "ownerId must be an active user in the organization");
+      }
+    }
 
     let incident;
     try {

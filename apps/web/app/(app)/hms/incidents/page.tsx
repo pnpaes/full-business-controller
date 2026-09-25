@@ -1,6 +1,8 @@
 import {
   createPostgresHmsStore,
   createPostgresInventoryStore,
+  createPostgresTaskStore,
+  listAssignableUsers,
   listIncidents,
   listLocations,
 } from "@aquarela/application";
@@ -131,6 +133,20 @@ export default async function HmsIncidentsPage({
     limit: PAGE_LIMIT,
   });
 
+  const canCreate = isHmsAuthorized(access, HMS_INCIDENT_CREATE_ROLES);
+  // The owner picker's options are the organization's active users (the same
+  // candidate-assignee read the task picker uses), loaded only for the roles
+  // that can raise an incident.
+  const ownerOptions = canCreate
+    ? (await listAssignableUsers(createPostgresTaskStore(getDb().db), { organizationId })).map(
+        (user) => ({
+          id: user.id,
+          label:
+            user.username === null ? user.displayName : `${user.displayName} · ${user.username}`,
+        }),
+      )
+    : [];
+
   const allLocations = await listLocations(createPostgresInventoryStore(getDb().db), {
     organizationId,
   });
@@ -177,8 +193,6 @@ export default async function HmsIncidentsPage({
     { key: "due", header: "Due" },
     { key: "occurred", header: "Occurred" },
   ];
-
-  const canCreate = isHmsAuthorized(access, HMS_INCIDENT_CREATE_ROLES);
 
   return (
     <div style={contentColumn}>
@@ -246,6 +260,7 @@ export default async function HmsIncidentsPage({
 
       {canCreate ? (
         <NewIncidentForm
+          owners={ownerOptions}
           locations={visibleLocations.map((location) => ({
             id: location.id,
             label: `${location.code} · ${location.name}`,

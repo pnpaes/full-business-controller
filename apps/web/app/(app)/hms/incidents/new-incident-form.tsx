@@ -44,20 +44,24 @@ async function errorMessage(response: Response): Promise<string> {
 }
 
 /**
- * Raises an incident (`HMS-003`, `DEC-090`): where, what, when, severity and the
- * personal-data flag. The reporter is the session actor and the initial status
- * is `open`, both filled server-side. Evidence is attached after the incident
- * exists, from its detail page (`DEC-134`), not here.
+ * Raises an incident (`HMS-003`, `DEC-090`): where, what, when, severity, an
+ * optional owner and the personal-data flag. The reporter is the session actor
+ * and the initial status is `open`, both filled server-side. Evidence is
+ * attached after the incident exists, from its detail page (`DEC-134`), not
+ * here.
  */
 export function NewIncidentForm({
   locations,
+  owners,
 }: {
   readonly locations: readonly { readonly id: string; readonly label: string }[];
+  readonly owners: readonly { readonly id: string; readonly label: string }[];
 }) {
   const router = useRouter();
   const [locationId, setLocationId] = useState(locations[0]?.id ?? "");
   const [category, setCategory] = useState<string>("other");
   const [severity, setSeverity] = useState<string>("low");
+  const [ownerId, setOwnerId] = useState("");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [dueDate, setDueDate] = useState("");
@@ -98,7 +102,7 @@ export function NewIncidentForm({
           severity,
           occurredAt: new Date().toISOString(),
           reportedAt: null,
-          ownerId: null,
+          ownerId: ownerId.length > 0 ? ownerId : null,
           title: title.trim(),
           description: description.trim().length > 0 ? description.trim() : null,
           dueDate: dueDate.trim().length > 0 ? dueDate.trim() : null,
@@ -109,10 +113,11 @@ export function NewIncidentForm({
         setError(await errorMessage(response));
         return;
       }
-      setSuccess("Incident raised. Open it from the list to assign an owner or add actions.");
+      setSuccess("Incident raised. Open it from the list to add evidence or corrective actions.");
       setTitle("");
       setDescription("");
       setDueDate("");
+      setOwnerId("");
       setInvolvesPersonalData(false);
       router.refresh();
     } catch {
@@ -155,6 +160,15 @@ export function NewIncidentForm({
           onChange={(event) => setSeverity(event.target.value)}
           options={SEVERITIES.map((option) => ({ ...option }))}
         />
+        <SelectField
+          name="ownerId"
+          label="Owner (optional)"
+          value={ownerId}
+          onChange={(event) => setOwnerId(event.target.value)}
+          placeholder="Unassigned"
+          options={owners.map((owner) => ({ value: owner.id, label: owner.label }))}
+          help="An owner must be an active user in the organization."
+        />
         <TextField
           name="title"
           label="Title"
@@ -187,8 +201,9 @@ export function NewIncidentForm({
           </Button>
         </div>
         <p style={{ margin: 0, color: color.ink.tertiary }}>
-          The incident opens with status <code>open</code> and no owner. Open it from the list to
-          attach a photo or report — evidence storage is wired (DEC-134) — and to assign an owner.
+          The incident opens with status <code>open</code>. Leave the owner unassigned to pick one
+          later from its detail page, and attach a photo or report there — evidence storage is wired
+          (DEC-134).
         </p>
       </form>
     </SectionCard>

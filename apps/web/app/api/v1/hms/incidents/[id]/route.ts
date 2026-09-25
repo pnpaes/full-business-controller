@@ -1,7 +1,9 @@
 import {
   createPostgresFileObjectsStore,
   createPostgresHmsStore,
+  createPostgresTaskStore,
   findIncident,
+  listAssignableUsers,
   storeFileObject,
   updateIncident,
 } from "@aquarela/application";
@@ -105,11 +107,13 @@ export async function GET(
  *
  * The body is any subset of `status`, `severity`, `ownerId`, `dueDate`, `title`
  * and `description` (`null` clears an optional field); `closedAt` is derived by
- * the command from `status`. A malformed body or a non-UUID id is a 400, as is a
- * command rejection (unknown status/severity, empty title, no fields). An
- * unknown/cross-organization incident is a 404; a location-scoped caller may
- * only edit an incident at a location in their scope — resolved org-scoped
- * before the command, so another location's incident is a 403.
+ * the command from `status`. An `ownerId` must name an active user of the served
+ * organization (the same candidate-assignee read the owner picker uses) — an
+ * unknown or cross-organization id is a 400. A malformed body or a non-UUID id
+ * is a 400, as is a command rejection (unknown status/severity, empty title, no
+ * fields). An unknown/cross-organization incident is a 404; a location-scoped
+ * caller may only edit an incident at a location in their scope — resolved
+ * org-scoped before the command, so another location's incident is a 403.
  *
  * Two body shapes are accepted (`DEC-134`): the JSON shape above, and a
  * `multipart/form-data` body that carries those same fields plus an optional
@@ -229,6 +233,16 @@ export async function PATCH(
     // update, and the file object is the whole result.
     if (Object.keys(parsedBody.input).length === 0) {
       return jsonOk({ incidentId: id, fileObjectId });
+    }
+
+    const nextOwnerId = parsedBody.input.ownerId;
+    if (nextOwnerId !== undefined && nextOwnerId !== null) {
+      const owners = await listAssignableUsers(createPostgresTaskStore(getDb().db), {
+        organizationId,
+      });
+      if (!owners.some((owner) => owner.id === nextOwnerId)) {
+        return jsonError(400, "ownerId must be an active user in the organization");
+      }
     }
 
     let incident;
