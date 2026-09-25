@@ -3,6 +3,8 @@ import {
   buildMenuEngineeringReport,
   buildOperationsReport,
   buildSalesReport,
+  computeForecastTracking,
+  createPostgresForecastStore,
   createPostgresReportingStore,
 } from "@aquarela/application";
 import {
@@ -30,6 +32,12 @@ import {
   loadReportingAccess,
 } from "../../api/v1/reports/access";
 import { MetricBand } from "../home-modules";
+import {
+  formatAccuracy,
+  grainLabel,
+  trackingStatusLabel,
+  trackingStatusTone,
+} from "./forecast-tracking-labels";
 import {
   formatAsOf,
   formatMoney,
@@ -140,9 +148,9 @@ const pageCss = `
  * daily net-sales line), then the period measures as one grouped band, then
  * compact preview panels — one per child report, each with a real figure and
  * a link into it. Competitors is now a live preview linking into the reviewed
- * observation register (`DEC-126`); Planning stays honestly planned: tracking
- * has no backend, so it is labelled with the reason (needs history), never
- * charted with placeholders.
+ * observation register (`DEC-126`), and forecast tracking is live (`DEC-138`):
+ * projected-versus-actual over recorded snapshots, honest about `no_snapshot`
+ * and `insufficient_history` rather than charting a placeholder figure.
  *
  * Every figure carries its period, scope and freshness (`08_UI_UX.md` §8.4,
  * `FND-006`). Contribution is **before** direct labour, channel fees and
@@ -234,6 +242,21 @@ export default async function InsightsPage() {
   const hasWaste = operations.waste.rows.length > 0;
   const hasProduction = operations.production.rows.length > 0;
   const currency = operations.currency;
+
+  // Forecast-vs-actual tracking (DEC-011/DEC-138): a recorded snapshot compared
+  // with posted actuals. A snapshot records one location or the whole
+  // organization, so a multi-location caller is told why it is not shown rather
+  // than given an out-of-scope aggregate.
+  const trackingLocationId = access.locationIds.length === 1 ? access.locationIds[0] : undefined;
+  const tracking =
+    access.locationIds.length <= 1
+      ? await computeForecastTracking(createPostgresForecastStore(getDb().db), {
+          organizationId,
+          metric: "revenue",
+          grain: "day_location",
+          ...(trackingLocationId === undefined ? {} : { locationId: trackingLocationId }),
+        })
+      : null;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: spacing[6] }}>
@@ -550,16 +573,30 @@ export default async function InsightsPage() {
         </SectionCard>
       </div>
 
-      {/* Planned screens, honestly labelled: no backend exists, so nothing is
-          charted with placeholders. */}
+      {/* Live screens that are honestly bounded: forecast tracking is built
+          (DEC-138) but states `no_snapshot`/`insufficient_history` rather than
+          fabricating an accuracy, and the competitor register is human-reviewed
+          only. */}
       <div className="in-planned">
-        <SectionCard title="Planning" meta="Forecast live · tracking planned">
+        <SectionCard
+          title="Forecast tracking"
+          meta="W6 · projected vs actual"
+          actions={
+            <a href="/insights/forecast" className="in-action-link" style={actionLink}>
+              Open forecast
+            </a>
+          }
+        >
           <div style={{ display: "flex", flexDirection: "column", gap: spacing[2] }}>
-            <StatusPill tone="info">Forecast built, tracking planned</StatusPill>
+            <StatusPill tone={tracking === null ? "neutral" : trackingStatusTone(tracking.status)}>
+              {tracking === null ? "Per location" : trackingStatusLabel(tracking.status)}
+            </StatusPill>
             <p style={paragraph}>
-              An advisory forecast and the rule-based suggestions are live (see Forecast &amp;
-              suggestions). Forecast-versus-actual tracking, overrides and seasonality are not built
-              yet — they need forecast history accumulated over time, so nothing is charted here.
+              {tracking === null
+                ? "Tracking compares a recorded forecast snapshot with posted actuals, one location (or the whole organization) at a time — open the forecast screen for a single accessible location."
+                : tracking.status === "ok"
+                  ? `Projected against posted actuals at ${grainLabel(tracking.grain).toLowerCase()}: out-of-sample accuracy ${formatAccuracy(tracking.accuracy?.mape ?? null)} (MAPE, lower is better) over ${tracking.completedPeriods} completed ${tracking.completedPeriods === 1 ? "period" : "periods"}. The projected figure is a model, never a recorded fact.`
+                  : `${tracking.reason ?? "Accuracy is not reported."} Tracking reports an accuracy only after ${tracking.minimumCompletedPeriods} completed periods, and never from too few points.`}
             </p>
           </div>
         </SectionCard>

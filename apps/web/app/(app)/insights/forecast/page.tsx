@@ -1,9 +1,13 @@
 import {
   computeForecast,
+  computeForecastTracking,
   computeSuggestions,
+  createPostgresForecastStore,
   createPostgresReportingStore,
   type ForecastResult,
+  type ForecastTrackingReport,
   type SuggestionsReport,
+  type SupportedForecastGrain,
 } from "@aquarela/application";
 import {
   Alert,
@@ -25,11 +29,21 @@ import { redirect } from "next/navigation";
 import { getDb } from "../../../../lib/db";
 import { resolveOrganization } from "../../../../lib/organization";
 import { getServerSession } from "../../../../lib/server-session";
+import { isForecastWriteAuthorized } from "../../../api/v1/analytics/access";
 import {
   SALES_REPORT_READ_ROLES,
   isReportingAuthorized,
   loadReportingAccess,
 } from "../../../api/v1/reports/access";
+import { ForecastTrackingActions } from "../forecast-tracking-actions";
+import {
+  formatAccuracy,
+  formatCompletedPeriods,
+  formatTrackingError,
+  grainLabel,
+  trackingStatusLabel,
+  trackingStatusTone,
+} from "../forecast-tracking-labels";
 import {
   formatFractionPct,
   formatMetricValue,
@@ -145,6 +159,24 @@ export default async function InsightsForecastPage({
     grain,
     ...locationFilter,
   });
+
+  // Forecast-vs-actual tracking (DEC-011/DEC-138). A snapshot records one
+  // location or the whole organization, so tracking is shown only when the
+  // caller's scope resolves to a single location (or is organization-wide); a
+  // multi-location caller is told why rather than shown an out-of-scope
+  // aggregate. Only `day_location` is implemented (the DEC-011 ceiling).
+  const trackingGrain: SupportedForecastGrain = "day_location";
+  const trackingLocationId = access.locationIds.length === 1 ? access.locationIds[0] : undefined;
+  const tracking: ForecastTrackingReport | null =
+    access.locationIds.length <= 1
+      ? await computeForecastTracking(createPostgresForecastStore(getDb().db), {
+          organizationId,
+          metric,
+          grain: trackingGrain,
+          ...(trackingLocationId === undefined ? {} : { locationId: trackingLocationId }),
+        })
+      : null;
+  const canWriteTracking = isForecastWriteAuthorized(access);
 
   const scopeText =
     forecast.scope.locationIds === null
@@ -359,6 +391,130 @@ export default async function InsightsForecastPage({
             {suggestions.evaluated.map((rule) => `${rule.ruleId} (${rule.fired})`).join(" · ")}
           </span>
         </div>
+      </SectionCard>
+
+      {/* Forecast-vs-actual tracking (DEC-011/DEC-138): a recorded snapshot
+          compared against the posted actuals of each completed period, with an
+          out-of-sample MAPE. `insufficient_history` and `no_snapshot` are shown
+          honestly rather than as a fabricated figure. */}
+      <SectionCard
+        title="Forecast tracking"
+        meta={
+          tracking === null
+            ? "projected vs actual · per location"
+            : `${grainLabel(tracking.grain)} · ${formatCompletedPeriods(tracking.completedPeriods)} · as of ${formatAsOf(tracking.asOf)}`
+        }
+      >
+        {tracking === null ? (
+          <Alert tone="info" title="Tracking is per location">
+            A snapshot records one location or the whole organization, so tracking cannot be shown
+            for a multi-location scope. Open this screen for a single accessible location, or ask an
+            owner to record an organization-wide snapshot.
+          </Alert>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: spacing[4] }}>
+            <div
+              style={{ display: "flex", alignItems: "center", gap: spacing[3], flexWrap: "wrap" }}
+            >
+              <StatusPill tone={trackingStatusTone(tracking.status)}>
+                {trackingStatusLabel(tracking.status)}
+              </StatusPill>
+              <span style={{ fontSize: typography.fontSize.xs, color: color.text.muted }}>
+                {grainLabel(tracking.grain)} · model {tracking.model ?? "n/a"} · snapshot as of{" "}
+                {tracking.snapshotAsOf === null ? "n/a" : formatAsOf(tracking.snapshotAsOf)}
+                {tracking.snapshotGeneratedAt === null
+                  ? ""
+                  : ` · recorded ${formatAsOf(tracking.snapshotGeneratedAt)}`}
+              </span>
+            </div>
+
+            {tracking.status !== "ok" ? (
+              <Alert
+                tone={tracking.status === "no_snapshot" ? "info" : "warning"}
+                title={trackingStatusLabel(tracking.status)}
+              >
+                {tracking.reason ?? "Accuracy is not reported for this state."}
+              </Alert>
+            ) : null}
+
+            {tracking.periods.length > 0 ? (
+              <div style={{ overflowX: "auto", minWidth: 0 }}>
+                <DataTable
+                  caption={`Projected against posted actuals for each completed period (${grainLabel(tracking.grain).toLowerCase()}). The projected column is a model figure; the actual column is posted data.`}
+                  columns={[
+                    { key: "period", header: "Period" },
+                    { key: "projected", header: "Projected (model)", align: "right" as const },
+                    { key: "actual", header: "Actual (posted)", align: "right" as const },
+                    { key: "error", header: "Abs. error", align: "right" as const },
+                    { key: "pctError", header: "% error", align: "right" as const },
+                  ]}
+                  rows={tracking.periods.map((point) => ({
+                    period: point.period,
+                    projected: formatMetricValue(point.projected, tracking.unit),
+                    actual: formatMetricValue(point.actual, tracking.unit),
+                    error:
+                      point.absoluteError === null
+                        ? "n/a"
+                        : formatMetricValue(point.absoluteError, tracking.unit),
+                    pctError: formatTrackingError(point.percentageError),
+                  }))}
+                />
+              </div>
+            ) : null}
+
+            <span style={{ fontSize: typography.fontSize.sm, color: color.ink.secondary }}>
+              {tracking.status === "ok"
+                ? `Out-of-sample accuracy (MAPE): ${formatAccuracy(tracking.accuracy?.mape ?? null)} over ${tracking.accuracy?.periods ?? 0} completed periods with a non-zero actual — lower is better. ${tracking.accuracy?.methodNote ?? ""}`
+                : `Accuracy withheld: ${tracking.reason ?? "not reported"}.`}
+            </span>
+
+            {tracking.overrides.length > 0 ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: spacing[2] }}>
+                <strong style={{ fontSize: typography.fontSize.sm, color: color.ink.primary }}>
+                  Recorded overrides (advisory, append-only)
+                </strong>
+                <ul
+                  style={{
+                    listStyle: "none",
+                    margin: 0,
+                    padding: 0,
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: spacing[2],
+                  }}
+                >
+                  {tracking.overrides.map((override) => (
+                    <li
+                      key={override.id}
+                      style={{ fontSize: typography.fontSize.sm, color: color.ink.secondary }}
+                    >
+                      <strong>{override.period}</strong> — {override.reason}{" "}
+                      <span style={{ color: color.text.muted }}>
+                        (recorded {formatAsOf(override.recordedAt)})
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
+            {canWriteTracking ? (
+              <ForecastTrackingActions
+                metric={tracking.metric}
+                grain={tracking.grain}
+                grainText={grainLabel(tracking.grain)}
+                locationId={tracking.scope.locationId}
+                channelId={tracking.scope.channelId}
+                snapshotId={tracking.snapshotId}
+                periods={tracking.periods.map((point) => point.period)}
+              />
+            ) : null}
+
+            <span style={{ fontSize: typography.fontSize.xs, color: color.text.muted }}>
+              {tracking.notes.join(" · ")}
+            </span>
+          </div>
+        )}
       </SectionCard>
     </div>
   );
