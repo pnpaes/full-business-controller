@@ -19,7 +19,7 @@ import { TAX_BASES } from "@aquarela/domain";
 
 import { getDb } from "../../../../lib/db";
 
-import { getCostingReadContext, loadPriceScenarios } from "../data";
+import { getCostingReadContext, loadChannels, loadPriceScenarios } from "../data";
 import { formatInstant, formatMoney, formatPercent, orDash, stateTone } from "../format";
 
 import { RegisterScenarioForm } from "./register-scenario-form";
@@ -38,10 +38,11 @@ const numCell = { textAlign: "right", fontVariantNumeric: "tabular-nums" } as co
 export default async function PriceScenariosPage() {
   const context = await getCostingReadContext();
   const db = getDb().db;
-  const [rows, products, locations] = await Promise.all([
+  const [rows, products, locations, channels] = await Promise.all([
     loadPriceScenarios(context),
     listProducts(createPostgresProductStore(db), { organizationId: context.organizationId }),
     listLocations(createPostgresInventoryStore(db), { organizationId: context.organizationId }),
+    loadChannels(context),
   ]);
   const variantOptions = products.flatMap(({ product, variants }) =>
     variants.map((variant) => ({
@@ -144,6 +145,11 @@ export default async function PriceScenariosPage() {
           id: location.id,
           code: location.code,
           name: location.name,
+        }))}
+        channels={channels.map((channel) => ({
+          id: channel.id,
+          code: channel.code,
+          name: channel.name,
         }))}
         currency={currency}
         taxBases={TAX_BASES}

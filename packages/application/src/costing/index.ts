@@ -40,6 +40,8 @@ export {
   listCostCenters,
 } from "./list-cost-centers";
 export type { ListCostCentersQuery } from "./list-cost-centers";
+export { DEFAULT_CHANNEL_LIMIT, MAX_CHANNEL_LIMIT, listChannels } from "./list-channels";
+export type { ListChannelsQuery } from "./list-channels";
 export {
   COST_CARD_HISTORY_LIMIT,
   getCostCardDetail,
@@ -53,6 +55,7 @@ export {
 } from "./read";
 export type {
   AllocationRuleReadRecord,
+  ChannelListRecord,
   CostCardDetailRecord,
   CostCardHistoryEntry,
   CostingItemRefRecord,

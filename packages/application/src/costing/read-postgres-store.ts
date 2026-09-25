@@ -17,6 +17,7 @@ import { asJsonObject } from "./json";
 import type { PriceScenarioRecord } from "./price-scenario-types";
 import type {
   AllocationRuleReadRecord,
+  ChannelListRecord,
   CostingItemRefRecord,
   CostingReadStore,
   CostingRefRecord,
@@ -274,6 +275,19 @@ export function createPostgresCostingReadStore(db: Database): CostingReadStore {
       });
       return rows.map(toCostCenter);
     },
+    listChannels: async (query_) => {
+      const rows = await query().channel.findMany({
+        where: (table, { and, eq }) =>
+          and(
+            eq(table.organizationId, query_.organizationId),
+            query_.isDelivery === undefined ? undefined : eq(table.isDelivery, query_.isDelivery),
+          ),
+        orderBy: (table, { asc }) => [asc(table.code), asc(table.id)],
+        limit: query_.limit,
+        offset: query_.offset,
+      });
+      return rows.map(toChannelList);
+    },
   };
 }
 
@@ -301,5 +315,21 @@ function toCostCenter(row: {
     code: row.code,
     name: row.name,
     kind: row.kind,
+  };
+}
+
+function toChannelList(row: {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly code: string;
+  readonly name: string;
+  readonly isDelivery: boolean;
+}): ChannelListRecord {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    code: row.code,
+    name: row.name,
+    isDelivery: row.isDelivery,
   };
 }

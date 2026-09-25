@@ -31,6 +31,19 @@ export interface CostingRefRecord {
   readonly name: string | null;
 }
 
+/**
+ * A `channel` row (`DATA_DICTIONARY` §1) as the channel picker reads it. Unlike
+ * the write port's sparse `ChannelRecord`, this carries the display columns plus
+ * `isDelivery`, the only channel attribute a filter can key on.
+ */
+export interface ChannelListRecord {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly code: string;
+  readonly name: string;
+  readonly isDelivery: boolean;
+}
+
 export interface CostingItemRefRecord extends CostingRefRecord {
   readonly baseUnitId: string;
 }
@@ -115,4 +128,17 @@ export interface CostingReadStore {
     readonly limit: number;
     readonly offset: number;
   }): Promise<readonly CostCenterRecord[]>;
+
+  /**
+   * One bounded page of the organization's sales channels (`DATA_DICTIONARY` §1),
+   * ordered by `code` (then `id`). `limit`/`offset` are applied by the store; the
+   * application `listChannels` service validates them against `MAX_CHANNEL_LIMIT`
+   * first.
+   */
+  listChannels(query: {
+    readonly organizationId: string;
+    readonly isDelivery?: boolean;
+    readonly limit: number;
+    readonly offset: number;
+  }): Promise<readonly ChannelListRecord[]>;
 }

@@ -6,6 +6,7 @@ import type {
 import type { PriceScenarioRecord } from "./price-scenario-types";
 import type {
   AllocationRuleReadRecord,
+  ChannelListRecord,
   CostingItemRefRecord,
   CostingOrganizationRefRecord,
   CostingReadStore,
@@ -29,7 +30,7 @@ export class FakeCostingReadStore implements CostingReadStore {
   readonly organizations = new Map<string, CostingOrganizationRefRecord>();
   readonly productVariants = new Map<string, CostingRefRecord>();
   readonly locations = new Map<string, CostingRefRecord>();
-  readonly channels = new Map<string, CostingRefRecord>();
+  readonly channels = new Map<string, ChannelListRecord>();
   readonly costCenters = new Map<string, CostCenterRecord>();
   readonly items = new Map<string, CostingItemRefRecord>();
   readonly units = new Map<string, CostingUnitRefRecord>();
@@ -164,6 +165,25 @@ export class FakeCostingReadStore implements CostingReadStore {
     return Promise.resolve(rows);
   }
 
+  listChannels(query: {
+    readonly organizationId: string;
+    readonly isDelivery?: boolean;
+    readonly limit: number;
+    readonly offset: number;
+  }): Promise<readonly ChannelListRecord[]> {
+    const rows = [...this.channels.values()]
+      .filter(
+        (channel) =>
+          channel.organizationId === query.organizationId &&
+          (query.isDelivery === undefined || channel.isDelivery === query.isDelivery),
+      )
+      .sort((a, b) =>
+        a.code < b.code ? -1 : a.code > b.code ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0,
+      )
+      .slice(query.offset, query.offset + query.limit);
+    return Promise.resolve(rows);
+  }
+
   /** Adds an allocation rule and records the organization its pool belongs to. */
   addAllocationRule(organizationId: string, rule: AllocationRuleReadRecord): void {
     this.allocationRules.push(rule);
@@ -227,6 +247,7 @@ export function seedCostingReadFixture(store: FakeCostingReadStore): CostingRead
     organizationId,
     code: "IN_STORE",
     name: "In store",
+    isDelivery: false,
   });
   store.costCenters.set(costCenterId, {
     id: costCenterId,

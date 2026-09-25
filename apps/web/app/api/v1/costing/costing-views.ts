@@ -3,6 +3,7 @@ import type { ChannelFeeRule, Database, NodeDatabase } from "@aquarela/persisten
 import type {
   AllocationRuleReadRecord,
   CalculationSnapshotRecord,
+  ChannelListRecord,
   CostCardDetailRecord,
   CostCardHistoryEntry,
   CostCardRecord,
@@ -662,6 +663,30 @@ export function toCostCenterRows(
       code: center.code,
       name: center.name,
       kind: center.kind,
+    }));
+}
+
+/* --------------------------------- channels -------------------------------- */
+
+export interface ChannelRow {
+  readonly id: string;
+  readonly code: string;
+  readonly name: string;
+  readonly isDelivery: boolean;
+}
+
+/** The organization's sales channels as the scenario picker serializes them. */
+export function toChannelRows(
+  organizationId: string,
+  channels: readonly ChannelListRecord[],
+): readonly ChannelRow[] {
+  return channels
+    .filter((channel) => channel.organizationId === organizationId)
+    .map((channel) => ({
+      id: channel.id,
+      code: channel.code,
+      name: channel.name,
+      isDelivery: channel.isDelivery,
     }));
 }
 

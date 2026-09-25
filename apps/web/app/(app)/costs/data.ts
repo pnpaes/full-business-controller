@@ -7,11 +7,13 @@ import {
   listAllocationRules,
   listCostCards,
   listCostCenters,
+  listChannels,
   listCostPools,
   listLaborRates,
   listOperatingCosts,
   listPriceScenarios,
   listPriceVersions,
+  MAX_CHANNEL_LIMIT,
   MAX_COST_CENTER_LIMIT,
   type CostCenterRecord,
 } from "@aquarela/application";
@@ -21,6 +23,7 @@ import {
   priceScenarioRefRequest,
   priceVersionRefRequest,
   toAllocationRuleRows,
+  toChannelRows,
   toCostCardDetailView,
   toCostCardRows,
   toCostPoolRows,
@@ -31,6 +34,7 @@ import {
   toPriceVersionRow,
   toPriceVersionRows,
   type AllocationRuleRow,
+  type ChannelRow,
   type CostCardDetailView,
   type CostCardRow,
   type CostPoolRow,
@@ -186,4 +190,16 @@ export async function loadCostCenters(
 ): Promise<readonly CostCenterRecord[]> {
   const { organizationId, store } = context;
   return listCostCenters(store, { organizationId, limit: MAX_COST_CENTER_LIMIT });
+}
+
+/**
+ * The organization's real sales channels (`DATA_DICTIONARY` §1), ordered by
+ * code, as the scenario channel picker shows them. Bounded at the read's hard
+ * cap for the same reason as `loadCostCenters`: a truncated picker would
+ * silently hide a valid channel.
+ */
+export async function loadChannels(context: CostingReadContext): Promise<readonly ChannelRow[]> {
+  const { organizationId, store } = context;
+  const channels = await listChannels(store, { organizationId, limit: MAX_CHANNEL_LIMIT });
+  return toChannelRows(organizationId, channels);
 }

@@ -17,6 +17,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { calculateCostCard } from "./cost-card";
 import { createPostgresCostCardStore } from "./cost-card-postgres-store";
+import { listChannels } from "./list-channels";
 import { listCostCenters } from "./list-cost-centers";
 import { calculatePriceScenario } from "./price-scenario";
 import { createPostgresPriceScenarioStore } from "./price-scenario-postgres-store";
@@ -282,6 +283,29 @@ describe.skipIf(!databaseUrl)("costing reads against PostgreSQL", () => {
         offset: 1,
       });
       expect(firstPage.map((center) => center.code)).toEqual([`cc_${suffix}`]);
+    });
+  });
+
+  it("lists channels ordered by code, org-scoped and filterable", async () => {
+    await inRollback(client.db, async (tx) => {
+      const reads = createPostgresCostingReadStore(tx);
+      const codeA = `aaa_${suffix}`;
+      const codeZ = `zzz_${suffix}`;
+
+      await tx.insert(channel).values([
+        { organizationId: orgId, code: codeZ, name: "Zulu", isDelivery: true },
+        { organizationId: orgId, code: codeA, name: "Alpha", isDelivery: false },
+        { organizationId: otherOrgId, code: `aaf_${suffix}`, name: "Foreign", isDelivery: false },
+      ]);
+
+      const all = await listChannels(reads, { organizationId: orgId });
+      expect(all.map((row) => row.code)).toEqual([codeA, `chan_${suffix}`, codeZ]);
+
+      const delivery = await listChannels(reads, { organizationId: orgId, isDelivery: true });
+      expect(delivery.map((row) => row.code)).toEqual([codeZ]);
+
+      const firstPage = await listChannels(reads, { organizationId: orgId, limit: 1, offset: 1 });
+      expect(firstPage.map((row) => row.code)).toEqual([`chan_${suffix}`]);
     });
   });
 

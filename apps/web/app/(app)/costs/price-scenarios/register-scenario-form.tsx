@@ -27,9 +27,16 @@ export interface ScenarioLocationOption {
   readonly name: string;
 }
 
+export interface ScenarioChannelOption {
+  readonly id: string;
+  readonly code: string;
+  readonly name: string;
+}
+
 export interface RegisterScenarioFormProps {
   readonly variants: readonly ScenarioVariantOption[];
   readonly locations: readonly ScenarioLocationOption[];
+  readonly channels: readonly ScenarioChannelOption[];
   readonly currency: string | null;
   readonly taxBases: readonly string[];
 }
@@ -72,23 +79,25 @@ function humanize(value: string): string {
 
 /**
  * Calculates (proposes) a price scenario through
- * `POST /api/v1/costing/price-scenarios` (PRICE-001/004). The product-variant and
- * location options are the organization's real rows (not pasted ids); the
- * channel picker is omitted because no channel read exists on the costing
- * surface, so a scenario is calculated for all channels. Every value is a
- * decimal string sent as typed — the calculation runs server-side and this form
- * only displays the stored outcome the command returns. Approving the scenario
- * is a separate action that creates the effective price version (PRICE-002/003).
+ * `POST /api/v1/costing/price-scenarios` (PRICE-001/004). The product-variant,
+ * location and channel options are the organization's real rows (not pasted
+ * ids); an empty channel leaves the scenario for all channels, which is how the
+ * command reads an absent `channelId`. Every value is a decimal string sent as
+ * typed — the calculation runs server-side and this form only displays the
+ * stored outcome the command returns. Approving the scenario is a separate
+ * action that creates the effective price version (PRICE-002/003).
  */
 export function RegisterScenarioForm({
   variants,
   locations,
+  channels,
   currency,
   taxBases,
 }: RegisterScenarioFormProps) {
   const router = useRouter();
   const [productVariantId, setProductVariantId] = useState(variants[0]?.id ?? "");
   const [locationId, setLocationId] = useState("");
+  const [channelId, setChannelId] = useState("");
   const [grossPrice, setGrossPrice] = useState("");
   const [targetContributionRate, setTargetContributionRate] = useState("");
   const [unitVariableCost, setUnitVariableCost] = useState("");
@@ -160,6 +169,7 @@ export function RegisterScenarioForm({
           taxBasis,
           taxRate: taxRate.trim(),
           ...(locationId === "" ? {} : { locationId }),
+          ...(channelId === "" ? {} : { channelId }),
           ...(grossPrice.trim() === "" ? {} : { grossPrice: grossPrice.trim() }),
           ...(targetContributionRate.trim() === ""
             ? {}
@@ -259,7 +269,20 @@ export function RegisterScenarioForm({
             value: location.id,
             label: `${location.code} · ${location.name}`,
           }))}
-          help="Leave empty for a company-wide scenario. No channel picker is available yet, so a scenario is always for all channels."
+          help="Leave empty for a company-wide scenario."
+        />
+
+        <SelectField
+          name="channelId"
+          label="Channel"
+          placeholder="All channels (company-wide)"
+          value={channelId}
+          onChange={(event) => setChannelId(event.target.value)}
+          options={channels.map((channel) => ({
+            value: channel.id,
+            label: `${channel.code} · ${channel.name}`,
+          }))}
+          help="Leave empty to calculate for all channels."
         />
 
         <div

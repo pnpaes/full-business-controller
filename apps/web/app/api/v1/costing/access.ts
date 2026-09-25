@@ -56,6 +56,15 @@ export const CHANNEL_FEE_RULE_READ_ROLES = COST_CARD_READ_ROLES;
 export const COST_CENTER_READ_ROLES = COST_CARD_READ_ROLES;
 
 /**
+ * Channels are the sales-channel master data the price-scenario and cost-card
+ * surfaces bind to, so listing them is a **Read** action on the same
+ * `07_SECURITY_AND_NFR.md` "Recipes/cost cards" row. Aliased to the cost-centre
+ * read set (itself `COST_CARD_READ_ROLES`) so the surfaces cannot drift and
+ * `owner` is inherited, never retyped.
+ */
+export const CHANNEL_READ_ROLES = COST_CENTER_READ_ROLES;
+
+/**
  * Roles that may **propose** (calculate) a price scenario, drawn from the
  * `07_SECURITY_AND_NFR.md` §7.1 **Prices** row: owner/general manager
  * **Approve**, location manager **Propose**. Calculating a scenario is the
