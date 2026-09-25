@@ -5,7 +5,16 @@ import {
 } from "@aquarela/application";
 import { MONEY_SCALE, formatDecimal, parseDecimal, rescale } from "@aquarela/domain";
 import { ITEM_TYPE, INVENTORY_POLICY } from "@aquarela/persistence";
-import { PageHeader, SectionCard, Button, color, radius, spacing, typography } from "@aquarela/ui";
+import {
+  PageHeader,
+  SectionCard,
+  Button,
+  color,
+  geometry,
+  radius,
+  spacing,
+  typography,
+} from "@aquarela/ui";
 import { redirect } from "next/navigation";
 
 import { getDb } from "../../../lib/db";
@@ -153,7 +162,6 @@ export default async function ProductsPage({
         display: "flex",
         flexDirection: "column",
         gap: spacing[6],
-        width: "100%",
         maxWidth: 1120,
         margin: "0 auto",
         padding: `${spacing[8]}px ${spacing[4]}px`,
@@ -174,7 +182,7 @@ export default async function ProductsPage({
           <summary
             style={{
               cursor: "pointer",
-              minHeight: 44,
+              minHeight: geometry.touchTarget,
               display: "flex",
               alignItems: "center",
               fontSize: typography.fontSize.md,
@@ -204,7 +212,7 @@ export default async function ProductsPage({
                 defaultValue={search ?? ""}
                 placeholder="Code, SKU or name"
                 style={{
-                  minHeight: 44,
+                  minHeight: geometry.touchTarget,
                   padding: `0 ${spacing[3]}px`,
                   border: `1px solid ${color.border.default}`,
                   borderRadius: radius.md,
@@ -220,7 +228,7 @@ export default async function ProductsPage({
                 name="itemType"
                 defaultValue={itemType ?? ""}
                 style={{
-                  minHeight: 44,
+                  minHeight: geometry.touchTarget,
                   padding: `0 ${spacing[3]}px`,
                   border: `1px solid ${color.border.default}`,
                   borderRadius: radius.md,
@@ -241,7 +249,9 @@ export default async function ProductsPage({
           </div>
         </form>
 
-        <ItemsTable rows={rows} currency={currency} />
+        <div style={{ overflowX: "auto", minWidth: 0 }}>
+          <ItemsTable rows={rows} currency={currency} />
+        </div>
 
         {page.total > page.limit ? (
           <nav

@@ -19,6 +19,7 @@ import {
   PageHeader,
   SectionCard,
   color,
+  geometry,
   radius,
   spacing,
   typography,
@@ -209,7 +210,6 @@ export default async function InventoryPage() {
         display: "flex",
         flexDirection: "column",
         gap: spacing[6],
-        width: "100%",
         maxWidth: 1120,
         margin: "0 auto",
         padding: `${spacing[8]}px ${spacing[4]}px`,
@@ -234,7 +234,7 @@ export default async function InventoryPage() {
                 style={{
                   display: "inline-flex",
                   alignItems: "center",
-                  minHeight: 44,
+                  minHeight: geometry.touchTarget,
                   padding: `0 ${spacing[3]}px`,
                   borderRadius: radius.sm,
                   border: `1px solid ${color.border.default}`,
@@ -285,7 +285,9 @@ export default async function InventoryPage() {
         title="Balances"
         meta={`${tableRows.length} ${tableRows.length === 1 ? "row" : "rows"}`}
       >
-        <BalancesTable rows={tableRows} currency={currency} asOfLabel={asOfLabel} />
+        <div style={{ overflowX: "auto", minWidth: 0 }}>
+          <BalancesTable rows={tableRows} currency={currency} asOfLabel={asOfLabel} />
+        </div>
       </SectionCard>
 
       <PostMovementForm items={itemOptions} locations={locationOptions} areas={areaOptions} />
@@ -294,7 +296,9 @@ export default async function InventoryPage() {
         title="Storage areas"
         meta={`${storageAreaRows.length} ${storageAreaRows.length === 1 ? "area" : "areas"}`}
       >
-        <StorageAreasTable rows={storageAreaRows} />
+        <div style={{ overflowX: "auto", minWidth: 0 }}>
+          <StorageAreasTable rows={storageAreaRows} />
+        </div>
         <div style={{ marginTop: spacing[6] }}>
           <h3 style={{ margin: `0 0 ${spacing[3]}px`, fontSize: typography.fontSize.lg }}>
             Register a storage area

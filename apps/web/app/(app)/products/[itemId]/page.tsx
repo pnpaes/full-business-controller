@@ -18,6 +18,7 @@ import {
   Td,
   Th,
   color,
+  geometry,
   spacing,
   typography,
 } from "@aquarela/ui";
@@ -312,7 +313,6 @@ export default async function ItemDetailPage({
         display: "flex",
         flexDirection: "column",
         gap: spacing[6],
-        width: "100%",
         maxWidth: 1120,
         margin: "0 auto",
         padding: `${spacing[8]}px ${spacing[4]}px`,
@@ -371,7 +371,7 @@ export default async function ItemDetailPage({
           <summary
             style={{
               cursor: "pointer",
-              minHeight: 44,
+              minHeight: geometry.touchTarget,
               display: "flex",
               alignItems: "center",
               fontSize: typography.fontSize.md,
@@ -400,7 +400,7 @@ export default async function ItemDetailPage({
           <summary
             style={{
               cursor: "pointer",
-              minHeight: 44,
+              minHeight: geometry.touchTarget,
               display: "flex",
               alignItems: "center",
               fontSize: typography.fontSize.md,
