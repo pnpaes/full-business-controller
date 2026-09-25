@@ -6,6 +6,7 @@ import {
   Td,
   Th,
   color,
+  geometry,
   spacing,
   typography,
 } from "@aquarela/ui";
@@ -112,7 +113,16 @@ export function BalancesTable({ rows, currency, asOfLabel }: BalancesTableProps)
                     title={row.itemId}
                     style={{ display: "flex", flexDirection: "column", gap: 2 }}
                   >
-                    <Link href={`/inventory/${row.itemId}`}>{row.itemName ?? row.itemId}</Link>
+                    <Link
+                      href={`/inventory/${row.itemId}`}
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        minHeight: geometry.controlHeight.sm,
+                      }}
+                    >
+                      {row.itemName ?? row.itemId}
+                    </Link>
                     {row.itemCode === null ? null : (
                       <span
                         style={{

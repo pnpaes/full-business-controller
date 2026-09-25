@@ -15,6 +15,7 @@ import {
   StatusPill,
   breakpoint,
   color,
+  geometry,
   spacing,
   typography,
 } from "@aquarela/ui";
@@ -52,6 +53,9 @@ const paragraph = {
 } as const;
 
 const actionLink = {
+  display: "inline-flex",
+  alignItems: "center",
+  minHeight: geometry.touchTarget,
   color: color.accent.deep,
   fontWeight: typography.fontWeight.semibold,
   fontSize: typography.fontSize.sm,

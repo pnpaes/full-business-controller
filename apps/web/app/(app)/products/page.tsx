@@ -82,6 +82,12 @@ const fieldLabel = {
   color: color.text.muted,
 } as const;
 
+const paginationLink = {
+  display: "inline-flex",
+  alignItems: "center",
+  minHeight: geometry.touchTarget,
+} as const;
+
 /**
  * Products: the item list (08_UI_UX.md §8.3) — code, name, type, base unit,
  * inventory policy, current cost, lot tracking and active range — with a
@@ -265,7 +271,12 @@ export default async function ProductsPage({
             }}
           >
             {hasPrev ? (
-              <a href={pageHref(filterQuery, Math.max(0, page.offset - page.limit))}>← Previous</a>
+              <a
+                href={pageHref(filterQuery, Math.max(0, page.offset - page.limit))}
+                style={paginationLink}
+              >
+                ← Previous
+              </a>
             ) : (
               <span />
             )}
@@ -274,7 +285,9 @@ export default async function ProductsPage({
               {Math.max(1, Math.ceil(page.total / page.limit))}
             </span>
             {hasNext ? (
-              <a href={pageHref(filterQuery, page.offset + page.limit)}>Next →</a>
+              <a href={pageHref(filterQuery, page.offset + page.limit)} style={paginationLink}>
+                Next →
+              </a>
             ) : (
               <span />
             )}

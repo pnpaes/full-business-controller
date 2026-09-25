@@ -1,4 +1,13 @@
-import { Badge, PageHeader, SectionCard, Tabs, color, spacing, typography } from "@aquarela/ui";
+import {
+  Badge,
+  PageHeader,
+  SectionCard,
+  Tabs,
+  color,
+  geometry,
+  spacing,
+  typography,
+} from "@aquarela/ui";
 import Link from "next/link";
 
 export const metadata = { title: "Sales — Aquarela Business Control" };
@@ -13,6 +22,9 @@ const contentColumn = {
 } as const;
 
 const linkStyle = {
+  display: "inline-flex",
+  alignItems: "center",
+  minHeight: geometry.touchTarget,
   color: color.brand.berry,
   fontWeight: typography.fontWeight.semibold,
 } as const;

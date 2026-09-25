@@ -12,6 +12,7 @@ import {
   SectionCard,
   Tabs,
   color,
+  geometry,
   spacing,
   typography,
 } from "@aquarela/ui";
@@ -70,6 +71,9 @@ const paragraph = {
 } as const;
 
 const actionLink = {
+  display: "inline-flex",
+  alignItems: "center",
+  minHeight: geometry.touchTarget,
   color: color.brand.navy,
   fontWeight: typography.fontWeight.semibold,
   fontSize: typography.fontSize.sm,

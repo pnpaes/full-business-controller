@@ -14,7 +14,7 @@
  */
 import { NavItem, NavList, color, radius, spacing, typography } from "@aquarela/ui";
 import { usePathname } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
 /* ------------------------------- Brand mark -------------------------------- */
@@ -315,11 +315,21 @@ export function MobileNav() {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
   const closeRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLButtonElement>(null);
 
-  // Navigation happened: close the drawer.
+  // Navigation happened: close the drawer, but deliberately do not steal focus
+  // back to the Menu button — the route change relocates focus on its own and
+  // refocusing here would be a different defect.
   useEffect(() => {
     setOpen(false);
   }, [pathname]);
+
+  // The single close path for every dismissal that is not a navigation: close
+  // the drawer and return focus to the control that opened it.
+  const closeDrawer = useCallback(() => {
+    setOpen(false);
+    menuRef.current?.focus();
+  }, []);
 
   useEffect(() => {
     if (!open) {
@@ -328,16 +338,17 @@ export function MobileNav() {
     closeRef.current?.focus();
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
-        setOpen(false);
+        closeDrawer();
       }
     }
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [open]);
+  }, [open, closeDrawer]);
 
   return (
     <>
       <button
+        ref={menuRef}
         type="button"
         className="aq-menu-button"
         style={menuButtonStyle}
@@ -359,7 +370,7 @@ export function MobileNav() {
             type="button"
             className="aq-drawer-backdrop"
             aria-label="Close navigation"
-            onClick={() => setOpen(false)}
+            onClick={closeDrawer}
           />
           <div
             id="aq-drawer"
@@ -375,7 +386,7 @@ export function MobileNav() {
                 type="button"
                 className="aq-close-button"
                 aria-label="Close navigation"
-                onClick={() => setOpen(false)}
+                onClick={closeDrawer}
               >
                 <Glyph>
                   <path d="M6 6l12 12" />

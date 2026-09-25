@@ -253,6 +253,10 @@ const shellCss = `
   margin: 0 auto;
   padding: ${spacing[10]}px ${spacing[8]}px ${spacing[16]}px;
 }
+/* The skip link moves focus to the canvas. A keyboard-initiated skip keeps the
+ * 3px ring (the package's [tabindex]:focus-visible rule); a pointer click on
+ * the skip target must not leave a ring artifact. */
+.aq-canvas:focus:not(:focus-visible) { outline: none; }
 /* --------------------------- Mobile bottom navigation ----------------------- */
 /* Compact floating bottom navigation for the core sections (brief §6 mobile,
  * §17); the drawer keeps the full set. Hidden at tablet width and above. */
@@ -429,7 +433,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
             <UserMenu label={profileLabel} fallback={session.id} />
           </div>
         </header>
-        <main id="main-content" className="aq-canvas">
+        <main id="main-content" className="aq-canvas" tabIndex={-1}>
           {children}
         </main>
         <BottomNav />

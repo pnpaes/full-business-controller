@@ -1,4 +1,14 @@
-import { Badge, EmptyState, StatusPill, Table, Td, Th, color, typography } from "@aquarela/ui";
+import {
+  Badge,
+  EmptyState,
+  StatusPill,
+  Table,
+  Td,
+  Th,
+  color,
+  geometry,
+  typography,
+} from "@aquarela/ui";
 
 /**
  * Presentational items table for the Products screen (08_UI_UX.md §8.3). Server
@@ -72,6 +82,9 @@ export function ItemsTable({ rows, currency }: ItemsTableProps) {
                 href={`/products/${row.id}`}
                 title={row.sku}
                 style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  minHeight: geometry.controlHeight.sm,
                   fontFamily: typography.fontFamily.mono,
                   color: color.brand.navy,
                   fontWeight: typography.fontWeight.semibold,
