@@ -1,7 +1,9 @@
 import {
   createPostgresHmsStore,
+  createPostgresTaskStore,
   findCorrectiveAction,
   findIncident,
+  listAssignableUsers,
   updateCorrectiveAction,
 } from "@aquarela/application";
 import { DomainError, NotFoundError } from "@aquarela/domain";
@@ -37,8 +39,11 @@ export const dynamic = "force-dynamic";
  * (`HMS_CORRECTIVE_ACTION_VERIFY_ROLES`, `DEC-095`).
  *
  * The body is any subset of `status`, `ownerId`, `dueDate` and `description`
- * (`null` clears an optional field). A malformed body or a non-UUID id is a 400,
- * as is a command rejection (unknown status, empty description, no fields). The
+ * (`null` clears an optional field). An `ownerId` must name an active user of the
+ * served organization (the same candidate-assignee read the owner picker uses) —
+ * an unknown or cross-organization id is a 400, never written as a dangling
+ * reference. A malformed body or a non-UUID id is a 400, as is a command
+ * rejection (unknown status, empty description, no fields). The
  * `completedAt`/`verifiedBy`/`verifiedAt` companions are derived by the command
  * from `status`.
  *
@@ -103,6 +108,16 @@ export async function PATCH(
       }
       if (!isHmsAuthorized(access, HMS_CORRECTIVE_ACTION_EDIT_ROLES, incident.locationId)) {
         return jsonError(403);
+      }
+    }
+
+    const nextOwnerId = parsed.input.ownerId;
+    if (nextOwnerId !== undefined && nextOwnerId !== null) {
+      const owners = await listAssignableUsers(createPostgresTaskStore(getDb().db), {
+        organizationId,
+      });
+      if (!owners.some((owner) => owner.id === nextOwnerId)) {
+        return jsonError(400, "ownerId must be an active user in the organization");
       }
     }
 

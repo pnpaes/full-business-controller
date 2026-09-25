@@ -7,8 +7,10 @@ vi.mock("@aquarela/application", async (importOriginal) => {
   return {
     ...actual,
     createPostgresHmsStore: vi.fn(() => ({})),
+    createPostgresTaskStore: vi.fn(() => ({})),
     findCorrectiveAction: vi.fn(),
     findIncident: vi.fn(),
+    listAssignableUsers: vi.fn(),
     updateCorrectiveAction: vi.fn(),
     loadUserAccess: vi.fn(),
   };
@@ -38,6 +40,7 @@ const LOCATION = "11111111-1111-4111-8111-111111111111";
 const OTHER_LOCATION = "33333333-3333-4333-8333-333333333333";
 const INCIDENT_ID = "22222222-2222-4222-8222-222222222222";
 const ACTION_ID = "55555555-5555-4555-8555-555555555555";
+const OWNER_ID = "66666666-6666-4666-8666-666666666666";
 const PATH = `/api/v1/hms/corrective-actions/${ACTION_ID}`;
 
 function incidentRecord(overrides: Partial<IncidentRecord> = {}): IncidentRecord {
@@ -105,6 +108,9 @@ beforeEach(() => {
   vi.mocked(application.findIncident).mockResolvedValue(incidentRecord());
   vi.mocked(application.updateCorrectiveAction).mockResolvedValue(actionRecord());
   vi.mocked(application.loadUserAccess).mockResolvedValue(access(["owner"]));
+  vi.mocked(application.listAssignableUsers).mockResolvedValue([
+    { id: OWNER_ID, displayName: "Bo", username: "bo" },
+  ]);
   vi.mocked(getServerSession).mockResolvedValue({ userId: USER } as never);
   vi.mocked(requireSession).mockResolvedValue({
     session: { userId: USER },
@@ -190,6 +196,50 @@ describe("PATCH /api/v1/hms/corrective-actions/[id]", () => {
 
     expect(response.status).toBe(200);
     expect(application.updateCorrectiveAction).toHaveBeenCalled();
+  });
+
+  it("assigns an active owner without touching the status", async () => {
+    vi.mocked(application.updateCorrectiveAction).mockResolvedValue(
+      actionRecord({ ownerId: OWNER_ID }),
+    );
+
+    const response = await PATCH(patchRequest({ ownerId: OWNER_ID }), context());
+
+    expect(response.status).toBe(200);
+    expect(application.listAssignableUsers).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ organizationId: ORG }),
+    );
+    expect(application.updateCorrectiveAction).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        organizationId: ORG,
+        correctiveActionId: ACTION_ID,
+        ownerId: OWNER_ID,
+      }),
+    );
+  });
+
+  it("clears an owner without an active-user lookup", async () => {
+    await PATCH(patchRequest({ ownerId: null }), context());
+
+    expect(application.listAssignableUsers).not.toHaveBeenCalled();
+    expect(application.updateCorrectiveAction).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ ownerId: null }),
+    );
+  });
+
+  it("returns 400 for an owner that is not an active user in the organization", async () => {
+    vi.mocked(application.listAssignableUsers).mockResolvedValue([]);
+
+    const response = await PATCH(patchRequest({ ownerId: OWNER_ID }), context());
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "ownerId must be an active user in the organization",
+    });
+    expect(application.updateCorrectiveAction).not.toHaveBeenCalled();
   });
 
   it("denies a scoped caller an incident at another location", async () => {

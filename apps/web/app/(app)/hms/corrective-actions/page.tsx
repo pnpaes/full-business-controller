@@ -1,4 +1,10 @@
-import { createPostgresHmsStore, findIncident, listCorrectiveActions } from "@aquarela/application";
+import {
+  createPostgresHmsStore,
+  createPostgresTaskStore,
+  findIncident,
+  listAssignableUsers,
+  listCorrectiveActions,
+} from "@aquarela/application";
 import {
   DataTable,
   type DataTableColumn,
@@ -75,9 +81,11 @@ const filterChipActiveStyle = {
 /**
  * The corrective-action register (`HMS-004`, `DEC-090`, `DEC-095`): every action
  * with its incident link, owner, due date and audited completion/verification,
- * plus the progression controls. Operators progress; only manager-level roles
- * verify. Actions carry no location of their own, so the list is not
- * location-filtered beyond what the read role set already gates.
+ * plus the owner/status controls. The owner is assignable here from the
+ * organization's active users (the incident and task picker pattern); operators
+ * progress an action, only manager-level roles verify. Actions carry no location
+ * of their own, so the list is not location-filtered beyond what the read role
+ * set already gates.
  */
 export default async function CorrectiveActionsPage({
   searchParams,
@@ -154,6 +162,29 @@ export default async function CorrectiveActionsPage({
   const canEdit = isHmsAuthorized(access, HMS_CORRECTIVE_ACTION_EDIT_ROLES);
   const canVerify = isHmsAuthorized(access, HMS_CORRECTIVE_ACTION_VERIFY_ROLES);
 
+  // The owner picker's options are the organization's active users (the same
+  // candidate-assignee read the incident and task pickers use), loaded only for
+  // the edit roles that can change an owner. A currently-assigned owner who is
+  // no longer active stays an option so the picker shows the real assignment and
+  // an unrelated save cannot silently rewrite it.
+  const ownerOptions = canEdit
+    ? (await listAssignableUsers(createPostgresTaskStore(getDb().db), { organizationId })).map(
+        (user) => ({
+          id: user.id,
+          label:
+            user.username === null ? user.displayName : `${user.displayName} · ${user.username}`,
+        }),
+      )
+    : [];
+  const ownerOptionsFor = (
+    ownerId: string | null,
+  ): readonly { readonly id: string; readonly label: string }[] => {
+    if (ownerId === null || ownerOptions.some((option) => option.id === ownerId)) {
+      return ownerOptions;
+    }
+    return [...ownerOptions, { id: ownerId, label: actorLabelById.get(ownerId) ?? ownerId }];
+  };
+
   return (
     <div style={contentColumn}>
       <PageHeader
@@ -221,6 +252,8 @@ export default async function CorrectiveActionsPage({
                     <CorrectiveActionControls
                       actionId={action.id}
                       status={action.status}
+                      ownerId={action.ownerId}
+                      owners={ownerOptionsFor(action.ownerId)}
                       canEdit={canEdit}
                       canVerify={canVerify}
                     />
