@@ -1,4 +1,4 @@
-import type { PayrollReportRecord, UserAccess } from "@aquarela/application";
+import type { FileObjectRecord, PayrollReportRecord, UserAccess } from "@aquarela/application";
 import { DomainError, NotFoundError } from "@aquarela/domain";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -8,7 +8,10 @@ vi.mock("@aquarela/application", async (importOriginal) => {
     ...actual,
     DEFAULT_PAYROLL_REPORT_LIMIT: 50,
     createPostgresSchedulingStore: vi.fn(() => ({})),
+    createPostgresFileObjectsStore: vi.fn(() => ({})),
+    findPayrollReport: vi.fn(),
     markPayrollReportExported: vi.fn(),
+    storeFileObject: vi.fn(),
     loadUserAccess: vi.fn(),
   };
 });
@@ -18,6 +21,7 @@ vi.mock("../../../../../../../lib/auth", () => ({
   getAuthStore: vi.fn(() => ({})),
 }));
 vi.mock("../../../../../../../lib/db", () => ({ getDb: vi.fn(() => ({ db: {} })) }));
+vi.mock("../../../../../../../lib/file-storage", () => ({ getFileStorage: vi.fn(() => ({})) }));
 vi.mock("../../../../../../../lib/organization", () => ({
   resolveOrganization: vi.fn(() => "org-1"),
 }));
@@ -27,7 +31,10 @@ import * as application from "@aquarela/application";
 import { requireSession } from "../../../../../../../lib/auth";
 import { AuthHttpError } from "../../../../../../../lib/errors";
 
-import { parseMarkPayrollReportExportedBody } from "../../../workforce-rows";
+import {
+  PAYROLL_EXPORT_UPLOAD_POLICY,
+  parseMarkPayrollReportExportedBody,
+} from "../../../workforce-rows";
 
 import { POST } from "./route";
 
@@ -79,9 +86,45 @@ function postWithoutBody(): Request {
   });
 }
 
+function fileRecord(overrides: Partial<FileObjectRecord> = {}): FileObjectRecord {
+  return {
+    id: EXPORT_FILE_ID,
+    organizationId: ORG,
+    storageKey: `${ORG}/key.csv`,
+    filename: "payroll.csv",
+    mime: "text/csv",
+    sizeBytes: 12,
+    checksumSha256: "a".repeat(64),
+    retentionPolicy: "payroll_export",
+    uploadedBy: USER,
+    uploadedAt: "2026-03-29T09:00:00.000Z",
+    linkedEntityType: "payroll_report",
+    linkedEntityId: REPORT_ID,
+    createdAt: "2026-03-29T09:00:00.000Z",
+    ...overrides,
+  };
+}
+
+function uploadRequest(
+  bytes: Uint8Array = new TextEncoder().encode("a,b\n1,2\n"),
+  filename = "payroll.csv",
+  type = "text/csv",
+): Request {
+  const form = new FormData();
+  form.append("file", new File([Uint8Array.from(bytes)], filename, { type }));
+  return new Request(`http://localhost${PATH}`, {
+    method: "POST",
+    headers: { "sec-fetch-site": "same-origin" },
+    body: form,
+  });
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(application.createPostgresSchedulingStore).mockReturnValue({} as never);
+  vi.mocked(application.createPostgresFileObjectsStore).mockReturnValue({} as never);
+  vi.mocked(application.findPayrollReport).mockResolvedValue(reportRecord({ status: "generated" }));
+  vi.mocked(application.storeFileObject).mockResolvedValue(fileRecord());
   vi.mocked(application.markPayrollReportExported).mockResolvedValue(reportRecord());
   vi.mocked(application.loadUserAccess).mockResolvedValue(access(["owner"]));
   vi.mocked(requireSession).mockResolvedValue({
@@ -197,6 +240,86 @@ describe("POST /api/v1/workforce/payroll-reports/[id]/export", () => {
     const response = await POST(postRequest({}), context());
 
     expect(response.status).toBe(404);
+  });
+});
+
+describe("POST /api/v1/workforce/payroll-reports/[id]/export (multipart upload)", () => {
+  it("stores the artefact linked to the report and exports with its id", async () => {
+    const response = await POST(uploadRequest(), context());
+
+    expect(response.status).toBe(200);
+    expect(application.storeFileObject).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({
+        organizationId: ORG,
+        actorId: USER,
+        filename: "payroll.csv",
+        mime: "text/csv",
+        retentionPolicy: "payroll_export",
+        linkedEntityType: "payroll_report",
+        linkedEntityId: REPORT_ID,
+      }),
+    );
+    expect(application.markPayrollReportExported).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ exportFileId: EXPORT_FILE_ID }),
+    );
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      fileObjectId: EXPORT_FILE_ID,
+      filename: "payroll.csv",
+      sizeBytes: 12,
+    });
+  });
+
+  it.each(["text/plain", "image/png", "application/zip"])(
+    "returns 400 and stores nothing for the disallowed type %s",
+    async (type) => {
+      const response = await POST(uploadRequest(undefined, "payroll.bin", type), context());
+
+      expect(response.status).toBe(400);
+      expect(application.storeFileObject).not.toHaveBeenCalled();
+      expect(application.markPayrollReportExported).not.toHaveBeenCalled();
+    },
+  );
+
+  it("returns 400 and stores nothing for an oversize upload", async () => {
+    const bytes = new Uint8Array(PAYROLL_EXPORT_UPLOAD_POLICY.maxBytes + 1);
+
+    const response = await POST(uploadRequest(bytes), context());
+
+    expect(response.status).toBe(400);
+    expect(application.storeFileObject).not.toHaveBeenCalled();
+  });
+
+  it("returns 403 for a role outside the payroll write set", async () => {
+    vi.mocked(application.loadUserAccess).mockResolvedValue(access(["kitchen"]));
+
+    const response = await POST(uploadRequest(), context());
+
+    expect(response.status).toBe(403);
+    expect(application.storeFileObject).not.toHaveBeenCalled();
+  });
+
+  it("returns 404 for an unknown report and stores nothing", async () => {
+    vi.mocked(application.findPayrollReport).mockResolvedValue(undefined);
+
+    const response = await POST(uploadRequest(), context());
+
+    expect(response.status).toBe(404);
+    expect(application.storeFileObject).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 for a report that is not generated and stores nothing", async () => {
+    vi.mocked(application.findPayrollReport).mockResolvedValue(
+      reportRecord({ status: "exported" }),
+    );
+
+    const response = await POST(uploadRequest(), context());
+
+    expect(response.status).toBe(400);
+    expect(application.storeFileObject).not.toHaveBeenCalled();
   });
 });
 

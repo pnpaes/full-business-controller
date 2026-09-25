@@ -11,7 +11,7 @@ import {
 } from "@aquarela/ui";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import type { FormEvent } from "react";
+import type { ChangeEvent, FormEvent } from "react";
 
 const FALLBACK_ERROR = "Could not add the document. Please try again.";
 
@@ -31,12 +31,12 @@ async function errorMessage(response: Response): Promise<string> {
 }
 
 /**
- * Adds one personnel document's **metadata** (`DOC-001`…`DOC-004`, `DEC-087`)
- * through `POST /api/v1/workforce/employees/[id]/documents`. There is no file
- * upload: the file-storage port exists (`DEC-132`) but the employee-document
- * consumer is not wired to it (`DEC-099`), so the form records kind, title and
- * the validity window only and the section states that
- * upload/download/retention are unavailable.
+ * Adds one personnel document (`DOC-001`…`DOC-004`, `DEC-087`) through
+ * `POST /api/v1/workforce/employees/[id]/documents`. The file is optional: when
+ * one is chosen the request is `multipart/form-data` and the bytes are stored
+ * through the `DEC-132` port, linked to the employee and referenced by the new
+ * document (`DEC-133`); with no file the form records metadata only. The
+ * permitted types and the size cap are enforced server-side.
  */
 export function EmployeeDocumentForm({ employeeId, kinds }: EmployeeDocumentFormProps) {
   const router = useRouter();
@@ -44,12 +44,18 @@ export function EmployeeDocumentForm({ employeeId, kinds }: EmployeeDocumentForm
   const [title, setTitle] = useState("");
   const [issuedAt, setIssuedAt] = useState("");
   const [expiresAt, setExpiresAt] = useState("");
+  const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  function onFileChange(event: ChangeEvent<HTMLInputElement>): void {
+    setFile(event.target.files?.[0] ?? null);
+  }
+
   async function submit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
+    const formElement = event.currentTarget;
     setError(null);
     setSuccess(null);
     if (title.trim().length === 0) {
@@ -58,26 +64,37 @@ export function EmployeeDocumentForm({ employeeId, kinds }: EmployeeDocumentForm
     }
     setBusy(true);
     try {
+      const form = new FormData();
+      form.append("kind", kind);
+      form.append("title", title.trim());
+      if (issuedAt.trim().length > 0) {
+        form.append("issuedAt", issuedAt.trim());
+      }
+      if (expiresAt.trim().length > 0) {
+        form.append("expiresAt", expiresAt.trim());
+      }
+      if (file !== null) {
+        form.append("file", file);
+      }
       const response = await fetch(`/api/v1/workforce/employees/${employeeId}/documents`, {
         method: "POST",
         credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          kind,
-          title: title.trim(),
-          fileObjectId: null,
-          ...(issuedAt.trim().length === 0 ? {} : { issuedAt: issuedAt.trim() }),
-          ...(expiresAt.trim().length === 0 ? {} : { expiresAt: expiresAt.trim() }),
-        }),
+        body: form,
       });
       if (!response.ok) {
         setError(await errorMessage(response));
         return;
       }
-      setSuccess("Document metadata recorded.");
+      setSuccess(
+        file === null
+          ? "Document metadata recorded."
+          : "Document recorded and file stored. Download it from the list below.",
+      );
       setTitle("");
       setIssuedAt("");
       setExpiresAt("");
+      setFile(null);
+      formElement.reset();
       router.refresh();
     } catch {
       setError(FALLBACK_ERROR);
@@ -87,7 +104,7 @@ export function EmployeeDocumentForm({ employeeId, kinds }: EmployeeDocumentForm
   }
 
   return (
-    <SectionCard title="Add a personnel document" meta="metadata only — no file upload">
+    <SectionCard title="Add a personnel document" meta="metadata + optional file">
       <form
         onSubmit={submit}
         style={{ display: "flex", flexDirection: "column", gap: spacing[4], maxWidth: 640 }}
@@ -123,6 +140,20 @@ export function EmployeeDocumentForm({ employeeId, kinds }: EmployeeDocumentForm
           value={expiresAt}
           onChange={(event) => setExpiresAt(event.target.value)}
         />
+        <label style={{ display: "flex", flexDirection: "column", gap: spacing[1] }}>
+          <span>File (optional)</span>
+          <input
+            type="file"
+            name="file"
+            accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,application/pdf,image/*"
+            onChange={onFileChange}
+            disabled={busy}
+          />
+          <span style={{ opacity: 0.8 }}>
+            A contract, certificate or ID scan (PDF, image or Word document, up to 10 MiB). The file
+            is stored privately and download requires the personnel-document role set.
+          </span>
+        </label>
 
         <div>
           <Button type="submit" loading={busy} disabled={busy}>
@@ -130,9 +161,8 @@ export function EmployeeDocumentForm({ employeeId, kinds }: EmployeeDocumentForm
           </Button>
         </div>
         <p style={{ margin: 0, opacity: 0.8 }}>
-          Metadata only: no bytes are stored, uploaded or downloadable, and retention is not
-          enforced (the file-storage port exists, DEC-132, but the employee-document consumer is not
-          wired to it — DEC-099).
+          Retention is not enforced and file contents are not scanned for malware; the type is
+          checked against an allow-list only (DEC-133).
         </p>
       </form>
     </SectionCard>

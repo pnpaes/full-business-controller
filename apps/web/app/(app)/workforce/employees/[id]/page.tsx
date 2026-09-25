@@ -89,8 +89,10 @@ function ProfileItem({ label, value }: { readonly label: string; readonly value:
  * The employee detail (08_UI_UX.md §8.3 "Employee detail"): the profile with
  * amend/retire, the employee's shifts and assignments, their worked hours for
  * the current UTC month (role-aware) and the personnel documents
- * (owner/GM/admin only, metadata-only per `DEC-099` — the file-storage port
- * exists (`DEC-132`) but the employee-document consumer is not wired to it).
+ * (owner/GM/admin only per `DEC-099`). The personnel-document consumer is wired
+ * to the `DEC-132` file-storage port (`DEC-133`): a file chosen at creation is
+ * stored and downloadable from the list, while a document created without one
+ * stays metadata-only.
  *
  * Reads the same application services and row shapes as the workforce API
  * routes. Access: the `employee` matrix row to open the page at all; the
@@ -349,10 +351,10 @@ export default async function EmployeeDetailPage({
       <SectionCard title="Personnel documents" meta="owner / general manager / admin only">
         {canReadDocuments ? (
           <>
-            <Alert tone="warning" title="Metadata only — no files">
-              Upload, download and retention are <strong>not available</strong>: the file-storage
-              port exists (DEC-132) but the employee-document consumer is not wired to it (DEC-099),
-              so a document row records metadata only and never implies a working file.
+            <Alert tone="info" title="Files are stored privately">
+              A file attached when a document was created is stored (DEC-133) and downloadable with
+              the personnel-document role set; a document recorded without a file is metadata-only.
+              Retention is not enforced and file contents are not scanned for malware.
             </Alert>
             <DataTable
               caption="Personnel documents with kind, validity window and file status"
@@ -363,7 +365,14 @@ export default async function EmployeeDetailPage({
                 kind: documentKindLabel(document.kind),
                 issued: document.issuedAt ?? "—",
                 expires: document.expiresAt ?? "—",
-                file: "Not available (metadata only)",
+                file:
+                  document.fileObjectId === null ? (
+                    "Metadata only"
+                  ) : (
+                    <a href={`/api/v1/workforce/employee-documents/${document.id}/file`}>
+                      Download
+                    </a>
+                  ),
                 createdAt: formatInstant(document.createdAt),
               }))}
               emptyMessage="No personnel documents recorded for this employee yet."

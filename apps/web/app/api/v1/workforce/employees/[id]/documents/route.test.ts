@@ -1,4 +1,9 @@
-import type { EmployeeDocumentRecord, EmployeeRecord, UserAccess } from "@aquarela/application";
+import type {
+  EmployeeDocumentRecord,
+  EmployeeRecord,
+  FileObjectRecord,
+  UserAccess,
+} from "@aquarela/application";
 import { DomainError, NotFoundError } from "@aquarela/domain";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -7,9 +12,11 @@ vi.mock("@aquarela/application", async (importOriginal) => {
   return {
     ...actual,
     createPostgresWorkforceStore: vi.fn(() => ({})),
+    createPostgresFileObjectsStore: vi.fn(() => ({})),
     createEmployeeDocument: vi.fn(),
     findEmployee: vi.fn(),
     listEmployeeDocuments: vi.fn(),
+    storeFileObject: vi.fn(),
     loadUserAccess: vi.fn(),
   };
 });
@@ -19,6 +26,7 @@ vi.mock("../../../../../../../lib/auth", () => ({
   getAuthStore: vi.fn(() => ({})),
 }));
 vi.mock("../../../../../../../lib/db", () => ({ getDb: vi.fn(() => ({ db: {} })) }));
+vi.mock("../../../../../../../lib/file-storage", () => ({ getFileStorage: vi.fn(() => ({})) }));
 vi.mock("../../../../../../../lib/organization", () => ({
   resolveOrganization: vi.fn(() => "org-1"),
 }));
@@ -29,6 +37,8 @@ import * as application from "@aquarela/application";
 import { requireSession } from "../../../../../../../lib/auth";
 import { getServerSession } from "../../../../../../../lib/server-session";
 
+import { EMPLOYEE_DOCUMENT_UPLOAD_POLICY } from "../../../workforce-rows";
+
 import { GET, POST } from "./route";
 
 const ORG = "org-1";
@@ -36,6 +46,7 @@ const USER = "user-1";
 const LOCATION = "11111111-1111-4111-8111-111111111111";
 const EMPLOYEE_ID = "22222222-2222-4222-8222-222222222222";
 const DOCUMENT_ID = "44444444-4444-4444-8444-444444444444";
+const FILE_ID = "55555555-5555-4555-8555-555555555555";
 const PATH = `/api/v1/workforce/employees/${EMPLOYEE_ID}/documents`;
 
 function employeeRecord(overrides: Partial<EmployeeRecord> = {}): EmployeeRecord {
@@ -94,12 +105,58 @@ function postRequest(body: unknown): Request {
   });
 }
 
+function fileRecord(overrides: Partial<FileObjectRecord> = {}): FileObjectRecord {
+  return {
+    id: FILE_ID,
+    organizationId: ORG,
+    storageKey: `${ORG}/key.pdf`,
+    filename: "contract.pdf",
+    mime: "application/pdf",
+    sizeBytes: 8,
+    checksumSha256: "a".repeat(64),
+    retentionPolicy: "employee_document",
+    uploadedBy: USER,
+    uploadedAt: "2026-01-01T08:00:00.000Z",
+    linkedEntityType: "employee",
+    linkedEntityId: EMPLOYEE_ID,
+    createdAt: "2026-01-01T08:00:00.000Z",
+    ...overrides,
+  };
+}
+
+function uploadRequest(
+  fields: Record<string, string> = { kind: "contract", title: "Contract 2026" },
+  file?: { bytes?: Uint8Array; filename?: string; type?: string },
+): Request {
+  const form = new FormData();
+  for (const [key, value] of Object.entries(fields)) {
+    form.append(key, value);
+  }
+  if (file !== undefined) {
+    form.append(
+      "file",
+      new File(
+        [Uint8Array.from(file.bytes ?? new TextEncoder().encode("contract"))],
+        file.filename ?? "contract.pdf",
+        { type: file.type ?? "application/pdf" },
+      ),
+    );
+  }
+  return new Request(`http://localhost${PATH}`, {
+    method: "POST",
+    headers: { "sec-fetch-site": "same-origin" },
+    body: form,
+  });
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(application.createPostgresWorkforceStore).mockReturnValue({} as never);
+  vi.mocked(application.createPostgresFileObjectsStore).mockReturnValue({} as never);
   vi.mocked(application.findEmployee).mockResolvedValue(employeeRecord());
   vi.mocked(application.listEmployeeDocuments).mockResolvedValue([]);
   vi.mocked(application.createEmployeeDocument).mockResolvedValue(documentRecord());
+  vi.mocked(application.storeFileObject).mockResolvedValue(fileRecord());
   vi.mocked(application.loadUserAccess).mockResolvedValue(access(["owner"]));
   vi.mocked(getServerSession).mockResolvedValue({ userId: USER } as never);
   vi.mocked(requireSession).mockResolvedValue({
@@ -244,6 +301,7 @@ describe("POST /api/v1/workforce/employees/[id]/documents", () => {
       ok: true,
       employeeDocumentId: DOCUMENT_ID,
       kind: "contract",
+      fileObjectId: null,
     });
   });
 
@@ -324,5 +382,96 @@ describe("POST /api/v1/workforce/employees/[id]/documents", () => {
     await expect(response.json()).resolves.toEqual({
       error: "expiresAt must not precede issuedAt",
     });
+  });
+});
+
+describe("POST /api/v1/workforce/employees/[id]/documents (multipart upload)", () => {
+  it("stores the file linked to the employee and links the created document", async () => {
+    vi.mocked(application.createEmployeeDocument).mockResolvedValue(
+      documentRecord({ fileObjectId: FILE_ID }),
+    );
+
+    const response = await POST(uploadRequest(undefined, {}), context());
+
+    expect(response.status).toBe(200);
+    expect(application.storeFileObject).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({
+        organizationId: ORG,
+        actorId: USER,
+        filename: "contract.pdf",
+        mime: "application/pdf",
+        retentionPolicy: "employee_document",
+        linkedEntityType: "employee",
+        linkedEntityId: EMPLOYEE_ID,
+      }),
+    );
+    expect(application.createEmployeeDocument).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ employeeId: EMPLOYEE_ID, fileObjectId: FILE_ID }),
+    );
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      employeeDocumentId: DOCUMENT_ID,
+      fileObjectId: FILE_ID,
+    });
+  });
+
+  it("ignores a client fileObjectId form field (ADR-0003)", async () => {
+    vi.mocked(application.createEmployeeDocument).mockResolvedValue(
+      documentRecord({ fileObjectId: FILE_ID }),
+    );
+
+    const response = await POST(
+      uploadRequest({ kind: "contract", title: "C", fileObjectId: DOCUMENT_ID }, {}),
+      context(),
+    );
+
+    expect(response.status).toBe(200);
+    expect(application.createEmployeeDocument).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ fileObjectId: FILE_ID }),
+    );
+  });
+
+  it.each(["text/plain", "application/zip", "text/html"])(
+    "returns 400 and stores nothing for the disallowed type %s",
+    async (type) => {
+      const response = await POST(uploadRequest(undefined, { type }), context());
+
+      expect(response.status).toBe(400);
+      expect(application.storeFileObject).not.toHaveBeenCalled();
+      expect(application.createEmployeeDocument).not.toHaveBeenCalled();
+    },
+  );
+
+  it("returns 400 and stores nothing for an oversize upload", async () => {
+    const bytes = new Uint8Array(EMPLOYEE_DOCUMENT_UPLOAD_POLICY.maxBytes + 1);
+
+    const response = await POST(uploadRequest(undefined, { bytes }), context());
+
+    expect(response.status).toBe(400);
+    expect(application.storeFileObject).not.toHaveBeenCalled();
+  });
+
+  it("creates metadata only when no file part is present", async () => {
+    const response = await POST(uploadRequest({ kind: "contract", title: "Verbal" }), context());
+
+    expect(response.status).toBe(200);
+    expect(application.storeFileObject).not.toHaveBeenCalled();
+    expect(application.createEmployeeDocument).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ fileObjectId: null }),
+    );
+  });
+
+  it("returns 404 for a cross-organization employee and stores nothing", async () => {
+    vi.mocked(application.findEmployee).mockResolvedValue(undefined);
+
+    const response = await POST(uploadRequest(undefined, {}), context());
+
+    expect(response.status).toBe(404);
+    expect(application.storeFileObject).not.toHaveBeenCalled();
   });
 });

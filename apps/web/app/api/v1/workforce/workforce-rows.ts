@@ -19,7 +19,38 @@ import {
 
 import { isUuid } from "../hms/hms-rows";
 
+import type { FileUploadPolicy } from "../../../../lib/file-upload";
+
 export { isUuid };
+
+/**
+ * Upload policy and retention class for the payroll-export consumer (`DEC-133`):
+ * the artefact is a CSV or PDF, capped at 10 MiB. These live here rather than in
+ * the route module because a Next route file may only export HTTP handlers.
+ */
+export const PAYROLL_EXPORT_UPLOAD_POLICY: FileUploadPolicy = {
+  allowedMime: ["text/csv", "application/pdf"],
+  maxBytes: 10 * 1024 * 1024,
+};
+export const PAYROLL_EXPORT_RETENTION_POLICY = "payroll_export";
+
+/**
+ * Upload policy and retention class for the employee-document consumer
+ * (`DEC-133`): a contract, certificate or ID scan — PDF, image or Word — capped
+ * at 10 MiB.
+ */
+export const EMPLOYEE_DOCUMENT_UPLOAD_POLICY: FileUploadPolicy = {
+  allowedMime: [
+    "application/pdf",
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  ],
+  maxBytes: 10 * 1024 * 1024,
+};
+export const EMPLOYEE_DOCUMENT_RETENTION_POLICY = "employee_document";
 
 /**
  * Pure query/body parsing and response mapping for the workforce personnel

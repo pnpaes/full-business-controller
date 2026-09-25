@@ -39,9 +39,9 @@ async function errorMessage(response: Response): Promise<string> {
  * Amends one personnel document's metadata (`WF-007`, `DEC-087`) through the
  * existing `PATCH /api/v1/workforce/employee-documents/[id]` route. The row is
  * amended in place (no revision model, `DEC-087`) and the audit fact carries
- * the before/after provenance. There is still no file upload: `fileObjectId`
- * stays untouched and the bytes remain unrealised — the file-storage port
- * exists (`DEC-132`) but this consumer is not wired to it (`DEC-099`).
+ * the before/after provenance. An attached file is set when the document is
+ * created (`DEC-133`); this form does not replace it, so `fileObjectId` stays
+ * untouched and the stored bytes remain downloadable from the list.
  */
 export function EditEmployeeDocumentForm({
   employeeName,
@@ -140,8 +140,8 @@ export function EditEmployeeDocumentForm({
           </Button>
         </div>
         <p style={{ margin: 0, opacity: 0.8 }}>
-          Metadata only: no bytes are stored, uploaded or downloadable (the file-storage port
-          exists, DEC-132, but this consumer is not wired to it — DEC-099).
+          Metadata amendment only: the file attached when the document was created is unchanged and
+          stays downloadable from the list. Retention is not enforced (DEC-133).
         </p>
       </form>
     </SectionCard>

@@ -43,10 +43,11 @@ const contentColumn = {
  * (per-employee hours, base rate, expected pay), the generation facts and the
  * mark-exported action for a `generated` report.
  *
- * The DEC-104 projection caveat and the not-yet-stored export bytes (`DEC-132`:
- * the file-storage port exists but the payroll-export consumer is not wired to
- * it) are stated on the page. Access is the `Payroll-input reports` matrix row
- * (owner, general_manager, finance, admin); anything else fails closed.
+ * The DEC-104 projection caveat is stated on the page. The export consumer is
+ * wired to the `DEC-132` file-storage port (`DEC-133`): marking the report
+ * exported uploads the CSV/PDF artefact, and a link downloads it. Access is the
+ * `Payroll-input reports` matrix row (owner, general_manager, finance, admin);
+ * anything else fails closed.
  */
 export default async function PayrollReportDetailPage({
   params,
@@ -164,8 +165,16 @@ export default async function PayrollReportDetailPage({
       )}
 
       {canWrite && report.status === "generated" ? (
-        <SectionCard title="Export" meta="status only — no file">
+        <SectionCard title="Export" meta="uploads the CSV/PDF artefact">
           <MarkExportedButton reportId={report.id} />
+        </SectionCard>
+      ) : null}
+
+      {report.exportFileId !== null ? (
+        <SectionCard title="Export file" meta="stored privately (DEC-133)">
+          <a href={`/api/v1/workforce/payroll-reports/${report.id}/export/file`}>
+            Download the exported file
+          </a>
         </SectionCard>
       ) : null}
     </div>

@@ -254,12 +254,12 @@ export default async function WorkforcePage({
         canWrite={canWrite}
       />
 
-      <Alert tone="info" title="Personnel documents are metadata-only">
+      <Alert tone="info" title="Personnel documents">
         Personnel documents (contracts, certificates, ID documents) are visible on each employee's
-        detail page to owner, general manager and admin only (DEC-087/DEC-099). File upload,
-        download and retention are <strong>not available</strong> — the file-storage port exists
-        (DEC-132) but the employee-document consumer is not wired to it, so a document row records
-        metadata only and never implies a working file.
+        detail page to owner, general manager and admin only (DEC-087/DEC-099). A file chosen when
+        recording a document is stored and downloadable from that page (DEC-133); a document
+        recorded without a file is metadata-only. Retention is not enforced and file contents are
+        not scanned for malware.
       </Alert>
     </div>
   );
