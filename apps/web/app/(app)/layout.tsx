@@ -1,5 +1,4 @@
 import {
-  ScopeBar,
   breakpoint,
   color,
   containerWidth,
@@ -29,16 +28,17 @@ export const metadata = { title: "Aquarela Business Control" };
  * A slim light rail with hairline separation carries the primary navigation on
  * desktop; at tablet width it compresses to an icon-only rail; on phones the
  * rail gives way to a floating bottom navigation for the core sections while
- * the drawer keeps the full set. `ScopeBar` and `SearchBox` stay display-only
- * placeholders until real controls are wired (§8.4).
+ * the drawer keeps the full set. Shell-level search and scope controls are not
+ * rendered: no real read exists for them yet (see the note above `AppLayout`).
  */
 export const dynamic = "force-dynamic";
 
 /** The few rules inline styles cannot express: media queries, hover/focus
  * states and the `<details>`/`<summary>` reset. Token-derived, no external
- * stylesheet. The `!important` flags exist only where they must beat the
- * inline styles of the frozen `NavList`/`NavItem` primitives to re-seat them
- * on the light rail surface; every other rule is plain CSS. */
+ * stylesheet. The `!important` flags on hover exist only because they must
+ * beat the package's generic `.aquarela-nav-item:hover` rule (which is itself
+ * `!important`); the nav rows themselves now carry the light DEC-129 sidebar
+ * contract inline, so no surface re-seating is needed. */
 const shellCss = `
 .aq-shell {
   display: grid;
@@ -98,28 +98,13 @@ const shellCss = `
   overflow: hidden;
 }
 .aq-sidebar-nav { flex: 1 1 auto; overflow-y: auto; }
-/* Re-seat the frozen dark-surface nav primitives on the light rail (brief §6:
- * quiet light navigation, tinted active state, thin accent indicator). */
-.aq-sidebar nav,
-.aq-drawer nav {
-  background-color: transparent !important;
-}
-.aq-sidebar .aquarela-nav-item,
-.aq-drawer .aquarela-nav-item {
-  color: ${color.text.secondary} !important;
-  background-color: transparent !important;
-  border-left-color: transparent !important;
-}
+/* Nav rows carry the light sidebar contract inline (DEC-129: lavender active
+ * surface, iris text and indicator); only hover/focus need CSS. Hover keeps
+ * !important to beat the package's generic dark-surface hover rule. */
 .aq-sidebar .aquarela-nav-item:hover:not([aria-current="page"]),
 .aq-drawer .aquarela-nav-item:hover:not([aria-current="page"]) {
-  color: ${color.text.primary} !important;
+  color: ${color.ink.primary} !important;
   background-color: ${color.surface.muted} !important;
-}
-.aq-sidebar .aquarela-nav-item[aria-current="page"],
-.aq-drawer .aquarela-nav-item[aria-current="page"] {
-  color: ${color.text.primary} !important;
-  background-color: ${color.accent.soft} !important;
-  border-left-color: ${color.accent.deep} !important;
 }
 .aq-sidebar .aquarela-nav-item:focus-visible,
 .aq-drawer .aquarela-nav-item:focus-visible {
@@ -182,26 +167,7 @@ const shellCss = `
   border-bottom: 1px solid ${color.border.subtle};
 }
 .aq-menu-button { order: 1; display: none; }
-.aq-scope { order: 2; flex: 1 1 340px; min-width: 0; }
-.aq-topbar-end { order: 3; display: flex; align-items: center; gap: ${spacing[3]}px; margin-left: auto; }
-.aq-search { position: relative; display: flex; align-items: center; }
-.aq-search svg { position: absolute; left: 10px; color: ${color.text.secondary}; pointer-events: none; }
-.aq-search-input {
-  min-height: 44px;
-  width: 220px;
-  padding: 0 ${spacing[3]}px 0 36px;
-  border: 1px solid ${color.border.subtle};
-  border-radius: ${radius.md}px;
-  background-color: ${color.surface.well};
-  color: ${color.text.primary};
-  font: inherit;
-  font-size: ${typography.fontSize.md}px;
-}
-.aq-search-input::placeholder { color: ${color.text.muted}; }
-.aq-search-input:focus-visible {
-  outline: 2px solid ${color.border.focus};
-  outline-offset: 1px;
-}
+.aq-topbar-end { order: 2; display: flex; align-items: center; gap: ${spacing[3]}px; margin-left: auto; }
 /* ------------------------------- User menu --------------------------------- */
 .aq-user { position: relative; }
 .aq-user-summary:focus-visible,
@@ -395,9 +361,6 @@ const shellCss = `
     border-left-color: transparent !important;
   }
   .aq-sidebar .aquarela-nav-item span:last-child { display: none; }
-  .aq-sidebar .aquarela-nav-item[aria-current="page"] {
-    background-color: ${color.accent.soft} !important;
-  }
   .aq-topbar { padding: ${spacing[3]}px ${spacing[5]}px; }
   .aq-canvas { padding: ${spacing[8]}px ${spacing[6]}px ${spacing[12]}px; }
 }
@@ -406,11 +369,8 @@ const shellCss = `
   .aq-sidebar { display: none; }
   .aq-menu-button { display: inline-flex; }
   .aq-bottomnav { display: flex; }
-  .aq-topbar-end { order: 2; }
-  .aq-scope { order: 3; flex-basis: 100%; }
   .aq-topbar { padding: ${spacing[3]}px ${spacing[4]}px; }
   .aq-canvas { padding: ${spacing[6]}px ${spacing[4]}px calc(${spacing[24]}px + env(safe-area-inset-bottom, 0px)); }
-  .aq-search-input { width: 140px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .aq-drawer { animation: none; }
@@ -418,40 +378,14 @@ const shellCss = `
 }
 `;
 
-/** Search affordance: not wired to a query surface yet, so it is read-only and
- * marked as such rather than pretending to work. */
-function SearchBox() {
-  return (
-    <div className="aq-search">
-      <label className="aq-visually-hidden" htmlFor="app-search">
-        Search
-      </label>
-      <svg
-        width={16}
-        height={16}
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth={1.8}
-        strokeLinecap="round"
-        aria-hidden="true"
-        focusable="false"
-      >
-        <circle cx="11" cy="11" r="6" />
-        <path d="M20 20l-4.5-4.5" />
-      </svg>
-      <input
-        id="app-search"
-        className="aq-search-input"
-        type="search"
-        placeholder="Search — not wired yet"
-        readOnly
-        aria-disabled="true"
-        title="Search is not wired to data yet"
-      />
-    </div>
-  );
-}
+/** Search affordance removed (2026-09-25): no real query surface exists in
+ * `packages/application`, so a read-only input would only pretend to work
+ * (08_UI_UX.md §4: say honestly what is missing — by not offering it at all).
+ * The shell scope placeholders were removed for the same reason: `listLocations`
+ * is a per-slice option list, not a shell scope control, and no company/date
+ * scope read or scope state exists that screens honour. Screens show their own
+ * period and scope (§8.4); the `ScopeBar` primitive remains for screens and
+ * the styleguide. */
 
 export default async function AppLayout({ children }: { children: ReactNode }) {
   const session = await getServerSession();
@@ -489,18 +423,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
       <div className="aq-main">
         <header className="aq-topbar">
           <MobileNav />
-          <div className="aq-scope">
-            {/* Display-only scope placeholders (§8.1, §8.4): the real
-                company/location/date controls are not wired yet. */}
-            <ScopeBar
-              company="Aquarela (placeholder)"
-              location="All locations (placeholder)"
-              dateLabel="Date scope: placeholder"
-              onChangeHint="Company, location and date scope will be selectable here."
-            />
-          </div>
           <div className="aq-topbar-end">
-            <SearchBox />
             <UserMenu label={profileLabel} fallback={session.id} />
           </div>
         </header>

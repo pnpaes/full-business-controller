@@ -36,8 +36,16 @@ export interface NavItemProps {
  * the current area a tinted background, a thin 2px accent indicator and
  * slightly stronger text — never a large filled primary block.
  *
+ * Light-surface contract (DEC-129 sidebar set): muted `ink.tertiary` text on a
+ * transparent row, and for the current area the lavender `accent.soft` surface
+ * with the text-safe iris `accent.deep` as both the text and the indicator —
+ * the design system's `--sidebar-accent` / `--sidebar-accent-foreground`. The
+ * row no longer hard-codes a dark surface; the shell rail and drawer supply
+ * their own light surface.
+ *
  * Hover cannot be expressed inline (server component), so the row carries the
- * `aquarela-nav-item` class backed by a rule in `uiGlobalCss`.
+ * `aquarela-nav-item` class backed by a rule in `uiGlobalCss` (package) and
+ * contextual rules in the shell stylesheet (app).
  */
 export function NavItem({ label, icon, active = false, href }: NavItemProps) {
   return (
@@ -52,9 +60,9 @@ export function NavItem({ label, icon, active = false, href }: NavItemProps) {
         gap: spacing[3],
         minHeight: MIN_TOUCH_TARGET_PX,
         padding: `${spacing[2]}px ${spacing[4]}px`,
-        color: active ? color.navigation.active : color.navigation.textMuted,
-        backgroundColor: active ? color.navigation.backgroundHover : "transparent",
-        borderLeft: `2px solid ${active ? color.navigation.active : "transparent"}`,
+        color: active ? color.accent.deep : color.ink.tertiary,
+        backgroundColor: active ? color.accent.soft : "transparent",
+        borderLeft: `2px solid ${active ? color.accent.deep : "transparent"}`,
         textDecoration: "none",
         fontSize: typography.fontSize.md,
         fontWeight: active ? typography.fontWeight.medium : typography.fontWeight.regular,
@@ -75,7 +83,9 @@ export interface NavListProps {
   children: ReactNode;
 }
 
-/** Vertical stack of `NavItem`s on the dark-neutral navigation surface (§6). */
+/** Vertical stack of `NavItem`s. Transparent so the host surface shows
+ * through: the shell rail/drawer supply the light sidebar surface (DEC-129),
+ * and the styleguide places the specimen on its own panel. */
 export function NavList({ children }: NavListProps) {
   return (
     <nav
@@ -84,7 +94,7 @@ export function NavList({ children }: NavListProps) {
         ...fontSans,
         display: "flex",
         flexDirection: "column",
-        backgroundColor: color.navigation.background,
+        backgroundColor: "transparent",
         padding: `${spacing[2]}px 0`,
       }}
     >

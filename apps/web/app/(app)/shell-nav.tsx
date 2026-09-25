@@ -6,7 +6,8 @@
  * visual direction).
  *
  * The desktop sidebar and the mobile drawer share one pathname-aware `ShellNav`,
- * built from the frozen `NavList`/`NavItem` primitives. Nothing here decides
+ * built from the `NavList`/`NavItem` primitives (light DEC-129 sidebar
+ * contract). Nothing here decides
  * authorisation: the server layout has already resolved the session and every
  * area page enforces its own access — the nav is a convenience, not a gate
  * (§8.1: authorization never depends on hidden links).
@@ -268,7 +269,7 @@ export function ShellNav({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
   return (
     // A wrapping element carries the click handler so activating any row (the
-    // anchor bubbles) closes the drawer without modifying the frozen NavItem.
+    // anchor bubbles) closes the drawer without modifying the NavItem primitive.
     <div onClick={onNavigate}>
       <NavList>
         {AREAS.map((area) => (
