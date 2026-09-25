@@ -245,6 +245,7 @@ const shellCss = `
 .aq-user-item:disabled { opacity: 0.6; cursor: not-allowed; }
 /* --------------------------------- Canvas ---------------------------------- */
 .aq-canvas {
+  box-sizing: border-box;
   flex: 1 1 auto;
   width: 100%;
   max-width: ${containerWidth.default}px;

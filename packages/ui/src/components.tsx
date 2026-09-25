@@ -863,6 +863,7 @@ export function PageHeader({ title, scope, actions, description }: PageHeaderPro
     <header
       style={{
         display: "flex",
+        flexWrap: "wrap",
         justifyContent: "space-between",
         alignItems: "flex-start",
         gap: spacing[4],
@@ -908,7 +909,18 @@ export function PageHeader({ title, scope, actions, description }: PageHeaderPro
         ) : null}
       </div>
       {actions ? (
-        <div style={{ display: "flex", gap: spacing[2], flexShrink: 0 }}>{actions}</div>
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            justifyContent: "flex-end",
+            gap: spacing[2],
+            minWidth: 0,
+            marginLeft: "auto",
+          }}
+        >
+          {actions}
+        </div>
       ) : null}
     </header>
   );
