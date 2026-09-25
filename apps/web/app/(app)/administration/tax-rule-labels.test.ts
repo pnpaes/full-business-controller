@@ -9,6 +9,8 @@ describe("fractionToPercentDisplay", () => {
     expect(fractionToPercentDisplay("0.010000")).toBe("1");
     expect(fractionToPercentDisplay("0.123456")).toBe("12.3456");
     expect(fractionToPercentDisplay("1.000000")).toBe("100");
+    expect(fractionToPercentDisplay("0.075000")).toBe("7.5");
+    expect(fractionToPercentDisplay("0.005000")).toBe("0.5");
   });
 
   it("renders a zero fraction and a negative fraction", () => {
@@ -45,6 +47,30 @@ describe("taxScopeLabel", () => {
     expect(
       taxScopeLabel(
         { scopeType: "location", locationId: "loc-9", channelId: null },
+        channels,
+        locations,
+      ),
+    ).toBe("location · unknown");
+    expect(
+      taxScopeLabel(
+        { scopeType: "channel", locationId: null, channelId: "chan-9" },
+        channels,
+        locations,
+      ),
+    ).toBe("channel · unknown");
+  });
+
+  it("states unknown when a scoped rule holds no id", () => {
+    expect(
+      taxScopeLabel(
+        { scopeType: "channel", locationId: null, channelId: null },
+        channels,
+        locations,
+      ),
+    ).toBe("channel · unknown");
+    expect(
+      taxScopeLabel(
+        { scopeType: "location", locationId: null, channelId: null },
         channels,
         locations,
       ),
