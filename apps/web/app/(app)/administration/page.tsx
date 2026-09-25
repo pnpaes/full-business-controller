@@ -495,8 +495,9 @@ export default async function AdministrationPage() {
       <SectionCard title="Not available yet" headingLevel={3} meta="No backend">
         <ul style={list}>
           <li>
-            <Badge>No backend</Badge> Integrations — no integration configuration service or screen
-            exists yet.
+            <Badge>No backend</Badge> Integrations — blocked on owner approval: ADR-0011 is still
+            proposed and per-source write approval with a named credentials owner is unset
+            (DEC-015), so no integration configuration service or screen is built yet.
           </li>
         </ul>
       </SectionCard>

@@ -62,17 +62,38 @@ the `goods_receipt_line.applied_tax_rate` provenance column as **migration
    run manually; the drop loses the captured rates, so back up first) and a
    runbook row; the down path was rehearsed on a scratch DB.
 
-**Next task:** (a) the only remaining Administration "No backend" bullet is
-**Integrations**; (b) planning/forecast **tracking** still has no backend
-(the insights card stays honest); (c) the standing honest-gap/standing
-items — reset-token delivery is still a no-op stub; the worker/outbox layer
-is gated on `ADR-0004`; six golden fixtures unsigned; the `task`↔`approval`
-link; `WF-003` self-assignment; deployment prerequisite inputs. **Stale-gap
-correction:** the unit-catalogue read (`listUnits`), the cost-centre list
-read, the `calculatePriceScenario` HTTP route, incident owner assignment
-and the Tax/rules Administration backend are all **now delivered** — they
-were previously listed as gaps and are not. Receipt→ledger wiring stays
-gated on the OPS `storage_area_id` policy.
+**Next task:** **none buildable — the remaining roadmap work is
+owner/data-gated and must not be built silently.** Per the W6 acceptance
+rule the blocked rows 15–18 "stay blocked and stated" and must not be
+"built silently" (`docs/ROADMAP-OPERATIONS-COMPLETION.md:241`):
+(a) **Integrations** — the only remaining Administration "No backend"
+bullet — is roadmap **row 16, blocked (owner)** (`docs/BUILD_ROADMAP.md`
+row 16): `ADR-0011` is still **Proposed** and its header forbids relying
+on it until status is `Accepted`
+(`docs/adr/0011-external-publishing.md`), and per-source approval plus a
+named credentials owner (**I18**; `DEC-015`;
+`docs/phase0/SOURCE_DATA_REQUEST.md`, `docs/phase0/UNBLOCK_CHECKLIST.md`)
+are unset — `integration_source`/`publish_run` exist only in the Phase
+1-2 draft and are deliberately in `NOT_EXPECTED_TABLES`
+(`packages/persistence/src/schema/schema.test.ts:158-160`), so a registry
+built now would be empty or would encode the withheld owner input;
+(b) planning/forecast **tracking** is **row 15, blocked (data)** on
+clean history / grain measured (`I11`, `DEC-011`) — the insights card
+stays honest; (c) the standing items, each gated: reset-token delivery
+(the email/delivery slice), the worker/outbox layer (`ADR-0004`, still
+Proposed), six golden fixtures (owner signature), the `task`↔`approval`
+link and `WF-003` self-assignment (owner decisions), deployment
+prerequisite inputs. **Stale-gap correction:** the unit-catalogue read
+(`listUnits`), the cost-centre list read, the `calculatePriceScenario`
+HTTP route, incident owner assignment and the Tax/rules Administration
+backend are all **now delivered** — they were previously listed as gaps
+and are not. Receipt→ledger wiring stays gated on the OPS
+`storage_area_id` policy. The per-process **rate-limiter shared store is
+delivered** (`DEC-135`, commits `2a4a189` + `5013011`, migration `0067`)
+and was still listed as open in three places below — corrected. **Next
+step:** resolve the named owner/OPS/data inputs (see "Open decisions /
+inputs"), or authorise a specific gated slice with a recorded decision
+(next free id `DEC-137`).
 
 **Process note — one worktree, one writer:** a **second session was found
 running concurrently in this same worktree** (orphaned background tasks
@@ -118,12 +139,17 @@ the rollback approach in each body (Rule 2).
 open-point lists. Per-slice detail is in `docs/handoffs/`. The detailed list
 lives in the second "Next up" section below.
 
-1. **Next: the Integrations Administration backend (the only remaining
-   "No backend" bullet), then planning/forecast tracking; the standing
-   honest-gap/standing items alongside** (see "Resume here" for the exact
-   list and the stale-gap correction — the unit-catalogue read, the
-   cost-centre read, the `calculatePriceScenario` HTTP route, incident
-   owner assignment and Tax/rules are all delivered now).
+1. **Next: no buildable roadmap work remains — Integrations (roadmap
+   row 16) stays blocked (owner) and planning/forecast tracking (row 15)
+   stays blocked (data); blocked rows 15–18 "stay blocked and stated" per
+   the W6 acceptance rule; the standing items are owner/data-gated** (see
+   "Resume here" for the exact list, the gates and the honest next step —
+   resolve the named owner/OPS/data inputs, or authorise a gated slice
+   with a recorded decision, next free id `DEC-137` — plus the stale-gap
+   correction: the unit-catalogue read, the cost-centre read, the
+   `calculatePriceScenario` HTTP route, incident owner assignment and
+   Tax/rules are all delivered now, and the rate-limiter shared store is
+   delivered too, `DEC-135`).
 2. **The operations-completion waves W1–W7 are all delivered** (W7 per
    `docs/handoffs/080-…md`); the HMS blockade, the Administration reads /
    users-scopes work and the tax-rule authoring are delivered since
@@ -621,11 +647,12 @@ sales_units}` in `schemas/domain-enums.yaml` and
   consumers wired per `DEC-133`/`DEC-134`; the remaining per-class
   retention/Spaces decisions are recorded in those rows), and the
   app-shell search/scope placeholders were resolved by removal (handoff
-  `081`). Standing items: per-process **rate limiter** needs a shared
-  store; **reset-token delivery** is a no-op stub; `WF-003`
-  self-assignment deferred (`DEC-102`); six golden fixtures
+  `081`). Standing items: **reset-token delivery** is a no-op stub;
+  `WF-003` self-assignment deferred (`DEC-102`); six golden fixtures
   **unsigned**; the `task`↔`approval` link is open; the
-  worker/outbox layer is gated on `ADR-0004`. The deferred `DEC-112` items
+  worker/outbox layer is gated on `ADR-0004` (the per-process
+  rate-limiter shared store is **delivered**, `DEC-135` — not an open
+  item). The deferred `DEC-112` items
   (the `other_variable_cost` source, the `production_*`/time denominators, a
   `denominator_source` DB CHECK, per-channel packaging, the cost-card version
   chain, the per-item cost-selection override, partial-window proration,
@@ -639,29 +666,31 @@ sales_units}` in `schemas/domain-enums.yaml` and
   Note the **permanent** monitoring point `VERIFY-1` and its reading (see the
   open items — not removable, append-only).
 - **Nothing applied to DigitalOcean.**
-- **Open verification debt:** the per-process rate limiter needs a shared store
-  before multi-instance deployment; reset-token delivery is a no-op stub until
-  the email slice; palette hex values / data-viz palette semantics await owner
-  sign-off; the six golden fixtures remain unsigned (the "verified" gate).
+- **Open verification debt:** the shared rate-limit store is
+  **delivered** (`DEC-135`, migration `0067`); only a growth sweep for
+  `rate_limit_counter` remains deferred (gated on the worker layer);
+  reset-token delivery is a no-op stub until the email slice; palette hex
+  values / data-viz palette semantics await owner sign-off; the six golden
+  fixtures remain unsigned (the "verified" gate).
 
 ## Next up (prioritised)
 
 `docs/BUILD_ROADMAP.md` is the ordered execution tracker; §5 carries the
 open-point lists. Per-slice detail is in `docs/handoffs/`.
 
-1. **Next: the Integrations Administration backend, then planning/forecast
-   tracking, working the standing honest-gap items alongside** — see
-   "Resume here" for the full list and the stale-gap correction. The HMS
+1. **Next: no buildable work — Integrations (roadmap row 16) stays blocked
+   (owner) and planning/forecast tracking (row 15) stays blocked (data);
+   blocked rows 15–18 "stay blocked and stated" per the W6 acceptance rule** —
+   see "Resume here" for the gates and the stale-gap correction. The HMS
    blockade, the Administration reads/users-scopes work, the `DEC-132`
    storage port (plus its `DEC-133`/`DEC-134` consumers) and the Tax/rules
-   authoring (`DEC-136`) are **delivered**; only Integrations remains
-   absent in Administration, and user creation awaits the `DEC-131` owner
+   authoring (`DEC-136`) are **delivered** (the rate-limiter shared store is
+   delivered too, `DEC-135`), and user creation awaits the `DEC-131` owner
    decision.
 2. **Then the honest-gap queue** (see the "Not yet built" bullet in Current
-   status, each recorded not silently deferred): planning/forecast
-   tracking; the standing items (rate-limiter shared store, reset-token
-   delivery, unsigned golden fixtures, the `task`↔`approval` link,
-   `WF-003` self-assignment, `ADR-0004`). The previously listed
+   status, each recorded not silently deferred): the standing items
+   (reset-token delivery, unsigned golden fixtures, the `task`↔`approval`
+   link, `WF-003` self-assignment, `ADR-0004`). The previously listed
    unit-catalogue read, cost-centre list read, `calculatePriceScenario`
    HTTP route and incident owner assignment are **delivered** — see the
    stale-gap correction in "Resume here".
