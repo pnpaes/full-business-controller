@@ -47,7 +47,6 @@ const contentColumn = {
   display: "flex",
   flexDirection: "column",
   gap: spacing[6],
-  width: "100%",
   maxWidth: 1120,
   margin: "0 auto",
   padding: `${spacing[8]}px ${spacing[4]}px`,
@@ -217,7 +216,10 @@ export default async function ImportRunDetailPage({
                   ? "—"
                   : `${postingPolicy} (from the run's import profile, DEC-081; DEC-025 allow_partial default when no profile)`,
             },
-            { term: "File hash", description: run.fileHash },
+            {
+              term: "File hash",
+              description: <span style={{ overflowWrap: "anywhere" }}>{run.fileHash}</span>,
+            },
             {
               term: "File object id",
               description:
@@ -250,34 +252,36 @@ export default async function ImportRunDetailPage({
 
       {detail.issues.length > 0 ? (
         <SectionCard title="Validation issues" meta={`${detail.issues.length} issue(s)`}>
-          <Table caption="Row-level validation issues, with their error code." columnCount={4}>
-            <thead>
-              <tr>
-                <Th style={numCell}>Source row</Th>
-                <Th>Code</Th>
-                <Th>Message</Th>
-                <Th>Staging row</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {detail.issues.map((issue, index) => (
-                <tr key={`${issue.stagingRowId}-${issue.code}-${index}`}>
-                  <Td style={numCell}>{issue.sourceRowNo}</Td>
-                  <Td>{issue.code}</Td>
-                  <Td>{issue.message}</Td>
-                  <Td
-                    style={{
-                      fontFamily: typography.fontFamily.mono,
-                      fontSize: typography.fontSize.xs,
-                      color: color.text.muted,
-                    }}
-                  >
-                    {issue.stagingRowId}
-                  </Td>
+          <div style={{ overflowX: "auto", minWidth: 0 }}>
+            <Table caption="Row-level validation issues, with their error code." columnCount={4}>
+              <thead>
+                <tr>
+                  <Th style={numCell}>Source row</Th>
+                  <Th>Code</Th>
+                  <Th>Message</Th>
+                  <Th>Staging row</Th>
                 </tr>
-              ))}
-            </tbody>
-          </Table>
+              </thead>
+              <tbody>
+                {detail.issues.map((issue, index) => (
+                  <tr key={`${issue.stagingRowId}-${issue.code}-${index}`}>
+                    <Td style={numCell}>{issue.sourceRowNo}</Td>
+                    <Td>{issue.code}</Td>
+                    <Td>{issue.message}</Td>
+                    <Td
+                      style={{
+                        fontFamily: typography.fontFamily.mono,
+                        fontSize: typography.fontSize.xs,
+                        color: color.text.muted,
+                      }}
+                    >
+                      {issue.stagingRowId}
+                    </Td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          </div>
         </SectionCard>
       ) : null}
 
@@ -291,64 +295,68 @@ export default async function ImportRunDetailPage({
             has not been staged; register the file again through the import form to stage it.
           </EmptyState>
         ) : (
-          <Table
-            caption="Every staged row is retained; invalid rows keep their error code and are never dropped (SALE-004)."
-            columnCount={4}
-          >
-            <thead>
-              <tr>
-                <Th style={numCell}>Source row</Th>
-                <Th>Mapping state</Th>
-                <Th>Error code</Th>
-                <Th>Normalized summary</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => {
-                const mapping = mappingStateView(row.mappingState);
-                return (
-                  <tr key={row.id}>
-                    <Td style={numCell}>{row.sourceRowNo}</Td>
-                    <Td>
-                      <StatusPill tone={mapping.tone}>{mapping.label}</StatusPill>
-                    </Td>
-                    <Td>{orDash(row.errorCode)}</Td>
-                    <Td>{row.summary}</Td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </Table>
+          <div style={{ overflowX: "auto", minWidth: 0 }}>
+            <Table
+              caption="Every staged row is retained; invalid rows keep their error code and are never dropped (SALE-004)."
+              columnCount={4}
+            >
+              <thead>
+                <tr>
+                  <Th style={numCell}>Source row</Th>
+                  <Th>Mapping state</Th>
+                  <Th>Error code</Th>
+                  <Th>Normalized summary</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row) => {
+                  const mapping = mappingStateView(row.mappingState);
+                  return (
+                    <tr key={row.id}>
+                      <Td style={numCell}>{row.sourceRowNo}</Td>
+                      <Td>
+                        <StatusPill tone={mapping.tone}>{mapping.label}</StatusPill>
+                      </Td>
+                      <Td>{orDash(row.errorCode)}</Td>
+                      <Td>{row.summary}</Td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </Table>
+          </div>
         )}
       </SectionCard>
 
       {detail.dispositions.length > 0 ? (
         <SectionCard title="Dispositions" meta={`${detail.dispositions.length} recorded (DEC-035)`}>
-          <Table
-            caption="Each row has at most one approved disposition, recorded in the import_disposition table (DEC-083)."
-            columnCount={5}
-          >
-            <thead>
-              <tr>
-                <Th style={numCell}>Source row</Th>
-                <Th>Disposition</Th>
-                <Th>Reason</Th>
-                <Th>Actor</Th>
-                <Th>Recorded</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {detail.dispositions.map((disposition, index) => (
-                <tr key={`${disposition.stagingRowId}-${index}`}>
-                  <Td style={numCell}>{disposition.sourceRowNo}</Td>
-                  <Td>{disposition.disposition}</Td>
-                  <Td>{orDash(disposition.reason)}</Td>
-                  <Td>{orDash(disposition.actorId)}</Td>
-                  <Td>{disposition.at === "" ? "—" : formatInstant(disposition.at)}</Td>
+          <div style={{ overflowX: "auto", minWidth: 0 }}>
+            <Table
+              caption="Each row has at most one approved disposition, recorded in the import_disposition table (DEC-083)."
+              columnCount={5}
+            >
+              <thead>
+                <tr>
+                  <Th style={numCell}>Source row</Th>
+                  <Th>Disposition</Th>
+                  <Th>Reason</Th>
+                  <Th>Actor</Th>
+                  <Th>Recorded</Th>
                 </tr>
-              ))}
-            </tbody>
-          </Table>
+              </thead>
+              <tbody>
+                {detail.dispositions.map((disposition, index) => (
+                  <tr key={`${disposition.stagingRowId}-${index}`}>
+                    <Td style={numCell}>{disposition.sourceRowNo}</Td>
+                    <Td>{disposition.disposition}</Td>
+                    <Td>{orDash(disposition.reason)}</Td>
+                    <Td>{orDash(disposition.actorId)}</Td>
+                    <Td>{disposition.at === "" ? "—" : formatInstant(disposition.at)}</Td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          </div>
         </SectionCard>
       ) : null}
 
@@ -374,31 +382,33 @@ export default async function ImportRunDetailPage({
             normalizations and re-map the run.
           </EmptyState>
         ) : (
-          <Table
-            caption="Per-currency source, posted, dispositioned and residual totals. The posted totals come from the linked sales lines; there is no tolerance table, so no threshold is applied here — reconciling the run is the separate step that snapshots one."
-            columnCount={5}
-          >
-            <thead>
-              <tr>
-                <Th>Currency</Th>
-                <Th style={numCell}>Source</Th>
-                <Th style={numCell}>Posted</Th>
-                <Th style={numCell}>Dispositions</Th>
-                <Th style={numCell}>Residual</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {currencies.map((currency) => (
-                <tr key={currency}>
-                  <Td>{currency}</Td>
-                  <Td style={numCell}>{amountFor(sourceEntries, currency)}</Td>
-                  <Td style={numCell}>{amountFor(postedEntries, currency)}</Td>
-                  <Td style={numCell}>{amountFor(dispositionEntries, currency)}</Td>
-                  <Td style={numCell}>{amountFor(residualEntries, currency)}</Td>
+          <div style={{ overflowX: "auto", minWidth: 0 }}>
+            <Table
+              caption="Per-currency source, posted, dispositioned and residual totals. The posted totals come from the linked sales lines; there is no tolerance table, so no threshold is applied here — reconciling the run is the separate step that snapshots one."
+              columnCount={5}
+            >
+              <thead>
+                <tr>
+                  <Th>Currency</Th>
+                  <Th style={numCell}>Source</Th>
+                  <Th style={numCell}>Posted</Th>
+                  <Th style={numCell}>Dispositions</Th>
+                  <Th style={numCell}>Residual</Th>
                 </tr>
-              ))}
-            </tbody>
-          </Table>
+              </thead>
+              <tbody>
+                {currencies.map((currency) => (
+                  <tr key={currency}>
+                    <Td>{currency}</Td>
+                    <Td style={numCell}>{amountFor(sourceEntries, currency)}</Td>
+                    <Td style={numCell}>{amountFor(postedEntries, currency)}</Td>
+                    <Td style={numCell}>{amountFor(dispositionEntries, currency)}</Td>
+                    <Td style={numCell}>{amountFor(residualEntries, currency)}</Td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          </div>
         )}
       </SectionCard>
     </div>

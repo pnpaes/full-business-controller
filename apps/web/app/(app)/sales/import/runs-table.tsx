@@ -60,14 +60,16 @@ export function RunsTable({ rows }: { readonly rows: readonly ImportRunRow[] }) 
   }));
 
   return (
-    <DataTable
-      caption="Sales import runs, newest first. Open a run to validate, map, disposition and post it."
-      columns={COLUMNS}
-      rows={tableRows}
-      rowHref={(_row, index) => {
-        const run = rows[index];
-        return run === undefined ? "/sales/import" : `/sales/import/${run.id}`;
-      }}
-    />
+    <div style={{ overflowX: "auto", minWidth: 0 }}>
+      <DataTable
+        caption="Sales import runs, newest first. Open a run to validate, map, disposition and post it."
+        columns={COLUMNS}
+        rows={tableRows}
+        rowHref={(_row, index) => {
+          const run = rows[index];
+          return run === undefined ? "/sales/import" : `/sales/import/${run.id}`;
+        }}
+      />
+    </div>
   );
 }

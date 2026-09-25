@@ -143,7 +143,13 @@ export function RegisterAllocationRuleForm({
           help="What the split follows — area, hours, transactions, revenue or an even share."
         />
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: spacing[4] }}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+            gap: spacing[4],
+          }}
+        >
           <SelectField
             name="scopeType"
             label="Scope"
@@ -173,7 +179,13 @@ export function RegisterAllocationRuleForm({
           help="What happens when the denominator is zero: stop, or split equally."
         />
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: spacing[4] }}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+            gap: spacing[4],
+          }}
+        >
           <TextField
             name="effectiveFrom"
             type="date"

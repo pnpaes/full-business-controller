@@ -33,57 +33,59 @@ export default async function CostCardsPage() {
           this organization yet.
         </EmptyState>
       ) : (
-        <Table caption="Calculated cost cards, newest first." columnCount={6}>
-          <thead>
-            <tr>
-              <Th>Product</Th>
-              <Th>Location</Th>
-              <Th>Channel</Th>
-              <Th>State</Th>
-              <Th>Cost selection</Th>
-              <Th>Calculated</Th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => (
-              <tr key={row.id}>
-                <Td>
-                  <a
-                    href={`/costs/cost-cards/${row.id}`}
-                    style={{ fontWeight: typography.fontWeight.semibold }}
-                  >
-                    {row.productVariantName ?? row.productVariantId}
-                  </a>
-                  {row.productVariantCode === null ? null : (
-                    <span
-                      style={{
-                        display: "block",
-                        fontFamily: typography.fontFamily.mono,
-                        fontSize: typography.fontSize.xs,
-                        color: color.text.muted,
-                      }}
-                    >
-                      {row.productVariantCode}
-                    </span>
-                  )}
-                </Td>
-                <Td>{orDash(row.locationName ?? row.locationCode)}</Td>
-                <Td>
-                  {row.channelName === null ? (
-                    <span style={{ color: color.text.muted }}>All channels</span>
-                  ) : (
-                    row.channelName
-                  )}
-                </Td>
-                <Td>
-                  <StatusPill tone={stateTone(row.state)}>{row.state}</StatusPill>
-                </Td>
-                <Td>{row.costSelectionPolicy}</Td>
-                <Td style={{ whiteSpace: "nowrap" }}>{formatInstant(row.calculatedAt)}</Td>
+        <div style={{ overflowX: "auto", minWidth: 0 }}>
+          <Table caption="Calculated cost cards, newest first." columnCount={6}>
+            <thead>
+              <tr>
+                <Th>Product</Th>
+                <Th>Location</Th>
+                <Th>Channel</Th>
+                <Th>State</Th>
+                <Th>Cost selection</Th>
+                <Th>Calculated</Th>
               </tr>
-            ))}
-          </tbody>
-        </Table>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={row.id}>
+                  <Td>
+                    <a
+                      href={`/costs/cost-cards/${row.id}`}
+                      style={{ fontWeight: typography.fontWeight.semibold }}
+                    >
+                      {row.productVariantName ?? row.productVariantId}
+                    </a>
+                    {row.productVariantCode === null ? null : (
+                      <span
+                        style={{
+                          display: "block",
+                          fontFamily: typography.fontFamily.mono,
+                          fontSize: typography.fontSize.xs,
+                          color: color.text.muted,
+                        }}
+                      >
+                        {row.productVariantCode}
+                      </span>
+                    )}
+                  </Td>
+                  <Td>{orDash(row.locationName ?? row.locationCode)}</Td>
+                  <Td>
+                    {row.channelName === null ? (
+                      <span style={{ color: color.text.muted }}>All channels</span>
+                    ) : (
+                      row.channelName
+                    )}
+                  </Td>
+                  <Td>
+                    <StatusPill tone={stateTone(row.state)}>{row.state}</StatusPill>
+                  </Td>
+                  <Td>{row.costSelectionPolicy}</Td>
+                  <Td style={{ whiteSpace: "nowrap" }}>{formatInstant(row.calculatedAt)}</Td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        </div>
       )}
       <p
         style={{

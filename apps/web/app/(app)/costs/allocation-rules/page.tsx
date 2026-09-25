@@ -34,32 +34,37 @@ export default async function AllocationRulesPage() {
             source. None exist in this organization yet.
           </EmptyState>
         ) : (
-          <Table caption="Allocation rules, grouped by pool code and newest first." columnCount={6}>
-            <thead>
-              <tr>
-                <Th>Pool</Th>
-                <Th>Driver</Th>
-                <Th>Scope</Th>
-                <Th>Denominator source</Th>
-                <Th>Fallback</Th>
-                <Th>Effective</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => (
-                <tr key={row.id}>
-                  <Td>{orDash(row.costPoolCode)}</Td>
-                  <Td>{row.driver}</Td>
-                  <Td>{row.scopeType}</Td>
-                  <Td>{orDash(row.denominatorSource)}</Td>
-                  <Td>{row.fallbackBehavior}</Td>
-                  <Td style={{ whiteSpace: "nowrap" }}>
-                    {formatWindow(row.effectiveFrom, row.effectiveTo)}
-                  </Td>
+          <div style={{ overflowX: "auto", minWidth: 0 }}>
+            <Table
+              caption="Allocation rules, grouped by pool code and newest first."
+              columnCount={6}
+            >
+              <thead>
+                <tr>
+                  <Th>Pool</Th>
+                  <Th>Driver</Th>
+                  <Th>Scope</Th>
+                  <Th>Denominator source</Th>
+                  <Th>Fallback</Th>
+                  <Th>Effective</Th>
                 </tr>
-              ))}
-            </tbody>
-          </Table>
+              </thead>
+              <tbody>
+                {rows.map((row) => (
+                  <tr key={row.id}>
+                    <Td>{orDash(row.costPoolCode)}</Td>
+                    <Td>{row.driver}</Td>
+                    <Td>{row.scopeType}</Td>
+                    <Td>{orDash(row.denominatorSource)}</Td>
+                    <Td>{row.fallbackBehavior}</Td>
+                    <Td style={{ whiteSpace: "nowrap" }}>
+                      {formatWindow(row.effectiveFrom, row.effectiveTo)}
+                    </Td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          </div>
         )}
       </SectionCard>
       <RegisterAllocationRuleForm

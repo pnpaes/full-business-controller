@@ -125,54 +125,56 @@ export default async function PurchasingPage() {
             for this organization yet.
           </EmptyState>
         ) : (
-          <Table
-            caption="Recorded goods receipts, newest first, with their gross total (price × received packs)."
-            columnCount={5}
-          >
-            <thead>
-              <tr>
-                <Th>Received</Th>
-                <Th>Supplier / store</Th>
-                <Th>Location</Th>
-                <Th>Status</Th>
-                <Th style={numCell}>Total</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => {
-                const status = statusView(row.status);
-                return (
-                  <tr key={row.id}>
-                    <Td>
-                      <Link href={`/purchasing/receipts/${row.id}`} style={primaryLink}>
-                        {formatInstant(row.receivedAt)}
-                      </Link>
-                      {row.deliveryRef === null ? null : (
-                        <span
-                          style={{
-                            color: color.text.muted,
-                            fontSize: typography.fontSize.xs,
-                          }}
-                        >
-                          {" "}
-                          · {row.deliveryRef}
-                        </span>
-                      )}
-                    </Td>
-                    <Td>{row.supplierName ?? row.storeName ?? "—"}</Td>
-                    <Td>{row.locationCode ?? "—"}</Td>
-                    <Td>
-                      <StatusPill tone={status.tone}>{status.label}</StatusPill>
-                    </Td>
-                    <Td style={numCell}>
-                      {formatMoneyAmount(row.grossTotal)}
-                      {currency === null ? "" : ` ${currency}`}
-                    </Td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </Table>
+          <div style={{ overflowX: "auto", minWidth: 0 }}>
+            <Table
+              caption="Recorded goods receipts, newest first, with their gross total (price × received packs)."
+              columnCount={5}
+            >
+              <thead>
+                <tr>
+                  <Th>Received</Th>
+                  <Th>Supplier / store</Th>
+                  <Th>Location</Th>
+                  <Th>Status</Th>
+                  <Th style={numCell}>Total</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row) => {
+                  const status = statusView(row.status);
+                  return (
+                    <tr key={row.id}>
+                      <Td>
+                        <Link href={`/purchasing/receipts/${row.id}`} style={primaryLink}>
+                          {formatInstant(row.receivedAt)}
+                        </Link>
+                        {row.deliveryRef === null ? null : (
+                          <span
+                            style={{
+                              color: color.text.muted,
+                              fontSize: typography.fontSize.xs,
+                            }}
+                          >
+                            {" "}
+                            · {row.deliveryRef}
+                          </span>
+                        )}
+                      </Td>
+                      <Td>{row.supplierName ?? row.storeName ?? "—"}</Td>
+                      <Td>{row.locationCode ?? "—"}</Td>
+                      <Td>
+                        <StatusPill tone={status.tone}>{status.label}</StatusPill>
+                      </Td>
+                      <Td style={numCell}>
+                        {formatMoneyAmount(row.grossTotal)}
+                        {currency === null ? "" : ` ${currency}`}
+                      </Td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </Table>
+          </div>
         )}
       </SectionCard>
 
@@ -183,24 +185,26 @@ export default async function PurchasingPage() {
             is recorded as a cost observation, not a supplier.
           </EmptyState>
         ) : (
-          <Table caption="Known suppliers for this organization." columnCount={3}>
-            <thead>
-              <tr>
-                <Th>Code</Th>
-                <Th>Name</Th>
-                <Th>Currency</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {suppliers.map((supplier) => (
-                <tr key={supplier.id}>
-                  <Td>{supplier.code}</Td>
-                  <Td>{supplier.name}</Td>
-                  <Td>{supplier.currency}</Td>
+          <div style={{ overflowX: "auto", minWidth: 0 }}>
+            <Table caption="Known suppliers for this organization." columnCount={3}>
+              <thead>
+                <tr>
+                  <Th>Code</Th>
+                  <Th>Name</Th>
+                  <Th>Currency</Th>
                 </tr>
-              ))}
-            </tbody>
-          </Table>
+              </thead>
+              <tbody>
+                {suppliers.map((supplier) => (
+                  <tr key={supplier.id}>
+                    <Td>{supplier.code}</Td>
+                    <Td>{supplier.name}</Td>
+                    <Td>{supplier.currency}</Td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          </div>
         )}
         <details style={{ marginTop: spacing[4] }}>
           <summary

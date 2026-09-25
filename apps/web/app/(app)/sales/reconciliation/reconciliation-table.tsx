@@ -70,10 +70,12 @@ export function ReconciliationTable({ rows }: { readonly rows: readonly Reconcil
   });
 
   return (
-    <DataTable
-      caption="Reconciliations, newest period first. Expected is the source total, actual is posted plus approved dispositions (import run) or posted sales (settlement); the tolerance is the per-row snapshot applied at reconciliation time (DEC-026, DEC-035)."
-      columns={COLUMNS}
-      rows={tableRows}
-    />
+    <div style={{ overflowX: "auto", minWidth: 0 }}>
+      <DataTable
+        caption="Reconciliations, newest period first. Expected is the source total, actual is posted plus approved dispositions (import run) or posted sales (settlement); the tolerance is the per-row snapshot applied at reconciliation time (DEC-026, DEC-035)."
+        columns={COLUMNS}
+        rows={tableRows}
+      />
+    </div>
   );
 }

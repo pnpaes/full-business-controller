@@ -27,30 +27,32 @@ export default async function CostPoolsPage() {
             in this organization yet.
           </EmptyState>
         ) : (
-          <Table caption="Cost pools, grouped by code and newest version first." columnCount={4}>
-            <thead>
-              <tr>
-                <Th>Code</Th>
-                <Th>Name</Th>
-                <Th>Effective</Th>
-                <Th>Version</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => (
-                <tr key={row.id}>
-                  <Td>{orDash(row.code)}</Td>
-                  <Td>{orDash(row.name)}</Td>
-                  <Td style={{ whiteSpace: "nowrap" }}>
-                    {formatWindow(row.effectiveFrom, row.effectiveTo)}
-                  </Td>
-                  <Td>
-                    {row.effectiveTo === null ? <Badge>Current</Badge> : <Badge>Closed</Badge>}
-                  </Td>
+          <div style={{ overflowX: "auto", minWidth: 0 }}>
+            <Table caption="Cost pools, grouped by code and newest version first." columnCount={4}>
+              <thead>
+                <tr>
+                  <Th>Code</Th>
+                  <Th>Name</Th>
+                  <Th>Effective</Th>
+                  <Th>Version</Th>
                 </tr>
-              ))}
-            </tbody>
-          </Table>
+              </thead>
+              <tbody>
+                {rows.map((row) => (
+                  <tr key={row.id}>
+                    <Td>{orDash(row.code)}</Td>
+                    <Td>{orDash(row.name)}</Td>
+                    <Td style={{ whiteSpace: "nowrap" }}>
+                      {formatWindow(row.effectiveFrom, row.effectiveTo)}
+                    </Td>
+                    <Td>
+                      {row.effectiveTo === null ? <Badge>Current</Badge> : <Badge>Closed</Badge>}
+                    </Td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          </div>
         )}
       </SectionCard>
       <RegisterCostPoolForm />

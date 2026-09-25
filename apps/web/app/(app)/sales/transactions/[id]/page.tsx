@@ -31,7 +31,6 @@ const contentColumn = {
   display: "flex",
   flexDirection: "column",
   gap: spacing[6],
-  width: "100%",
   maxWidth: 1120,
   margin: "0 auto",
   padding: `${spacing[8]}px ${spacing[4]}px`,
@@ -150,67 +149,69 @@ export default async function SalesTransactionDetailPage({
             staged row was posted for a transaction whose remaining rows were dispositioned.
           </EmptyState>
         ) : (
-          <Table
-            caption="Sales lines. Amounts are stored numeric(19,4); applied_tax_rate is the rate actually applied, captured verbatim and never re-derived (DEC-042/DEC-045)."
-            columnCount={9}
-          >
-            <thead>
-              <tr>
-                <Th>Product</Th>
-                <Th style={numCell}>Qty</Th>
-                <Th style={numCell}>Unit price</Th>
-                <Th style={numCell}>Gross</Th>
-                <Th style={numCell}>Net</Th>
-                <Th style={numCell}>Tax (applied rate)</Th>
-                <Th>Option</Th>
-                <Th>Mapping</Th>
-                <Th>Reversal</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {lines.map((line) => {
-                const mapping = mappingStateView(line.mappingState);
-                return (
-                  <tr key={line.id}>
-                    <Td>
-                      {orDash(line.sku)}
-                      {line.externalProductRef === null ? null : (
+          <div style={{ overflowX: "auto", minWidth: 0 }}>
+            <Table
+              caption="Sales lines. Amounts are stored numeric(19,4); applied_tax_rate is the rate actually applied, captured verbatim and never re-derived (DEC-042/DEC-045)."
+              columnCount={9}
+            >
+              <thead>
+                <tr>
+                  <Th>Product</Th>
+                  <Th style={numCell}>Qty</Th>
+                  <Th style={numCell}>Unit price</Th>
+                  <Th style={numCell}>Gross</Th>
+                  <Th style={numCell}>Net</Th>
+                  <Th style={numCell}>Tax (applied rate)</Th>
+                  <Th>Option</Th>
+                  <Th>Mapping</Th>
+                  <Th>Reversal</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {lines.map((line) => {
+                  const mapping = mappingStateView(line.mappingState);
+                  return (
+                    <tr key={line.id}>
+                      <Td>
+                        {orDash(line.sku)}
+                        {line.externalProductRef === null ? null : (
+                          <span style={{ display: "block", opacity: 0.7 }}>
+                            {line.externalProductRef}
+                          </span>
+                        )}
+                      </Td>
+                      <Td style={numCell}>{line.quantity}</Td>
+                      <Td style={numCell}>{orDash(line.unitPrice)}</Td>
+                      <Td style={numCell}>{orDash(line.grossAmount)}</Td>
+                      <Td style={numCell}>{orDash(line.netAmount)}</Td>
+                      <Td style={numCell}>
+                        {orDash(line.taxAmount)}
                         <span style={{ display: "block", opacity: 0.7 }}>
-                          {line.externalProductRef}
+                          {orDash(line.appliedTaxRate)}
                         </span>
-                      )}
-                    </Td>
-                    <Td style={numCell}>{line.quantity}</Td>
-                    <Td style={numCell}>{orDash(line.unitPrice)}</Td>
-                    <Td style={numCell}>{orDash(line.grossAmount)}</Td>
-                    <Td style={numCell}>{orDash(line.netAmount)}</Td>
-                    <Td style={numCell}>
-                      {orDash(line.taxAmount)}
-                      <span style={{ display: "block", opacity: 0.7 }}>
-                        {orDash(line.appliedTaxRate)}
-                      </span>
-                    </Td>
-                    <Td>{optionKindView(line.optionKind)}</Td>
-                    <Td>
-                      <StatusPill tone={mapping.tone}>{mapping.label}</StatusPill>
-                    </Td>
-                    <Td>
-                      {line.reversalOfId === null ? null : (
-                        <span style={{ display: "block", opacity: 0.7 }}>
-                          reverses {line.reversalOfId}
-                        </span>
-                      )}
-                      <ReverseLine
-                        salesLineId={line.id}
-                        reversed={reversedLineIds.has(line.id)}
-                        isReversal={line.reversalOfId !== null}
-                      />
-                    </Td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </Table>
+                      </Td>
+                      <Td>{optionKindView(line.optionKind)}</Td>
+                      <Td>
+                        <StatusPill tone={mapping.tone}>{mapping.label}</StatusPill>
+                      </Td>
+                      <Td>
+                        {line.reversalOfId === null ? null : (
+                          <span style={{ display: "block", opacity: 0.7 }}>
+                            reverses {line.reversalOfId}
+                          </span>
+                        )}
+                        <ReverseLine
+                          salesLineId={line.id}
+                          reversed={reversedLineIds.has(line.id)}
+                          isReversal={line.reversalOfId !== null}
+                        />
+                      </Td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </Table>
+          </div>
         )}
       </SectionCard>
     </div>

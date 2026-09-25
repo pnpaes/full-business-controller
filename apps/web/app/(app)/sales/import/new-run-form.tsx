@@ -182,7 +182,7 @@ export function NewRunForm() {
           rows={8}
           value={text}
           onChange={(event) => setText(event.target.value)}
-          help="Columns: date;time;receipt;staff;product;variant;quantity;gross_price;discount;line_total;location. Comma decimals are accepted. The content hash is the replay guard, so identical content cannot be imported twice."
+          help="Columns: date; time; receipt; staff; product; variant; quantity; gross_price; discount; line_total; location. Comma decimals are accepted. The content hash is the replay guard, so identical content cannot be imported twice."
           style={{ fontFamily: typography.fontFamily.mono }}
         />
 

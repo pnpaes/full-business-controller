@@ -40,65 +40,67 @@ export default async function PriceScenariosPage() {
           have been calculated in this organization yet.
         </EmptyState>
       ) : (
-        <Table caption="Price scenarios, newest first." columnCount={8}>
-          <thead>
-            <tr>
-              <Th>Product</Th>
-              <Th>Location</Th>
-              <Th>Channel</Th>
-              <Th>State</Th>
-              <Th style={numCell}>Gross price</Th>
-              <Th style={numCell}>Net price</Th>
-              <Th style={numCell}>Contribution margin</Th>
-              <Th>Created</Th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => (
-              <tr key={row.id}>
-                <Td>
-                  <a
-                    href={`/costs/price-scenarios/${row.id}`}
-                    style={{ fontWeight: typography.fontWeight.semibold }}
-                  >
-                    {row.productVariantName ?? row.productVariantId}
-                  </a>
-                  {row.productVariantCode === null ? null : (
-                    <span
-                      style={{
-                        display: "block",
-                        fontFamily: typography.fontFamily.mono,
-                        fontSize: typography.fontSize.xs,
-                        color: color.text.muted,
-                      }}
-                    >
-                      {row.productVariantCode}
-                    </span>
-                  )}
-                </Td>
-                <Td>{orDash(row.locationName)}</Td>
-                <Td>
-                  {row.channelName === null ? (
-                    <span style={{ color: color.text.muted }}>All channels</span>
-                  ) : (
-                    row.channelName
-                  )}
-                </Td>
-                <Td>
-                  <StatusPill tone={stateTone(row.state)}>{row.state}</StatusPill>
-                </Td>
-                <Td style={numCell}>{money(row.presentedGrossPrice ?? row.grossPrice)}</Td>
-                <Td style={numCell}>{money(row.presentedNetPrice ?? row.netPrice)}</Td>
-                <Td style={numCell}>
-                  {row.contributionMarginPct === null
-                    ? "n/a"
-                    : formatPercent(row.contributionMarginPct)}
-                </Td>
-                <Td style={{ whiteSpace: "nowrap" }}>{formatInstant(row.createdAt)}</Td>
+        <div style={{ overflowX: "auto", minWidth: 0 }}>
+          <Table caption="Price scenarios, newest first." columnCount={8}>
+            <thead>
+              <tr>
+                <Th>Product</Th>
+                <Th>Location</Th>
+                <Th>Channel</Th>
+                <Th>State</Th>
+                <Th style={numCell}>Gross price</Th>
+                <Th style={numCell}>Net price</Th>
+                <Th style={numCell}>Contribution margin</Th>
+                <Th>Created</Th>
               </tr>
-            ))}
-          </tbody>
-        </Table>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={row.id}>
+                  <Td>
+                    <a
+                      href={`/costs/price-scenarios/${row.id}`}
+                      style={{ fontWeight: typography.fontWeight.semibold }}
+                    >
+                      {row.productVariantName ?? row.productVariantId}
+                    </a>
+                    {row.productVariantCode === null ? null : (
+                      <span
+                        style={{
+                          display: "block",
+                          fontFamily: typography.fontFamily.mono,
+                          fontSize: typography.fontSize.xs,
+                          color: color.text.muted,
+                        }}
+                      >
+                        {row.productVariantCode}
+                      </span>
+                    )}
+                  </Td>
+                  <Td>{orDash(row.locationName)}</Td>
+                  <Td>
+                    {row.channelName === null ? (
+                      <span style={{ color: color.text.muted }}>All channels</span>
+                    ) : (
+                      row.channelName
+                    )}
+                  </Td>
+                  <Td>
+                    <StatusPill tone={stateTone(row.state)}>{row.state}</StatusPill>
+                  </Td>
+                  <Td style={numCell}>{money(row.presentedGrossPrice ?? row.grossPrice)}</Td>
+                  <Td style={numCell}>{money(row.presentedNetPrice ?? row.netPrice)}</Td>
+                  <Td style={numCell}>
+                    {row.contributionMarginPct === null
+                      ? "n/a"
+                      : formatPercent(row.contributionMarginPct)}
+                  </Td>
+                  <Td style={{ whiteSpace: "nowrap" }}>{formatInstant(row.createdAt)}</Td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        </div>
       )}
       <p
         style={{

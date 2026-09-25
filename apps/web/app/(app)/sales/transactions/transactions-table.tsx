@@ -66,16 +66,18 @@ export function TransactionsTable({ rows }: { readonly rows: readonly SalesTrans
   }));
 
   return (
-    <DataTable
-      caption="Posted sales transactions, newest first. Amounts are the header totals: an included zero-price option line is retained for consumption but excluded from these totals (DEC-043)."
-      columns={COLUMNS}
-      rows={tableRows}
-      rowHref={(_row, index) => {
-        const transaction = rows[index];
-        return transaction === undefined
-          ? "/sales/transactions"
-          : `/sales/transactions/${transaction.id}`;
-      }}
-    />
+    <div style={{ overflowX: "auto", minWidth: 0 }}>
+      <DataTable
+        caption="Posted sales transactions, newest first. Amounts are the header totals: an included zero-price option line is retained for consumption but excluded from these totals (DEC-043)."
+        columns={COLUMNS}
+        rows={tableRows}
+        rowHref={(_row, index) => {
+          const transaction = rows[index];
+          return transaction === undefined
+            ? "/sales/transactions"
+            : `/sales/transactions/${transaction.id}`;
+        }}
+      />
+    </div>
   );
 }

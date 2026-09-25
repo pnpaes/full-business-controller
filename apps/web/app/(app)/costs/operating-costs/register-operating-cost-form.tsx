@@ -195,7 +195,13 @@ export function RegisterOperatingCostForm({
           help="Optional (DEC-112): link the cost to a shared pool so an allocation rule can split it."
         />
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: spacing[4] }}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+            gap: spacing[4],
+          }}
+        >
           <NumberField
             name="amount"
             label="Amount"
@@ -218,7 +224,13 @@ export function RegisterOperatingCostForm({
           />
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: spacing[4] }}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+            gap: spacing[4],
+          }}
+        >
           <SelectField
             name="recurrence"
             label="Recurrence"
@@ -245,7 +257,13 @@ export function RegisterOperatingCostForm({
           />
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: spacing[4] }}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+            gap: spacing[4],
+          }}
+        >
           <TextField
             name="effectiveFrom"
             type="date"

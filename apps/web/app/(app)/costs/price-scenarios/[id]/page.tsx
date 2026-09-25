@@ -38,22 +38,24 @@ interface DetailItem {
 
 function DefinitionRows({ items }: { readonly items: readonly DetailItem[] }) {
   return (
-    <Table caption="Scenario figures." columnCount={2}>
-      <thead>
-        <tr>
-          <Th>Measure</Th>
-          <Th style={numCell}>Value</Th>
-        </tr>
-      </thead>
-      <tbody>
-        {items.map((item) => (
-          <tr key={item.label}>
-            <Td>{item.label}</Td>
-            <Td style={numCell}>{item.value}</Td>
+    <div style={{ overflowX: "auto", minWidth: 0 }}>
+      <Table caption="Scenario figures." columnCount={2}>
+        <thead>
+          <tr>
+            <Th>Measure</Th>
+            <Th style={numCell}>Value</Th>
           </tr>
-        ))}
-      </tbody>
-    </Table>
+        </thead>
+        <tbody>
+          {items.map((item) => (
+            <tr key={item.label}>
+              <Td>{item.label}</Td>
+              <Td style={numCell}>{item.value}</Td>
+            </tr>
+          ))}
+        </tbody>
+      </Table>
+    </div>
   );
 }
 
@@ -210,47 +212,49 @@ export default async function PriceScenarioDetailPage({
           </SectionCard>
 
           <SectionCard title="Approval" meta="Scenario state and assumptions">
-            <Table caption="Approval and assumption fields." columnCount={2}>
-              <thead>
-                <tr>
-                  <Th>Field</Th>
-                  <Th style={numCell}>Value</Th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <Td>State</Td>
-                  <Td style={numCell}>
-                    <StatusPill tone={stateTone(scenario.state)}>{scenario.state}</StatusPill>
-                  </Td>
-                </tr>
-                <tr>
-                  <Td>Target contribution</Td>
-                  <Td style={numCell}>
-                    {scenario.targetContributionPct === null
-                      ? "—"
-                      : formatPercent(scenario.targetContributionPct)}
-                  </Td>
-                </tr>
-                <tr>
-                  <Td>Fee breakdown</Td>
-                  <Td style={numCell}>
-                    {Object.keys(scenario.feeBreakdown).length === 0 ? (
-                      <span style={{ color: color.text.muted }}>No channel fees</span>
-                    ) : (
-                      <span
-                        style={{
-                          fontFamily: typography.fontFamily.mono,
-                          fontSize: typography.fontSize.xs,
-                        }}
-                      >
-                        {JSON.stringify(scenario.feeBreakdown)}
-                      </span>
-                    )}
-                  </Td>
-                </tr>
-              </tbody>
-            </Table>
+            <div style={{ overflowX: "auto", minWidth: 0 }}>
+              <Table caption="Approval and assumption fields." columnCount={2}>
+                <thead>
+                  <tr>
+                    <Th>Field</Th>
+                    <Th style={numCell}>Value</Th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <Td>State</Td>
+                    <Td style={numCell}>
+                      <StatusPill tone={stateTone(scenario.state)}>{scenario.state}</StatusPill>
+                    </Td>
+                  </tr>
+                  <tr>
+                    <Td>Target contribution</Td>
+                    <Td style={numCell}>
+                      {scenario.targetContributionPct === null
+                        ? "—"
+                        : formatPercent(scenario.targetContributionPct)}
+                    </Td>
+                  </tr>
+                  <tr>
+                    <Td>Fee breakdown</Td>
+                    <Td style={numCell}>
+                      {Object.keys(scenario.feeBreakdown).length === 0 ? (
+                        <span style={{ color: color.text.muted }}>No channel fees</span>
+                      ) : (
+                        <span
+                          style={{
+                            fontFamily: typography.fontFamily.mono,
+                            fontSize: typography.fontSize.xs,
+                          }}
+                        >
+                          {JSON.stringify(scenario.feeBreakdown)}
+                        </span>
+                      )}
+                    </Td>
+                  </tr>
+                </tbody>
+              </Table>
+            </div>
             {scenario.state === "draft" || scenario.state === "submitted" ? (
               <ApproveScenarioForm priceScenarioId={scenario.id} />
             ) : approvedVersion === undefined ? null : (

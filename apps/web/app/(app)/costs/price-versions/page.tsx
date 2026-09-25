@@ -37,59 +37,63 @@ export default async function PriceVersionsPage() {
           been approved in this organization yet.
         </EmptyState>
       ) : (
-        <Table caption="Effective price versions, newest effective window first." columnCount={9}>
-          <thead>
-            <tr>
-              <Th>Product</Th>
-              <Th>Location</Th>
-              <Th>Channel</Th>
-              <Th style={numCell}>Gross price</Th>
-              <Th style={numCell}>Net price</Th>
-              <Th>Effective</Th>
-              <Th>Approved at</Th>
-              <Th>Approved by</Th>
-              <Th>Source scenario</Th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => (
-              <tr key={row.id}>
-                <Td>
-                  <span style={{ fontWeight: typography.fontWeight.semibold }}>
-                    {row.productVariantName ?? row.productVariantId}
-                  </span>
-                  {row.productVariantCode === null ? null : (
-                    <span style={{ ...monoCell, display: "block" }}>{row.productVariantCode}</span>
-                  )}
-                </Td>
-                <Td>
-                  {row.locationName === null ? (
-                    <span style={{ color: color.text.muted }}>All locations</span>
-                  ) : (
-                    orDash(row.locationName)
-                  )}
-                </Td>
-                <Td>
-                  {row.channelName === null ? (
-                    <span style={{ color: color.text.muted }}>All channels</span>
-                  ) : (
-                    row.channelName
-                  )}
-                </Td>
-                <Td style={numCell}>{money(row.grossPrice)}</Td>
-                <Td style={numCell}>{money(row.netPrice)}</Td>
-                <Td style={{ whiteSpace: "nowrap" }}>
-                  {formatInstantWindow(row.effectiveFrom, row.effectiveTo)}
-                </Td>
-                <Td style={{ whiteSpace: "nowrap" }}>{formatInstant(row.approvedAt)}</Td>
-                <Td style={monoCell}>{row.approvedBy}</Td>
-                <Td>
-                  <a href={`/costs/price-scenarios/${row.sourceScenarioId}`}>View scenario</a>
-                </Td>
+        <div style={{ overflowX: "auto", minWidth: 0 }}>
+          <Table caption="Effective price versions, newest effective window first." columnCount={9}>
+            <thead>
+              <tr>
+                <Th>Product</Th>
+                <Th>Location</Th>
+                <Th>Channel</Th>
+                <Th style={numCell}>Gross price</Th>
+                <Th style={numCell}>Net price</Th>
+                <Th>Effective</Th>
+                <Th>Approved at</Th>
+                <Th>Approved by</Th>
+                <Th>Source scenario</Th>
               </tr>
-            ))}
-          </tbody>
-        </Table>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={row.id}>
+                  <Td>
+                    <span style={{ fontWeight: typography.fontWeight.semibold }}>
+                      {row.productVariantName ?? row.productVariantId}
+                    </span>
+                    {row.productVariantCode === null ? null : (
+                      <span style={{ ...monoCell, display: "block" }}>
+                        {row.productVariantCode}
+                      </span>
+                    )}
+                  </Td>
+                  <Td>
+                    {row.locationName === null ? (
+                      <span style={{ color: color.text.muted }}>All locations</span>
+                    ) : (
+                      orDash(row.locationName)
+                    )}
+                  </Td>
+                  <Td>
+                    {row.channelName === null ? (
+                      <span style={{ color: color.text.muted }}>All channels</span>
+                    ) : (
+                      row.channelName
+                    )}
+                  </Td>
+                  <Td style={numCell}>{money(row.grossPrice)}</Td>
+                  <Td style={numCell}>{money(row.netPrice)}</Td>
+                  <Td style={{ whiteSpace: "nowrap" }}>
+                    {formatInstantWindow(row.effectiveFrom, row.effectiveTo)}
+                  </Td>
+                  <Td style={{ whiteSpace: "nowrap" }}>{formatInstant(row.approvedAt)}</Td>
+                  <Td style={monoCell}>{row.approvedBy}</Td>
+                  <Td>
+                    <a href={`/costs/price-scenarios/${row.sourceScenarioId}`}>View scenario</a>
+                  </Td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        </div>
       )}
       <p
         style={{

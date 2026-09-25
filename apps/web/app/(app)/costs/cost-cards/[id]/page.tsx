@@ -183,59 +183,61 @@ export default async function CostCardDetailPage({ params }: { params: Promise<{
                 The snapshot carries no ingredient, packaging, channel or other variable components.
               </EmptyState>
             ) : (
-              <Table caption="Stored variable cost components." columnCount={6}>
-                <thead>
-                  <tr>
-                    <Th>Kind</Th>
-                    <Th>Item</Th>
-                    <Th style={numCell}>Quantity</Th>
-                    <Th style={numCell}>Unit cost</Th>
-                    <Th style={numCell}>Amount</Th>
-                    <Th>Boundary</Th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {variableComponents.map((component) => (
-                    <tr key={component.id}>
-                      <Td>{component.componentKind}</Td>
-                      <Td>
-                        {component.itemName ?? component.itemId ?? (
-                          <span style={{ color: color.text.muted }}>—</span>
-                        )}
-                        {component.itemCode === null ? null : (
-                          <span
-                            style={{
-                              display: "block",
-                              fontFamily: typography.fontFamily.mono,
-                              fontSize: typography.fontSize.xs,
-                              color: color.text.muted,
-                            }}
-                          >
-                            {component.itemCode}
-                          </span>
-                        )}
-                      </Td>
-                      <Td style={numCell}>
-                        {component.quantity === null ? (
-                          "—"
-                        ) : (
-                          <>
-                            {formatQuantity(component.quantity)}
-                            {component.unitCode === null ? null : ` ${component.unitCode}`}
-                          </>
-                        )}
-                      </Td>
-                      <Td style={numCell}>
-                        {component.unitCost === null ? "—" : formatMoney(component.unitCost)}
-                      </Td>
-                      <Td style={numCell}>
-                        {component.amount === null ? "—" : formatMoney(component.amount)}
-                      </Td>
-                      <Td>{orDash(component.roundingBoundary)}</Td>
+              <div style={{ overflowX: "auto", minWidth: 0 }}>
+                <Table caption="Stored variable cost components." columnCount={6}>
+                  <thead>
+                    <tr>
+                      <Th>Kind</Th>
+                      <Th>Item</Th>
+                      <Th style={numCell}>Quantity</Th>
+                      <Th style={numCell}>Unit cost</Th>
+                      <Th style={numCell}>Amount</Th>
+                      <Th>Boundary</Th>
                     </tr>
-                  ))}
-                </tbody>
-              </Table>
+                  </thead>
+                  <tbody>
+                    {variableComponents.map((component) => (
+                      <tr key={component.id}>
+                        <Td>{component.componentKind}</Td>
+                        <Td>
+                          {component.itemName ?? component.itemId ?? (
+                            <span style={{ color: color.text.muted }}>—</span>
+                          )}
+                          {component.itemCode === null ? null : (
+                            <span
+                              style={{
+                                display: "block",
+                                fontFamily: typography.fontFamily.mono,
+                                fontSize: typography.fontSize.xs,
+                                color: color.text.muted,
+                              }}
+                            >
+                              {component.itemCode}
+                            </span>
+                          )}
+                        </Td>
+                        <Td style={numCell}>
+                          {component.quantity === null ? (
+                            "—"
+                          ) : (
+                            <>
+                              {formatQuantity(component.quantity)}
+                              {component.unitCode === null ? null : ` ${component.unitCode}`}
+                            </>
+                          )}
+                        </Td>
+                        <Td style={numCell}>
+                          {component.unitCost === null ? "—" : formatMoney(component.unitCost)}
+                        </Td>
+                        <Td style={numCell}>
+                          {component.amount === null ? "—" : formatMoney(component.amount)}
+                        </Td>
+                        <Td>{orDash(component.roundingBoundary)}</Td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </Table>
+              </div>
             )}
           </SectionCard>
 
@@ -245,28 +247,30 @@ export default async function CostCardDetailPage({ params }: { params: Promise<{
                 This snapshot has no `direct_labor` component, so no labour cost or view is shown.
               </EmptyState>
             ) : (
-              <Table caption="Direct labour components and their recorded views." columnCount={3}>
-                <thead>
-                  <tr>
-                    <Th>Amount</Th>
-                    <Th>Boundary</Th>
-                    <Th>Views</Th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {labourComponents.map((component) => (
-                    <tr key={component.id}>
-                      <Td style={numCell}>
-                        {component.amount === null ? "—" : formatMoney(component.amount)}
-                      </Td>
-                      <Td>{orDash(component.roundingBoundary)}</Td>
-                      <Td>
-                        <ProvenanceList provenance={component.provenance} />
-                      </Td>
+              <div style={{ overflowX: "auto", minWidth: 0 }}>
+                <Table caption="Direct labour components and their recorded views." columnCount={3}>
+                  <thead>
+                    <tr>
+                      <Th>Amount</Th>
+                      <Th>Boundary</Th>
+                      <Th>Views</Th>
                     </tr>
-                  ))}
-                </tbody>
-              </Table>
+                  </thead>
+                  <tbody>
+                    {labourComponents.map((component) => (
+                      <tr key={component.id}>
+                        <Td style={numCell}>
+                          {component.amount === null ? "—" : formatMoney(component.amount)}
+                        </Td>
+                        <Td>{orDash(component.roundingBoundary)}</Td>
+                        <Td>
+                          <ProvenanceList provenance={component.provenance} />
+                        </Td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </Table>
+              </div>
             )}
           </SectionCard>
 
@@ -277,28 +281,30 @@ export default async function CostCardDetailPage({ params }: { params: Promise<{
                 variable cost.
               </EmptyState>
             ) : (
-              <Table caption="Allocated overhead components." columnCount={3}>
-                <thead>
-                  <tr>
-                    <Th>Amount</Th>
-                    <Th>Boundary</Th>
-                    <Th>Source</Th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {overheadComponents.map((component) => (
-                    <tr key={component.id}>
-                      <Td style={numCell}>
-                        {component.amount === null ? "—" : formatMoney(component.amount)}
-                      </Td>
-                      <Td>{orDash(component.roundingBoundary)}</Td>
-                      <Td>
-                        <ProvenanceList provenance={component.provenance} />
-                      </Td>
+              <div style={{ overflowX: "auto", minWidth: 0 }}>
+                <Table caption="Allocated overhead components." columnCount={3}>
+                  <thead>
+                    <tr>
+                      <Th>Amount</Th>
+                      <Th>Boundary</Th>
+                      <Th>Source</Th>
                     </tr>
-                  ))}
-                </tbody>
-              </Table>
+                  </thead>
+                  <tbody>
+                    {overheadComponents.map((component) => (
+                      <tr key={component.id}>
+                        <Td style={numCell}>
+                          {component.amount === null ? "—" : formatMoney(component.amount)}
+                        </Td>
+                        <Td>{orDash(component.roundingBoundary)}</Td>
+                        <Td>
+                          <ProvenanceList provenance={component.provenance} />
+                        </Td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </Table>
+              </div>
             )}
           </SectionCard>
 
@@ -312,39 +318,43 @@ export default async function CostCardDetailPage({ params }: { params: Promise<{
                 nothing to compare against yet.
               </EmptyState>
             ) : (
-              <Table
-                caption="Prior calculations for the same product, location and channel."
-                columnCount={5}
-              >
-                <thead>
-                  <tr>
-                    <Th>Calculated</Th>
-                    <Th>State</Th>
-                    <Th style={numCell}>Unit full cost</Th>
-                    <Th style={numCell}>Δ vs current</Th>
-                    <Th>Card</Th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {history.map((entry) => (
-                    <tr key={entry.id}>
-                      <Td style={{ whiteSpace: "nowrap" }}>{formatInstant(entry.calculatedAt)}</Td>
-                      <Td>
-                        <StatusPill tone={stateTone(entry.state)}>{entry.state}</StatusPill>
-                      </Td>
-                      <Td style={numCell}>{money(entry.totals?.unitFullCost ?? null)}</Td>
-                      <Td style={numCell}>
-                        {entry.totals?.unitFullCost == null || currentFullCost === null
-                          ? "—"
-                          : money(deltaMoney(entry.totals.unitFullCost, currentFullCost))}
-                      </Td>
-                      <Td>
-                        <a href={`/costs/cost-cards/${entry.id}`}>View</a>
-                      </Td>
+              <div style={{ overflowX: "auto", minWidth: 0 }}>
+                <Table
+                  caption="Prior calculations for the same product, location and channel."
+                  columnCount={5}
+                >
+                  <thead>
+                    <tr>
+                      <Th>Calculated</Th>
+                      <Th>State</Th>
+                      <Th style={numCell}>Unit full cost</Th>
+                      <Th style={numCell}>Δ vs current</Th>
+                      <Th>Card</Th>
                     </tr>
-                  ))}
-                </tbody>
-              </Table>
+                  </thead>
+                  <tbody>
+                    {history.map((entry) => (
+                      <tr key={entry.id}>
+                        <Td style={{ whiteSpace: "nowrap" }}>
+                          {formatInstant(entry.calculatedAt)}
+                        </Td>
+                        <Td>
+                          <StatusPill tone={stateTone(entry.state)}>{entry.state}</StatusPill>
+                        </Td>
+                        <Td style={numCell}>{money(entry.totals?.unitFullCost ?? null)}</Td>
+                        <Td style={numCell}>
+                          {entry.totals?.unitFullCost == null || currentFullCost === null
+                            ? "—"
+                            : money(deltaMoney(entry.totals.unitFullCost, currentFullCost))}
+                        </Td>
+                        <Td>
+                          <a href={`/costs/cost-cards/${entry.id}`}>View</a>
+                        </Td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </Table>
+              </div>
             )}
           </SectionCard>
 
@@ -358,35 +368,37 @@ export default async function CostCardDetailPage({ params }: { params: Promise<{
                 to drill into.
               </EmptyState>
             ) : (
-              <Table caption="All stored components with their provenance." columnCount={5}>
-                <thead>
-                  <tr>
-                    <Th>Kind</Th>
-                    <Th style={numCell}>Amount</Th>
-                    <Th>Boundary</Th>
-                    <Th>Item / unit</Th>
-                    <Th>Provenance</Th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {components.map((component) => (
-                    <tr key={component.id}>
-                      <Td>{component.componentKind}</Td>
-                      <Td style={numCell}>
-                        {component.amount === null ? "—" : formatMoney(component.amount)}
-                      </Td>
-                      <Td>{orDash(component.roundingBoundary)}</Td>
-                      <Td>
-                        {component.itemName ?? component.itemId ?? "—"}
-                        {component.unitCode === null ? null : ` · ${component.unitCode}`}
-                      </Td>
-                      <Td>
-                        <ProvenanceList provenance={component.provenance} />
-                      </Td>
+              <div style={{ overflowX: "auto", minWidth: 0 }}>
+                <Table caption="All stored components with their provenance." columnCount={5}>
+                  <thead>
+                    <tr>
+                      <Th>Kind</Th>
+                      <Th style={numCell}>Amount</Th>
+                      <Th>Boundary</Th>
+                      <Th>Item / unit</Th>
+                      <Th>Provenance</Th>
                     </tr>
-                  ))}
-                </tbody>
-              </Table>
+                  </thead>
+                  <tbody>
+                    {components.map((component) => (
+                      <tr key={component.id}>
+                        <Td>{component.componentKind}</Td>
+                        <Td style={numCell}>
+                          {component.amount === null ? "—" : formatMoney(component.amount)}
+                        </Td>
+                        <Td>{orDash(component.roundingBoundary)}</Td>
+                        <Td>
+                          {component.itemName ?? component.itemId ?? "—"}
+                          {component.unitCode === null ? null : ` · ${component.unitCode}`}
+                        </Td>
+                        <Td>
+                          <ProvenanceList provenance={component.provenance} />
+                        </Td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </Table>
+              </div>
             )}
           </SectionCard>
         </>

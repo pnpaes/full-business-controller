@@ -200,7 +200,13 @@ export function RegisterLaborRateForm({
           }
         />
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: spacing[4] }}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+            gap: spacing[4],
+          }}
+        >
           {pctField(
             "feriepengerPct",
             "Feriepenger",
@@ -231,7 +237,13 @@ export function RegisterLaborRateForm({
           )}
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: spacing[4] }}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+            gap: spacing[4],
+          }}
+        >
           <TextField
             name="effectiveFrom"
             type="date"

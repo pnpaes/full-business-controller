@@ -170,23 +170,25 @@ export default async function ReceiptDetailPage({
             This receipt has no recorded lines, so no landed cost was appended to price history.
           </EmptyState>
         ) : (
-          <DataTable
-            caption="Receipt lines with pack, quantity, price, lot and expiry, and the landed base-unit cost."
-            columns={[
-              { key: "item", header: "Item" },
-              { key: "received", header: "Received", align: "right" },
-              { key: "accepted", header: "Accepted", align: "right" },
-              { key: "rejected", header: "Rejected", align: "right" },
-              { key: "factor", header: "Pack → base", align: "right" },
-              { key: "price", header: "Pack price", align: "right" },
-              { key: "discount", header: "Discount", align: "right" },
-              { key: "lot", header: "Lot" },
-              { key: "expiry", header: "Expiry" },
-              { key: "baseQty", header: "Base qty", align: "right" },
-              { key: "landed", header: "Landed / base", align: "right" },
-            ]}
-            rows={rows}
-          />
+          <div style={{ overflowX: "auto", minWidth: 0 }}>
+            <DataTable
+              caption="Receipt lines with pack, quantity, price, lot and expiry, and the landed base-unit cost."
+              columns={[
+                { key: "item", header: "Item" },
+                { key: "received", header: "Received", align: "right" },
+                { key: "accepted", header: "Accepted", align: "right" },
+                { key: "rejected", header: "Rejected", align: "right" },
+                { key: "factor", header: "Pack → base", align: "right" },
+                { key: "price", header: "Pack price", align: "right" },
+                { key: "discount", header: "Discount", align: "right" },
+                { key: "lot", header: "Lot" },
+                { key: "expiry", header: "Expiry" },
+                { key: "baseQty", header: "Base qty", align: "right" },
+                { key: "landed", header: "Landed / base", align: "right" },
+              ]}
+              rows={rows}
+            />
+          </div>
         )}
       </SectionCard>
     </div>

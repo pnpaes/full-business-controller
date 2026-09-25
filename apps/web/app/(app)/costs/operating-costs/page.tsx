@@ -54,47 +54,49 @@ export default async function OperatingCostsPage() {
             cost centre. None exist in this organization yet.
           </EmptyState>
         ) : (
-          <Table caption="Operating-cost facts, newest effective window first." columnCount={8}>
-            <thead>
-              <tr>
-                <Th>Cost centre</Th>
-                <Th>Location</Th>
-                <Th>Vendor</Th>
-                <Th style={numCell}>Amount</Th>
-                <Th>Recurrence</Th>
-                <Th>Behaviour</Th>
-                <Th>Tax basis</Th>
-                <Th>Effective</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => (
-                <tr key={row.id}>
-                  <Td>{orDash(row.costCenterName)}</Td>
-                  <Td>
-                    {row.locationName === null ? (
-                      <span style={{ color: color.text.muted }}>Company shared</span>
-                    ) : (
-                      row.locationName
-                    )}
-                  </Td>
-                  <Td>{orDash(row.vendor)}</Td>
-                  <Td style={numCell}>
-                    {formatMoney(row.amount)}{" "}
-                    <span style={{ color: color.text.muted, fontSize: typography.fontSize.xs }}>
-                      {row.currency}
-                    </span>
-                  </Td>
-                  <Td>{row.recurrence}</Td>
-                  <Td>{row.behavior}</Td>
-                  <Td>{row.taxBasis}</Td>
-                  <Td style={{ whiteSpace: "nowrap" }}>
-                    {formatWindow(row.effectiveFrom, row.effectiveTo)}
-                  </Td>
+          <div style={{ overflowX: "auto", minWidth: 0 }}>
+            <Table caption="Operating-cost facts, newest effective window first." columnCount={8}>
+              <thead>
+                <tr>
+                  <Th>Cost centre</Th>
+                  <Th>Location</Th>
+                  <Th>Vendor</Th>
+                  <Th style={numCell}>Amount</Th>
+                  <Th>Recurrence</Th>
+                  <Th>Behaviour</Th>
+                  <Th>Tax basis</Th>
+                  <Th>Effective</Th>
                 </tr>
-              ))}
-            </tbody>
-          </Table>
+              </thead>
+              <tbody>
+                {rows.map((row) => (
+                  <tr key={row.id}>
+                    <Td>{orDash(row.costCenterName)}</Td>
+                    <Td>
+                      {row.locationName === null ? (
+                        <span style={{ color: color.text.muted }}>Company shared</span>
+                      ) : (
+                        row.locationName
+                      )}
+                    </Td>
+                    <Td>{orDash(row.vendor)}</Td>
+                    <Td style={numCell}>
+                      {formatMoney(row.amount)}{" "}
+                      <span style={{ color: color.text.muted, fontSize: typography.fontSize.xs }}>
+                        {row.currency}
+                      </span>
+                    </Td>
+                    <Td>{row.recurrence}</Td>
+                    <Td>{row.behavior}</Td>
+                    <Td>{row.taxBasis}</Td>
+                    <Td style={{ whiteSpace: "nowrap" }}>
+                      {formatWindow(row.effectiveFrom, row.effectiveTo)}
+                    </Td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          </div>
         )}
         <p
           style={{

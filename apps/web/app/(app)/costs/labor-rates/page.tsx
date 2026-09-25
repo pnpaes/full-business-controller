@@ -41,36 +41,38 @@ export default async function LaborRatesPage() {
             recorded for a cost centre. None exist in this organization yet.
           </EmptyState>
         ) : (
-          <Table caption="Loaded labour rates, newest effective window first." columnCount={5}>
-            <thead>
-              <tr>
-                <Th>Role</Th>
-                <Th>Cost centre</Th>
-                <Th style={numCell}>Loaded hourly rate</Th>
-                <Th style={numCell}>Productive hours</Th>
-                <Th>Effective</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => (
-                <tr key={row.id}>
-                  <Td>{row.roleCode}</Td>
-                  <Td>{orDash(row.costCenterName)}</Td>
-                  <Td style={numCell}>{formatMoney(row.loadedHourlyRate)}</Td>
-                  <Td style={numCell}>
-                    {row.productiveHoursPct === null ? (
-                      <span style={{ color: color.text.muted }}>100% (default)</span>
-                    ) : (
-                      formatPercent(row.productiveHoursPct)
-                    )}
-                  </Td>
-                  <Td style={{ whiteSpace: "nowrap" }}>
-                    {formatWindow(row.effectiveFrom, row.effectiveTo)}
-                  </Td>
+          <div style={{ overflowX: "auto", minWidth: 0 }}>
+            <Table caption="Loaded labour rates, newest effective window first." columnCount={5}>
+              <thead>
+                <tr>
+                  <Th>Role</Th>
+                  <Th>Cost centre</Th>
+                  <Th style={numCell}>Loaded hourly rate</Th>
+                  <Th style={numCell}>Productive hours</Th>
+                  <Th>Effective</Th>
                 </tr>
-              ))}
-            </tbody>
-          </Table>
+              </thead>
+              <tbody>
+                {rows.map((row) => (
+                  <tr key={row.id}>
+                    <Td>{row.roleCode}</Td>
+                    <Td>{orDash(row.costCenterName)}</Td>
+                    <Td style={numCell}>{formatMoney(row.loadedHourlyRate)}</Td>
+                    <Td style={numCell}>
+                      {row.productiveHoursPct === null ? (
+                        <span style={{ color: color.text.muted }}>100% (default)</span>
+                      ) : (
+                        formatPercent(row.productiveHoursPct)
+                      )}
+                    </Td>
+                    <Td style={{ whiteSpace: "nowrap" }}>
+                      {formatWindow(row.effectiveFrom, row.effectiveTo)}
+                    </Td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          </div>
         )}
         <p
           style={{
