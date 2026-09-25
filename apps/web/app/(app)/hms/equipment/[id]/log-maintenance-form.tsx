@@ -1,6 +1,14 @@
 "use client";
 
-import { Alert, Button, SectionCard, SelectField, TextareaField, spacing } from "@aquarela/ui";
+import {
+  Alert,
+  Button,
+  SectionCard,
+  SelectField,
+  TextareaField,
+  color,
+  spacing,
+} from "@aquarela/ui";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { ChangeEvent, FormEvent } from "react";
@@ -119,7 +127,7 @@ export function LogMaintenanceForm({ equipmentId }: { readonly equipmentId: stri
             onChange={onFileChange}
             disabled={busy}
           />
-          <span style={{ opacity: 0.8 }}>
+          <span style={{ color: color.ink.tertiary }}>
             A photo of the work or a service report (JPEG, PNG, WebP or PDF, up to 10 MiB). The file
             is stored privately and linked to this maintenance log.
           </span>
@@ -130,7 +138,7 @@ export function LogMaintenanceForm({ equipmentId }: { readonly equipmentId: stri
             Log maintenance
           </Button>
         </div>
-        <p style={{ margin: 0, opacity: 0.8 }}>
+        <p style={{ margin: 0, color: color.ink.tertiary }}>
           Retention is not enforced and file contents are not scanned for malware; the type is
           checked against an allow-list only (DEC-133).
         </p>

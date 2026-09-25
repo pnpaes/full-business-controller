@@ -11,6 +11,9 @@ import {
   PageHeader,
   SectionCard,
   StatusPill,
+  color,
+  geometry,
+  radius,
   spacing,
   typography,
 } from "@aquarela/ui";
@@ -46,20 +49,37 @@ const contentColumn = {
   display: "flex",
   flexDirection: "column",
   gap: spacing[6],
-  width: "100%",
   maxWidth: 1120,
   margin: "0 auto",
   padding: `${spacing[8]}px ${spacing[4]}px`,
 } as const;
 
+/** Tables scroll inside a labelled region; the page never scrolls sideways. */
+const tableWrap = { overflowX: "auto", minWidth: 0 } as const;
+
 const STATUS_FILTERS = ["open", "investigating", "resolved", "closed"] as const;
 
+/** Filter link styled as a chip: token surfaces, pill radius, 44px target. */
 const filterChipStyle = {
+  display: "inline-flex",
+  alignItems: "center",
+  minHeight: geometry.touchTarget,
   padding: `${spacing[2]}px ${spacing[3]}px`,
-  borderRadius: 999,
-  border: "1px solid currentColor",
+  borderRadius: radius.pill,
+  border: `1px solid ${color.border.default}`,
+  backgroundColor: color.surface.base,
+  color: color.ink.secondary,
   fontSize: typography.fontSize.sm,
   textDecoration: "none",
+} as const;
+
+const filterChipActiveStyle = {
+  ...filterChipStyle,
+  backgroundColor: color.accent.soft,
+  borderColor: color.accent.deep,
+  boxShadow: `inset 0 0 0 1px ${color.accent.deep}`,
+  color: color.ink.primary,
+  fontWeight: typography.fontWeight.semibold,
 } as const;
 
 /**
@@ -171,11 +191,8 @@ export default async function HmsIncidentsPage({
       <div style={{ display: "flex", flexWrap: "wrap", gap: spacing[2], alignItems: "center" }}>
         <Link
           href="/hms/incidents"
-          style={{
-            ...filterChipStyle,
-            fontWeight:
-              status === undefined ? typography.fontWeight.semibold : typography.fontWeight.regular,
-          }}
+          aria-current={status === undefined ? "page" : undefined}
+          style={status === undefined ? filterChipActiveStyle : filterChipStyle}
         >
           All
         </Link>
@@ -183,13 +200,8 @@ export default async function HmsIncidentsPage({
           <Link
             key={candidate}
             href={`/hms/incidents?status=${candidate}`}
-            style={{
-              ...filterChipStyle,
-              fontWeight:
-                status === candidate
-                  ? typography.fontWeight.semibold
-                  : typography.fontWeight.regular,
-            }}
+            aria-current={status === candidate ? "page" : undefined}
+            style={status === candidate ? filterChipActiveStyle : filterChipStyle}
           >
             {incidentStatusView(candidate).label}
           </Link>
@@ -200,34 +212,36 @@ export default async function HmsIncidentsPage({
         title="Incidents"
         meta={`${filtered.length} ${filtered.length === 1 ? "incident" : "incidents"}`}
       >
-        <DataTable
-          caption="Incidents by status, severity, location, owner and due date"
-          columns={columns}
-          rowHref={(row) => `/hms/incidents/${String(row.id)}`}
-          rows={filtered.map((incident) => ({
-            id: incident.id,
-            title: incident.title,
-            category: incidentCategoryLabel(incident.category),
-            severity: (
-              <StatusPill tone={incidentSeverityView(incident.severity).tone}>
-                {incidentSeverityView(incident.severity).label}
-              </StatusPill>
-            ),
-            status: (
-              <StatusPill tone={incidentStatusView(incident.status).tone}>
-                {incidentStatusView(incident.status).label}
-              </StatusPill>
-            ),
-            location: locationLabelById.get(incident.locationId) ?? incident.locationId,
-            owner:
-              incident.ownerId === null
-                ? "—"
-                : (actorLabelById.get(incident.ownerId) ?? incident.ownerId),
-            due: formatHmsDay(incident.dueDate),
-            occurred: formatHmsInstant(incident.occurredAt),
-          }))}
-          emptyMessage="No incidents match. Raise one below if something happened, or clear the filters."
-        />
+        <div style={tableWrap}>
+          <DataTable
+            caption="Incidents by status, severity, location, owner and due date"
+            columns={columns}
+            rowHref={(row) => `/hms/incidents/${String(row.id)}`}
+            rows={filtered.map((incident) => ({
+              id: incident.id,
+              title: incident.title,
+              category: incidentCategoryLabel(incident.category),
+              severity: (
+                <StatusPill tone={incidentSeverityView(incident.severity).tone}>
+                  {incidentSeverityView(incident.severity).label}
+                </StatusPill>
+              ),
+              status: (
+                <StatusPill tone={incidentStatusView(incident.status).tone}>
+                  {incidentStatusView(incident.status).label}
+                </StatusPill>
+              ),
+              location: locationLabelById.get(incident.locationId) ?? incident.locationId,
+              owner:
+                incident.ownerId === null
+                  ? "—"
+                  : (actorLabelById.get(incident.ownerId) ?? incident.ownerId),
+              due: formatHmsDay(incident.dueDate),
+              occurred: formatHmsInstant(incident.occurredAt),
+            }))}
+            emptyMessage="No incidents match. Raise one below if something happened, or clear the filters."
+          />
+        </div>
       </SectionCard>
 
       {canCreate ? (

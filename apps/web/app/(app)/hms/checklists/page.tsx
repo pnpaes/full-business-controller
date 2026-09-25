@@ -46,11 +46,13 @@ const contentColumn = {
   display: "flex",
   flexDirection: "column",
   gap: spacing[6],
-  width: "100%",
   maxWidth: 1120,
   margin: "0 auto",
   padding: `${spacing[8]}px ${spacing[4]}px`,
 } as const;
+
+/** Tables scroll inside a labelled region; the page never scrolls sideways. */
+const tableWrap = { overflowX: "auto", minWidth: 0 } as const;
 
 /**
  * The IK-mat checklist screen (`HMS-005`, `DEC-091`, `DEC-096`): the active
@@ -147,54 +149,58 @@ export default async function HmsChecklistsPage() {
         title="Templates"
         meta={`${templates.length} active ${templates.length === 1 ? "template" : "templates"}`}
       >
-        <DataTable
-          caption="Active checklist templates with category, cadence and item count"
-          columns={[
-            { key: "name", header: "Name" },
-            { key: "category", header: "Category" },
-            { key: "frequency", header: "Cadence" },
-            { key: "items", header: "Items" },
-          ]}
-          rows={templates.map((template) => ({
-            name: template.name,
-            category: checklistCategoryLabel(template.category),
-            frequency: checkFrequencyLabel(template.frequency),
-            items: String(parseChecklistItems(template.items).length),
-          }))}
-          emptyMessage="No active templates. Authoring is a managed write done through the API for now (owner, general manager or admin)."
-        />
+        <div style={tableWrap}>
+          <DataTable
+            caption="Active checklist templates with category, cadence and item count"
+            columns={[
+              { key: "name", header: "Name" },
+              { key: "category", header: "Category" },
+              { key: "frequency", header: "Cadence" },
+              { key: "items", header: "Items" },
+            ]}
+            rows={templates.map((template) => ({
+              name: template.name,
+              category: checklistCategoryLabel(template.category),
+              frequency: checkFrequencyLabel(template.frequency),
+              items: String(parseChecklistItems(template.items).length),
+            }))}
+            emptyMessage="No active templates. Authoring is a managed write done through the API for now (owner, general manager or admin)."
+          />
+        </div>
       </SectionCard>
 
       <SectionCard
         title="Run history"
         meta={`${visibleRuns.length} recent ${visibleRuns.length === 1 ? "run" : "runs"} · newest first`}
       >
-        <DataTable
-          caption="Checklist runs, newest first, with per-item outcomes"
-          columns={columns}
-          rows={visibleRuns.map((run) => {
-            const runStatus = checklistRunStatusView(run.status);
-            const results = parseChecklistResults(run.results);
-            const fails = results.filter((result) => result.outcome === "fail").length;
-            return {
-              template: templateLabelById.get(run.templateId) ?? run.templateId,
-              runAt: formatHmsInstant(run.runAt),
-              location: locationLabelById.get(run.locationId) ?? run.locationId,
-              performedBy: run.performedBy,
-              status: <StatusPill tone={runStatus.tone}>{runStatus.label}</StatusPill>,
-              results:
-                fails > 0 ? (
-                  <StatusPill tone="danger">{`${fails} fail${fails === 1 ? "" : "s"} of ${results.length}`}</StatusPill>
-                ) : (
-                  <StatusPill tone={checklistOutcomeView("pass").tone}>
-                    {`${results.length} answered`}
-                  </StatusPill>
-                ),
-              notes: run.notes ?? "—",
-            };
-          })}
-          emptyMessage="No runs recorded yet. Walk the first checklist with the form above."
-        />
+        <div style={tableWrap}>
+          <DataTable
+            caption="Checklist runs, newest first, with per-item outcomes"
+            columns={columns}
+            rows={visibleRuns.map((run) => {
+              const runStatus = checklistRunStatusView(run.status);
+              const results = parseChecklistResults(run.results);
+              const fails = results.filter((result) => result.outcome === "fail").length;
+              return {
+                template: templateLabelById.get(run.templateId) ?? run.templateId,
+                runAt: formatHmsInstant(run.runAt),
+                location: locationLabelById.get(run.locationId) ?? run.locationId,
+                performedBy: run.performedBy,
+                status: <StatusPill tone={runStatus.tone}>{runStatus.label}</StatusPill>,
+                results:
+                  fails > 0 ? (
+                    <StatusPill tone="danger">{`${fails} fail${fails === 1 ? "" : "s"} of ${results.length}`}</StatusPill>
+                  ) : (
+                    <StatusPill tone={checklistOutcomeView("pass").tone}>
+                      {`${results.length} answered`}
+                    </StatusPill>
+                  ),
+                notes: run.notes ?? "—",
+              };
+            })}
+            emptyMessage="No runs recorded yet. Walk the first checklist with the form above."
+          />
+        </div>
       </SectionCard>
     </div>
   );

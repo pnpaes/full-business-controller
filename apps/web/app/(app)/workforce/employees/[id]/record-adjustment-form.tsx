@@ -1,6 +1,6 @@
 "use client";
 
-import { Alert, Button, NumberField, SectionCard, TextField, spacing } from "@aquarela/ui";
+import { Alert, Button, NumberField, SectionCard, TextField, color, spacing } from "@aquarela/ui";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { FormEvent } from "react";
@@ -111,7 +111,7 @@ export function RecordAdjustmentForm({
             Record adjustment
           </Button>
         </div>
-        <p style={{ margin: 0, opacity: 0.8 }}>
+        <p style={{ margin: 0, color: color.ink.tertiary }}>
           Adjustments are facts: the latest one for an assignment wins and none can be edited or
           deleted (DEC-103). The worked-hours report applies the latest adjustment automatically.
         </p>

@@ -1,6 +1,6 @@
 "use client";
 
-import { Alert, Button, DateField, SectionCard, spacing } from "@aquarela/ui";
+import { Alert, Button, DateField, SectionCard, color, spacing } from "@aquarela/ui";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { FormEvent } from "react";
@@ -90,7 +90,7 @@ export function GeneratePayrollReportForm({
             Generate report
           </Button>
         </div>
-        <p style={{ margin: 0, opacity: 0.8 }}>
+        <p style={{ margin: 0, color: color.ink.tertiary }}>
           The report freezes per-employee hours × base hourly rate as expected pay (decimal only,
           NOK). Generating again for the same period supersedes the prior live report — the prior
           row is retained, never deleted.

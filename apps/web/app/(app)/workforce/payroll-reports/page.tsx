@@ -40,11 +40,13 @@ const contentColumn = {
   display: "flex",
   flexDirection: "column",
   gap: spacing[6],
-  width: "100%",
   maxWidth: 1120,
   margin: "0 auto",
   padding: `${spacing[8]}px ${spacing[4]}px`,
 } as const;
+
+/** Tables scroll inside a labelled region; the page never scrolls sideways. */
+const tableWrap = { overflowX: "auto", minWidth: 0 } as const;
 
 /**
  * The payroll-input report register (`WF-005`, `DEC-104`): the list, the
@@ -132,28 +134,32 @@ export default async function PayrollReportsPage() {
         title="Reports"
         meta={`${reports.length} ${reports.length === 1 ? "report" : "reports"} · newest period first`}
       >
-        <DataTable
-          caption="Payroll-input reports by period with status, generation facts and export state"
-          columns={columns}
-          rowHref={(row) => `/workforce/payroll-reports/${String(row.id)}`}
-          rows={reports.map((report) => ({
-            id: report.id,
-            period: `${report.periodStart} → ${report.periodEnd}`,
-            status: (
-              <StatusPill tone={payrollStatusView(report.status).tone}>
-                {payrollStatusView(report.status).label}
-              </StatusPill>
-            ),
-            generated: formatInstant(report.generatedAt),
-            generatedBy:
-              report.generatedBy === null
-                ? "—"
-                : (actorLabelById.get(report.generatedBy) ?? report.generatedBy),
-            exportFile:
-              report.exportFileId === null ? "Not available (metadata only)" : report.exportFileId,
-          }))}
-          emptyMessage="No payroll reports yet. Generate one for a period below."
-        />
+        <div style={tableWrap}>
+          <DataTable
+            caption="Payroll-input reports by period with status, generation facts and export state"
+            columns={columns}
+            rowHref={(row) => `/workforce/payroll-reports/${String(row.id)}`}
+            rows={reports.map((report) => ({
+              id: report.id,
+              period: `${report.periodStart} → ${report.periodEnd}`,
+              status: (
+                <StatusPill tone={payrollStatusView(report.status).tone}>
+                  {payrollStatusView(report.status).label}
+                </StatusPill>
+              ),
+              generated: formatInstant(report.generatedAt),
+              generatedBy:
+                report.generatedBy === null
+                  ? "—"
+                  : (actorLabelById.get(report.generatedBy) ?? report.generatedBy),
+              exportFile:
+                report.exportFileId === null
+                  ? "Not available (metadata only)"
+                  : report.exportFileId,
+            }))}
+            emptyMessage="No payroll reports yet. Generate one for a period below."
+          />
+        </div>
       </SectionCard>
 
       {canWrite ? (

@@ -11,6 +11,7 @@ import {
   PageHeader,
   SectionCard,
   StatusPill,
+  color,
   spacing,
 } from "@aquarela/ui";
 import Link from "next/link";
@@ -38,11 +39,13 @@ const contentColumn = {
   display: "flex",
   flexDirection: "column",
   gap: spacing[6],
-  width: "100%",
   maxWidth: 1120,
   margin: "0 auto",
   padding: `${spacing[8]}px ${spacing[4]}px`,
 } as const;
+
+/** Tables scroll inside a labelled region; the page never scrolls sideways. */
+const tableWrap = { overflowX: "auto", minWidth: 0 } as const;
 
 /**
  * The equipment register (`HMS-006`, `DEC-092`, `DEC-097`): the list with its
@@ -111,27 +114,29 @@ export default async function HmsEquipmentPage() {
         title="Equipment"
         meta={`${visible.length} ${visible.length === 1 ? "item" : "items"}`}
       >
-        <DataTable
-          caption="Equipment register with kind, serial number, location and warranty"
-          columns={columns}
-          rowHref={(row) => `/hms/equipment/${String(row.id)}`}
-          rows={visible.map((item) => ({
-            id: item.id,
-            code: item.code,
-            name: item.name,
-            kind: item.kind,
-            serial: item.serialNo ?? "—",
-            location: locationLabelById.get(item.locationId) ?? item.locationId,
-            installed: formatHmsDay(item.installedAt),
-            warranty: formatHmsDay(item.warrantyUntil),
-            status: item.active ? (
-              <StatusPill tone="success">Active</StatusPill>
-            ) : (
-              <StatusPill tone="info">Inactive</StatusPill>
-            ),
-          }))}
-          emptyMessage="No equipment registered yet. Add the first machine with the form below."
-        />
+        <div style={tableWrap}>
+          <DataTable
+            caption="Equipment register with kind, serial number, location and warranty"
+            columns={columns}
+            rowHref={(row) => `/hms/equipment/${String(row.id)}`}
+            rows={visible.map((item) => ({
+              id: item.id,
+              code: item.code,
+              name: item.name,
+              kind: item.kind,
+              serial: item.serialNo ?? "—",
+              location: locationLabelById.get(item.locationId) ?? item.locationId,
+              installed: formatHmsDay(item.installedAt),
+              warranty: formatHmsDay(item.warrantyUntil),
+              status: item.active ? (
+                <StatusPill tone="success">Active</StatusPill>
+              ) : (
+                <StatusPill tone="info">Inactive</StatusPill>
+              ),
+            }))}
+            emptyMessage="No equipment registered yet. Add the first machine with the form below."
+          />
+        </div>
       </SectionCard>
 
       {canWrite ? (
@@ -151,7 +156,7 @@ export default async function HmsEquipmentPage() {
         </SectionCard>
       )}
 
-      <p style={{ margin: 0, opacity: 0.8 }}>
+      <p style={{ margin: 0, color: color.ink.tertiary }}>
         Maintenance evidence (photos, service reports) is stored privately: a file chosen when
         recording a log is uploaded through the file-storage port and downloadable from the log
         (DEC-133); a log recorded without a file stays metadata-only. Retention is not enforced and

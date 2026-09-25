@@ -8,6 +8,7 @@ import {
   SelectField,
   TextareaField,
   TextField,
+  color,
   spacing,
 } from "@aquarela/ui";
 import { useRouter } from "next/navigation";
@@ -161,7 +162,7 @@ export function IncidentUpdateForm({
             Save changes
           </Button>
         </div>
-        <p style={{ margin: 0, opacity: 0.8 }}>
+        <p style={{ margin: 0, color: color.ink.tertiary }}>
           Owner assignment is not offered here: no HMS-scoped user-list read is wired for this
           screen. Assign owners through the API until an HMS-scoped user list lands.
         </p>

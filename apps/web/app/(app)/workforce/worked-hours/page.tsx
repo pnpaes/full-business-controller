@@ -34,11 +34,13 @@ const contentColumn = {
   display: "flex",
   flexDirection: "column",
   gap: spacing[6],
-  width: "100%",
   maxWidth: 1120,
   margin: "0 auto",
   padding: `${spacing[8]}px ${spacing[4]}px`,
 } as const;
+
+/** Tables scroll inside a labelled region; the page never scrolls sideways. */
+const tableWrap = { overflowX: "auto", minWidth: 0 } as const;
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -197,18 +199,20 @@ export default async function WorkedHoursPage({
             title="By employee"
             meta={`${report.rows.length} ${report.rows.length === 1 ? "row" : "rows"}`}
           >
-            <DataTable
-              caption="Worked hours per employee with role and base hourly rate for the chosen period"
-              columns={columns}
-              rows={report.rows.map((row) => ({
-                id: row.employeeId,
-                employee: row.employeeName,
-                role: row.roleCode,
-                hours: row.hours,
-                rate: row.hourlyRate,
-              }))}
-              emptyMessage="No worked hours in this window. Hours appear once a shift is assigned or completed and its assignment is approved."
-            />
+            <div style={tableWrap}>
+              <DataTable
+                caption="Worked hours per employee with role and base hourly rate for the chosen period"
+                columns={columns}
+                rows={report.rows.map((row) => ({
+                  id: row.employeeId,
+                  employee: row.employeeName,
+                  role: row.roleCode,
+                  hours: row.hours,
+                  rate: row.hourlyRate,
+                }))}
+                emptyMessage="No worked hours in this window. Hours appear once a shift is assigned or completed and its assignment is approved."
+              />
+            </div>
           </SectionCard>
 
           <Alert tone="info" title="How hours are derived">

@@ -15,6 +15,9 @@ import {
   PageHeader,
   SectionCard,
   StatusPill,
+  color,
+  geometry,
+  radius,
   spacing,
   typography,
 } from "@aquarela/ui";
@@ -55,18 +58,35 @@ const contentColumn = {
   display: "flex",
   flexDirection: "column",
   gap: spacing[6],
-  width: "100%",
   maxWidth: 1120,
   margin: "0 auto",
   padding: `${spacing[8]}px ${spacing[4]}px`,
 } as const;
 
+/** Tables scroll inside a labelled region; the page never scrolls sideways. */
+const tableWrap = { overflowX: "auto", minWidth: 0 } as const;
+
+/** Filter link styled as a chip: token surfaces, pill radius, 44px target. */
 const filterChipStyle = {
+  display: "inline-flex",
+  alignItems: "center",
+  minHeight: geometry.touchTarget,
   padding: `${spacing[2]}px ${spacing[3]}px`,
-  borderRadius: 999,
-  border: "1px solid currentColor",
+  borderRadius: radius.pill,
+  border: `1px solid ${color.border.default}`,
+  backgroundColor: color.surface.base,
+  color: color.ink.secondary,
   fontSize: typography.fontSize.sm,
   textDecoration: "none",
+} as const;
+
+const filterChipActiveStyle = {
+  ...filterChipStyle,
+  backgroundColor: color.accent.soft,
+  borderColor: color.accent.deep,
+  boxShadow: `inset 0 0 0 1px ${color.accent.deep}`,
+  color: color.ink.primary,
+  fontWeight: typography.fontWeight.semibold,
 } as const;
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
@@ -218,13 +238,8 @@ export default async function RosterPage({
         {writableLocations.length > 1 ? (
           <Link
             href={`/workforce/shifts?from=${from}&to=${to}`}
-            style={{
-              ...filterChipStyle,
-              fontWeight:
-                rawLocationId === undefined
-                  ? typography.fontWeight.semibold
-                  : typography.fontWeight.regular,
-            }}
+            aria-current={rawLocationId === undefined ? "page" : undefined}
+            style={rawLocationId === undefined ? filterChipActiveStyle : filterChipStyle}
           >
             All locations
           </Link>
@@ -235,18 +250,12 @@ export default async function RosterPage({
             <Link
               key={location.id}
               href={`/workforce/shifts?from=${from}&to=${to}&location=${location.id}`}
-              style={{
-                ...filterChipStyle,
-                fontWeight:
-                  rawLocationId === location.id
-                    ? typography.fontWeight.semibold
-                    : typography.fontWeight.regular,
-              }}
+              style={filterChipStyle}
             >
               {location.code}
             </Link>
           ))}
-        <span style={{ fontSize: typography.fontSize.sm, opacity: 0.75 }}>
+        <span style={{ fontSize: typography.fontSize.sm, color: color.ink.tertiary }}>
           Window {from} → {to} (UTC days).
         </span>
       </div>
@@ -266,64 +275,66 @@ export default async function RosterPage({
         title="Shifts"
         meta={`${visible.length} ${visible.length === 1 ? "shift" : "shifts"} · ${from} → ${to}`}
       >
-        <DataTable
-          caption="Shifts by start time with location, role, break, status, assignments and actions"
-          columns={columns}
-          rows={visible.map((shift) => {
-            const status = shiftStateView(shift.state);
-            const assignments = assignmentsByShift.get(shift.id) ?? [];
-            const liveAssignments = assignments.filter(
-              (assignment) => assignment.state === "approved",
-            );
-            return {
-              id: shift.id,
-              shift: formatShiftWindow(shift.startsAt, shift.endsAt),
-              location: locationLabelById.get(shift.locationId) ?? shift.locationId,
-              role: shift.roleCode ?? "Any role",
-              break: `${shift.breakMinutes} min`,
-              status: <StatusPill tone={status.tone}>{status.label}</StatusPill>,
-              assigned:
-                liveAssignments.length === 0
-                  ? "—"
-                  : canReadEmployees
-                    ? liveAssignments
-                        .map(
-                          (assignment) =>
-                            employeeNameById.get(assignment.employeeId) ?? assignment.employeeId,
-                        )
-                        .join(", ")
-                    : `${liveAssignments.length} assigned (names need employee-record access)`,
-              actions: (
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: spacing[2],
-                    alignItems: "flex-start",
-                  }}
-                >
-                  <ShiftActions
-                    shiftId={shift.id}
-                    shiftState={shift.state}
-                    shiftLocationId={shift.locationId}
-                    shiftRoleCode={shift.roleCode}
-                    employees={employees}
-                    canWrite={canWrite}
-                  />
-                  {canWrite && shift.state === "assigned"
-                    ? liveAssignments.map((assignment) => (
-                        <WithdrawAssignmentButton
-                          key={assignment.id}
-                          assignmentId={assignment.id}
-                        />
-                      ))
-                    : null}
-                </div>
-              ),
-            };
-          })}
-          emptyMessage="No shifts in this window. Plan one below, or widen the window."
-        />
+        <div style={tableWrap}>
+          <DataTable
+            caption="Shifts by start time with location, role, break, status, assignments and actions"
+            columns={columns}
+            rows={visible.map((shift) => {
+              const status = shiftStateView(shift.state);
+              const assignments = assignmentsByShift.get(shift.id) ?? [];
+              const liveAssignments = assignments.filter(
+                (assignment) => assignment.state === "approved",
+              );
+              return {
+                id: shift.id,
+                shift: formatShiftWindow(shift.startsAt, shift.endsAt),
+                location: locationLabelById.get(shift.locationId) ?? shift.locationId,
+                role: shift.roleCode ?? "Any role",
+                break: `${shift.breakMinutes} min`,
+                status: <StatusPill tone={status.tone}>{status.label}</StatusPill>,
+                assigned:
+                  liveAssignments.length === 0
+                    ? "—"
+                    : canReadEmployees
+                      ? liveAssignments
+                          .map(
+                            (assignment) =>
+                              employeeNameById.get(assignment.employeeId) ?? assignment.employeeId,
+                          )
+                          .join(", ")
+                      : `${liveAssignments.length} assigned (names need employee-record access)`,
+                actions: (
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: spacing[2],
+                      alignItems: "flex-start",
+                    }}
+                  >
+                    <ShiftActions
+                      shiftId={shift.id}
+                      shiftState={shift.state}
+                      shiftLocationId={shift.locationId}
+                      shiftRoleCode={shift.roleCode}
+                      employees={employees}
+                      canWrite={canWrite}
+                    />
+                    {canWrite && shift.state === "assigned"
+                      ? liveAssignments.map((assignment) => (
+                          <WithdrawAssignmentButton
+                            key={assignment.id}
+                            assignmentId={assignment.id}
+                          />
+                        ))
+                      : null}
+                  </div>
+                ),
+              };
+            })}
+            emptyMessage="No shifts in this window. Plan one below, or widen the window."
+          />
+        </div>
       </SectionCard>
 
       {canWrite ? (

@@ -7,6 +7,7 @@ import {
   SectionCard,
   SelectField,
   TextField,
+  color,
   spacing,
 } from "@aquarela/ui";
 import { useRouter } from "next/navigation";
@@ -139,7 +140,7 @@ export function EditEmployeeDocumentForm({
             Save document
           </Button>
         </div>
-        <p style={{ margin: 0, opacity: 0.8 }}>
+        <p style={{ margin: 0, color: color.ink.tertiary }}>
           Metadata amendment only: the file attached when the document was created is unchanged and
           stays downloadable from the list. Retention is not enforced (DEC-133).
         </p>

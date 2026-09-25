@@ -1,6 +1,6 @@
 "use client";
 
-import { Alert, Button, spacing, typography } from "@aquarela/ui";
+import { Alert, Button, color, spacing, typography } from "@aquarela/ui";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { ChangeEvent, FormEvent } from "react";
@@ -71,7 +71,7 @@ export function MarkExportedButton({ reportId }: { readonly reportId: string }) 
           disabled={busy}
         />
       </label>
-      <p style={{ margin: 0, opacity: 0.8, fontSize: typography.fontSize.sm }}>
+      <p style={{ margin: 0, color: color.ink.tertiary, fontSize: typography.fontSize.sm }}>
         The file is stored privately and linked to the report; it can be downloaded once the report
         is exported. Only a generated report can be exported.
       </p>

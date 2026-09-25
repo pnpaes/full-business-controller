@@ -8,7 +8,9 @@ import {
   PageHeader,
   SectionCard,
   StatusPill,
+  color,
   spacing,
+  typography,
 } from "@aquarela/ui";
 import { notFound, redirect } from "next/navigation";
 
@@ -32,10 +34,21 @@ const contentColumn = {
   display: "flex",
   flexDirection: "column",
   gap: spacing[6],
-  width: "100%",
   maxWidth: 1120,
   margin: "0 auto",
   padding: `${spacing[8]}px ${spacing[4]}px`,
+} as const;
+
+/** Tables scroll inside a labelled region; the page never scrolls sideways. */
+const tableWrap = { overflowX: "auto", minWidth: 0 } as const;
+
+/** Row link style matching the DataTable drill-down links. */
+const linkStyle = {
+  color: color.ink.primary,
+  fontWeight: typography.fontWeight.medium,
+  textDecoration: "underline",
+  textDecorationColor: color.border.strong,
+  textUnderlineOffset: 3,
 } as const;
 
 /**
@@ -104,8 +117,12 @@ export default async function PayrollReportDetailPage({
 
       <div style={{ display: "flex", gap: spacing[3], alignItems: "center", flexWrap: "wrap" }}>
         <StatusPill tone={status.tone}>{status.label}</StatusPill>
-        <span>Generated {formatInstant(report.generatedAt)}</span>
-        <span>Snapshot schema v{snapshot?.schemaVersion ?? "?"}</span>
+        <span style={{ fontSize: typography.fontSize.sm, color: color.ink.secondary }}>
+          Generated {formatInstant(report.generatedAt)}
+        </span>
+        <span style={{ fontSize: typography.fontSize.sm, color: color.ink.tertiary }}>
+          Snapshot schema v{snapshot?.schemaVersion ?? "?"}
+        </span>
       </div>
 
       <Alert tone="warning" title="A pre-month-end report under-counts (DEC-104)">
@@ -147,19 +164,21 @@ export default async function PayrollReportDetailPage({
           </div>
 
           <SectionCard title="Snapshot lines" meta="frozen at generation time">
-            <DataTable
-              caption="Frozen per-employee payroll lines with hours, base rate and expected pay"
-              columns={columns}
-              rows={snapshot.lines.map((line) => ({
-                id: line.employeeId,
-                employee: line.employeeName,
-                role: line.roleCode,
-                hours: line.hours,
-                rate: line.hourlyRate,
-                expectedPay: line.expectedPay,
-              }))}
-              emptyMessage="The snapshot has no lines — no approved worked hours existed in the period."
-            />
+            <div style={tableWrap}>
+              <DataTable
+                caption="Frozen per-employee payroll lines with hours, base rate and expected pay"
+                columns={columns}
+                rows={snapshot.lines.map((line) => ({
+                  id: line.employeeId,
+                  employee: line.employeeName,
+                  role: line.roleCode,
+                  hours: line.hours,
+                  rate: line.hourlyRate,
+                  expectedPay: line.expectedPay,
+                }))}
+                emptyMessage="The snapshot has no lines — no approved worked hours existed in the period."
+              />
+            </div>
           </SectionCard>
         </>
       )}
@@ -172,7 +191,7 @@ export default async function PayrollReportDetailPage({
 
       {report.exportFileId !== null ? (
         <SectionCard title="Export file" meta="stored privately (DEC-133)">
-          <a href={`/api/v1/workforce/payroll-reports/${report.id}/export/file`}>
+          <a href={`/api/v1/workforce/payroll-reports/${report.id}/export/file`} style={linkStyle}>
             Download the exported file
           </a>
         </SectionCard>

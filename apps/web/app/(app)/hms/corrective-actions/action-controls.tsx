@@ -1,6 +1,6 @@
 "use client";
 
-import { Alert, Button, spacing } from "@aquarela/ui";
+import { Alert, Button, geometry, spacing } from "@aquarela/ui";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -15,7 +15,7 @@ async function errorMessage(response: Response): Promise<string> {
   return typeof body?.error === "string" && body.error.length > 0 ? body.error : FALLBACK_ERROR;
 }
 
-const buttonStyle = { minHeight: 44 } as const;
+const buttonStyle = { minHeight: geometry.touchTarget } as const;
 
 /**
  * The audited status progression of one corrective action (`DEC-090`, `DEC-095`):

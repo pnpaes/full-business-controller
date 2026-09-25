@@ -8,7 +8,9 @@ import {
   PageHeader,
   SectionCard,
   StatusPill,
+  color,
   spacing,
+  typography,
 } from "@aquarela/ui";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -35,10 +37,21 @@ const contentColumn = {
   display: "flex",
   flexDirection: "column",
   gap: spacing[6],
-  width: "100%",
   maxWidth: 1120,
   margin: "0 auto",
   padding: `${spacing[8]}px ${spacing[4]}px`,
+} as const;
+
+/** Tables scroll inside a labelled region; the page never scrolls sideways. */
+const tableWrap = { overflowX: "auto", minWidth: 0 } as const;
+
+/** Row link style matching the DataTable drill-down links. */
+const linkStyle = {
+  color: color.ink.primary,
+  fontWeight: typography.fontWeight.medium,
+  textDecoration: "underline",
+  textDecorationColor: color.border.strong,
+  textUnderlineOffset: 3,
 } as const;
 
 /**
@@ -146,23 +159,27 @@ export default async function EquipmentDetailPage({
         title="Maintenance log"
         meta={`${logs.length} ${logs.length === 1 ? "entry" : "entries"} · newest first · append-only`}
       >
-        <DataTable
-          caption="Maintenance-log history for this equipment, newest first"
-          columns={columns}
-          rows={logs.map((log) => ({
-            kind: maintenanceKindLabel(log.kind),
-            performedAt: formatHmsInstant(log.performedAt),
-            performedBy: log.performedBy,
-            notes: log.notes ?? "—",
-            evidence:
-              log.fileObjectId === null ? (
-                "—"
-              ) : (
-                <a href={`/api/v1/hms/maintenance-logs/${log.id}/file`}>Download evidence</a>
-              ),
-          }))}
-          emptyMessage="No maintenance logged yet. Log the first service, repair or inspection below."
-        />
+        <div style={tableWrap}>
+          <DataTable
+            caption="Maintenance-log history for this equipment, newest first"
+            columns={columns}
+            rows={logs.map((log) => ({
+              kind: maintenanceKindLabel(log.kind),
+              performedAt: formatHmsInstant(log.performedAt),
+              performedBy: log.performedBy,
+              notes: log.notes ?? "—",
+              evidence:
+                log.fileObjectId === null ? (
+                  "—"
+                ) : (
+                  <a href={`/api/v1/hms/maintenance-logs/${log.id}/file`} style={linkStyle}>
+                    Download evidence
+                  </a>
+                ),
+            }))}
+            emptyMessage="No maintenance logged yet. Log the first service, repair or inspection below."
+          />
+        </div>
       </SectionCard>
 
       {canRecord ? (

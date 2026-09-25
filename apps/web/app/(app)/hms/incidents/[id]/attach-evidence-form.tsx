@@ -1,6 +1,6 @@
 "use client";
 
-import { Alert, Button, SectionCard, spacing } from "@aquarela/ui";
+import { Alert, Button, SectionCard, color, spacing } from "@aquarela/ui";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { FormEvent } from "react";
@@ -91,7 +91,7 @@ export function AttachEvidenceForm({ incidentId }: { readonly incidentId: string
             Attach evidence
           </Button>
         </div>
-        <p style={{ margin: 0, opacity: 0.8 }}>
+        <p style={{ margin: 0, color: color.ink.tertiary }}>
           A scene photo (JPEG, PNG, WebP) or an attached report (PDF), up to 10 MiB. Each file is
           stored as an immutable attachment; attach a new file to add more.
         </p>

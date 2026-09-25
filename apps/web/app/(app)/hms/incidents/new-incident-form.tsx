@@ -3,11 +3,13 @@
 import {
   Alert,
   Button,
+  CheckboxField,
   DateField,
   SectionCard,
   SelectField,
   TextareaField,
   TextField,
+  color,
   spacing,
 } from "@aquarela/ui";
 import { useRouter } from "next/navigation";
@@ -172,23 +174,19 @@ export function NewIncidentForm({
           value={dueDate}
           onChange={(event) => setDueDate(event.target.value)}
         />
-        <label style={{ display: "flex", gap: spacing[2], alignItems: "center" }}>
-          <input
-            type="checkbox"
-            name="involvesPersonalData"
-            checked={involvesPersonalData}
-            onChange={(event) => setInvolvesPersonalData(event.target.checked)}
-            style={{ width: 20, height: 20 }}
-          />
-          Involves personal data
-        </label>
+        <CheckboxField
+          name="involvesPersonalData"
+          label="Involves personal data"
+          checked={involvesPersonalData}
+          onChange={(event) => setInvolvesPersonalData(event.target.checked)}
+        />
 
         <div>
           <Button type="submit" loading={busy} disabled={busy}>
             Raise incident
           </Button>
         </div>
-        <p style={{ margin: 0, opacity: 0.8 }}>
+        <p style={{ margin: 0, color: color.ink.tertiary }}>
           The incident opens with status <code>open</code> and no owner. Open it from the list to
           attach a photo or report — evidence storage is wired (DEC-134) — and to assign an owner.
         </p>

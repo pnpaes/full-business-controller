@@ -20,6 +20,7 @@ import {
   PageHeader,
   SectionCard,
   StatusPill,
+  color,
   spacing,
   typography,
 } from "@aquarela/ui";
@@ -63,10 +64,21 @@ const contentColumn = {
   display: "flex",
   flexDirection: "column",
   gap: spacing[6],
-  width: "100%",
   maxWidth: 1120,
   margin: "0 auto",
   padding: `${spacing[8]}px ${spacing[4]}px`,
+} as const;
+
+/** Tables scroll inside a labelled region; the page never scrolls sideways. */
+const tableWrap = { overflowX: "auto", minWidth: 0 } as const;
+
+/** Row link style matching the DataTable drill-down links. */
+const linkStyle = {
+  color: color.ink.primary,
+  fontWeight: typography.fontWeight.medium,
+  textDecoration: "underline",
+  textDecorationColor: color.border.strong,
+  textUnderlineOffset: 3,
 } as const;
 
 const profileStyle = {
@@ -79,7 +91,15 @@ const profileStyle = {
 function ProfileItem({ label, value }: { readonly label: string; readonly value: string }) {
   return (
     <div>
-      <div style={{ fontSize: typography.fontSize.sm, opacity: 0.75 }}>{label}</div>
+      <div
+        style={{
+          fontSize: typography.fontSize.sm,
+          color: color.ink.tertiary,
+          fontWeight: typography.fontWeight.medium,
+        }}
+      >
+        {label}
+      </div>
       <div style={{ fontWeight: typography.fontWeight.semibold }}>{value}</div>
     </div>
   );
@@ -305,32 +325,34 @@ export default async function EmployeeDetailPage({
         title="Shifts and assignments"
         meta={`${assignments.length} ${assignments.length === 1 ? "assignment" : "assignments"}`}
       >
-        <DataTable
-          caption="This employee's shift assignments with the shift window, location and states"
-          columns={assignmentColumns}
-          rows={assignments.map((assignment) => {
-            const shift = shiftById.get(assignment.shiftId);
-            const shiftStatus = shiftStateView(shift?.state ?? "unknown");
-            const assignmentStatus = assignmentStateView(assignment.state);
-            return {
-              id: assignment.id,
-              shift:
-                shift === undefined
-                  ? assignment.shiftId
-                  : formatShiftWindow(shift.startsAt, shift.endsAt),
-              location:
-                shift === undefined
-                  ? "—"
-                  : (locationLabelById.get(shift.locationId) ?? shift.locationId),
-              shiftState: <StatusPill tone={shiftStatus.tone}>{shiftStatus.label}</StatusPill>,
-              assignmentState: (
-                <StatusPill tone={assignmentStatus.tone}>{assignmentStatus.label}</StatusPill>
-              ),
-              assignedAt: formatInstant(assignment.assignedAt),
-            };
-          })}
-          emptyMessage="No shift assignments yet. A manager assigns this employee from the roster."
-        />
+        <div style={tableWrap}>
+          <DataTable
+            caption="This employee's shift assignments with the shift window, location and states"
+            columns={assignmentColumns}
+            rows={assignments.map((assignment) => {
+              const shift = shiftById.get(assignment.shiftId);
+              const shiftStatus = shiftStateView(shift?.state ?? "unknown");
+              const assignmentStatus = assignmentStateView(assignment.state);
+              return {
+                id: assignment.id,
+                shift:
+                  shift === undefined
+                    ? assignment.shiftId
+                    : formatShiftWindow(shift.startsAt, shift.endsAt),
+                location:
+                  shift === undefined
+                    ? "—"
+                    : (locationLabelById.get(shift.locationId) ?? shift.locationId),
+                shiftState: <StatusPill tone={shiftStatus.tone}>{shiftStatus.label}</StatusPill>,
+                assignmentState: (
+                  <StatusPill tone={assignmentStatus.tone}>{assignmentStatus.label}</StatusPill>
+                ),
+                assignedAt: formatInstant(assignment.assignedAt),
+              };
+            })}
+            emptyMessage="No shift assignments yet. A manager assigns this employee from the roster."
+          />
+        </div>
       </SectionCard>
 
       {canWriteHours && assignments.length > 0 ? (
@@ -356,27 +378,32 @@ export default async function EmployeeDetailPage({
               the personnel-document role set; a document recorded without a file is metadata-only.
               Retention is not enforced and file contents are not scanned for malware.
             </Alert>
-            <DataTable
-              caption="Personnel documents with kind, validity window and file status"
-              columns={documentColumns}
-              rows={documents.map((document) => ({
-                id: document.id,
-                title: document.title,
-                kind: documentKindLabel(document.kind),
-                issued: document.issuedAt ?? "—",
-                expires: document.expiresAt ?? "—",
-                file:
-                  document.fileObjectId === null ? (
-                    "Metadata only"
-                  ) : (
-                    <a href={`/api/v1/workforce/employee-documents/${document.id}/file`}>
-                      Download
-                    </a>
-                  ),
-                createdAt: formatInstant(document.createdAt),
-              }))}
-              emptyMessage="No personnel documents recorded for this employee yet."
-            />
+            <div style={tableWrap}>
+              <DataTable
+                caption="Personnel documents with kind, validity window and file status"
+                columns={documentColumns}
+                rows={documents.map((document) => ({
+                  id: document.id,
+                  title: document.title,
+                  kind: documentKindLabel(document.kind),
+                  issued: document.issuedAt ?? "—",
+                  expires: document.expiresAt ?? "—",
+                  file:
+                    document.fileObjectId === null ? (
+                      "Metadata only"
+                    ) : (
+                      <a
+                        href={`/api/v1/workforce/employee-documents/${document.id}/file`}
+                        style={linkStyle}
+                      >
+                        Download
+                      </a>
+                    ),
+                  createdAt: formatInstant(document.createdAt),
+                }))}
+                emptyMessage="No personnel documents recorded for this employee yet."
+              />
+            </div>
             <EmployeeDocumentForm employeeId={employee.id} kinds={EMPLOYEE_DOCUMENT_KINDS} />
             {canWriteDocuments && documents.length > 0 ? (
               <EditEmployeeDocumentForm

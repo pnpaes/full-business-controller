@@ -7,6 +7,7 @@ import {
   SectionCard,
   SelectField,
   TextField,
+  color,
   spacing,
 } from "@aquarela/ui";
 import { useRouter } from "next/navigation";
@@ -149,7 +150,7 @@ export function EmployeeDocumentForm({ employeeId, kinds }: EmployeeDocumentForm
             onChange={onFileChange}
             disabled={busy}
           />
-          <span style={{ opacity: 0.8 }}>
+          <span style={{ color: color.ink.tertiary }}>
             A contract, certificate or ID scan (PDF, image or Word document, up to 10 MiB). The file
             is stored privately and download requires the personnel-document role set.
           </span>
@@ -160,7 +161,7 @@ export function EmployeeDocumentForm({ employeeId, kinds }: EmployeeDocumentForm
             Record document
           </Button>
         </div>
-        <p style={{ margin: 0, opacity: 0.8 }}>
+        <p style={{ margin: 0, color: color.ink.tertiary }}>
           Retention is not enforced and file contents are not scanned for malware; the type is
           checked against an allow-list only (DEC-133).
         </p>

@@ -8,6 +8,7 @@ import {
   TextareaField,
   StatusPill,
   color,
+  geometry,
   radius,
   spacing,
   typography,
@@ -36,14 +37,22 @@ async function errorMessage(response: Response): Promise<string> {
   return typeof body?.error === "string" && body.error.length > 0 ? body.error : FALLBACK_ERROR;
 }
 
+/** Pass/fail answer button: 44px target, token surfaces, accent when active
+ * (the same selection language as FilterChip); the weight change is the
+ * non-colour cue. */
 const outcomeButton = (active: boolean) =>
   ({
-    minHeight: 44,
+    minHeight: geometry.touchTarget,
     minWidth: 64,
-    border: "1px solid currentColor",
+    padding: `${spacing[2]}px ${spacing[3]}px`,
+    font: "inherit",
+    fontSize: typography.fontSize.md,
+    border: `1px solid ${active ? color.accent.deep : color.border.default}`,
     borderRadius: radius.md,
-    background: active ? color.surface.muted : "transparent",
+    background: active ? color.accent.soft : color.surface.base,
+    color: active ? color.ink.primary : color.ink.secondary,
     fontWeight: active ? typography.fontWeight.semibold : typography.fontWeight.regular,
+    boxShadow: active ? `inset 0 0 0 1px ${color.accent.deep}` : "none",
     cursor: "pointer",
   }) as const;
 

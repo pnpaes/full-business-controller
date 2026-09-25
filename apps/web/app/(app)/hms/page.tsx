@@ -47,11 +47,13 @@ const contentColumn = {
   display: "flex",
   flexDirection: "column",
   gap: spacing[6],
-  width: "100%",
   maxWidth: 1120,
   margin: "0 auto",
   padding: `${spacing[8]}px ${spacing[4]}px`,
 } as const;
+
+/** Tables scroll inside a labelled region; the page never scrolls sideways. */
+const tableWrap = { overflowX: "auto", minWidth: 0 } as const;
 
 interface PointRow {
   readonly id: string;
@@ -269,50 +271,54 @@ export default async function HmsMonitoringPage() {
         title="Monitoring points"
         meta={`${pointRows.length} ${pointRows.length === 1 ? "point" : "points"} · ${overdueCount} overdue`}
       >
-        <DataTable
-          caption="Monitoring points with target ranges and cadence status"
-          columns={pointColumns}
-          rows={pointRows.map((row) => ({
-            code: row.code,
-            name: row.name,
-            kind: row.kindLabel,
-            target: row.targetLabel,
-            frequency: row.frequencyLabel,
-            location: locationLabelById.get(row.locationId) ?? row.locationId,
-            last: row.lastReadingLabel,
-            status:
-              row.overdue === null ? (
-                <span style={{ color: "inherit" }}>No window</span>
-              ) : row.overdue ? (
-                <StatusPill tone="danger">Overdue</StatusPill>
-              ) : (
-                <StatusPill tone="success">On cadence</StatusPill>
-              ),
-          }))}
-          emptyMessage="No monitoring points yet. Use the register form above to create the first one."
-        />
+        <div style={tableWrap}>
+          <DataTable
+            caption="Monitoring points with target ranges and cadence status"
+            columns={pointColumns}
+            rows={pointRows.map((row) => ({
+              code: row.code,
+              name: row.name,
+              kind: row.kindLabel,
+              target: row.targetLabel,
+              frequency: row.frequencyLabel,
+              location: locationLabelById.get(row.locationId) ?? row.locationId,
+              last: row.lastReadingLabel,
+              status:
+                row.overdue === null ? (
+                  <span style={{ color: "inherit" }}>No window</span>
+                ) : row.overdue ? (
+                  <StatusPill tone="danger">Overdue</StatusPill>
+                ) : (
+                  <StatusPill tone="success">On cadence</StatusPill>
+                ),
+            }))}
+            emptyMessage="No monitoring points yet. Use the register form above to create the first one."
+          />
+        </div>
       </SectionCard>
 
       <SectionCard
         title="Reading history"
         meta={`${readingRows.length} recent ${readingRows.length === 1 ? "reading" : "readings"} · newest first`}
       >
-        <DataTable
-          caption="Recent monitoring readings, newest first; values are append-only (DEC-089)"
-          columns={readingColumns}
-          rows={readingRows.map((row) => ({
-            point: row.pointLabel,
-            value: row.valueLabel,
-            status: row.inRange ? (
-              <StatusPill tone="success">In range</StatusPill>
-            ) : (
-              <StatusPill tone="danger">Out of range</StatusPill>
-            ),
-            measuredAt: row.measuredAtLabel,
-            notes: row.notes ?? "—",
-          }))}
-          emptyMessage="No readings recorded yet. Use the entry form above to log the first one."
-        />
+        <div style={tableWrap}>
+          <DataTable
+            caption="Recent monitoring readings, newest first; values are append-only (DEC-089)"
+            columns={readingColumns}
+            rows={readingRows.map((row) => ({
+              point: row.pointLabel,
+              value: row.valueLabel,
+              status: row.inRange ? (
+                <StatusPill tone="success">In range</StatusPill>
+              ) : (
+                <StatusPill tone="danger">Out of range</StatusPill>
+              ),
+              measuredAt: row.measuredAtLabel,
+              notes: row.notes ?? "—",
+            }))}
+            emptyMessage="No readings recorded yet. Use the entry form above to log the first one."
+          />
+        </div>
       </SectionCard>
     </div>
   );

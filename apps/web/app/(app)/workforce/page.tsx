@@ -13,6 +13,9 @@ import {
   PageHeader,
   SectionCard,
   StatusPill,
+  color,
+  geometry,
+  radius,
   spacing,
   typography,
 } from "@aquarela/ui";
@@ -42,21 +45,38 @@ const contentColumn = {
   display: "flex",
   flexDirection: "column",
   gap: spacing[6],
-  width: "100%",
   maxWidth: 1120,
   margin: "0 auto",
   padding: `${spacing[8]}px ${spacing[4]}px`,
 } as const;
 
+/** Tables scroll inside a labelled region; the page never scrolls sideways. */
+const tableWrap = { overflowX: "auto", minWidth: 0 } as const;
+
 const SHOW_FILTERS = ["active", "retired", "all"] as const;
 type ShowFilter = (typeof SHOW_FILTERS)[number];
 
+/** Filter link styled as a chip: token surfaces, pill radius, 44px target. */
 const filterChipStyle = {
+  display: "inline-flex",
+  alignItems: "center",
+  minHeight: geometry.touchTarget,
   padding: `${spacing[2]}px ${spacing[3]}px`,
-  borderRadius: 999,
-  border: "1px solid currentColor",
+  borderRadius: radius.pill,
+  border: `1px solid ${color.border.default}`,
+  backgroundColor: color.surface.base,
+  color: color.ink.secondary,
   fontSize: typography.fontSize.sm,
   textDecoration: "none",
+} as const;
+
+const filterChipActiveStyle = {
+  ...filterChipStyle,
+  backgroundColor: color.accent.soft,
+  borderColor: color.accent.deep,
+  boxShadow: `inset 0 0 0 1px ${color.accent.deep}`,
+  color: color.ink.primary,
+  fontWeight: typography.fontWeight.semibold,
 } as const;
 
 function readShow(raw: string | undefined): ShowFilter {
@@ -167,11 +187,8 @@ export default async function WorkforcePage({
           <Link
             key={candidate}
             href={`/workforce?show=${candidate}`}
-            style={{
-              ...filterChipStyle,
-              fontWeight:
-                show === candidate ? typography.fontWeight.semibold : typography.fontWeight.regular,
-            }}
+            aria-current={show === candidate ? "page" : undefined}
+            style={show === candidate ? filterChipActiveStyle : filterChipStyle}
           >
             {candidate === "active" ? "Active" : candidate === "retired" ? "Retired" : "All"}
           </Link>
@@ -179,13 +196,8 @@ export default async function WorkforcePage({
         {writableLocations.length > 1 ? (
           <Link
             href={`/workforce?show=${show}`}
-            style={{
-              ...filterChipStyle,
-              fontWeight:
-                rawLocationId === undefined
-                  ? typography.fontWeight.semibold
-                  : typography.fontWeight.regular,
-            }}
+            aria-current={rawLocationId === undefined ? "page" : undefined}
+            style={rawLocationId === undefined ? filterChipActiveStyle : filterChipStyle}
           >
             All locations
           </Link>
@@ -196,13 +208,7 @@ export default async function WorkforcePage({
             <Link
               key={location.id}
               href={`/workforce?show=${show}&location=${location.id}`}
-              style={{
-                ...filterChipStyle,
-                fontWeight:
-                  rawLocationId === location.id
-                    ? typography.fontWeight.semibold
-                    : typography.fontWeight.regular,
-              }}
+              style={filterChipStyle}
             >
               {location.code}
             </Link>
@@ -213,35 +219,38 @@ export default async function WorkforcePage({
         title="Register"
         meta={`${visible.length} ${visible.length === 1 ? "employee" : "employees"}`}
       >
-        <DataTable
-          caption="Employees with role, employment type, base hourly rate, primary location and retirement status"
-          columns={columns}
-          rowHref={(row) => `/workforce/employees/${String(row.id)}`}
-          rows={visible.map((employee) => ({
-            id: employee.id,
-            name: employee.name,
-            role: employee.roleCode,
-            employment: employmentTypeLabel(employee.employmentType),
-            rate: employee.baseHourlyRate,
-            location:
-              employee.primaryLocationId === null
-                ? "—"
-                : (locationLabelById.get(employee.primaryLocationId) ?? employee.primaryLocationId),
-            activeFrom: employee.activeFrom,
-            status: (
-              <StatusPill tone={employee.retiredAt === null ? "success" : "warning"}>
-                {employee.retiredAt === null ? "Active" : "Retired"}
-              </StatusPill>
-            ),
-            actions:
-              canWrite && employee.retiredAt === null ? (
-                <RetireEmployeeButton employeeId={employee.id} />
-              ) : (
-                "—"
+        <div style={tableWrap}>
+          <DataTable
+            caption="Employees with role, employment type, base hourly rate, primary location and retirement status"
+            columns={columns}
+            rowHref={(row) => `/workforce/employees/${String(row.id)}`}
+            rows={visible.map((employee) => ({
+              id: employee.id,
+              name: employee.name,
+              role: employee.roleCode,
+              employment: employmentTypeLabel(employee.employmentType),
+              rate: employee.baseHourlyRate,
+              location:
+                employee.primaryLocationId === null
+                  ? "—"
+                  : (locationLabelById.get(employee.primaryLocationId) ??
+                    employee.primaryLocationId),
+              activeFrom: employee.activeFrom,
+              status: (
+                <StatusPill tone={employee.retiredAt === null ? "success" : "warning"}>
+                  {employee.retiredAt === null ? "Active" : "Retired"}
+                </StatusPill>
               ),
-          }))}
-          emptyMessage="No employees match. Register one below, or clear the filters."
-        />
+              actions:
+                canWrite && employee.retiredAt === null ? (
+                  <RetireEmployeeButton employeeId={employee.id} />
+                ) : (
+                  "—"
+                ),
+            }))}
+            emptyMessage="No employees match. Register one below, or clear the filters."
+          />
+        </div>
       </SectionCard>
 
       <RegisterEmployeeForm

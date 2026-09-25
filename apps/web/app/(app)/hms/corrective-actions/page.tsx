@@ -6,6 +6,9 @@ import {
   PageHeader,
   SectionCard,
   StatusPill,
+  color,
+  geometry,
+  radius,
   spacing,
   typography,
 } from "@aquarela/ui";
@@ -36,7 +39,6 @@ const contentColumn = {
   display: "flex",
   flexDirection: "column",
   gap: spacing[6],
-  width: "100%",
   maxWidth: 1120,
   margin: "0 auto",
   padding: `${spacing[8]}px ${spacing[4]}px`,
@@ -44,12 +46,30 @@ const contentColumn = {
 
 const STATUS_FILTERS = ["open", "in_progress", "done", "verified"] as const;
 
+/** Tables scroll inside a labelled region; the page never scrolls sideways. */
+const tableWrap = { overflowX: "auto", minWidth: 0 } as const;
+
+/** Filter link styled as a chip: token surfaces, pill radius, 44px target. */
 const filterChipStyle = {
+  display: "inline-flex",
+  alignItems: "center",
+  minHeight: geometry.touchTarget,
   padding: `${spacing[2]}px ${spacing[3]}px`,
-  borderRadius: 999,
-  border: "1px solid currentColor",
+  borderRadius: radius.pill,
+  border: `1px solid ${color.border.default}`,
+  backgroundColor: color.surface.base,
+  color: color.ink.secondary,
   fontSize: typography.fontSize.sm,
   textDecoration: "none",
+} as const;
+
+const filterChipActiveStyle = {
+  ...filterChipStyle,
+  backgroundColor: color.accent.soft,
+  borderColor: color.accent.deep,
+  boxShadow: `inset 0 0 0 1px ${color.accent.deep}`,
+  color: color.ink.primary,
+  fontWeight: typography.fontWeight.semibold,
 } as const;
 
 /**
@@ -145,11 +165,8 @@ export default async function CorrectiveActionsPage({
       <div style={{ display: "flex", flexWrap: "wrap", gap: spacing[2] }}>
         <Link
           href="/hms/corrective-actions"
-          style={{
-            ...filterChipStyle,
-            fontWeight:
-              status === undefined ? typography.fontWeight.semibold : typography.fontWeight.regular,
-          }}
+          aria-current={status === undefined ? "page" : undefined}
+          style={status === undefined ? filterChipActiveStyle : filterChipStyle}
         >
           All
         </Link>
@@ -157,13 +174,8 @@ export default async function CorrectiveActionsPage({
           <Link
             key={candidate}
             href={`/hms/corrective-actions?status=${candidate}`}
-            style={{
-              ...filterChipStyle,
-              fontWeight:
-                status === candidate
-                  ? typography.fontWeight.semibold
-                  : typography.fontWeight.regular,
-            }}
+            aria-current={status === candidate ? "page" : undefined}
+            style={status === candidate ? filterChipActiveStyle : filterChipStyle}
           >
             {correctiveActionStatusView(candidate).label}
           </Link>
@@ -174,49 +186,51 @@ export default async function CorrectiveActionsPage({
         title="Actions"
         meta={`${actions.length} ${actions.length === 1 ? "action" : "actions"}`}
       >
-        <DataTable
-          caption="Corrective actions with status, owner, due date and audited closure"
-          columns={columns}
-          rows={actions.map((action) => {
-            const actionStatus = correctiveActionStatusView(action.status);
-            return {
-              id: action.id,
-              description: action.description,
-              incident:
-                action.incidentId === null ? (
-                  "—"
-                ) : (
-                  <Link href={`/hms/incidents/${action.incidentId}`}>
-                    {incidentTitleById.get(action.incidentId) ?? "View incident"}
-                  </Link>
+        <div style={tableWrap}>
+          <DataTable
+            caption="Corrective actions with status, owner, due date and audited closure"
+            columns={columns}
+            rows={actions.map((action) => {
+              const actionStatus = correctiveActionStatusView(action.status);
+              return {
+                id: action.id,
+                description: action.description,
+                incident:
+                  action.incidentId === null ? (
+                    "—"
+                  ) : (
+                    <Link href={`/hms/incidents/${action.incidentId}`}>
+                      {incidentTitleById.get(action.incidentId) ?? "View incident"}
+                    </Link>
+                  ),
+                status: <StatusPill tone={actionStatus.tone}>{actionStatus.label}</StatusPill>,
+                owner:
+                  action.ownerId === null
+                    ? "—"
+                    : (actorLabelById.get(action.ownerId) ?? action.ownerId),
+                due: formatHmsDay(action.dueDate),
+                completed: action.completedAt === null ? "—" : formatHmsInstant(action.completedAt),
+                verified:
+                  action.verifiedAt === null
+                    ? "—"
+                    : `${formatHmsInstant(action.verifiedAt)} by ${
+                        actorLabelById.get(action.verifiedBy ?? "") ?? action.verifiedBy ?? "—"
+                      }`,
+                controls: (
+                  <div id={`action-${action.id}`}>
+                    <CorrectiveActionControls
+                      actionId={action.id}
+                      status={action.status}
+                      canEdit={canEdit}
+                      canVerify={canVerify}
+                    />
+                  </div>
                 ),
-              status: <StatusPill tone={actionStatus.tone}>{actionStatus.label}</StatusPill>,
-              owner:
-                action.ownerId === null
-                  ? "—"
-                  : (actorLabelById.get(action.ownerId) ?? action.ownerId),
-              due: formatHmsDay(action.dueDate),
-              completed: action.completedAt === null ? "—" : formatHmsInstant(action.completedAt),
-              verified:
-                action.verifiedAt === null
-                  ? "—"
-                  : `${formatHmsInstant(action.verifiedAt)} by ${
-                      actorLabelById.get(action.verifiedBy ?? "") ?? action.verifiedBy ?? "—"
-                    }`,
-              controls: (
-                <div id={`action-${action.id}`}>
-                  <CorrectiveActionControls
-                    actionId={action.id}
-                    status={action.status}
-                    canEdit={canEdit}
-                    canVerify={canVerify}
-                  />
-                </div>
-              ),
-            };
-          })}
-          emptyMessage="No corrective actions match. Actions are added from an incident's detail page."
-        />
+              };
+            })}
+            emptyMessage="No corrective actions match. Actions are added from an incident's detail page."
+          />
+        </div>
       </SectionCard>
     </div>
   );

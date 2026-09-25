@@ -53,11 +53,13 @@ const contentColumn = {
   display: "flex",
   flexDirection: "column",
   gap: spacing[6],
-  width: "100%",
   maxWidth: 1120,
   margin: "0 auto",
   padding: `${spacing[8]}px ${spacing[4]}px`,
 } as const;
+
+/** Tables scroll inside a labelled region; the page never scrolls sideways. */
+const tableWrap = { overflowX: "auto", minWidth: 0 } as const;
 
 /** A compact, exact-enough byte label for an evidence row. */
 function formatBytes(sizeBytes: number): string {
@@ -268,19 +270,23 @@ export default async function IncidentDetailPage({
         title="Evidence"
         meta={`${evidence.length} ${evidence.length === 1 ? "attachment" : "attachments"}`}
       >
-        <DataTable
-          caption="Photos and reports attached to this incident"
-          columns={evidenceColumns}
-          rowHref={(row) => `/api/v1/hms/incidents/${incident.id}/evidence/${String(row.id)}/file`}
-          rows={evidence.map((file) => ({
-            id: file.id,
-            file: file.filename,
-            type: file.mime,
-            size: formatBytes(file.sizeBytes),
-            uploaded: formatHmsInstant(file.uploadedAt),
-          }))}
-          emptyMessage="No evidence attached yet. A manager or admin can attach a photo or a report below."
-        />
+        <div style={tableWrap}>
+          <DataTable
+            caption="Photos and reports attached to this incident"
+            columns={evidenceColumns}
+            rowHref={(row) =>
+              `/api/v1/hms/incidents/${incident.id}/evidence/${String(row.id)}/file`
+            }
+            rows={evidence.map((file) => ({
+              id: file.id,
+              file: file.filename,
+              type: file.mime,
+              size: formatBytes(file.sizeBytes),
+              uploaded: formatHmsInstant(file.uploadedAt),
+            }))}
+            emptyMessage="No evidence attached yet. A manager or admin can attach a photo or a report below."
+          />
+        </div>
       </SectionCard>
 
       {canEdit ? <AttachEvidenceForm incidentId={incident.id} /> : null}
@@ -291,31 +297,33 @@ export default async function IncidentDetailPage({
           meta={`${actions.length} linked ${actions.length === 1 ? "action" : "actions"}`}
           actions={<Link href="/hms/corrective-actions">All actions</Link>}
         >
-          <DataTable
-            caption="Corrective actions linked to this incident"
-            columns={columns}
-            rowHref={(row) => `/hms/corrective-actions#action-${String(row.id)}`}
-            rows={actions.map((action) => {
-              const actionStatus = correctiveActionStatusView(action.status);
-              return {
-                id: action.id,
-                description: action.description,
-                status: <StatusPill tone={actionStatus.tone}>{actionStatus.label}</StatusPill>,
-                owner:
-                  action.ownerId === null
-                    ? "—"
-                    : (actorLabelById.get(action.ownerId) ?? action.ownerId),
-                due: formatHmsDay(action.dueDate),
-                verified:
-                  action.verifiedAt === null
-                    ? "—"
-                    : `${formatHmsInstant(action.verifiedAt)} by ${
-                        actorLabelById.get(action.verifiedBy ?? "") ?? action.verifiedBy ?? "—"
-                      }`,
-              };
-            })}
-            emptyMessage="No corrective actions linked yet. Add one below so the incident has a tracked fix."
-          />
+          <div style={tableWrap}>
+            <DataTable
+              caption="Corrective actions linked to this incident"
+              columns={columns}
+              rowHref={(row) => `/hms/corrective-actions#action-${String(row.id)}`}
+              rows={actions.map((action) => {
+                const actionStatus = correctiveActionStatusView(action.status);
+                return {
+                  id: action.id,
+                  description: action.description,
+                  status: <StatusPill tone={actionStatus.tone}>{actionStatus.label}</StatusPill>,
+                  owner:
+                    action.ownerId === null
+                      ? "—"
+                      : (actorLabelById.get(action.ownerId) ?? action.ownerId),
+                  due: formatHmsDay(action.dueDate),
+                  verified:
+                    action.verifiedAt === null
+                      ? "—"
+                      : `${formatHmsInstant(action.verifiedAt)} by ${
+                          actorLabelById.get(action.verifiedBy ?? "") ?? action.verifiedBy ?? "—"
+                        }`,
+                };
+              })}
+              emptyMessage="No corrective actions linked yet. Add one below so the incident has a tracked fix."
+            />
+          </div>
         </SectionCard>
       ) : null}
 
