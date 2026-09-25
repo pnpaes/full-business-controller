@@ -125,12 +125,7 @@ describe("vocabularies vs schemas/domain-enums.yaml", () => {
     // Keys with no `vocabularies.ts` array. Intentional: MVP scope, no table or
     // `check` uses them yet. Listed explicitly rather than silently ignored so
     // an accidental new yaml key shows up as a failure here.
-    const UNEXPORTED_YAML_KEYS = [
-      "channel_code",
-      "forecast_grain",
-      "valuation_method",
-      "publish_status",
-    ];
+    const UNEXPORTED_YAML_KEYS = ["channel_code", "valuation_method", "publish_status"];
 
     const exportedYamlKeys = new Set(vocabEntries.map(([name]) => name.toLowerCase()));
     const unexported = Object.keys(yamlEnums)

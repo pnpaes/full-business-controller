@@ -1,5 +1,7 @@
 export * from "./schema";
 
+export { sql } from "drizzle-orm";
+
 export { createDb } from "./client";
 export type { Database, DatabaseTransaction, DbClient, NodeDatabase } from "./client";
 
@@ -17,6 +19,7 @@ export * from "./repositories/data-quality-exception";
 export * from "./repositories/document";
 export * from "./repositories/equipment";
 export * from "./repositories/file-object";
+export * from "./repositories/forecast";
 export * from "./repositories/imports";
 export * from "./repositories/incidents";
 export * from "./repositories/integrations";

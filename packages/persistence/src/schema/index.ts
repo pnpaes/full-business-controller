@@ -25,3 +25,4 @@ export * from "./workforce";
 export * from "./document";
 export * from "./close";
 export * from "./competitor";
+export * from "./forecast";

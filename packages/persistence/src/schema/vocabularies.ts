@@ -541,3 +541,17 @@ export const ALLOWED_OPERATION = [
   "write_stock",
   "write_accounting",
 ] as const;
+
+// `DEC-011` (row 15, `FCST-001`/`FCST-002`): the grain a forecast snapshot is
+// taken at. The declared vocabulary is the whole allow-list, but this slice only
+// **implements** `day_location`: `computeForecast` can scope by location but not
+// by category or product, so `day_location_category`/`day_location_product` are
+// stored-shaped but refused by the command until the read supports them (the
+// `DEC-011` ceiling). From `schemas/domain-enums.yaml` (`forecast_grain`),
+// exported now that `forecast_snapshot`/`forecast_override` need it, so
+// `vocabularies.test.ts`'s `UNEXPORTED_YAML_KEYS` guard shrinks accordingly.
+export const FORECAST_GRAIN = [
+  "day_location",
+  "day_location_category",
+  "day_location_product",
+] as const;

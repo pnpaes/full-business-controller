@@ -1,4 +1,5 @@
 import type { SalesReportGrain } from "@aquarela/domain";
+import { FORECAST_GRAIN } from "@aquarela/persistence";
 
 /**
  * Application-level ports and DTOs for the analytics read model (`W6` —
@@ -404,4 +405,154 @@ export interface ComputeSuggestionsInput {
   readonly trendPeriods?: number | undefined;
   /** Empty/undefined = organization-wide (the repo convention). */
   readonly locationIds?: readonly string[] | undefined;
+}
+
+/*
+ * `DEC-011` (row 15, `FCST-001`–`FCST-002`): forecast-vs-actual tracking.
+ *
+ * The grain vocabulary is the **database's** (`FORECAST_GRAIN`, from
+ * `schemas/domain-enums.yaml`) rather than a second list, so the schema check
+ * and the application agree by construction. The tracking read reports
+ * `insufficient_history` below `FORECAST_TRACKING_MINIMUM_COMPLETED_PERIODS`
+ * completed periods and a distinct `no_snapshot` state — never a fabricated
+ * accuracy. `DEC-011`'s category/product grains are declared but not yet
+ * implemented: the underlying reporting read cannot scope by category or
+ * product, so the commands refuse them rather than mis-scope a snapshot.
+ */
+
+/** The grain a forecast snapshot is taken at (the declared vocabulary). */
+export const FORECAST_GRAINS = FORECAST_GRAIN;
+export type ForecastGrain = (typeof FORECAST_GRAIN)[number];
+
+/** True when `value` is one of `FORECAST_GRAINS`. */
+export function isForecastGrain(value: string): value is ForecastGrain {
+  return (FORECAST_GRAINS as readonly string[]).includes(value);
+}
+
+/**
+ * The one forecast grain this slice implements. `DEC-011` accepted
+ * location/category and product grains too, but the reporting read underneath
+ * cannot scope by category or product, so the commands refuse the other two
+ * rather than store a snapshot that dropped its scope (the recorded ceiling).
+ */
+export const SUPPORTED_FORECAST_GRAINS = ["day_location"] as const;
+export type SupportedForecastGrain = (typeof SUPPORTED_FORECAST_GRAINS)[number];
+
+/** True when `value` is one of `SUPPORTED_FORECAST_GRAINS`. */
+export function isSupportedForecastGrain(value: string): value is SupportedForecastGrain {
+  return (SUPPORTED_FORECAST_GRAINS as readonly string[]).includes(value);
+}
+
+/**
+ * Every forecast grain buckets by **day** (the reporting `day` grain); the
+ * location/category/product dimensions are carried as the scope, not the bucket.
+ */
+export const FORECAST_GRAIN_TO_SALES_REPORT_GRAIN: Record<ForecastGrain, SalesReportGrain> = {
+  day_location: "day",
+  day_location_category: "day",
+  day_location_product: "day",
+};
+
+/** The failed lookup states `computeForecastTracking` reports honestly. */
+export const FORECAST_TRACKING_STATUSES = ["ok", "insufficient_history", "no_snapshot"] as const;
+export type ForecastTrackingStatus = (typeof FORECAST_TRACKING_STATUSES)[number];
+
+/**
+ * The completed periods a scope must have before tracking reports a MAPE. Four
+ * is the agreed floor (the same spirit as the forecast fit's own minimum): a
+ * mean over fewer points is not reported, the result stays
+ * `insufficient_history` instead.
+ */
+export const FORECAST_TRACKING_MINIMUM_COMPLETED_PERIODS = 4;
+
+/** The echoed scope of a forecast snapshot/tracking read. */
+export interface ForecastScope {
+  /** `null` = organization-wide (the repo convention). */
+  readonly locationId: string | null;
+  readonly channelId: string | null;
+  /** Populated only for the (not-yet-implemented) category grain. */
+  readonly category: string | null;
+  /** Populated only for the (not-yet-implemented) product grain. */
+  readonly productVariantId: string | null;
+}
+
+/** One completed projected period, its actual and the error between them. */
+export interface ForecastTrackingPeriod {
+  /** The day bucket (`YYYY-MM-DD`). */
+  readonly period: string;
+  readonly from: string;
+  readonly to: string;
+  /** The snapshot's projected value (a model figure, at the metric's scale). */
+  readonly projected: string;
+  /** The actual value; `null` when the metric is undefined for the period. */
+  readonly actual: string | null;
+  /** `|actual − projected|` at the metric's scale; `null` when the actual is undefined. */
+  readonly absoluteError: string | null;
+  /** `|actual − projected| / |actual|` as a fraction at 6 dp; `null` when the actual is 0/undefined. */
+  readonly percentageError: string | null;
+}
+
+/** The out-of-sample accuracy computed from the completed periods. */
+export interface ForecastTrackingAccuracy {
+  readonly method: "mape";
+  readonly methodNote: string;
+  /** Mean absolute percentage error as a fraction at 6 dp; `null` when no non-zero actual. */
+  readonly mape: string | null;
+  /** The completed periods the error was measured over (non-zero actuals). */
+  readonly periods: number;
+}
+
+/** One advisory override, surfaced next to the projection (never auto-applied). */
+export interface ForecastOverrideSummary {
+  readonly id: string;
+  readonly snapshotId: string | null;
+  readonly period: string;
+  readonly actorId: string;
+  readonly reason: string;
+  /** `timestamptz`, ISO. */
+  readonly recordedAt: string;
+}
+
+/**
+ * A forecast-vs-actual tracking report. `status` is `"ok"` with the completed
+ * periods and their MAPE, `"insufficient_history"` below
+ * `FORECAST_TRACKING_MINIMUM_COMPLETED_PERIODS` completed periods (the reason is
+ * stated, the accuracy is `null`), or `"no_snapshot"` when the scope has never
+ * had a snapshot recorded — never a fabricated number.
+ */
+export interface ForecastTrackingReport {
+  readonly asOf: string;
+  readonly metric: AnalyticsMetric;
+  readonly metricLabel: string;
+  readonly unit: MetricUnit;
+  readonly grain: ForecastGrain;
+  readonly scope: ForecastScope;
+  readonly status: ForecastTrackingStatus;
+  /** The snapshot being tracked; `null` for `no_snapshot`. */
+  readonly snapshotId: string | null;
+  readonly snapshotAsOf: string | null;
+  readonly snapshotGeneratedAt: string | null;
+  /** The snapshot's stated model id; `null` for `no_snapshot`. */
+  readonly model: string | null;
+  readonly completedPeriods: number;
+  readonly minimumCompletedPeriods: number;
+  /** Projected vs actual for each **completed** projected period. */
+  readonly periods: readonly ForecastTrackingPeriod[];
+  readonly accuracy: ForecastTrackingAccuracy | null;
+  /** Advisory overrides recorded for this scope (`DEC-011`); never auto-applied. */
+  readonly overrides: readonly ForecastOverrideSummary[];
+  /** The reason the accuracy is not reported, for the two non-ok states. */
+  readonly reason: string | null;
+  readonly notes: readonly string[];
+}
+
+export interface ComputeForecastTrackingInput {
+  readonly organizationId: string;
+  readonly metric: AnalyticsMetric;
+  readonly grain: ForecastGrain;
+  /** Empty/undefined = organization-wide (the repo convention). */
+  readonly locationId?: string | null | undefined;
+  readonly channelId?: string | null | undefined;
+  /** The observation instant; defaults to the current instant. */
+  readonly now?: string | undefined;
 }

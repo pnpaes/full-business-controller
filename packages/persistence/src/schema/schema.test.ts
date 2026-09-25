@@ -56,7 +56,9 @@ const tables = Object.values(schema).filter((value) => is(value, PgTable));
  * The `DEC-135` shared rate-limit counter store adds the `rate_limit_counter`
  * table, taking the count to 94. The `INTG-001`/`DEC-137` read-only integrations
  * registry adds the `integration_source` table, taking the count to 95
- * (`publish_run` stays deferred on `ADR-0004`). */
+ * (`publish_run` stays deferred on `ADR-0004`). The `DEC-011` forecast-vs-actual
+ * tracking slice adds the `forecast_snapshot` and `forecast_override` tables,
+ * taking the count to 97. */
 const EXPECTED_TABLES = [
   "addon_applicability",
   "adjustment_period",
@@ -89,6 +91,8 @@ const EXPECTED_TABLES = [
   "exchange_rate",
   "external_mapping",
   "file_object",
+  "forecast_override",
+  "forecast_snapshot",
   "goods_receipt",
   "goods_receipt_line",
   "hms_incident",
