@@ -3,7 +3,7 @@
 import { Alert, Button, TextareaField, spacing } from "@aquarela/ui";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import type { FormEvent } from "react";
+import type { ChangeEvent, FormEvent } from "react";
 
 const FALLBACK_ERROR = "Could not create the version. Please try again.";
 
@@ -13,32 +13,55 @@ interface ErrorBody {
 
 /**
  * Creates the next version of one document (`DEC-088`, `DOC-002`) through the
- * existing `POST /api/v1/documents/[id]/versions` route. The version number is
- * assigned by the command; the version starts unpublished.
+ * existing `POST /api/v1/documents/[id]/versions` route, or — when a file is
+ * chosen — through `POST /api/v1/documents/[id]/versions/upload` (`DEC-132`),
+ * which stores the bytes and creates the version that references them in one
+ * action. The version number is assigned by the command; the version starts
+ * unpublished.
  *
- * **No file attachment** (`DEC-085`, `DEC-099`): the route accepts an optional
- * `fileObjectId`, but there is no upload path to obtain one, so the form does
- * not offer a file field and says so.
+ * The file field is optional: a version with no attachment is still a valid
+ * version, and the plain JSON route is unchanged for that case.
  */
 export function CreateVersionForm({ documentId }: { readonly documentId: string }) {
   const router = useRouter();
   const [notes, setNotes] = useState("");
+  const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  function onFileChange(event: ChangeEvent<HTMLInputElement>): void {
+    setFile(event.target.files?.[0] ?? null);
+  }
+
   async function submit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
+    const formElement = event.currentTarget;
     setError(null);
     setSuccess(null);
     setBusy(true);
     try {
-      const response = await fetch(`/api/v1/documents/${documentId}/versions`, {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ notes: notes.trim().length === 0 ? null : notes.trim() }),
-      });
+      let response: Response;
+      if (file === null) {
+        response = await fetch(`/api/v1/documents/${documentId}/versions`, {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ notes: notes.trim().length === 0 ? null : notes.trim() }),
+        });
+      } else {
+        const form = new FormData();
+        form.append("file", file);
+        if (notes.trim().length > 0) {
+          form.append("notes", notes.trim());
+        }
+        response = await fetch(`/api/v1/documents/${documentId}/versions/upload`, {
+          method: "POST",
+          credentials: "same-origin",
+          body: form,
+        });
+      }
+
       if (!response.ok) {
         const body = (await response.json().catch(() => null)) as ErrorBody | null;
         setError(
@@ -46,8 +69,14 @@ export function CreateVersionForm({ documentId }: { readonly documentId: string 
         );
         return;
       }
-      setSuccess("Version created. Publish it to make it the current version.");
+      setSuccess(
+        file === null
+          ? "Version created. Publish it to make it the current version."
+          : "File stored and version created. Publish it to make it the current version.",
+      );
       setNotes("");
+      setFile(null);
+      formElement.reset();
       router.refresh();
     } catch {
       setError(FALLBACK_ERROR);
@@ -70,15 +99,19 @@ export function CreateVersionForm({ documentId }: { readonly documentId: string 
         onChange={(event) => setNotes(event.target.value)}
         help="What changed in this version (optional)."
       />
+      <label style={{ display: "flex", flexDirection: "column", gap: spacing[1] }}>
+        <span>File (optional)</span>
+        <input type="file" name="file" onChange={onFileChange} disabled={busy} />
+        <span style={{ opacity: 0.8 }}>
+          The file is stored privately and linked to this version. Leave empty to record a version
+          with notes only.
+        </span>
+      </label>
       <div>
         <Button type="submit" loading={busy} disabled={busy}>
           Create version
         </Button>
       </div>
-      <p style={{ margin: 0, opacity: 0.8 }}>
-        File attachment is not available yet (DEC-085, DEC-099): a version records its number and
-        notes only — no document bytes can be uploaded or downloaded.
-      </p>
     </form>
   );
 }

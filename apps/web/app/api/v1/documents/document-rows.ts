@@ -35,6 +35,15 @@ const MAX_LIMIT = 200;
 const MAX_TEXT = 200;
 const MAX_VOCAB = 32;
 const MAX_NOTES = 2000;
+const MAX_FILENAME = 255;
+
+/**
+ * The retention class a document-library file is stored under (`DEC-132`).
+ * `retention_policy` is provisional free text (no vocabulary, the `DEC-071`
+ * precedent); the per-file-class retention *periods* stay a privacy-review open
+ * item (`ADR-0006`).
+ */
+export const DOCUMENT_FILE_RETENTION_POLICY = "document_library";
 
 function readPositiveInteger(raw: string | null): number | undefined | "invalid" {
   if (raw === null) {
@@ -421,6 +430,55 @@ export function parseCreateVersionBody(
   return { ok: true, input: { fileObjectId: fileObjectId.value, notes: notes.value } };
 }
 
+export interface VersionUploadBody {
+  readonly filename: string;
+  readonly mime: string;
+  readonly bytes: Uint8Array;
+  readonly notes: string | null;
+}
+
+export type ParsedVersionUpload =
+  { readonly ok: true; readonly input: VersionUploadBody } | { readonly ok: false };
+
+/**
+ * `POST /documents/[id]/versions/upload` body (`DEC-132`): a `multipart/form-data`
+ * form with a required `file` part and an optional `notes` text field. The file
+ * must be non-empty and carry a name of at most `MAX_FILENAME`; a missing type
+ * falls back to `application/octet-stream`. Reading the bytes here keeps the
+ * route free of the form layout, and an empty or malformed upload is a 400
+ * before anything reaches the storage port.
+ */
+export async function parseVersionUploadForm(form: FormData): Promise<ParsedVersionUpload> {
+  const file = form.get("file");
+  if (file === null || typeof file === "string") {
+    return { ok: false };
+  }
+  const filename = typeof file.name === "string" ? file.name.trim() : "";
+  if (filename.length === 0 || filename.length > MAX_FILENAME) {
+    return { ok: false };
+  }
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  if (bytes.byteLength === 0) {
+    return { ok: false };
+  }
+  const mime =
+    typeof file.type === "string" && file.type.trim().length > 0
+      ? file.type.trim()
+      : "application/octet-stream";
+
+  const rawNotes = form.get("notes");
+  let notes: string | null = null;
+  if (typeof rawNotes === "string") {
+    const trimmed = rawNotes.trim();
+    if (trimmed.length > MAX_NOTES) {
+      return { ok: false };
+    }
+    notes = trimmed.length === 0 ? null : trimmed;
+  }
+
+  return { ok: true, input: { filename, mime, bytes, notes } };
+}
+
 export interface AcknowledgeBody {
   /** Absent → the command resolves the latest published version. */
   readonly documentVersionId?: string;
@@ -445,6 +503,22 @@ export function parseAcknowledgeBody(body: Record<string, unknown> | undefined):
 }
 
 /* ------------------------------ response rows ----------------------------- */
+
+/**
+ * A safe `Content-Disposition: attachment` value (`DEC-132`) for a stored file.
+ * The ASCII `filename` fallback has quotes/backslashes and every non-ASCII or
+ * control character replaced, and the RFC 5987 `filename*` carries the real name
+ * percent-encoded, so a filename can never inject a header or break the header
+ * framing.
+ */
+export function contentDisposition(filename: string): string {
+  const asciiFallback =
+    filename
+      .replace(/[^\x20-\x7e]/g, "_")
+      .replace(/["\\]/g, "_")
+      .slice(0, 200) || "download";
+  return `attachment; filename="${asciiFallback}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
+}
 
 export interface DocumentRow {
   readonly id: string;

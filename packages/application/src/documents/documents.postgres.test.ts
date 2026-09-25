@@ -8,7 +8,15 @@ import {
   type NodeDatabase,
 } from "@aquarela/persistence";
 import { randomUUID } from "node:crypto";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+
+import { createLocalFileStorageAdapter } from "../files/local-file-storage";
+import { createPostgresFileObjectsStore } from "../files/postgres-store";
+import { readFileObject } from "../files/read-file-object";
+import { storeFileObject } from "../files/store-file-object";
 
 import { acknowledgeDocument } from "./acknowledge-document";
 import { createDocument, DOCUMENT_AUDIENCES, DOCUMENT_CATEGORIES } from "./create-document";
@@ -50,9 +58,11 @@ async function inRollback(
 describe.skipIf(!databaseUrl)("staff documents against PostgreSQL", () => {
   let client: DbClient;
   let orgId: string;
+  let storageRoot: string;
 
   beforeAll(async () => {
     client = createDb(databaseUrl!);
+    storageRoot = await mkdtemp(join(tmpdir(), "aquarela-documents-it-"));
     const org = await client.pool.query<{ id: string }>(
       "insert into organization (legal_name) values ($1) returning id",
       [`Documents IT ${suffix}`],
@@ -63,9 +73,13 @@ describe.skipIf(!databaseUrl)("staff documents against PostgreSQL", () => {
   afterAll(async () => {
     if (client) {
       // Every document, version and acknowledgement is created inside a
-      // rolled-back transaction, so only the organization is committed.
+      // rolled-back transaction, so only the organization is committed. The
+      // stored bytes are on the local filesystem and are removed explicitly.
       await client.pool.query("delete from organization where id = $1", [orgId]);
       await client.close();
+    }
+    if (storageRoot !== undefined) {
+      await rm(storageRoot, { recursive: true, force: true });
     }
   });
 
@@ -567,6 +581,67 @@ describe.skipIf(!databaseUrl)("staff documents against PostgreSQL", () => {
       expect((await listDocuments(store, { organizationId: orgId, status: "draft" })).length).toBe(
         3,
       );
+    });
+  });
+
+  it("stores a version file through the port and reads it back (DEC-132)", async () => {
+    await inRollback(client.db, async (tx) => {
+      const store = createPostgresDocumentsStore(tx);
+      const filesStore = createPostgresFileObjectsStore(tx);
+      const storage = createLocalFileStorageAdapter({ rootDir: storageRoot });
+      const actorId = randomUUID();
+
+      const document = await createDocument(store, {
+        organizationId: orgId,
+        actorId,
+        title: "Fire procedure",
+        category: CATEGORY,
+        audience: AUDIENCE,
+      });
+
+      const bytes = new TextEncoder().encode("evacuate through the back door");
+      const file = await storeFileObject(filesStore, storage, {
+        organizationId: orgId,
+        actorId,
+        filename: "fire.pdf",
+        mime: "application/pdf",
+        retentionPolicy: "document_library",
+        bytes,
+        linkedEntityType: "document",
+        linkedEntityId: document.id,
+      });
+      expect(file).toMatchObject({
+        organizationId: orgId,
+        filename: "fire.pdf",
+        mime: "application/pdf",
+        sizeBytes: bytes.byteLength,
+        linkedEntityType: "document",
+        linkedEntityId: document.id,
+      });
+
+      const version = await createDocumentVersion(store, {
+        organizationId: orgId,
+        actorId,
+        documentId: document.id,
+        fileObjectId: file.id,
+        notes: "with the procedure attached",
+      });
+      expect(version.fileObjectId).toBe(file.id);
+
+      const stored = await readFileObject(filesStore, storage, {
+        organizationId: orgId,
+        fileObjectId: file.id,
+      });
+      expect(stored?.metadata.filename).toBe("fire.pdf");
+      expect(stored?.bytes).toEqual(bytes);
+
+      // The metadata read is organization-scoped: another tenant sees nothing.
+      expect(
+        await readFileObject(filesStore, storage, {
+          organizationId: randomUUID(),
+          fileObjectId: file.id,
+        }),
+      ).toBeUndefined();
     });
   });
 });

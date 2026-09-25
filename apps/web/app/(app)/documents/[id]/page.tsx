@@ -1,7 +1,9 @@
 import {
   createPostgresDocumentsStore,
+  createPostgresFileObjectsStore,
   findCurrentPublishedVersion,
   findDocument,
+  findFileObject,
   listDocumentAcknowledgements,
   listDocumentVersions,
 } from "@aquarela/application";
@@ -17,7 +19,9 @@ import {
   Table,
   Td,
   Th,
+  color,
   spacing,
+  typography,
 } from "@aquarela/ui";
 import { notFound, redirect } from "next/navigation";
 
@@ -65,6 +69,15 @@ const pageCss = `
 }
 `;
 
+/** A download affordance for a stored version file (`DEC-132`). */
+const downloadLinkStyle = {
+  color: color.ink.primary,
+  fontWeight: typography.fontWeight.medium,
+  textDecoration: "underline",
+  textDecorationColor: color.border.strong,
+  textUnderlineOffset: 3,
+} as const;
+
 /**
  * One document's detail page (`DEC-088`, `DOC-001`…`DOC-004`): the metadata,
  * the current published version, the acknowledgement state and action, and —
@@ -80,10 +93,10 @@ const pageCss = `
  * Mutations go through the existing API routes from client components; the
  * server remains the authority on every action.
  *
- * **File bytes are deferred** (`DEC-085`, `DEC-099`): a version's
- * `file_object` reference has no upload/download path, so no document bytes
- * can be attached or retrieved — stated on the page where a file would be
- * expected.
+ * **File bytes are stored** (`DEC-132`): a manager can attach a file to a new
+ * version, and a version that references a `file_object` shows a download link.
+ * The download route applies the same read gate as this page, so a non-manager
+ * can only download the current published `all_staff` version.
  */
 export default async function DocumentPage({
   params,
@@ -136,6 +149,27 @@ export default async function DocumentPage({
     (acc, version) => (acc === null || version.version > acc ? version.version : acc),
     null,
   );
+
+  // Resolve the stored file metadata (`DEC-132`) for every displayed version
+  // that references a `file_object`, so the page can name the file and link its
+  // download; a version with no file stays "—".
+  const filesStore = createPostgresFileObjectsStore(getDb().db);
+  const fileObjectIds = [
+    ...new Set(
+      [current, ...versions].flatMap((version) =>
+        version !== undefined && version.fileObjectId !== null ? [version.fileObjectId] : [],
+      ),
+    ),
+  ];
+  const fileObjects = await Promise.all(
+    fileObjectIds.map((fileObjectId) =>
+      findFileObject(filesStore, { organizationId, fileObjectId }),
+    ),
+  );
+  const fileByObjectId = new Map(
+    fileObjectIds.map((fileObjectId, index) => [fileObjectId, fileObjects[index]] as const),
+  );
+
   const acknowledgements = manager
     ? await listDocumentAcknowledgements(store, { organizationId, documentId })
     : [];
@@ -176,10 +210,10 @@ export default async function DocumentPage({
         }
       />
 
-      <Alert tone="info" title="No file is attached to versions">
-        Document versions are <strong>metadata-only</strong>: they record the version number, notes
-        and publication. File upload and download are deferred (DEC-085, DEC-099), so there is no
-        document content to open or download here yet.
+      <Alert tone="info" title="Files are stored privately">
+        A manager can attach a file to a new version; the bytes are stored privately (local storage,
+        `DEC-132`) and streamed back only under the document read rule. Object storage, signed URLs
+        and retention enforcement remain deferred (`DEC-132`, `ADR-0006`).
       </Alert>
 
       <SectionCard title="Details">
@@ -217,6 +251,25 @@ export default async function DocumentPage({
                   description:
                     current.publishedAt === null ? "—" : formatDocumentInstant(current.publishedAt),
                 },
+                {
+                  term: "File",
+                  description:
+                    current.fileObjectId === null ||
+                    fileByObjectId.get(current.fileObjectId) === undefined ? (
+                      "—"
+                    ) : (
+                      <a
+                        href={`/api/v1/document-versions/${current.id}/file`}
+                        style={downloadLinkStyle}
+                      >
+                        Download {fileByObjectId.get(current.fileObjectId)?.filename} (
+                        {fileByObjectId
+                          .get(current.fileObjectId)
+                          ?.sizeBytes.toLocaleString("en-US")}{" "}
+                        bytes)
+                      </a>
+                    ),
+                },
                 { term: "Notes", description: current.notes ?? "—" },
               ]}
             />
@@ -245,7 +298,7 @@ export default async function DocumentPage({
                 published.
               </EmptyState>
             ) : (
-              <Table caption="All versions of this document, newest first" columnCount={5}>
+              <Table caption="All versions of this document, newest first" columnCount={6}>
                 <thead>
                   <tr>
                     <Th scope="col">Version</Th>
@@ -253,6 +306,7 @@ export default async function DocumentPage({
                     <Th scope="col" className="doc-col-notes">
                       Notes
                     </Th>
+                    <Th scope="col">File</Th>
                     <Th scope="col">Published</Th>
                     <Th scope="col">Action</Th>
                   </tr>
@@ -260,6 +314,10 @@ export default async function DocumentPage({
                 <tbody>
                   {versions.map((version) => {
                     const published = version.publishedAt !== null;
+                    const file =
+                      version.fileObjectId === null
+                        ? undefined
+                        : fileByObjectId.get(version.fileObjectId);
                     return (
                       <tr key={version.id}>
                         <Td>v{version.version}</Td>
@@ -269,6 +327,18 @@ export default async function DocumentPage({
                           </StatusPill>
                         </Td>
                         <Td className="doc-col-notes">{version.notes ?? "—"}</Td>
+                        <Td>
+                          {file === undefined ? (
+                            "—"
+                          ) : (
+                            <a
+                              href={`/api/v1/document-versions/${version.id}/file`}
+                              style={downloadLinkStyle}
+                            >
+                              {file.filename}
+                            </a>
+                          )}
+                        </Td>
                         <Td>
                           {published && version.publishedAt !== null
                             ? formatDocumentInstant(version.publishedAt)

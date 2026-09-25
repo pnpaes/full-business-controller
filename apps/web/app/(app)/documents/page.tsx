@@ -106,9 +106,9 @@ const chipActiveStyle = {
  * manager sees every document and status. The library is organization-wide —
  * there is no location scope (`DEC-088`).
  *
- * **File bytes are deferred** (`DEC-085`, `DEC-099`): a version's
- * `file_object` reference has no upload/download path yet, so the library is
- * metadata-only and says so on the page.
+ * **File bytes are stored** (`DEC-132`): a manager attaches a file when
+ * creating a version, and the version detail page links its download. Object
+ * storage, signed URLs and retention enforcement remain deferred (`ADR-0006`).
  */
 export default async function DocumentsPage({
   searchParams,
@@ -179,10 +179,10 @@ export default async function DocumentsPage({
         }
       />
 
-      <Alert tone="info" title="Files are not attached yet">
-        The library is <strong>metadata-only</strong> for now: document versions record their
-        number, notes and publication, but file upload and download are deferred (DEC-085, DEC-099)
-        — no document bytes can be attached or retrieved yet.
+      <Alert tone="info" title="Files are versioned and stored privately">
+        A manager can attach a file when creating a version; the bytes are stored privately and
+        downloaded under the document read rule (`DEC-132`). Object storage, signed URLs and
+        retention enforcement remain deferred (`DEC-132`, `ADR-0006`).
       </Alert>
 
       <nav
