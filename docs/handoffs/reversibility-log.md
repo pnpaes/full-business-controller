@@ -1,5 +1,25 @@
 # Reversibility log
 
+- **2026-09-25 Integrations registry slice (INTG-001, `DEC-137`; nothing
+  pushed)**: in chronological order `9508f1e` (`feat(integrations)` —
+  migration `0069_integration_source.sql` expand-only + persistence +
+  application use cases + seed), `02c3081` (`docs` — ADR-0011 Accepted +
+  `DEC-137` + roadmap row 16), `ef23028` (`feat(integrations)` — the
+  GET/POST/PATCH routes + the Administration register screen + labels),
+  `23f803f` (`fix` — dedupe `allowed_operations` + the down-file rehearsal
+  note), `64415db` (`docs` — the runbook `0069` row + the ADR-0011 status
+  refs), plus the docs commit carrying this handoff/`CONTEXT.md` update on
+  top. **Migration rollback:** run
+  `packages/persistence/drizzle/0069_integration_source_down.sql` —
+  destructive **only to registry configuration** (the `integration_source`
+  table is dropped; no posted money or stock fact is affected) — then
+  `git revert <sha>` each commit; the down path was **rehearsed on a
+  scratch DB** (table present → absent → dropped), never on the dev DB.
+  Migrations now through `0069`; **95 public tables**; `publish_run` is
+  **not built** (still deferred in `NOT_EXPECTED_TABLES` — INTG-002 is
+  gated on `ADR-0004`). Nothing pushed; nothing applied to DigitalOcean.
+  Details and the review reconciliation: [handoff
+  082](082-2026-09-25-integrations-registry-intg-001.md).
 - **2026-09-25 design-system + storage-port wave close-out (nothing
   pushed)**: the four in-flight agents from [handoff
   081](081-2026-09-25-design-system-and-storage-port-wave.md) and the two
