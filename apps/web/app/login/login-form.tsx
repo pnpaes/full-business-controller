@@ -1,6 +1,6 @@
 "use client";
 
-import { Alert, Button, Card, TextField } from "@aquarela/ui";
+import { Alert, Button, Card, TextField, spacing, typography } from "@aquarela/ui";
 import { useState } from "react";
 import type { FormEvent } from "react";
 
@@ -104,7 +104,7 @@ export function LoginForm() {
       {step === "credentials" ? (
         <form
           onSubmit={submitCredentials}
-          style={{ display: "flex", flexDirection: "column", gap: "16px" }}
+          style={{ display: "flex", flexDirection: "column", gap: spacing[4] }}
         >
           {error !== null ? <Alert tone="danger">{error}</Alert> : null}
           <TextField
@@ -129,7 +129,7 @@ export function LoginForm() {
       ) : (
         <form
           onSubmit={submitMfa}
-          style={{ display: "flex", flexDirection: "column", gap: "16px" }}
+          style={{ display: "flex", flexDirection: "column", gap: spacing[4] }}
         >
           {error !== null ? <Alert tone="danger">{error}</Alert> : null}
           <Alert tone="info">
@@ -139,7 +139,7 @@ export function LoginForm() {
           <Button type="submit" loading={busy} disabled={busy}>
             Verify
           </Button>
-          <p style={{ margin: 0, fontSize: 13 }}>
+          <p style={{ margin: 0, fontSize: typography.fontSize.sm }}>
             <a href="/login">Back</a>
           </p>
         </form>

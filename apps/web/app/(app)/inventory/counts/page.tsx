@@ -69,7 +69,6 @@ export default async function CountsPage() {
         display: "flex",
         flexDirection: "column",
         gap: spacing[6],
-        width: "100%",
         maxWidth: 1120,
         margin: "0 auto",
         padding: `${spacing[8]}px ${spacing[4]}px`,
@@ -98,7 +97,9 @@ export default async function CountsPage() {
       </div>
 
       <SectionCard title="Counts" meta={`${rows.length} ${rows.length === 1 ? "count" : "counts"}`}>
-        <CountsTable rows={rows} />
+        <div style={{ overflowX: "auto", minWidth: 0 }}>
+          <CountsTable rows={rows} />
+        </div>
       </SectionCard>
 
       <OpenCountForm

@@ -189,7 +189,6 @@ export default async function InventoryItemPage({
         display: "flex",
         flexDirection: "column",
         gap: spacing[6],
-        width: "100%",
         maxWidth: 1120,
         margin: "0 auto",
         padding: `${spacing[8]}px ${spacing[4]}px`,
@@ -225,7 +224,9 @@ export default async function InventoryItemPage({
         title="Balances"
         meta={`${tableRows.length} ${tableRows.length === 1 ? "row" : "rows"}`}
       >
-        <BalancesTable rows={tableRows} currency={currency} asOfLabel={asOfLabel} />
+        <div style={{ overflowX: "auto", minWidth: 0 }}>
+          <BalancesTable rows={tableRows} currency={currency} asOfLabel={asOfLabel} />
+        </div>
       </SectionCard>
 
       <SectionCard
@@ -236,10 +237,12 @@ export default async function InventoryItemPage({
             : `${movementRows.length} ${movementRows.length === 1 ? "movement" : "movements"}`
         }
       >
-        <MovementsTable
-          rows={movementRows}
-          emptyMessage={`No movements for ${item.code} yet. A receipt, count, transfer, waste or adjustment will appear here, and every reversal is shown as its own row.`}
-        />
+        <div style={{ overflowX: "auto", minWidth: 0 }}>
+          <MovementsTable
+            rows={movementRows}
+            emptyMessage={`No movements for ${item.code} yet. A receipt, count, transfer, waste or adjustment will appear here, and every reversal is shown as its own row.`}
+          />
+        </div>
       </SectionCard>
     </div>
   );

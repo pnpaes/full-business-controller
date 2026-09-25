@@ -109,7 +109,6 @@ export default async function ReceiptDetailPage({
         display: "flex",
         flexDirection: "column",
         gap: spacing[6],
-        width: "100%",
         maxWidth: 1120,
         margin: "0 auto",
       }}

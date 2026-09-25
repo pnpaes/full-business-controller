@@ -118,7 +118,7 @@ export function LocationComparisonTable({
   readonly rows: readonly LocationComparisonRow[];
 }) {
   return (
-    <div className="mh-table-wrap" style={{ overflowX: "auto" }}>
+    <div className="mh-table-wrap" style={{ overflowX: "auto", minWidth: 0 }}>
       <Table caption={caption} columnCount={5}>
         <thead>
           <tr>

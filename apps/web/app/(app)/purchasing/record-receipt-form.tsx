@@ -379,6 +379,7 @@ export function RecordReceiptForm({
                   border: `1px solid ${color.border.subtle}`,
                   borderRadius: radius.md,
                   padding: spacing[4],
+                  minWidth: 0,
                 }}
               >
                 <legend
