@@ -1,4 +1,4 @@
-import { KpiCard, SectionCard, spacing, typography } from "@aquarela/ui";
+import { KpiCard, SectionCard, geometry, spacing, typography } from "@aquarela/ui";
 
 import {
   getCostingReadContext,
@@ -21,6 +21,12 @@ const sectionLinks = [
   { href: "/costs/allocation-rules", label: "Allocation rules" },
   { href: "/costs/channel-fee-rules", label: "Channel fees" },
 ];
+
+const sectionLink = {
+  display: "inline-flex",
+  alignItems: "center",
+  minHeight: geometry.touchTarget,
+} as const;
 
 /**
  * Costs overview: counts of the records behind each section, read from the same
@@ -79,7 +85,9 @@ export default async function CostsPage() {
         >
           {sectionLinks.map((link) => (
             <li key={link.href}>
-              <a href={link.href}>{link.label}</a>
+              <a href={link.href} style={sectionLink}>
+                {link.label}
+              </a>
             </li>
           ))}
         </ul>

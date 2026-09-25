@@ -6,6 +6,7 @@ import {
   Td,
   Th,
   color,
+  geometry,
   spacing,
   typography,
 } from "@aquarela/ui";
@@ -86,7 +87,12 @@ export default async function PriceScenariosPage() {
                     <Td>
                       <a
                         href={`/costs/price-scenarios/${row.id}`}
-                        style={{ fontWeight: typography.fontWeight.semibold }}
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          minHeight: geometry.controlHeight.sm,
+                          fontWeight: typography.fontWeight.semibold,
+                        }}
                       >
                         {row.productVariantName ?? row.productVariantId}
                       </a>

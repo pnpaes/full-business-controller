@@ -9,6 +9,7 @@ import {
   Td,
   Th,
   color,
+  geometry,
   spacing,
   typography,
 } from "@aquarela/ui";
@@ -109,7 +110,13 @@ export default async function CostCardDetailPage({ params }: { params: Promise<{
       <div style={{ display: "flex", flexDirection: "column", gap: spacing[2] }}>
         <a
           href="/costs/cost-cards"
-          style={{ fontSize: typography.fontSize.sm, color: color.text.secondary }}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            minHeight: geometry.touchTarget,
+            fontSize: typography.fontSize.sm,
+            color: color.text.secondary,
+          }}
         >
           ← All cost cards
         </a>
@@ -348,7 +355,16 @@ export default async function CostCardDetailPage({ params }: { params: Promise<{
                             : money(deltaMoney(entry.totals.unitFullCost, currentFullCost))}
                         </Td>
                         <Td>
-                          <a href={`/costs/cost-cards/${entry.id}`}>View</a>
+                          <a
+                            href={`/costs/cost-cards/${entry.id}`}
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              minHeight: geometry.controlHeight.sm,
+                            }}
+                          >
+                            View
+                          </a>
                         </Td>
                       </tr>
                     ))}

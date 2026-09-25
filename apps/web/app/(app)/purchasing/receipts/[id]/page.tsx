@@ -8,6 +8,7 @@ import {
   PageHeader,
   SectionCard,
   StatusPill,
+  geometry,
   spacing,
 } from "@aquarela/ui";
 import Link from "next/link";
@@ -118,7 +119,15 @@ export default async function ReceiptDetailPage({
         scope="Purchasing"
         description="What this delivery contained, with the landed cost appended to price history at record time."
         actions={
-          <Link href="/purchasing" style={primaryLink}>
+          <Link
+            href="/purchasing"
+            style={{
+              ...primaryLink,
+              display: "inline-flex",
+              alignItems: "center",
+              minHeight: geometry.touchTarget,
+            }}
+          >
             Back to receipts
           </Link>
         }

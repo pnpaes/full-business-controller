@@ -7,6 +7,7 @@ import {
   SectionCard,
   SelectField,
   color,
+  geometry,
   spacing,
   typography,
 } from "@aquarela/ui";
@@ -246,7 +247,16 @@ export function RegisterScenarioForm({
                 <div>{raw(outcome.breakEvenUnits)}</div>
               </div>
             </div>
-            <a href={`/costs/price-scenarios/${result.priceScenarioId}`}>Open the scenario</a>
+            <a
+              href={`/costs/price-scenarios/${result.priceScenarioId}`}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                minHeight: geometry.touchTarget,
+              }}
+            >
+              Open the scenario
+            </a>
           </div>
         ) : null}
 

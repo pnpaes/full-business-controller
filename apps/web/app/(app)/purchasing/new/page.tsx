@@ -1,6 +1,6 @@
 import { createPostgresReceivingStore, listGoodsReceipts } from "@aquarela/application";
 import { findOrganizationById } from "@aquarela/persistence";
-import { EmptyState, PageHeader, spacing } from "@aquarela/ui";
+import { EmptyState, PageHeader, geometry, spacing } from "@aquarela/ui";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
@@ -104,7 +104,15 @@ export default async function NewReceiptPage() {
         <EmptyState
           title="Receiving master data is missing"
           action={
-            <Link href="/purchasing" style={{ color: "inherit" }}>
+            <Link
+              href="/purchasing"
+              style={{
+                color: "inherit",
+                display: "inline-flex",
+                alignItems: "center",
+                minHeight: geometry.touchTarget,
+              }}
+            >
               Back to receipts
             </Link>
           }

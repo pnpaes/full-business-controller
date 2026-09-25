@@ -8,6 +8,7 @@ import {
   Td,
   Th,
   color,
+  geometry,
   spacing,
   typography,
 } from "@aquarela/ui";
@@ -129,7 +130,13 @@ export default async function PriceScenarioDetailPage({
       <div style={{ display: "flex", flexDirection: "column", gap: spacing[2] }}>
         <a
           href="/costs/price-scenarios"
-          style={{ fontSize: typography.fontSize.sm, color: color.text.secondary }}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            minHeight: geometry.touchTarget,
+            fontSize: typography.fontSize.sm,
+            color: color.text.secondary,
+          }}
         >
           ← All price scenarios
         </a>
@@ -297,7 +304,15 @@ export default async function PriceScenarioDetailPage({
                   {formatInstantWindow(approvedVersion.effectiveFrom, approvedVersion.effectiveTo)}{" "}
                   · approved {formatInstant(approvedVersion.approvedAt)}
                 </p>
-                <a href="/costs/price-versions" style={{ fontSize: typography.fontSize.sm }}>
+                <a
+                  href="/costs/price-versions"
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    minHeight: geometry.touchTarget,
+                    fontSize: typography.fontSize.sm,
+                  }}
+                >
                   All price versions
                 </a>
               </div>

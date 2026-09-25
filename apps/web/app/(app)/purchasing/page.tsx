@@ -11,6 +11,7 @@ import {
   Td,
   Th,
   color,
+  geometry,
   spacing,
   typography,
 } from "@aquarela/ui";
@@ -36,6 +37,20 @@ const primaryLink = {
   color: "inherit",
   textDecoration: "none",
   fontWeight: typography.fontWeight.semibold,
+} as const;
+
+const actionLink = {
+  ...primaryLink,
+  display: "inline-flex",
+  alignItems: "center",
+  minHeight: geometry.touchTarget,
+} as const;
+
+const cellLink = {
+  ...primaryLink,
+  display: "inline-flex",
+  alignItems: "center",
+  minHeight: geometry.controlHeight.sm,
 } as const;
 
 /**
@@ -82,7 +97,7 @@ export default async function PurchasingPage() {
         scope="Aquarela Business Control"
         description="Receive supplier deliveries with pack, quantity, price, lot and expiry, flagging variance."
         actions={
-          <Link href="/purchasing/new" style={primaryLink}>
+          <Link href="/purchasing/new" style={actionLink}>
             Record a receipt
           </Link>
         }
@@ -115,7 +130,7 @@ export default async function PurchasingPage() {
           <EmptyState
             title="No goods receipts yet"
             action={
-              <Link href="/purchasing/new" style={primaryLink}>
+              <Link href="/purchasing/new" style={actionLink}>
                 Record the first receipt
               </Link>
             }
@@ -145,7 +160,7 @@ export default async function PurchasingPage() {
                   return (
                     <tr key={row.id}>
                       <Td>
-                        <Link href={`/purchasing/receipts/${row.id}`} style={primaryLink}>
+                        <Link href={`/purchasing/receipts/${row.id}`} style={cellLink}>
                           {formatInstant(row.receivedAt)}
                         </Link>
                         {row.deliveryRef === null ? null : (

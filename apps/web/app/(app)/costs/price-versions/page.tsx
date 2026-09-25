@@ -1,4 +1,14 @@
-import { EmptyState, SectionCard, Table, Td, Th, color, spacing, typography } from "@aquarela/ui";
+import {
+  EmptyState,
+  SectionCard,
+  Table,
+  Td,
+  Th,
+  color,
+  geometry,
+  spacing,
+  typography,
+} from "@aquarela/ui";
 
 import { getCostingReadContext, loadPriceVersions } from "../data";
 import { formatInstant, formatInstantWindow, formatMoney, orDash } from "../format";
@@ -6,6 +16,11 @@ import { formatInstant, formatInstantWindow, formatMoney, orDash } from "../form
 export const dynamic = "force-dynamic";
 
 const numCell = { textAlign: "right", fontVariantNumeric: "tabular-nums" } as const;
+const cellLink = {
+  display: "inline-flex",
+  alignItems: "center",
+  minHeight: geometry.controlHeight.sm,
+} as const;
 const monoCell = {
   fontFamily: typography.fontFamily.mono,
   fontSize: typography.fontSize.xs,
@@ -87,7 +102,9 @@ export default async function PriceVersionsPage() {
                   <Td style={{ whiteSpace: "nowrap" }}>{formatInstant(row.approvedAt)}</Td>
                   <Td style={monoCell}>{row.approvedBy}</Td>
                   <Td>
-                    <a href={`/costs/price-scenarios/${row.sourceScenarioId}`}>View scenario</a>
+                    <a href={`/costs/price-scenarios/${row.sourceScenarioId}`} style={cellLink}>
+                      View scenario
+                    </a>
                   </Td>
                 </tr>
               ))}
