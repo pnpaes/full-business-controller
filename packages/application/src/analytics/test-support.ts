@@ -5,6 +5,7 @@ import type {
   ForecastOverrideLookup,
   ForecastOverrideRecord,
   ForecastReadStore,
+  ForecastSnapshotByIdLookup,
   ForecastSnapshotLookup,
   ForecastSnapshotRecord,
 } from "./read-types";
@@ -32,7 +33,9 @@ export class FakeForecastStore
 
   private sequence = 0;
 
-  async withTransaction<T>(fn: (store: ForecastWriteStore) => Promise<T>): Promise<T> {
+  async withTransaction<T>(
+    fn: (store: ForecastWriteStore & ForecastReadStore) => Promise<T>,
+  ): Promise<T> {
     return fn(this);
   }
 
@@ -56,6 +59,16 @@ export class FakeForecastStore
           right.id.localeCompare(left.id),
       );
     return Promise.resolve(matches[0]);
+  }
+
+  findForecastSnapshotById(
+    query: ForecastSnapshotByIdLookup,
+  ): Promise<ForecastSnapshotRecord | undefined> {
+    return Promise.resolve(
+      this.snapshots.find(
+        (row) => row.id === query.snapshotId && row.organizationId === query.organizationId,
+      ),
+    );
   }
 
   listForecastOverrides(query: ForecastOverrideLookup): Promise<readonly ForecastOverrideRecord[]> {

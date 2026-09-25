@@ -7,6 +7,7 @@ import type {
   ForecastOverrideLookup,
   ForecastOverrideRecord,
   ForecastReadStore,
+  ForecastSnapshotByIdLookup,
   ForecastSnapshotLookup,
   ForecastSnapshotRecord,
 } from "./read-types";
@@ -16,6 +17,11 @@ import type { ForecastWriteStore } from "./write-types";
 /** A transaction handle has no `transaction` method of its own. */
 function isNodeDatabase(db: Database): db is NodeDatabase {
   return typeof (db as NodeDatabase).transaction === "function";
+}
+
+/** The relational query API is present on the pool database and a transaction alike. */
+function relational(db: Database): NodeDatabase {
+  return db as NodeDatabase;
 }
 
 /** True when an unknown JSONB value is a well-formed projection point. */
@@ -110,6 +116,13 @@ export function createPostgresForecastStore(
     },
     findLatestForecastSnapshot: async (query: ForecastSnapshotLookup) => {
       const row = await repo.findLatestForecastSnapshot(db, query);
+      return row === undefined ? undefined : toSnapshot(row);
+    },
+    findForecastSnapshotById: async (query: ForecastSnapshotByIdLookup) => {
+      const row = await relational(db).query.forecastSnapshot.findFirst({
+        where: (table, { and, eq }) =>
+          and(eq(table.id, query.snapshotId), eq(table.organizationId, query.organizationId)),
+      });
       return row === undefined ? undefined : toSnapshot(row);
     },
     listForecastOverrides: async (query: ForecastOverrideLookup) => {

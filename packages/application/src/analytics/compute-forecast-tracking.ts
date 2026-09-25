@@ -54,7 +54,8 @@ export const FORECAST_TRACKING_NO_SNAPSHOT_NOTE =
 export const FORECAST_TRACKING_OVERRIDE_NOTE =
   "recorded overrides are advisory human annotations and are never auto-applied";
 
-const DAY_PERIOD = /^\d{4}-\d{2}-\d{2}$/;
+/** The `YYYY-MM-DD` day-bucket shape shared by the tracking read and the override command. */
+export const DAY_PERIOD = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
  * The UTC day window of a stored projection period (`YYYY-MM-DD`). Every

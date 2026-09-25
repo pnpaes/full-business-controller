@@ -6,9 +6,12 @@ import type { ForecastGrain, ForecastProjectionPoint } from "./types";
  * `findLatestForecastSnapshot` backs `computeForecastTracking` (the newest
  * snapshot for one exact organization/scope, or `undefined` → `no_snapshot`);
  * `listForecastOverrides` surfaces the advisory human annotations recorded for
- * the scope. Both reads carry the organization (`DEC-061`) and match the scope
- * exactly — a `null` scope dimension is matched as `is null`, never skipped, so
- * an organization-wide snapshot is distinct from a location-scoped one.
+ * the scope; `findForecastSnapshotById` resolves a referenced snapshot by id for
+ * `recordForecastOverride`, scoped to its organization (`DEC-061`) so a foreign
+ * snapshot is invisible. The scope reads carry the organization and match the
+ * scope exactly — a `null` scope dimension is matched as `is null`, never
+ * skipped, so an organization-wide snapshot is distinct from a location-scoped
+ * one.
  */
 
 /** The exact scope a snapshot lookup matches (all four dimensions). */
@@ -80,6 +83,16 @@ export interface ForecastReadStore {
   findLatestForecastSnapshot(
     query: ForecastSnapshotLookup,
   ): Promise<ForecastSnapshotRecord | undefined>;
+  /** One snapshot by id, scoped to its organization (`DEC-061`), or `undefined`. */
+  findForecastSnapshotById(
+    query: ForecastSnapshotByIdLookup,
+  ): Promise<ForecastSnapshotRecord | undefined>;
   /** The organization/scope's overrides, oldest first. */
   listForecastOverrides(query: ForecastOverrideLookup): Promise<readonly ForecastOverrideRecord[]>;
+}
+
+/** The organization-scoped by-id snapshot lookup (the `DEC-061` reference guard). */
+export interface ForecastSnapshotByIdLookup {
+  readonly organizationId: string;
+  readonly snapshotId: string;
 }

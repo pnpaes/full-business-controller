@@ -1,6 +1,10 @@
 import type { AuditInput } from "../auth";
 
-import type { ForecastOverrideRecord, ForecastSnapshotRecord } from "./read-types";
+import type {
+  ForecastOverrideRecord,
+  ForecastReadStore,
+  ForecastSnapshotRecord,
+} from "./read-types";
 import type { ForecastGrain, ForecastProjectionPoint } from "./types";
 
 /**
@@ -51,8 +55,13 @@ export interface NewForecastOverrideRecord {
 }
 
 export interface ForecastWriteStore {
-  /** Binds `fn` to one transaction so the write and its audit row commit together. */
-  withTransaction<T>(fn: (store: ForecastWriteStore) => Promise<T>): Promise<T>;
+  /**
+   * Binds `fn` to one transaction so the write and its audit row commit together.
+   * The transaction handle is the same adapter, so it exposes the read port too
+   * (`recordForecastOverride` resolves its referenced snapshot inside the
+   * transaction).
+   */
+  withTransaction<T>(fn: (store: ForecastWriteStore & ForecastReadStore) => Promise<T>): Promise<T>;
   createForecastSnapshot(input: NewForecastSnapshotRecord): Promise<ForecastSnapshotRecord>;
   /** Append-only: no update or delete counterpart exists. */
   createForecastOverride(input: NewForecastOverrideRecord): Promise<ForecastOverrideRecord>;

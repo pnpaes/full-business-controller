@@ -40,6 +40,7 @@ export type {
   ForecastOverrideLookup,
   ForecastOverrideRecord,
   ForecastReadStore,
+  ForecastSnapshotByIdLookup,
   ForecastSnapshotLookup,
   ForecastSnapshotRecord,
 } from "./read-types";

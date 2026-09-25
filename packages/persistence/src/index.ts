@@ -1,5 +1,6 @@
 export * from "./schema";
 
+// test-only: lets application Postgres tests exercise DB triggers
 export { sql } from "drizzle-orm";
 
 export { createDb } from "./client";
