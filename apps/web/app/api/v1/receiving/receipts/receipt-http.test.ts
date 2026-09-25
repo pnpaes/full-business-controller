@@ -53,6 +53,7 @@ function line(overrides: Partial<GoodsReceiptLineRecord> = {}): GoodsReceiptLine
     discount: "0.0000",
     taxBasis: "exclusive",
     taxCodeId: null,
+    appliedTaxRate: null,
     allocatedFreight: "0.0000",
     importFee: "0.0000",
     lotNumber: "LOT-1",

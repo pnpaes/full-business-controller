@@ -191,11 +191,10 @@ export interface GoodsReceiptLineRecord {
   readonly taxCodeId: string | null;
   /**
    * The resolved rate captured on the rule-derived path, or null (migration
-   * `0068`, `DEC-075`). Optional so the additive column does not force existing
-   * consumers of this read DTO to populate it; the adapter always supplies it
-   * (null when no rate applied).
+   * `0068`, `DEC-075`). Required: the adapter always supplies it, and null is
+   * the honest value where no rate applied.
    */
-  readonly appliedTaxRate?: string | null;
+  readonly appliedTaxRate: string | null;
   readonly allocatedFreight: string;
   readonly importFee: string;
   readonly lotNumber: string | null;
