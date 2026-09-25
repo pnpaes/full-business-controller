@@ -78,6 +78,9 @@ export class FakeTaxWriteStore implements TaxWriteStore {
       return Promise.resolve(undefined);
     }
     const current = this.taxRules[index]!;
+    if (current.effectiveTo !== null) {
+      return Promise.resolve(undefined);
+    }
     const updated: TaxRuleRecord = { ...current, effectiveTo };
     this.taxRules[index] = updated;
     return Promise.resolve(updated);

@@ -11,30 +11,20 @@ import { FakeTaxWriteStore } from "./test-support";
 
 /**
  * Models the two-transaction race M2: the command's pre-read (`findTaxRuleById`)
- * still shows the rule open, while the conditional write sees the end a
- * concurrent supersede committed, matches zero rows and reports `undefined`.
+ * still shows the rule open — the stale snapshot its transaction took before a
+ * concurrent supersede committed — while the fake's own conditional
+ * `endTaxRule` sees the committed end, matches no open row and returns
+ * `undefined`.
+ *
+ * Only `findTaxRuleById` is overridden. The honest `FakeTaxWriteStore` cannot
+ * produce the stale read by itself (it keeps no snapshots), but once the read is
+ * stale its real conditional write is exactly the production path, so the race
+ * is driven through the fake rather than a hand-rolled predicate.
  */
 class ConcurrentlyEndedStore extends FakeTaxWriteStore {
   override findTaxRuleById(taxRuleId: string): Promise<TaxRuleRecord | undefined> {
     const rule = this.taxRules.find((candidate) => candidate.id === taxRuleId);
     return Promise.resolve(rule === undefined ? undefined : { ...rule, effectiveTo: null });
-  }
-
-  override endTaxRule(
-    organizationId: string,
-    taxRuleId: string,
-    effectiveTo: Date,
-  ): Promise<TaxRuleRecord | undefined> {
-    const index = this.taxRules.findIndex(
-      (rule) => rule.id === taxRuleId && rule.organizationId === organizationId,
-    );
-    const current = index === -1 ? undefined : this.taxRules[index]!;
-    if (current === undefined || current.effectiveTo !== null) {
-      return Promise.resolve(undefined);
-    }
-    const updated: TaxRuleRecord = { ...current, effectiveTo };
-    this.taxRules[index] = updated;
-    return Promise.resolve(updated);
   }
 }
 

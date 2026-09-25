@@ -89,7 +89,6 @@ function scopesConflict(
     if (existing === "location") {
       return rule.locationId === locationId;
     }
-    return false; // storage: refused for tax rules before this point
   }
   return (
     (existing === "channel" && incoming === "location") ||
