@@ -1,6 +1,7 @@
 import {
   computeLandedCost,
   DomainError,
+  includedTax,
   MONEY_SCALE,
   Money,
   parseDecimal,
@@ -10,6 +11,8 @@ import {
   Unit,
 } from "@aquarela/domain";
 import { TAX_BASIS } from "@aquarela/persistence";
+
+import { resolveTaxRule } from "../tax/resolve-tax-rule";
 
 import { RECEIVING_AUDIT_ACTIONS } from "./actions";
 import type { ReceivingStore, ReceivingUnit } from "./types";
@@ -34,12 +37,19 @@ export interface RecordGoodsReceiptLineInput {
   readonly taxBasis: string;
   readonly taxCodeId?: string | null;
   /**
-   * Tax embedded in `price` that is recoverable. **Required** for an inclusive
-   * price; omitted/zero for an exclusive one. CALCULATION_CONTRACT §5 subtracts
-   * it but does not define how to resolve it from the tax code, so the caller
-   * must state it — the boundary never guesses a tax-rate policy.
+   * Tax embedded in `price` that is recoverable. For an inclusive price it may
+   * be stated explicitly, **or** resolved from the linked tax rule; supplying
+   * both is refused (two authorities for one amount cannot both win). It must
+   * be omitted/zero for an exclusive price, which contains no tax. CALCULATION
+   * CONTRACT §5 subtracts it; §2 restricts it to a `recoverable` rule.
    */
   readonly recoverableTax?: string;
+  /**
+   * The channel being priced, when one applies, so `resolveTaxRule` can select
+   * a channel-scoped override (`DEC-045` step 2). A resolution input only — it
+   * is not stored on the receipt line (there is no column for it).
+   */
+  readonly channelId?: string | null;
   readonly allocatedFreight?: string;
   readonly importFee?: string;
   readonly lotNumber?: string | null;
@@ -90,7 +100,8 @@ interface ValidatedLine {
   readonly rejectedPackQty: string;
   readonly allocatedFreight: string;
   readonly importFee: string;
-  readonly recoverableTax: string;
+  /** `null` = derive from the linked tax rule in `recordLine` (§5/`PRICE-006`). */
+  readonly recoverableTax: string | null;
 }
 
 const TAX_BASES: readonly string[] = TAX_BASIS;
@@ -138,18 +149,29 @@ function validateLine(line: RecordGoodsReceiptLineInput): ValidatedLine {
   );
   const importFee = requireNonNegative(line.importFee ?? "0", MONEY_SCALE, "importFee");
 
-  // §5 tax-basis handling is deliberately NOT resolved here: the recoverable tax
-  // inside an inclusive price depends on the tax code's rate/recoverable flag,
-  // which the contract does not pin down. An inclusive price therefore requires
-  // the caller to state it; an exclusive price contains none.
-  let recoverableTax = "0";
+  // §5 tax-basis handling: the recoverable tax inside an inclusive price is
+  // either stated explicitly or resolved from the line's linked tax rule in
+  // `recordLine` (`PRICE-006`/`DEC-045`). Supplying both is refused — the rate
+  // and an explicit amount are two authorities for one figure, and honoring
+  // either silently could store a number the other disagrees with. An exclusive
+  // price already excludes tax, so a supplied value is a caller error.
+  let recoverableTax: string | null = "0";
   if (line.taxBasis === "inclusive") {
-    if (line.recoverableTax === undefined) {
+    if (line.recoverableTax !== undefined) {
+      if (line.taxCodeId != null) {
+        throw new DomainError(
+          "recoverableTax must not be supplied alongside a linked tax rule (taxCodeId) for an inclusive price: the resolved rate and an explicit amount cannot both be authoritative (CALCULATION_CONTRACT §5)",
+        );
+      }
+      recoverableTax = requireNonNegative(line.recoverableTax, MONEY_SCALE, "recoverableTax");
+    } else if (line.taxCodeId == null) {
       throw new DomainError(
-        "recoverableTax is required for an inclusive price (CALCULATION_CONTRACT §5 tax-basis resolution is not implemented)",
+        "recoverableTax is required for an inclusive price with no linked tax rule (taxCodeId): supply recoverableTax or link a tax rule (CALCULATION_CONTRACT §5)",
       );
+    } else {
+      // Resolve the rate from the linked rule inside the transaction.
+      recoverableTax = null;
     }
-    recoverableTax = requireNonNegative(line.recoverableTax, MONEY_SCALE, "recoverableTax");
   } else if (
     line.recoverableTax !== undefined &&
     parseDecimal(line.recoverableTax, MONEY_SCALE) !== 0n
@@ -181,6 +203,42 @@ interface LineContext {
   readonly receivedAt: Date;
 }
 
+/** What tax resolution needs, known before the receipt row exists. */
+interface TaxContext {
+  readonly organizationId: string;
+  readonly locationId: string;
+  readonly receivedAt: Date;
+}
+
+/**
+ * Derives an inclusive line's recoverable tax from its linked tax rule
+ * (`PRICE-006`/`DEC-045`): resolve the effective rate, then take the tax
+ * embedded in the gross price at that rate using the domain's §5 inclusive-basis
+ * primitive (`includedTax` — decimal only, HALF_UP at the money boundary). A
+ * non-`recoverable` rule yields `0`: the input VAT is a cost, not recoverable
+ * (`CALCULATION_CONTRACT §2`). The resolver fails closed, so a missing or
+ * ambiguous rule surfaces as its `DomainError` rather than a guessed rate.
+ */
+async function resolveRecoverableTax(
+  tx: ReceivingStore,
+  ctx: TaxContext,
+  line: ValidatedLine,
+): Promise<string> {
+  const taxCodeId = line.input.taxCodeId;
+  if (taxCodeId == null) {
+    // `validateLine` leaves `null` only for an inclusive line with a linked rule.
+    throw new DomainError("an inclusive price requires a linked tax rule (taxCodeId) to resolve");
+  }
+  const resolved = await resolveTaxRule(tx, {
+    organizationId: ctx.organizationId,
+    asOf: ctx.receivedAt,
+    itemTaxRuleId: taxCodeId,
+    locationId: ctx.locationId,
+    ...(line.input.channelId == null ? {} : { channelId: line.input.channelId }),
+  });
+  return resolved.rule.recoverable ? includedTax(line.input.price, resolved.ratePct) : "0";
+}
+
 /**
  * Computes the landed cost, inserts the line, then appends the price history
  * (DEC-047 precedence: a real supplier item gets an effective-dated
@@ -190,6 +248,7 @@ async function recordLine(
   tx: ReceivingStore,
   ctx: LineContext,
   line: ValidatedLine,
+  recoverableTax: string,
 ): Promise<RecordedGoodsReceiptLine> {
   const item = await tx.findItem(line.input.itemId);
   if (item === undefined || item.organizationId !== ctx.organizationId) {
@@ -212,7 +271,7 @@ async function recordLine(
   const cost = computeLandedCost({
     grossPackPrice: line.input.price,
     discount: line.discount,
-    recoverableTax: line.recoverableTax,
+    recoverableTax,
     allocatedFreight: line.allocatedFreight,
     importFee: line.importFee,
     currency: ctx.currency,
@@ -356,6 +415,18 @@ export async function recordGoodsReceipt(
       }
     }
 
+    // Resolve every inclusive line's recoverable tax before any insert, so an
+    // unresolvable rule refuses without leaving a receipt behind.
+    const taxCtx: TaxContext = {
+      organizationId: input.organizationId,
+      locationId: input.locationId,
+      receivedAt: input.receivedAt,
+    };
+    const recoverableTaxes: string[] = [];
+    for (const line of validated) {
+      recoverableTaxes.push(line.recoverableTax ?? (await resolveRecoverableTax(tx, taxCtx, line)));
+    }
+
     const receipt = await tx.createGoodsReceipt({
       organizationId: input.organizationId,
       supplierId,
@@ -381,8 +452,8 @@ export async function recordGoodsReceipt(
     };
 
     const lines: RecordedGoodsReceiptLine[] = [];
-    for (const line of validated) {
-      lines.push(await recordLine(tx, ctx, line));
+    for (const [index, line] of validated.entries()) {
+      lines.push(await recordLine(tx, ctx, line, recoverableTaxes[index]!));
     }
 
     // Sum of line price × received pack quantity (money scale, HALF_UP), so an

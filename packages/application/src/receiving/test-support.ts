@@ -7,6 +7,7 @@ import {
 } from "@aquarela/domain";
 
 import type { AuditInput } from "../auth";
+import type { TaxRuleRecord, TaxRuleSummaryRecord } from "../tax/read-types";
 import type {
   GoodsReceiptLineRecord,
   GoodsReceiptSummaryRecord,
@@ -31,6 +32,22 @@ function lineGross(line: NewReceiptLineRecord): bigint {
   return rescale(product, MONEY_SCALE + QUANTITY_SCALE, MONEY_SCALE);
 }
 
+/** The picker projection drops the scope and effective-window columns. */
+function toTaxRuleSummary(rule: TaxRuleRecord): TaxRuleSummaryRecord {
+  return {
+    id: rule.id,
+    organizationId: rule.organizationId,
+    code: rule.code,
+    name: rule.name,
+    ratePct: rule.ratePct,
+    taxBasis: rule.taxBasis,
+    taxTreatment: rule.taxTreatment,
+    recoverable: rule.recoverable,
+    appliesTo: rule.appliesTo,
+    scopeType: rule.scopeType,
+  };
+}
+
 /**
  * In-memory `ReceivingStore` for the unit suite. It mirrors the observable
  * contract closely enough to exercise `recordGoodsReceipt` without a database;
@@ -49,6 +66,7 @@ export class FakeReceivingStore implements ReceivingStore {
   readonly locations = new Map<string, ReceivingLocationRecord>();
   readonly supplierOptions: ReceivingSupplierOption[] = [];
   readonly supplierItemOptions: ReceivingSupplierItemOption[] = [];
+  readonly taxRules = new Map<string, TaxRuleRecord>();
 
   async withTransaction<T>(fn: (store: ReceivingStore) => Promise<T>): Promise<T> {
     return fn(this);
@@ -199,6 +217,46 @@ export class FakeReceivingStore implements ReceivingStore {
     return Promise.resolve(
       this.supplierItemOptions.filter((row) => row.organizationId === organizationId),
     );
+  }
+
+  #taxRulesByCode(): TaxRuleRecord[] {
+    return [...this.taxRules.values()].sort((a, b) =>
+      a.code < b.code ? -1 : a.code > b.code ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0,
+    );
+  }
+
+  listTaxRules(query: {
+    readonly organizationId: string;
+    readonly appliesTo?: string;
+    readonly scopeType?: string;
+    readonly limit: number;
+    readonly offset: number;
+  }): Promise<readonly TaxRuleSummaryRecord[]> {
+    const rows = this.#taxRulesByCode()
+      .filter(
+        (rule) =>
+          rule.organizationId === query.organizationId &&
+          (query.appliesTo === undefined || rule.appliesTo === query.appliesTo) &&
+          (query.scopeType === undefined || rule.scopeType === query.scopeType),
+      )
+      .slice(query.offset, query.offset + query.limit);
+    return Promise.resolve(rows.map(toTaxRuleSummary));
+  }
+
+  listEffectiveTaxRules(query: {
+    readonly organizationId: string;
+    readonly asOf: Date;
+    readonly appliesTo?: string;
+  }): Promise<readonly TaxRuleRecord[]> {
+    const at = query.asOf.getTime();
+    const rows = this.#taxRulesByCode().filter(
+      (rule) =>
+        rule.organizationId === query.organizationId &&
+        (query.appliesTo === undefined || rule.appliesTo === query.appliesTo) &&
+        rule.effectiveFrom.getTime() <= at &&
+        (rule.effectiveTo === null || rule.effectiveTo.getTime() > at),
+    );
+    return Promise.resolve(rows);
   }
 
   writeAudit(input: AuditInput): Promise<void> {

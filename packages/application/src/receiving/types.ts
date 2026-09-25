@@ -1,6 +1,7 @@
 import type { UnitDimension } from "@aquarela/domain";
 
 import type { AuditInput } from "../auth";
+import type { TaxReadStore } from "../tax/read-types";
 
 /**
  * Application-level ports and DTOs for slice-4 receiving. The store is a narrow
@@ -203,7 +204,12 @@ export interface ListGoodsReceiptsQuery {
   readonly offset: number;
 }
 
-export interface ReceivingStore {
+/**
+ * Extends the tax read port because `recordGoodsReceipt` resolves an inclusive
+ * line's recoverable tax from its linked rule (`PRICE-006`) inside the same
+ * transaction, reading `tax_rule` through `listEffectiveTaxRules`.
+ */
+export interface ReceivingStore extends TaxReadStore {
   /** Binds `fn` to one transaction so the receipt, its price history and the audit row commit together. */
   withTransaction<T>(fn: (store: ReceivingStore) => Promise<T>): Promise<T>;
   findItem(itemId: string): Promise<ReceivingItem | undefined>;

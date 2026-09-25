@@ -29,7 +29,11 @@ export interface ParsedReceiptLine {
   readonly price: string;
   readonly discount: string;
   readonly taxBasis: string;
+  /** The linked `tax_rule` for the line, used to resolve an inclusive price's tax. */
+  readonly taxCodeId: string | null;
   readonly recoverableTax?: string;
+  /** A resolution input only (`DEC-045` channel override); not stored on the line. */
+  readonly channelId: string | null;
   readonly allocatedFreight: string;
   readonly importFee: string;
   readonly lotNumber: string | null;
@@ -114,6 +118,8 @@ function parseLine(value: unknown): ParsedReceiptLine | undefined {
   const supplierItemId = optionalUuid(line, "supplierItemId");
   const itemId = requiredUuid(line, "itemId");
   const unitId = requiredUuid(line, "unitId");
+  const taxCodeId = optionalUuid(line, "taxCodeId");
+  const channelId = optionalUuid(line, "channelId");
   const receivedPackQty = optionalDecimal(line, "receivedPackQty");
   const acceptedPackQty = optionalDecimal(line, "acceptedPackQty");
   const packToBaseFactor = optionalDecimal(line, "packToBaseFactor");
@@ -125,6 +131,8 @@ function parseLine(value: unknown): ParsedReceiptLine | undefined {
     supplierItemId === "invalid" ||
     itemId === undefined ||
     unitId === undefined ||
+    taxCodeId === "invalid" ||
+    channelId === "invalid" ||
     receivedPackQty === null ||
     receivedPackQty === "invalid" ||
     acceptedPackQty === null ||
@@ -166,7 +174,9 @@ function parseLine(value: unknown): ParsedReceiptLine | undefined {
     price,
     discount: discount ?? "0",
     taxBasis,
+    taxCodeId,
     ...(recoverableTax === null ? {} : { recoverableTax }),
+    channelId,
     allocatedFreight: allocatedFreight ?? "0",
     importFee: importFee ?? "0",
     lotNumber,

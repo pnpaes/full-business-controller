@@ -6,6 +6,8 @@ const LOCATION = "11111111-1111-4111-8111-111111111111";
 const SUPPLIER = "22222222-2222-4222-8222-222222222222";
 const ITEM = "33333333-3333-4333-8333-333333333333";
 const PACK_UNIT = "44444444-4444-4444-8444-444444444444";
+const TAX_RULE = "55555555-5555-4555-8555-555555555555";
+const CHANNEL = "66666666-6666-4666-8666-666666666666";
 
 function baseBody(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
@@ -94,6 +96,30 @@ describe("parseReceiptBody", () => {
       lotNumber: "LOT-1",
       expiryDate: "2027-01-01",
     });
+  });
+
+  it("carries the linked tax rule and channel, and rejects a malformed one", () => {
+    const line = {
+      itemId: ITEM,
+      unitId: PACK_UNIT,
+      receivedPackQty: "1",
+      acceptedPackQty: "1",
+      packToBaseFactor: "1000",
+      price: "125",
+      taxBasis: "inclusive",
+    };
+    const parsed = parseReceiptBody(
+      baseBody({ lines: [{ ...line, taxCodeId: TAX_RULE, channelId: CHANNEL }] }),
+    );
+
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.input.lines[0]).toMatchObject({ taxCodeId: TAX_RULE, channelId: CHANNEL });
+
+    expect(parseReceiptBody(baseBody({ lines: [{ ...line, taxCodeId: "not-a-uuid" }] })).ok).toBe(
+      false,
+    );
+    expect(parseReceiptBody(baseBody({ lines: [{ ...line, channelId: "nope" }] })).ok).toBe(false);
   });
 
   it("rejects shape violations before any domain rule runs", () => {

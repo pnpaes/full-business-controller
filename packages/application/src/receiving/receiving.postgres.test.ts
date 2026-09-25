@@ -2,6 +2,7 @@ import {
   createDb,
   createSupplier,
   createSupplierItem,
+  channel,
   findGoodsReceiptById,
   item,
   listAuditEventsForEntity,
@@ -10,6 +11,7 @@ import {
   listGoodsReceiptsForOrganization,
   listSupplierPricesForSupplierItem,
   location,
+  taxRule,
   type DatabaseTransaction,
   type DbClient,
   type NodeDatabase,
@@ -359,6 +361,165 @@ describe.skipIf(!databaseUrl)("recordGoodsReceipt against PostgreSQL", () => {
 
       const receipts = await listGoodsReceiptsForOrganization(tx, orgId);
       expect(receipts).toHaveLength(0);
+    });
+  });
+
+  it("resolves an inclusive line's recoverable tax from a fixed linked rule", async () => {
+    await inRollback(client.db, async (tx) => {
+      const fixture = await createFixture(tx, orgId);
+      const rule = await tx
+        .insert(taxRule)
+        .values({
+          organizationId: orgId,
+          code: `vat_fixed_${suffix}`,
+          name: "Fixed 25",
+          ratePct: "0.250000",
+          taxBasis: "inclusive",
+          taxTreatment: "fixed",
+          recoverable: true,
+          appliesTo: "cost",
+          scopeType: "company_wide",
+          effectiveFrom: new Date("2026-01-01T00:00:00Z"),
+        })
+        .returning();
+
+      const result = await recordGoodsReceipt(createPostgresReceivingStore(tx), {
+        organizationId: orgId,
+        locationId: fixture.locationId,
+        actorId: randomUUID(),
+        receivedAt,
+        supplierId: fixture.supplierId,
+        lines: [
+          {
+            supplierItemId: fixture.supplierItemId,
+            itemId: fixture.itemId,
+            receivedPackQty: "1",
+            acceptedPackQty: "1",
+            unitId: fixture.packUnitId,
+            packToBaseFactor: "1000",
+            price: "125",
+            taxBasis: "inclusive",
+            taxCodeId: rule[0]!.id,
+          },
+        ],
+      });
+
+      // 125 inclusive at 25 % -> 25 recoverable -> 100 net -> 0.1000 per base unit.
+      expect(result.lines[0]!.netPackPrice).toBe("100.0000");
+      expect(result.lines[0]!.landedBaseUnitCost).toBe("0.1000");
+      const lines = await listGoodsReceiptLines(tx, result.goodsReceiptId);
+      expect(lines[0]!.taxCodeId).toBe(rule[0]!.id);
+      expect(lines[0]!.landedBaseUnitCost).toBe("0.1000");
+      const prices = await listSupplierPricesForSupplierItem(tx, fixture.supplierItemId);
+      expect(prices[0]).toMatchObject({ netPackPrice: "100.0000", landedBaseUnitCost: "0.1000" });
+    });
+  });
+
+  it("resolves a channel-scoped override for an inclusive line", async () => {
+    await inRollback(client.db, async (tx) => {
+      const fixture = await createFixture(tx, orgId);
+      const channelRow = await tx
+        .insert(channel)
+        .values({ organizationId: orgId, code: `chan_${suffix}`, name: "Takeaway" })
+        .returning();
+      const defaults = await tx
+        .insert(taxRule)
+        .values({
+          organizationId: orgId,
+          code: `vat_default_${suffix}`,
+          name: "Default 25",
+          ratePct: "0.250000",
+          taxBasis: "inclusive",
+          taxTreatment: "channel_overridable",
+          recoverable: true,
+          appliesTo: "cost",
+          scopeType: "company_wide",
+          effectiveFrom: new Date("2026-01-01T00:00:00Z"),
+        })
+        .returning();
+      await tx.insert(taxRule).values({
+        organizationId: orgId,
+        code: `vat_takeaway_${suffix}`,
+        name: "Takeaway 15",
+        ratePct: "0.150000",
+        taxBasis: "inclusive",
+        taxTreatment: "channel_overridable",
+        recoverable: true,
+        appliesTo: "cost",
+        scopeType: "channel",
+        channelId: channelRow[0]!.id,
+        effectiveFrom: new Date("2026-01-01T00:00:00Z"),
+      });
+
+      const result = await recordGoodsReceipt(createPostgresReceivingStore(tx), {
+        organizationId: orgId,
+        locationId: fixture.locationId,
+        actorId: randomUUID(),
+        receivedAt,
+        supplierId: fixture.supplierId,
+        lines: [
+          {
+            supplierItemId: fixture.supplierItemId,
+            itemId: fixture.itemId,
+            receivedPackQty: "1",
+            acceptedPackQty: "1",
+            unitId: fixture.packUnitId,
+            packToBaseFactor: "1000",
+            price: "115",
+            taxBasis: "inclusive",
+            taxCodeId: defaults[0]!.id,
+            channelId: channelRow[0]!.id,
+          },
+        ],
+      });
+
+      // 115 inclusive at the 15 % channel override -> 15 recoverable -> 100 net.
+      expect(result.lines[0]!.netPackPrice).toBe("100.0000");
+    });
+  });
+
+  it("refuses an explicit recoverable tax alongside a linked rule", async () => {
+    await inRollback(client.db, async (tx) => {
+      const fixture = await createFixture(tx, orgId);
+      const rule = await tx
+        .insert(taxRule)
+        .values({
+          organizationId: orgId,
+          code: `vat_fixed2_${suffix}`,
+          name: "Fixed 25",
+          ratePct: "0.250000",
+          taxBasis: "inclusive",
+          taxTreatment: "fixed",
+          recoverable: true,
+          appliesTo: "cost",
+          scopeType: "company_wide",
+          effectiveFrom: new Date("2026-01-01T00:00:00Z"),
+        })
+        .returning();
+
+      await expect(
+        recordGoodsReceipt(createPostgresReceivingStore(tx), {
+          organizationId: orgId,
+          locationId: fixture.locationId,
+          actorId: randomUUID(),
+          receivedAt,
+          supplierId: fixture.supplierId,
+          lines: [
+            {
+              supplierItemId: fixture.supplierItemId,
+              itemId: fixture.itemId,
+              receivedPackQty: "1",
+              acceptedPackQty: "1",
+              unitId: fixture.packUnitId,
+              packToBaseFactor: "1000",
+              price: "125",
+              taxBasis: "inclusive",
+              taxCodeId: rule[0]!.id,
+              recoverableTax: "25",
+            },
+          ],
+        }),
+      ).rejects.toThrow(/must not be supplied alongside a linked tax rule/);
     });
   });
 

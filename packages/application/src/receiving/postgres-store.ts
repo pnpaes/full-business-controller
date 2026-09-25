@@ -2,6 +2,8 @@ import type { UnitDimension } from "@aquarela/domain";
 import * as repo from "@aquarela/persistence";
 import type { Database, NodeDatabase } from "@aquarela/persistence";
 
+import { createPostgresCostingReadStore } from "../costing/read-postgres-store";
+
 import type {
   GoodsReceiptLineRecord,
   GoodsReceiptSummaryRecord,
@@ -107,6 +109,9 @@ function toSupplierItemOption(row: repo.ReceivingSupplierItemOption): ReceivingS
 
 /** Adapts the persistence repositories to the `ReceivingStore` port. */
 export function createPostgresReceivingStore(db: Database): ReceivingStore {
+  // Reuses the costing read adapter's tax-rule projection; the receiving store
+  // exposes it so `recordGoodsReceipt` can resolve an inclusive line's rate.
+  const taxReads = createPostgresCostingReadStore(db);
   return {
     withTransaction: async (fn) => {
       if (!isNodeDatabase(db)) {
@@ -181,6 +186,8 @@ export function createPostgresReceivingStore(db: Database): ReceivingStore {
       (await repo.listSuppliersForOrganization(db, organizationId)).map(toSupplierOption),
     listSupplierItemOptions: async (organizationId) =>
       (await repo.listReceivingSupplierItemOptions(db, organizationId)).map(toSupplierItemOption),
+    listTaxRules: (query) => taxReads.listTaxRules(query),
+    listEffectiveTaxRules: (query) => taxReads.listEffectiveTaxRules(query),
     writeAudit: async (input) => {
       await repo.writeAuditEvent(db, input);
     },
