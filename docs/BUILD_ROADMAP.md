@@ -192,8 +192,11 @@ login model** (must a self-assigning employee hold an `app_user` login?)
 and the **privacy-review retention periods per file class** remain open
 inputs; the receipt→ledger wiring needs the OPS destination
 `storage_area_id` policy; row 13 is **data-gated** on
-history/grain quality (I11); rows 15–18 remain blocked (data /
-`ADR-0009`–`0011`); the deployment rehearsal is parked on the owner inputs;
+history/grain quality (I11); row 16 is no longer fully owner-blocked
+(`ADR-0011` accepted 2026-09-25 and INTG-001 delivered — INTG-002 publishing
+remains gated on per-source write terms I15/I18 + `ADR-0004`); rows 15, 17
+and 18 remain blocked (data / `ADR-0009`–`0010`); the deployment rehearsal
+is parked on the owner inputs;
 the golden fixtures are unsigned.
 Next free decision id `DEC-112`.
 
@@ -234,8 +237,9 @@ Next free decision id `DEC-112`.
 Pause the loop and raise to the owner, recording it in `CONTEXT.md`, when any of these is hit:
 
 - **Proposed ADR required by the slice.** The slice cites an ADR whose status is `Proposed`.
-  (As of 2026-09-21 the `Proposed` ADRs are `ADR-0004`, `ADR-0009`,
-  `ADR-0010` and `ADR-0011`; `ADR-0006` is **accepted** 2026-09-21;
+  (As of 2026-09-25 the `Proposed` ADRs are `ADR-0004`, `ADR-0009` and
+  `ADR-0010`; `ADR-0011` is **accepted** 2026-09-25 (`DEC-137`);
+  `ADR-0006` is **accepted** 2026-09-21;
   `ADR-0005`, `ADR-0007` and `ADR-0008` are **accepted** 2026-09-20.)
   **Programme note (2026-09-21):** under `DEC-094` the `task`/`approval`
   platform tables build now without the gate; the `job`/worker/outbox layer
