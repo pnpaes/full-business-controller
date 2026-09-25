@@ -9,7 +9,7 @@
 import type { ButtonHTMLAttributes, CSSProperties, InputHTMLAttributes, ReactNode } from "react";
 
 import { SearchIcon, cx } from "./components";
-import { color, iconSize, radius, spacing, typography } from "./tokens";
+import { color, geometry, iconSize, radius, spacing, typography } from "./tokens";
 
 const fontSans = { fontFamily: typography.fontFamily.sans } as const;
 
@@ -109,9 +109,9 @@ export function Search({ name, label, id, placeholder, className, style, ...rest
         display: "flex",
         alignItems: "center",
         gap: spacing[2],
-        minHeight: 44,
+        minHeight: geometry.controlHeight.md,
         padding: `0 ${spacing[3]}px`,
-        backgroundColor: color.surface.well,
+        backgroundColor: color.surface.base,
         border: `1px solid ${color.border.subtle}`,
         borderRadius: radius.md,
         color: color.ink.secondary,

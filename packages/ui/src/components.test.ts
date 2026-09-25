@@ -2,7 +2,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { Button, Table, TextField } from "./components";
+import { Badge, Button, StatusPill, Table, TextField, Th, Td, uiGlobalCss } from "./components";
 
 const render = (element: React.ReactElement): string => renderToStaticMarkup(element);
 
@@ -59,6 +59,62 @@ describe("Table", () => {
     expect(html).toMatch(/colspan="3"/i);
     expect(html).toContain("No batches yet");
   });
+
+  it("uses the recipe table metrics: 40px header on the muted well, 56px rows", () => {
+    const head = render(createElement(Th, { children: "Code" }));
+    expect(head).toContain("height:40px");
+    expect(head).toContain("background-color:#F8F9FC");
+    const cell = render(createElement(Td, { children: "B-42" }));
+    expect(cell).toContain("height:56px");
+  });
+});
+
+describe("Badge and StatusPill tones", () => {
+  it("Badge defaults to the quiet neutral pill", () => {
+    const html = render(createElement(Badge, { children: "Draft" }));
+    expect(html).toContain("background-color:#F8F9FC");
+    expect(html).toContain("color:#353C50");
+  });
+
+  it("Badge supports the semantic status and brand-soft tones", () => {
+    expect(render(createElement(Badge, { tone: "success", children: "OK" }))).toContain(
+      "background-color:#E2EFE9",
+    );
+    expect(render(createElement(Badge, { tone: "warning", children: "Low" }))).toContain(
+      "color:#523608",
+    );
+    expect(render(createElement(Badge, { tone: "danger", children: "Out" }))).toContain(
+      "background-color:#F8E8E9",
+    );
+    expect(render(createElement(Badge, { tone: "info", children: "New" }))).toContain(
+      "color:#3865AD",
+    );
+    expect(render(createElement(Badge, { tone: "brand", children: "Brand" }))).toContain(
+      "background-color:#EEECFF",
+    );
+    expect(render(createElement(Badge, { tone: "brand", children: "Brand" }))).toContain(
+      "color:#5742BA",
+    );
+  });
+
+  it("StatusPill accepts neutral and brand in addition to the statuses", () => {
+    expect(render(createElement(StatusPill, { tone: "neutral", children: "Draft" }))).toContain(
+      "background-color:#F8F9FC",
+    );
+    expect(render(createElement(StatusPill, { tone: "brand", children: "Brand" }))).toContain(
+      "color:#5742BA",
+    );
+    expect(render(createElement(StatusPill, { tone: "danger", children: "Out" }))).toContain(
+      "background-color:#F8E8E9",
+    );
+  });
+});
+
+describe("Focus ring (DEC-129)", () => {
+  it("global CSS carries the 3px solid iris ring with a 2px offset", () => {
+    expect(uiGlobalCss).toContain("outline: 3px solid #5742BA");
+    expect(uiGlobalCss).toContain("outline-offset: 2px");
+  });
 });
 
 describe("Button", () => {
@@ -66,6 +122,23 @@ describe("Button", () => {
     const html = render(createElement(Button, { loading: true }, "Save"));
     expect(html).toContain('aria-busy="true"');
     expect(html).toContain("disabled");
+  });
+
+  it("disabled uses the 0.45 recipe opacity", () => {
+    const html = render(createElement(Button, { disabled: true }, "Save"));
+    expect(html).toContain("opacity:0.45");
+  });
+
+  it("brand-soft variant uses the lavender surface with iris text", () => {
+    const html = render(createElement(Button, { variant: "brandSoft" }, "Filter"));
+    expect(html).toContain("background-color:#EEECFF");
+    expect(html).toContain("color:#5742BA");
+  });
+
+  it("sizes follow the control-height geometry (32/40/48)", () => {
+    expect(render(createElement(Button, { size: "sm" }, "x"))).toContain("min-height:32px");
+    expect(render(createElement(Button, {}, "x"))).toContain("min-height:40px");
+    expect(render(createElement(Button, { size: "lg" }, "x"))).toContain("min-height:48px");
   });
 
   it("spreads onClick, type and formAction through", () => {

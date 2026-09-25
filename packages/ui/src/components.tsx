@@ -21,7 +21,17 @@ import type {
   TdHTMLAttributes,
 } from "react";
 
-import { color, elevation, iconSize, motion, radius, spacing, typography } from "./tokens";
+import {
+  color,
+  elevation,
+  focus,
+  geometry,
+  iconSize,
+  motion,
+  radius,
+  spacing,
+  typography,
+} from "./tokens";
 
 /** Join class names, skipping falsy values. */
 export function cx(...parts: Array<string | false | null | undefined>): string {
@@ -46,12 +56,12 @@ const focusableReset: CSSProperties = {
  */
 export const uiGlobalCss = `
 :where(a, button, input, select, textarea, [tabindex]):focus-visible {
-  outline: 2px solid ${color.border.focus};
-  outline-offset: 2px;
+  outline: ${focus.ringWidth}px solid ${focus.ringColor};
+  outline-offset: ${focus.ringOffset}px;
 }
 .aquarela-field:focus-within {
-  outline: 2px solid ${color.border.focus};
-  outline-offset: 2px;
+  outline: ${focus.ringWidth}px solid ${focus.ringColor};
+  outline-offset: ${focus.ringOffset}px;
 }
 /* Buttons: subtle press feedback and quiet hover (brief §12, §19). */
 .aquarela-btn {
@@ -77,6 +87,20 @@ export const uiGlobalCss = `
 }
 .aquarela-btn-ghost:hover:not(:disabled) {
   background-color: ${color.surface.muted} !important; /* inline styles win otherwise */
+}
+.aquarela-btn-brand-soft:hover:not(:disabled) {
+  /* brand/15 over the lavender soft surface (recipe hover:bg-brand/15). */
+  background-color: #d7d2f3 !important; /* inline styles win otherwise */
+}
+/* Coarse pointers keep the 44px touch target on controls whose resting
+ * height is the 40px control height (DEC-129 keeps both). */
+@media (pointer: coarse) {
+  .aquarela-btn {
+    min-height: ${geometry.touchTarget}px !important; /* inline styles win otherwise */
+  }
+  .aquarela-field {
+    min-height: ${geometry.touchTarget}px !important; /* inline styles win otherwise */
+  }
 }
 /* Table: tonal row hover and sticky-header hook (brief §11). */
 .aquarela-table tbody tr:hover td {
@@ -127,8 +151,8 @@ export const uiGlobalCss = `
   box-shadow: inset 0 0 0 2px ${color.accent.deep};
 }
 .aquarela-seg input:focus-visible + span {
-  outline: 2px solid ${color.border.focus};
-  outline-offset: 2px;
+  outline: ${focus.ringWidth}px solid ${focus.ringColor};
+  outline-offset: ${focus.ringOffset}px;
 }
 /* Filter chip active state (brief §12: active filters use the accent). */
 .aquarela-chip {
@@ -219,12 +243,13 @@ export const STATUS_DOT_BORDER_PX = 1.5;
 
 /* ---------------------------------- Button --------------------------------- */
 
-type ButtonVariant = "primary" | "secondary" | "danger" | "ghost";
+type ButtonVariant = "primary" | "secondary" | "danger" | "ghost" | "brandSoft";
 type ButtonSize = "sm" | "md" | "lg";
 
 /**
  * Brief §12: primary = solid dark neutral; secondary = quiet tonal surface;
- * danger = muted tint; ghost = text only.
+ * danger = muted tint; ghost = text only; brand-soft = lavender surface with
+ * the text-safe iris (DEC-129 recipe `brand-soft`).
  */
 const buttonVariants: Record<ButtonVariant, CSSProperties> = {
   primary: {
@@ -247,6 +272,11 @@ const buttonVariants: Record<ButtonVariant, CSSProperties> = {
     color: color.text.secondary,
     border: "1px solid transparent",
   },
+  brandSoft: {
+    backgroundColor: color.accent.soft,
+    color: color.accent.deep,
+    border: `1px solid ${color.accent.soft}`,
+  },
 };
 
 const buttonVariantClasses: Record<ButtonVariant, string> = {
@@ -254,22 +284,23 @@ const buttonVariantClasses: Record<ButtonVariant, string> = {
   secondary: "aquarela-btn-secondary",
   danger: "aquarela-btn-danger",
   ghost: "aquarela-btn-ghost",
+  brandSoft: "aquarela-btn-brand-soft",
 };
 
-/** md is 44px tall: touch targets suitable for kitchen/phone use (§8.6). */
+/** Control heights from the design system recipes: 32 / 40 / 48 (DEC-129). */
 const buttonSizes: Record<ButtonSize, CSSProperties> = {
   sm: {
-    minHeight: 32,
+    minHeight: geometry.controlHeight.sm,
     padding: `${spacing[1]}px ${spacing[3]}px`,
     fontSize: typography.fontSize.sm,
   },
   md: {
-    minHeight: MIN_TOUCH_TARGET_PX,
+    minHeight: geometry.controlHeight.md,
     padding: `${spacing[2]}px ${spacing[4]}px`,
     fontSize: typography.fontSize.md,
   },
   lg: {
-    minHeight: 48,
+    minHeight: geometry.controlHeight.lg,
     padding: `${spacing[3]}px ${spacing[5]}px`,
     fontSize: typography.fontSize.lg,
   },
@@ -310,7 +341,7 @@ export function Button({
         borderRadius: radius.md,
         fontWeight: typography.fontWeight.medium,
         cursor: inactive ? "not-allowed" : "pointer",
-        opacity: inactive ? 0.6 : 1,
+        opacity: inactive ? 0.45 : 1,
         ...style,
       }}
     >
@@ -394,10 +425,10 @@ export function TextField({
         style={{
           display: "flex",
           alignItems: "center",
-          backgroundColor: color.surface.well,
+          backgroundColor: color.surface.base,
           border: `1px solid ${error ? color.status.danger.border : color.border.default}`,
           borderRadius: radius.md,
-          minHeight: MIN_TOUCH_TARGET_PX,
+          minHeight: geometry.controlHeight.md,
           transition: `border-color ${motion.duration.fast}ms ${motion.easing}`,
         }}
       >
@@ -482,7 +513,7 @@ export function Card({ elevation: level = "raised", children }: CardProps) {
     <section
       style={{
         ...cardElevations[level],
-        borderRadius: radius.xl,
+        borderRadius: radius.lg,
         border: `1px solid ${color.border.subtle}`,
         padding: spacing[5],
       }}
@@ -602,11 +633,27 @@ export function Alert({ tone, title, children }: AlertProps) {
 
 /* ----------------------------- Badge / StatusPill --------------------------- */
 
+/** Semantic badge/pill tones (DEC-129 recipe): the four statuses plus
+ * neutral and the lavender brand-soft surface. */
+type BadgeTone = Tone | "neutral" | "brand";
+
+const badgeTones: Record<BadgeTone, { bg: string; fg: string }> = {
+  info: { bg: color.status.info.bg, fg: color.status.info.fg },
+  success: { bg: color.status.success.bg, fg: color.status.success.fg },
+  warning: { bg: color.status.warning.bg, fg: color.status.warning.fg },
+  danger: { bg: color.status.danger.bg, fg: color.status.danger.fg },
+  neutral: { bg: color.surface.muted, fg: color.ink.secondary },
+  brand: { bg: color.accent.soft, fg: color.accent.deep },
+};
+
 export interface BadgeProps {
   children: ReactNode;
+  /** Semantic tone; defaults to the quiet neutral pill. */
+  tone?: BadgeTone;
 }
 
-export function Badge({ children }: BadgeProps) {
+export function Badge({ tone = "neutral", children }: BadgeProps) {
+  const tone_ = badgeTones[tone];
   return (
     <span
       style={{
@@ -615,8 +662,8 @@ export function Badge({ children }: BadgeProps) {
         gap: spacing[1],
         padding: `${spacing[0]}px ${spacing[2]}px`,
         borderRadius: radius.pill,
-        backgroundColor: color.surface.muted,
-        color: color.ink.secondary,
+        backgroundColor: tone_.bg,
+        color: tone_.fg,
         border: `1px solid ${color.border.subtle}`,
         fontSize: typography.fontSize.xs,
         fontWeight: typography.fontWeight.medium,
@@ -630,12 +677,12 @@ export function Badge({ children }: BadgeProps) {
 }
 
 export interface StatusPillProps {
-  tone: Tone;
+  tone: BadgeTone;
   children: ReactNode;
 }
 
 export function StatusPill({ tone, children }: StatusPillProps) {
-  const tone_ = color.status[tone];
+  const tone_ = badgeTones[tone];
   return (
     <span
       style={{
@@ -754,8 +801,9 @@ export function Th({
       {...rest}
       style={{
         textAlign: "left",
-        padding: `${spacing[2]}px ${spacing[3]}px`,
-        backgroundColor: "transparent",
+        height: geometry.tableHeaderHeight,
+        padding: `${spacing[2]}px ${spacing[4]}px`,
+        backgroundColor: color.surface.well,
         color: color.ink.secondary,
         fontSize: typography.fontSize.xs,
         fontWeight: typography.fontWeight.medium,
@@ -781,7 +829,8 @@ export function Td({
     <td
       {...rest}
       style={{
-        padding: `${spacing[3]}px ${spacing[3]}px`,
+        height: geometry.tableRowHeight.default,
+        padding: `${spacing[3]}px ${spacing[4]}px`,
         borderBottom: `1px solid ${color.border.subtle}`,
         color: color.ink.primary,
         fontVariantNumeric: typography.fontVariantNumeric.tabular,

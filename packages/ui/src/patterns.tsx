@@ -18,7 +18,7 @@ import type {
 } from "react";
 
 import { MIN_TOUCH_TARGET_PX, Table, Td, Th, cx } from "./components";
-import { color, motion, radius, spacing, typography } from "./tokens";
+import { color, geometry, motion, radius, spacing, typography } from "./tokens";
 
 const fontSans = { fontFamily: typography.fontFamily.sans } as const;
 const fontDisplay = { fontFamily: typography.fontFamily.display } as const;
@@ -44,10 +44,10 @@ function controlFrame(error: string | undefined): CSSProperties {
   return {
     display: "flex",
     alignItems: "center",
-    backgroundColor: color.surface.well,
+    backgroundColor: color.surface.base,
     border: `1px solid ${error ? color.status.danger.border : color.border.default}`,
     borderRadius: radius.md,
-    minHeight: MIN_TOUCH_TARGET_PX,
+    minHeight: geometry.controlHeight.md,
     transition: `border-color ${motion.duration.fast}ms ${motion.easing}`,
   };
 }

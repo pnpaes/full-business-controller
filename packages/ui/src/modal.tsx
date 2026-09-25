@@ -86,7 +86,7 @@ export function Modal({ title, children, footer, open = false, onClose }: ModalP
           gap: spacing[4],
           padding: spacing[5],
           backgroundColor: color.surface.strong,
-          borderRadius: radius["2xl"],
+          borderRadius: radius.xl,
           boxShadow: elevation.lg,
           outline: "none",
         }}

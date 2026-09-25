@@ -114,7 +114,14 @@ export function LoginForm() {
             disabled={busy}
             placeholder="you@aquarela.no"
           />
-          <TextField name="password" label="Password" type="password" required disabled={busy} />
+          <TextField
+            name="password"
+            label="Password"
+            type="password"
+            autoComplete="current-password"
+            required
+            disabled={busy}
+          />
           <Button type="submit" loading={busy} disabled={busy}>
             Continue
           </Button>
