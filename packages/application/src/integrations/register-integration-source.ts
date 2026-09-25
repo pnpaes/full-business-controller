@@ -71,7 +71,7 @@ export function normalizeIntegrationSourceFields(
     throw new DomainError(`direction must be one of ${DIRECTIONS.join(", ")}`);
   }
 
-  const allowedOperations = [...(input.allowedOperations ?? [])];
+  const allowedOperations = [...new Set(input.allowedOperations ?? [])];
   for (const operation of allowedOperations) {
     if (!ALLOWED_OPERATIONS.includes(operation)) {
       throw new DomainError(`allowedOperations must only contain ${ALLOWED_OPERATIONS.join(", ")}`);

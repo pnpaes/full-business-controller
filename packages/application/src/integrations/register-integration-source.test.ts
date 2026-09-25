@@ -94,6 +94,12 @@ describe("registerIntegrationSource", () => {
     ).rejects.toThrow(/termsStatus must be one of/);
   });
 
+  it("deduplicates allowedOperations, preserving order", async () => {
+    const store = new FakeIntegrationSourceStore();
+    await registerIntegrationSource(store, baseInput({ allowedOperations: ["read", "read"] }));
+    expect(store.sources[0]).toMatchObject({ allowedOperations: ["read"] });
+  });
+
   it("rejects an operation outside ALLOWED_OPERATION", async () => {
     const store = new FakeIntegrationSourceStore();
     await expect(

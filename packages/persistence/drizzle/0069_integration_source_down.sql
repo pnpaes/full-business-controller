@@ -9,6 +9,10 @@
 -- still lost, so take a backup before running the drop (AGENTS.md Rule 2).
 -- Apply it manually with
 --   psql "$DATABASE_URL" -f packages/persistence/drizzle/0069_integration_source_down.sql
+--
+-- Rehearsed 2026-09-25 on a scratch database (never the dev database): created,
+-- all migrations applied, `integration_source` confirmed present, this down
+-- applied, table confirmed absent, scratch database dropped.
 BEGIN;
 
 DROP TABLE IF EXISTS "integration_source";
