@@ -21,6 +21,16 @@ export const dynamic = "force-dynamic";
 export const metadata = { title: "What-if simulation — Aquarela Business Control" };
 
 /**
+ * Page-scoped responsive rule (the `insights` landing's pattern): the result
+ * chart svg carries a fixed pixel width, so CSS constrains it to the panel and
+ * the viewBox keeps the aspect ratio — the chart reflows instead of scrolling
+ * the page.
+ */
+const pageCss = `
+.sim-chart svg { width: 100%; height: auto; }
+`;
+
+/**
  * What-if simulation (`W6`, `DEC-125`). A server component that gates the route
  * on the reporting roles, loads the locations in the caller's scope and the
  * organization's recipes for the pickers, then hands the form to the client
@@ -60,6 +70,7 @@ export default async function SimulationPage() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: spacing[6] }}>
+      <style>{pageCss}</style>
       <div style={{ display: "flex", flexDirection: "column", gap: spacing[2] }}>
         <Breadcrumbs
           items={[

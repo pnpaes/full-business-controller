@@ -304,7 +304,6 @@ export default async function RecipeDetailPage({
         display: "flex",
         flexDirection: "column",
         gap: spacing[6],
-        width: "100%",
         maxWidth: 1120,
         margin: "0 auto",
         padding: `${spacing[8]}px ${spacing[4]}px`,
@@ -465,58 +464,65 @@ export default async function RecipeDetailPage({
                   >
                     Lines
                   </span>
-                  <Table
-                    caption={`Nested lines for version ${entry.version.versionNo}. Quantities pair with each line's unit.`}
-                    columnCount={5}
-                    emptyMessage="This version has no lines."
-                  >
-                    <thead>
-                      <tr>
-                        <Th>Component</Th>
-                        <Th>Item / sub-recipe</Th>
-                        <Th style={{ textAlign: "right" }}>Quantity</Th>
-                        <Th>Unit</Th>
-                        <Th style={{ textAlign: "right" }}>Loss factor</Th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {entry.lines.map((line) => {
-                        const item = line.itemId === null ? undefined : refs.items.get(line.itemId);
-                        const sub =
-                          line.subRecipeId === null
-                            ? undefined
-                            : refs.subRecipes.get(line.subRecipeId);
-                        return (
-                          <tr key={line.id}>
-                            <Td>{line.componentKind}</Td>
-                            <Td>
-                              {line.subRecipeId !== null ? (
-                                <a
-                                  href={`/recipes/${line.subRecipeId}`}
-                                  style={{ color: color.brand.navy }}
-                                >
-                                  {sub?.name ?? line.subRecipeId}
-                                </a>
-                              ) : (
-                                <span title={line.itemId ?? undefined}>
-                                  {item?.name ?? line.itemId ?? "—"}
-                                </span>
-                              )}
-                            </Td>
-                            <Td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
-                              {trimDecimal(line.quantity)}
-                            </Td>
-                            <Td>
-                              <Badge>{refs.units.get(line.unitId)?.code ?? line.unitId}</Badge>
-                            </Td>
-                            <Td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
-                              {trimDecimal(line.lossFactor)}
-                            </Td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </Table>
+                  <div style={{ overflowX: "auto", minWidth: 0 }}>
+                    <Table
+                      caption={`Nested lines for version ${entry.version.versionNo}. Quantities pair with each line's unit.`}
+                      columnCount={5}
+                      emptyMessage="This version has no lines."
+                    >
+                      <thead>
+                        <tr>
+                          <Th>Component</Th>
+                          <Th>Item / sub-recipe</Th>
+                          <Th style={{ textAlign: "right" }}>Quantity</Th>
+                          <Th>Unit</Th>
+                          <Th style={{ textAlign: "right" }}>Loss factor</Th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {entry.lines.map((line) => {
+                          const item =
+                            line.itemId === null ? undefined : refs.items.get(line.itemId);
+                          const sub =
+                            line.subRecipeId === null
+                              ? undefined
+                              : refs.subRecipes.get(line.subRecipeId);
+                          return (
+                            <tr key={line.id}>
+                              <Td>{line.componentKind}</Td>
+                              <Td>
+                                {line.subRecipeId !== null ? (
+                                  <a
+                                    href={`/recipes/${line.subRecipeId}`}
+                                    style={{ color: color.brand.navy }}
+                                  >
+                                    {sub?.name ?? line.subRecipeId}
+                                  </a>
+                                ) : (
+                                  <span title={line.itemId ?? undefined}>
+                                    {item?.name ?? line.itemId ?? "—"}
+                                  </span>
+                                )}
+                              </Td>
+                              <Td
+                                style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}
+                              >
+                                {trimDecimal(line.quantity)}
+                              </Td>
+                              <Td>
+                                <Badge>{refs.units.get(line.unitId)?.code ?? line.unitId}</Badge>
+                              </Td>
+                              <Td
+                                style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}
+                              >
+                                {trimDecimal(line.lossFactor)}
+                              </Td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </Table>
+                  </div>
                 </div>
 
                 <div style={{ display: "flex", gap: spacing[2], alignItems: "baseline" }}>
@@ -588,83 +594,87 @@ function VersionTests({
       >
         Tests
       </span>
-      <Table
-        caption={`Recipe trials recorded for version ${versionId}. The yield is derived from the measured output and batch input; a recorded cost is illustrative, not a computed verified cost.`}
-        columnCount={8}
-        emptyMessage="No trials recorded for this version yet."
-      >
-        <thead>
-          <tr>
-            <Th>Tested</Th>
-            <Th style={{ textAlign: "right" }}>Batch input</Th>
-            <Th style={{ textAlign: "right" }}>Actual output</Th>
-            <Th style={{ textAlign: "right" }}>Yield (derived)</Th>
-            <Th style={{ textAlign: "right" }}>Duration</Th>
-            <Th>Cost</Th>
-            <Th>Quality / proposal</Th>
-            <Th>Resulting</Th>
-          </tr>
-        </thead>
-        <tbody>
-          {tests.map((test) => {
-            const yieldRate = derivedYield(test.actualOutputQty, test.batchInputQty);
-            return (
-              <tr key={test.id}>
-                <Td>{instantDay(test.testedAt)}</Td>
-                <Td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
-                  {trimDecimal(test.batchInputQty)}
-                </Td>
-                <Td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
-                  {test.actualOutputQty === null ? "—" : trimDecimal(test.actualOutputQty)}
-                </Td>
-                <Td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
-                  {yieldRate === null ? "—" : trimDecimal(yieldRate)}
-                </Td>
-                <Td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
-                  {test.actualDurationMinutes === null ? "—" : `${test.actualDurationMinutes} min`}
-                </Td>
-                <Td>
-                  {test.actualCost === null ? (
-                    "—"
-                  ) : (
-                    <span style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                      <span style={{ fontVariantNumeric: "tabular-nums" }}>
-                        {formatMoneyAmount(test.actualCost)}
-                        {test.currency === null ? "" : ` ${test.currency}`}
-                      </span>
-                      <span style={{ fontSize: typography.fontSize.xs, color: color.text.muted }}>
-                        illustrative
-                      </span>
-                    </span>
-                  )}
-                </Td>
-                <Td>
-                  <span style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                    <span>{test.qualityComments ?? "—"}</span>
-                    {test.proposedAdjustment === null ? null : (
-                      <span style={{ fontSize: typography.fontSize.xs, color: color.text.muted }}>
-                        Proposal: {test.proposedAdjustment}
+      <div style={{ overflowX: "auto", minWidth: 0 }}>
+        <Table
+          caption={`Recipe trials recorded for version ${versionId}. The yield is derived from the measured output and batch input; a recorded cost is illustrative, not a computed verified cost.`}
+          columnCount={8}
+          emptyMessage="No trials recorded for this version yet."
+        >
+          <thead>
+            <tr>
+              <Th>Tested</Th>
+              <Th style={{ textAlign: "right" }}>Batch input</Th>
+              <Th style={{ textAlign: "right" }}>Actual output</Th>
+              <Th style={{ textAlign: "right" }}>Yield (derived)</Th>
+              <Th style={{ textAlign: "right" }}>Duration</Th>
+              <Th>Cost</Th>
+              <Th>Quality / proposal</Th>
+              <Th>Resulting</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {tests.map((test) => {
+              const yieldRate = derivedYield(test.actualOutputQty, test.batchInputQty);
+              return (
+                <tr key={test.id}>
+                  <Td>{instantDay(test.testedAt)}</Td>
+                  <Td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                    {trimDecimal(test.batchInputQty)}
+                  </Td>
+                  <Td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                    {test.actualOutputQty === null ? "—" : trimDecimal(test.actualOutputQty)}
+                  </Td>
+                  <Td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                    {yieldRate === null ? "—" : trimDecimal(yieldRate)}
+                  </Td>
+                  <Td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                    {test.actualDurationMinutes === null
+                      ? "—"
+                      : `${test.actualDurationMinutes} min`}
+                  </Td>
+                  <Td>
+                    {test.actualCost === null ? (
+                      "—"
+                    ) : (
+                      <span style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                        <span style={{ fontVariantNumeric: "tabular-nums" }}>
+                          {formatMoneyAmount(test.actualCost)}
+                          {test.currency === null ? "" : ` ${test.currency}`}
+                        </span>
+                        <span style={{ fontSize: typography.fontSize.xs, color: color.text.muted }}>
+                          illustrative
+                        </span>
                       </span>
                     )}
-                  </span>
-                </Td>
-                <Td>
-                  {test.resultingRecipeVersionId === null ? (
-                    "—"
-                  ) : (
-                    <a
-                      href={`/recipes/${recipeId}#version-${test.resultingRecipeVersionId}`}
-                      style={{ color: color.brand.navy }}
-                    >
-                      v{test.resultingVersionNo ?? "?"}
-                    </a>
-                  )}
-                </Td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </Table>
+                  </Td>
+                  <Td>
+                    <span style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                      <span>{test.qualityComments ?? "—"}</span>
+                      {test.proposedAdjustment === null ? null : (
+                        <span style={{ fontSize: typography.fontSize.xs, color: color.text.muted }}>
+                          Proposal: {test.proposedAdjustment}
+                        </span>
+                      )}
+                    </span>
+                  </Td>
+                  <Td>
+                    {test.resultingRecipeVersionId === null ? (
+                      "—"
+                    ) : (
+                      <a
+                        href={`/recipes/${recipeId}#version-${test.resultingRecipeVersionId}`}
+                        style={{ color: color.brand.navy }}
+                      >
+                        v{test.resultingVersionNo ?? "?"}
+                      </a>
+                    )}
+                  </Td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </Table>
+      </div>
       <RecordRecipeTestForm recipeId={recipeId} recipeVersionId={versionId} />
     </div>
   );
@@ -710,58 +720,60 @@ function CostPreviewBody(
           } (B3)`}
         />
       </div>
-      <Table
-        caption={`Cost components for version ${preview.versionNo}. Required quantity is grossed up for the line loss factor and recipe yield; each source follows the DEC-047 precedence.`}
-        columnCount={5}
-        emptyMessage="This version has no costed components."
-      >
-        <thead>
-          <tr>
-            <Th>Component</Th>
-            <Th style={{ textAlign: "right" }}>Required qty</Th>
-            <Th style={{ textAlign: "right" }}>Unit cost</Th>
-            <Th style={{ textAlign: "right" }}>Line cost</Th>
-            <Th>Source</Th>
-          </tr>
-        </thead>
-        <tbody>
-          {preview.components.map((component, index) => {
-            const label = componentLabel(component, refs);
-            return (
-              <tr key={`${component.subRecipeId ?? component.itemId ?? index}`}>
-                <Td>
-                  <span style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                    <span>{label.primary}</span>
-                    <span
-                      style={{
-                        fontFamily: typography.fontFamily.mono,
-                        fontSize: typography.fontSize.xs,
-                        color: color.text.muted,
-                      }}
-                    >
-                      {component.componentKind}
-                      {label.secondary === null ? "" : ` · ${label.secondary}`}
+      <div style={{ overflowX: "auto", minWidth: 0 }}>
+        <Table
+          caption={`Cost components for version ${preview.versionNo}. Required quantity is grossed up for the line loss factor and recipe yield; each source follows the DEC-047 precedence.`}
+          columnCount={5}
+          emptyMessage="This version has no costed components."
+        >
+          <thead>
+            <tr>
+              <Th>Component</Th>
+              <Th style={{ textAlign: "right" }}>Required qty</Th>
+              <Th style={{ textAlign: "right" }}>Unit cost</Th>
+              <Th style={{ textAlign: "right" }}>Line cost</Th>
+              <Th>Source</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {preview.components.map((component, index) => {
+              const label = componentLabel(component, refs);
+              return (
+                <tr key={`${component.subRecipeId ?? component.itemId ?? index}`}>
+                  <Td>
+                    <span style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                      <span>{label.primary}</span>
+                      <span
+                        style={{
+                          fontFamily: typography.fontFamily.mono,
+                          fontSize: typography.fontSize.xs,
+                          color: color.text.muted,
+                        }}
+                      >
+                        {component.componentKind}
+                        {label.secondary === null ? "" : ` · ${label.secondary}`}
+                      </span>
                     </span>
-                  </span>
-                </Td>
-                <Td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
-                  {trimDecimal(component.requiredPurchaseQuantity)}{" "}
-                  <Badge>{refs.units.get(component.unitId)?.code ?? component.unitId}</Badge>
-                </Td>
-                <Td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
-                  {formatMoneyAmount(component.unitCost)}
-                </Td>
-                <Td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
-                  {formatMoneyAmount(component.lineCost)}
-                </Td>
-                <Td>
-                  <Badge>{component.sourceType}</Badge>
-                </Td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </Table>
+                  </Td>
+                  <Td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                    {trimDecimal(component.requiredPurchaseQuantity)}{" "}
+                    <Badge>{refs.units.get(component.unitId)?.code ?? component.unitId}</Badge>
+                  </Td>
+                  <Td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                    {formatMoneyAmount(component.unitCost)}
+                  </Td>
+                  <Td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                    {formatMoneyAmount(component.lineCost)}
+                  </Td>
+                  <Td>
+                    <Badge>{component.sourceType}</Badge>
+                  </Td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </Table>
+      </div>
       <p style={{ margin: 0, fontSize: typography.fontSize.xs, color: color.text.muted }}>
         Preview only. This is not the signed-off verified cost until the golden fixtures are signed
         (DEC-065); labour, packaging and allocation from slice 6 are not folded in here.

@@ -268,11 +268,13 @@ export default async function InsightsOperationsPage({
         actions={recordsLink("stock_value", report)}
       >
         {hasStockValue ? (
-          <DataTable
-            caption="Stock value on hand by location, as of the report instant"
-            columns={stockValueColumns}
-            rows={stockValueRows}
-          />
+          <div style={{ overflowX: "auto", minWidth: 0 }}>
+            <DataTable
+              caption="Stock value on hand by location, as of the report instant"
+              columns={stockValueColumns}
+              rows={stockValueRows}
+            />
+          </div>
         ) : (
           <EmptyState title="No stock value recorded">
             No stock movement falls at or before {formatAsOf(report.stockValue.asOf)}. Post a
@@ -287,11 +289,13 @@ export default async function InsightsOperationsPage({
         actions={recordsLink("stock_variance", report)}
       >
         {hasVariance ? (
-          <DataTable
-            caption="Approved stock-count variance and booked adjustment value by location"
-            columns={varianceColumns}
-            rows={varianceRows}
-          />
+          <div style={{ overflowX: "auto", minWidth: 0 }}>
+            <DataTable
+              caption="Approved stock-count variance and booked adjustment value by location"
+              columns={varianceColumns}
+              rows={varianceRows}
+            />
+          </div>
         ) : (
           <EmptyState title="No approved counts in this period">
             No approved stock count has a cutoff in {period.label}. Approve a count and this section
@@ -306,11 +310,13 @@ export default async function InsightsOperationsPage({
         actions={recordsLink("production", report)}
       >
         {hasProduction ? (
-          <DataTable
-            caption="Completed production batches: planned/actual output, yield and input/output value"
-            columns={productionColumns}
-            rows={productionRows}
-          />
+          <div style={{ overflowX: "auto", minWidth: 0 }}>
+            <DataTable
+              caption="Completed production batches: planned/actual output, yield and input/output value"
+              columns={productionColumns}
+              rows={productionRows}
+            />
+          </div>
         ) : (
           <EmptyState title="No completed batches in this period">
             No production batch finished in {period.label}. Complete a batch and this section fills
@@ -325,11 +331,13 @@ export default async function InsightsOperationsPage({
         actions={recordsLink("waste", report)}
       >
         {hasWaste ? (
-          <DataTable
-            caption="Waste events and value by stage"
-            columns={wasteColumns}
-            rows={wasteRows}
-          />
+          <div style={{ overflowX: "auto", minWidth: 0 }}>
+            <DataTable
+              caption="Waste events and value by stage"
+              columns={wasteColumns}
+              rows={wasteRows}
+            />
+          </div>
         ) : (
           <EmptyState title="No waste recorded in this period">
             No waste event occurred in {period.label}. Record a waste event and this section fills

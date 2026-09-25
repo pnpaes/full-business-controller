@@ -246,12 +246,14 @@ export default async function InsightsBenchmarksPage({
         meta={`${report.entities.length} ${report.entities.length === 1 ? report.dimensionLabel.toLowerCase() : `${report.dimensionLabel.toLowerCase()}s`} · ${meta}`}
       >
         {hasData ? (
-          <DataTable
-            caption={`${report.metricLabel} by ${report.dimensionLabel.toLowerCase()}, against the organization aggregate and the peer median`}
-            columns={columns}
-            rows={rows}
-            stickyHeader
-          />
+          <div style={{ overflowX: "auto", minWidth: 0 }}>
+            <DataTable
+              caption={`${report.metricLabel} by ${report.dimensionLabel.toLowerCase()}, against the organization aggregate and the peer median`}
+              columns={columns}
+              rows={rows}
+              stickyHeader
+            />
+          </div>
         ) : (
           <EmptyState title="No entities in this period">
             No posted sales line in {period.label} resolved to a{" "}

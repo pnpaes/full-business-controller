@@ -52,7 +52,6 @@ const contentColumn = {
   display: "flex",
   flexDirection: "column",
   gap: spacing[6],
-  width: "100%",
   maxWidth: 1120,
   margin: "0 auto",
   padding: `${spacing[8]}px ${spacing[4]}px`,
@@ -298,64 +297,66 @@ export default async function DocumentPage({
                 published.
               </EmptyState>
             ) : (
-              <Table caption="All versions of this document, newest first" columnCount={6}>
-                <thead>
-                  <tr>
-                    <Th scope="col">Version</Th>
-                    <Th scope="col">State</Th>
-                    <Th scope="col" className="doc-col-notes">
-                      Notes
-                    </Th>
-                    <Th scope="col">File</Th>
-                    <Th scope="col">Published</Th>
-                    <Th scope="col">Action</Th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {versions.map((version) => {
-                    const published = version.publishedAt !== null;
-                    const file =
-                      version.fileObjectId === null
-                        ? undefined
-                        : fileByObjectId.get(version.fileObjectId);
-                    return (
-                      <tr key={version.id}>
-                        <Td>v{version.version}</Td>
-                        <Td>
-                          <StatusPill tone={published ? "success" : "info"}>
-                            {published ? "Published" : "Draft"}
-                          </StatusPill>
-                        </Td>
-                        <Td className="doc-col-notes">{version.notes ?? "—"}</Td>
-                        <Td>
-                          {file === undefined ? (
-                            "—"
-                          ) : (
-                            <a
-                              href={`/api/v1/document-versions/${version.id}/file`}
-                              style={downloadLinkStyle}
-                            >
-                              {file.filename}
-                            </a>
-                          )}
-                        </Td>
-                        <Td>
-                          {published && version.publishedAt !== null
-                            ? formatDocumentInstant(version.publishedAt)
-                            : "—"}
-                        </Td>
-                        <Td>
-                          {!published && version.version === latestVersion ? (
-                            <PublishVersionButton documentVersionId={version.id} />
-                          ) : (
-                            "—"
-                          )}
-                        </Td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </Table>
+              <div style={{ overflowX: "auto", minWidth: 0 }}>
+                <Table caption="All versions of this document, newest first" columnCount={6}>
+                  <thead>
+                    <tr>
+                      <Th scope="col">Version</Th>
+                      <Th scope="col">State</Th>
+                      <Th scope="col" className="doc-col-notes">
+                        Notes
+                      </Th>
+                      <Th scope="col">File</Th>
+                      <Th scope="col">Published</Th>
+                      <Th scope="col">Action</Th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {versions.map((version) => {
+                      const published = version.publishedAt !== null;
+                      const file =
+                        version.fileObjectId === null
+                          ? undefined
+                          : fileByObjectId.get(version.fileObjectId);
+                      return (
+                        <tr key={version.id}>
+                          <Td>v{version.version}</Td>
+                          <Td>
+                            <StatusPill tone={published ? "success" : "info"}>
+                              {published ? "Published" : "Draft"}
+                            </StatusPill>
+                          </Td>
+                          <Td className="doc-col-notes">{version.notes ?? "—"}</Td>
+                          <Td>
+                            {file === undefined ? (
+                              "—"
+                            ) : (
+                              <a
+                                href={`/api/v1/document-versions/${version.id}/file`}
+                                style={downloadLinkStyle}
+                              >
+                                {file.filename}
+                              </a>
+                            )}
+                          </Td>
+                          <Td>
+                            {published && version.publishedAt !== null
+                              ? formatDocumentInstant(version.publishedAt)
+                              : "—"}
+                          </Td>
+                          <Td>
+                            {!published && version.version === latestVersion ? (
+                              <PublishVersionButton documentVersionId={version.id} />
+                            ) : (
+                              "—"
+                            )}
+                          </Td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </Table>
+              </div>
             )}
           </SectionCard>
 

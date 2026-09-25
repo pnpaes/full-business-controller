@@ -172,25 +172,29 @@ function ResultView({ result }: { readonly result: SimulationResult }) {
         meta={`${period} · location ${result.locationId} · ${result.currency}`}
       >
         <div style={{ display: "flex", flexDirection: "column", gap: spacing[5] }}>
-          <BarChart
-            values={chartValues}
-            comparisonValues={chartBaseline}
-            labels={["Revenue", "Cost", "Contribution"]}
-            width={640}
-            height={220}
-            ariaLabel="Modelled revenue, cost and contribution, scenario against baseline"
-            summary="Pale bars are the baseline; accent bars are the scenario. Values are modelled, not posted facts."
-          />
-          <DataTable
-            caption="Baseline against scenario, with the absolute delta"
-            columns={[
-              { key: "measure", header: "Measure" },
-              { key: "baseline", header: "Baseline", align: "right" },
-              { key: "scenario", header: "Scenario", align: "right" },
-              { key: "delta", header: "Delta", align: "right" },
-            ]}
-            rows={comparisonRows(result)}
-          />
+          <div className="sim-chart">
+            <BarChart
+              values={chartValues}
+              comparisonValues={chartBaseline}
+              labels={["Revenue", "Cost", "Contribution"]}
+              width={640}
+              height={220}
+              ariaLabel="Modelled revenue, cost and contribution, scenario against baseline"
+              summary="Pale bars are the baseline; accent bars are the scenario. Values are modelled, not posted facts."
+            />
+          </div>
+          <div style={{ overflowX: "auto", minWidth: 0 }}>
+            <DataTable
+              caption="Baseline against scenario, with the absolute delta"
+              columns={[
+                { key: "measure", header: "Measure" },
+                { key: "baseline", header: "Baseline", align: "right" },
+                { key: "scenario", header: "Scenario", align: "right" },
+                { key: "delta", header: "Delta", align: "right" },
+              ]}
+              rows={comparisonRows(result)}
+            />
+          </div>
           <p style={helpText}>
             Baseline posted net sales were {formatMoney(result.baselinePostedNetSales)}{" "}
             {result.currency}; the modelled baseline revenue uses the effective approved net price ×
@@ -361,12 +365,13 @@ export function SimulationClient({ locations, recipes, defaultLocationId }: Simu
             help="Recipes, prices and overhead are resolved per location."
           />
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: spacing[4] }}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: spacing[4] }}>
             <TextField
               name="periodFrom"
               type="date"
               label="Baseline from"
               required
+              style={{ flex: "1 1 180px", minWidth: 0 }}
               value={periodFrom}
               onChange={(event) => setPeriodFrom(event.target.value)}
             />
@@ -375,17 +380,19 @@ export function SimulationClient({ locations, recipes, defaultLocationId }: Simu
               type="date"
               label="Baseline to"
               required
+              style={{ flex: "1 1 180px", minWidth: 0 }}
               value={periodTo}
               onChange={(event) => setPeriodTo(event.target.value)}
             />
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: spacing[4] }}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: spacing[4] }}>
             <NumberField
               name="volumeChangePct"
               label="Volume change"
               unit="%"
               step="0.1"
+              style={{ flex: "1 1 160px", minWidth: 0 }}
               value={volumeChangePct}
               onChange={(event) => setVolumeChangePct(event.target.value)}
               help="Scales every baseline volume."
@@ -395,6 +402,7 @@ export function SimulationClient({ locations, recipes, defaultLocationId }: Simu
               label="Price change"
               unit="%"
               step="0.1"
+              style={{ flex: "1 1 160px", minWidth: 0 }}
               value={priceChangePct}
               onChange={(event) => setPriceChangePct(event.target.value)}
               help="Scales every net price."
@@ -404,6 +412,7 @@ export function SimulationClient({ locations, recipes, defaultLocationId }: Simu
               label="Wage change"
               unit="%"
               step="0.1"
+              style={{ flex: "1 1 160px", minWidth: 0 }}
               value={wageChangePct}
               onChange={(event) => setWageChangePct(event.target.value)}
               help="Scales the direct-labour part of every unit cost."
@@ -465,8 +474,8 @@ export function SimulationClient({ locations, recipes, defaultLocationId }: Simu
                 <div
                   key={`add-${index}`}
                   style={{
-                    display: "grid",
-                    gridTemplateColumns: "2fr 1fr auto",
+                    display: "flex",
+                    flexWrap: "wrap",
                     gap: spacing[3],
                     alignItems: "end",
                   }}
@@ -474,6 +483,7 @@ export function SimulationClient({ locations, recipes, defaultLocationId }: Simu
                   <SelectField
                     name={`addRecipe-${index}`}
                     label="Recipe"
+                    style={{ flex: "2 1 220px", minWidth: 0 }}
                     value={row.recipeId}
                     onChange={(event) =>
                       setAdds((current) =>
@@ -492,6 +502,7 @@ export function SimulationClient({ locations, recipes, defaultLocationId }: Simu
                     label="Units per period"
                     unit="units"
                     step="1"
+                    style={{ flex: "1 1 150px", minWidth: 0 }}
                     value={row.units}
                     onChange={(event) =>
                       setAdds((current) =>
@@ -504,6 +515,7 @@ export function SimulationClient({ locations, recipes, defaultLocationId }: Simu
                   <Button
                     type="button"
                     variant="ghost"
+                    style={{ flexShrink: 0 }}
                     onClick={() => setAdds((current) => current.filter((_, i) => i !== index))}
                   >
                     Remove
@@ -549,8 +561,8 @@ export function SimulationClient({ locations, recipes, defaultLocationId }: Simu
                 <div
                   key={`head-${index}`}
                   style={{
-                    display: "grid",
-                    gridTemplateColumns: "1.4fr 1fr 1fr 1.6fr auto",
+                    display: "flex",
+                    flexWrap: "wrap",
                     gap: spacing[3],
                     alignItems: "end",
                   }}
@@ -558,6 +570,7 @@ export function SimulationClient({ locations, recipes, defaultLocationId }: Simu
                   <TextField
                     name={`role-${index}`}
                     label="Role"
+                    style={{ flex: "1.4 1 150px", minWidth: 0 }}
                     value={row.roleCode}
                     onChange={(event) =>
                       setHeadcount((current) =>
@@ -571,6 +584,7 @@ export function SimulationClient({ locations, recipes, defaultLocationId }: Simu
                     name={`count-${index}`}
                     label="Count Δ"
                     step="1"
+                    style={{ flex: "1 1 110px", minWidth: 0 }}
                     value={row.countDelta}
                     onChange={(event) =>
                       setHeadcount((current) =>
@@ -585,6 +599,7 @@ export function SimulationClient({ locations, recipes, defaultLocationId }: Simu
                     label="Hours / period"
                     unit="h"
                     step="1"
+                    style={{ flex: "1 1 110px", minWidth: 0 }}
                     value={row.hoursPerPeriod}
                     onChange={(event) =>
                       setHeadcount((current) =>
@@ -597,6 +612,7 @@ export function SimulationClient({ locations, recipes, defaultLocationId }: Simu
                   <TextField
                     name={`costCenter-${index}`}
                     label="Cost centre id (optional)"
+                    style={{ flex: "1.6 1 170px", minWidth: 0 }}
                     value={row.costCenterId}
                     onChange={(event) =>
                       setHeadcount((current) =>
@@ -610,6 +626,7 @@ export function SimulationClient({ locations, recipes, defaultLocationId }: Simu
                   <Button
                     type="button"
                     variant="ghost"
+                    style={{ flexShrink: 0 }}
                     onClick={() => setHeadcount((current) => current.filter((_, i) => i !== index))}
                   >
                     Remove

@@ -56,7 +56,6 @@ const contentColumn = {
   display: "flex",
   flexDirection: "column",
   gap: spacing[6],
-  width: "100%",
   maxWidth: 1120,
   margin: "0 auto",
   padding: `${spacing[8]}px ${spacing[4]}px`,
@@ -256,45 +255,47 @@ export default async function CompetitorsPage({
         title="Observation register"
         meta={`${observations.length} shown · ${pendingCount} pending · filter: ${status}`}
       >
-        <DataTable
-          caption="Competitor observations and their review status"
-          columns={observationColumns}
-          rows={observations.map((row) => {
-            const view = reviewStatusView(row.reviewStatus);
-            const reviewer =
-              row.reviewedBy === null
-                ? "—"
-                : `${reviewerLabelById.get(row.reviewedBy) ?? row.reviewedBy}${
-                    row.reviewedAt === null ? "" : ` · ${formatInstantUTC(row.reviewedAt)}`
-                  }`;
-            return {
-              observed: formatDay(row.observedAt),
-              competitor: competitorNameById.get(row.competitorId) ?? row.competitorId,
-              offer: row.externalName,
-              price:
-                row.price === null
+        <div style={{ overflowX: "auto", minWidth: 0 }}>
+          <DataTable
+            caption="Competitor observations and their review status"
+            columns={observationColumns}
+            rows={observations.map((row) => {
+              const view = reviewStatusView(row.reviewStatus);
+              const reviewer =
+                row.reviewedBy === null
                   ? "—"
-                  : `${row.price}${row.currency === null ? "" : ` ${row.currency}`}`,
-              status: (
-                <span title={view.description}>
-                  <StatusPill tone={view.tone}>{view.label}</StatusPill>
-                </span>
-              ),
-              reviewed: reviewer,
-              ...(canWrite
-                ? {
-                    actions:
-                      row.reviewStatus === "pending" ? (
-                        <ObservationReviewControls observationId={row.id} />
-                      ) : (
-                        "—"
-                      ),
-                  }
-                : {}),
-            };
-          })}
-          emptyMessage={`No observations match this filter (${status}). Record one below, or widen the filter.`}
-        />
+                  : `${reviewerLabelById.get(row.reviewedBy) ?? row.reviewedBy}${
+                      row.reviewedAt === null ? "" : ` · ${formatInstantUTC(row.reviewedAt)}`
+                    }`;
+              return {
+                observed: formatDay(row.observedAt),
+                competitor: competitorNameById.get(row.competitorId) ?? row.competitorId,
+                offer: row.externalName,
+                price:
+                  row.price === null
+                    ? "—"
+                    : `${row.price}${row.currency === null ? "" : ` ${row.currency}`}`,
+                status: (
+                  <span title={view.description}>
+                    <StatusPill tone={view.tone}>{view.label}</StatusPill>
+                  </span>
+                ),
+                reviewed: reviewer,
+                ...(canWrite
+                  ? {
+                      actions:
+                        row.reviewStatus === "pending" ? (
+                          <ObservationReviewControls observationId={row.id} />
+                        ) : (
+                          "—"
+                        ),
+                    }
+                  : {}),
+              };
+            })}
+            emptyMessage={`No observations match this filter (${status}). Record one below, or widen the filter.`}
+          />
+        </div>
       </SectionCard>
 
       {canWrite ? (
@@ -318,33 +319,35 @@ export default async function CompetitorsPage({
           the date gap are computed from decimal strings — never floats. An observation that cannot
           be paired is shown as not comparable with the reason, never matched by name.
         </p>
-        <DataTable
-          caption="Reviewed competitor observations against our own effective price"
-          columns={comparisonColumns}
-          rows={comparisons.map((row) => {
-            if (!row.comparable) {
+        <div style={{ overflowX: "auto", minWidth: 0 }}>
+          <DataTable
+            caption="Reviewed competitor observations against our own effective price"
+            columns={comparisonColumns}
+            rows={comparisons.map((row) => {
+              if (!row.comparable) {
+                return {
+                  competitor: competitorNameById.get(row.competitorId) ?? row.competitorId,
+                  observed: formatDay(row.observedAt),
+                  ours: "—",
+                  theirs: "—",
+                  difference: "—",
+                  ratio: "—",
+                  gap: `Not comparable: ${comparisonReasonLabel(row.reason)}`,
+                };
+              }
               return {
                 competitor: competitorNameById.get(row.competitorId) ?? row.competitorId,
                 observed: formatDay(row.observedAt),
-                ours: "—",
-                theirs: "—",
-                difference: "—",
-                ratio: "—",
-                gap: `Not comparable: ${comparisonReasonLabel(row.reason)}`,
+                ours: `${row.ourPrice} ${row.currency ?? ""} (${row.ourPriceBasis}, from ${formatDay(row.ourPriceEffectiveFrom)})`,
+                theirs: `${row.competitorPrice}${row.competitorCurrency === null ? "" : ` ${row.competitorCurrency}`}`,
+                difference: row.difference,
+                ratio: row.ratio ?? "—",
+                gap: `${row.dateGapDays} ${row.dateGapDays === 1 ? "day" : "days"}`,
               };
-            }
-            return {
-              competitor: competitorNameById.get(row.competitorId) ?? row.competitorId,
-              observed: formatDay(row.observedAt),
-              ours: `${row.ourPrice} ${row.currency ?? ""} (${row.ourPriceBasis}, from ${formatDay(row.ourPriceEffectiveFrom)})`,
-              theirs: `${row.competitorPrice}${row.competitorCurrency === null ? "" : ` ${row.competitorCurrency}`}`,
-              difference: row.difference,
-              ratio: row.ratio ?? "—",
-              gap: `${row.dateGapDays} ${row.dateGapDays === 1 ? "day" : "days"}`,
-            };
-          })}
-          emptyMessage="No reviewed observations in this window. Capture and review one, or widen the window."
-        />
+            })}
+            emptyMessage="No reviewed observations in this window. Capture and review one, or widen the window."
+          />
+        </div>
       </SectionCard>
 
       <p style={note}>

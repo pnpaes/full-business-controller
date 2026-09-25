@@ -45,7 +45,6 @@ const contentColumn = {
   display: "flex",
   flexDirection: "column",
   gap: spacing[6],
-  width: "100%",
   maxWidth: 1120,
   margin: "0 auto",
   padding: `${spacing[8]}px ${spacing[4]}px`,
@@ -189,11 +188,13 @@ export default async function ProductionPlansPage({
             plan, optionally through one of its lines.
           </EmptyState>
         ) : (
-          <DataTable
-            caption="Production plans with their lines (recipe version × planned quantity), newest production date first."
-            columns={COLUMNS}
-            rows={tableRows}
-          />
+          <div style={{ overflowX: "auto", minWidth: 0 }}>
+            <DataTable
+              caption="Production plans with their lines (recipe version × planned quantity), newest production date first."
+              columns={COLUMNS}
+              rows={tableRows}
+            />
+          </div>
         )}
       </SectionCard>
 

@@ -199,8 +199,8 @@ export function CreatePlanForm({
               <div
                 key={line.key}
                 style={{
-                  display: "grid",
-                  gridTemplateColumns: "2fr 1fr auto",
+                  display: "flex",
+                  flexWrap: "wrap",
                   gap: spacing[3],
                   alignItems: "end",
                 }}
@@ -208,6 +208,7 @@ export function CreatePlanForm({
                 <SelectField
                   name={`line-recipe-${line.key}`}
                   label="Recipe version"
+                  style={{ flex: "2 1 220px", minWidth: 0 }}
                   value={line.recipeVersionId}
                   onChange={(event) =>
                     updateLine(line.key, { recipeVersionId: event.target.value })
@@ -223,10 +224,16 @@ export function CreatePlanForm({
                   unit="output units"
                   min={0}
                   step="0.000001"
+                  style={{ flex: "1 1 150px", minWidth: 0 }}
                   value={line.plannedQty}
                   onChange={(event) => updateLine(line.key, { plannedQty: event.target.value })}
                 />
-                <Button type="button" variant="secondary" onClick={() => removeLine(line.key)}>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  style={{ flexShrink: 0 }}
+                  onClick={() => removeLine(line.key)}
+                >
                   Remove
                 </Button>
               </div>

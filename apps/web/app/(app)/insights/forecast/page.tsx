@@ -74,6 +74,16 @@ const paragraph = {
 } as const;
 
 /**
+ * Page-scoped responsive rule (the `insights` landing's pattern): the chart
+ * svg carries a fixed pixel width, so CSS constrains it to the panel and the
+ * viewBox keeps the aspect ratio — the chart reflows instead of scrolling the
+ * page.
+ */
+const pageCss = `
+.forecast-chart svg { width: 100%; height: auto; }
+`;
+
+/**
  * Insights → Forecast (`W6`): a simple, honest forecast — a least-squares linear
  * trend fitted over the history, projected over the horizon, with its ±1
  * residual-σ band and its backtested accuracy stated on the page. It is labelled
@@ -175,6 +185,7 @@ export default async function InsightsForecastPage({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: spacing[6] }}>
+      <style>{pageCss}</style>
       <PageHeader
         title="Forecast"
         scope="Insights"
@@ -231,27 +242,31 @@ export default async function InsightsForecastPage({
             title={`History and projection of ${forecast.metricLabel.toLowerCase()}`}
             meta={`${forecast.history.length} history periods + ${forecast.projection.length} projected · ${meta}`}
           >
-            <LineChart
-              points={chartPoints}
-              comparisonPoints={chartComparison}
-              xLabels={chartLabels}
-              highlightIndex={forecast.history.length}
-              width={820}
-              height={250}
-              ariaLabel={`How is ${forecast.metricLabel.toLowerCase()} projected to move? Fitted history and projection from ${chartLabels[0] ?? "—"} to ${chartLabels[chartLabels.length - 1] ?? "—"}.`}
-              summary={`The pale line is the observed history (held flat after the last period); the accent line is the least-squares trend fitted over the history and extended into the projection. The projection table below gives the projected value and its ±1 residual-σ band.`}
-            />
+            <div className="forecast-chart">
+              <LineChart
+                points={chartPoints}
+                comparisonPoints={chartComparison}
+                xLabels={chartLabels}
+                highlightIndex={forecast.history.length}
+                width={820}
+                height={250}
+                ariaLabel={`How is ${forecast.metricLabel.toLowerCase()} projected to move? Fitted history and projection from ${chartLabels[0] ?? "—"} to ${chartLabels[chartLabels.length - 1] ?? "—"}.`}
+                summary={`The pale line is the observed history (held flat after the last period); the accent line is the least-squares trend fitted over the history and extended into the projection. The projection table below gives the projected value and its ±1 residual-σ band.`}
+              />
+            </div>
           </SectionCard>
 
           <SectionCard
             title="Projection"
             meta={`${forecast.projection.length} periods · model, not fact`}
           >
-            <DataTable
-              caption={`Projected ${forecast.metricLabel.toLowerCase()} with its ±1 residual standard deviation band`}
-              columns={projectionColumns}
-              rows={projectionRows}
-            />
+            <div style={{ overflowX: "auto", minWidth: 0 }}>
+              <DataTable
+                caption={`Projected ${forecast.metricLabel.toLowerCase()} with its ±1 residual standard deviation band`}
+                columns={projectionColumns}
+                rows={projectionRows}
+              />
+            </div>
           </SectionCard>
 
           <p style={paragraph}>

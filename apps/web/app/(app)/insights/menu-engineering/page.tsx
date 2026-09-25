@@ -243,12 +243,14 @@ export default async function MenuEngineeringPage({
         meta={`${report.rows.length} ${report.rows.length === 1 ? "product" : "products"} · ${meta}`}
       >
         {hasData ? (
-          <DataTable
-            caption="Products classified by popularity and contribution before labour/fees"
-            columns={columns}
-            rows={rows}
-            rowHref={(row) => String(row["href"])}
-          />
+          <div style={{ overflowX: "auto", minWidth: 0 }}>
+            <DataTable
+              caption="Products classified by popularity and contribution before labour/fees"
+              columns={columns}
+              rows={rows}
+              rowHref={(row) => String(row["href"])}
+            />
+          </div>
         ) : (
           <EmptyState title="No classifiable products">
             No posted sales line in {period.label} resolved to a product variant, so there is

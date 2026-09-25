@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, DateField, FilterChip, SelectField, spacing } from "@aquarela/ui";
+import { Button, DateField, FilterChip, SelectField, geometry, spacing } from "@aquarela/ui";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { FormEvent } from "react";
@@ -64,7 +64,7 @@ export function CompetitorFilters({
             key={candidate}
             active={nextStatus === candidate}
             onClick={() => setNextStatus(candidate)}
-            style={{ minHeight: 44, padding: `${spacing[2]}px ${spacing[3]}px` }}
+            style={{ minHeight: geometry.touchTarget, padding: `${spacing[2]}px ${spacing[3]}px` }}
           >
             {statusFilterLabel(candidate)}
           </FilterChip>
@@ -105,13 +105,13 @@ export function CompetitorFilters({
           onChange={(event) => setNextTo(event.target.value)}
         />
         <div style={{ display: "flex", gap: spacing[2] }}>
-          <Button type="submit" style={{ minHeight: 44 }}>
+          <Button type="submit" style={{ minHeight: geometry.touchTarget }}>
             Apply
           </Button>
           <Button
             type="button"
             variant="secondary"
-            style={{ minHeight: 44 }}
+            style={{ minHeight: geometry.touchTarget }}
             onClick={() => {
               setNextStatus("all");
               setNextCompetitorId("");

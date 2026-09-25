@@ -21,6 +21,7 @@ import {
   Td,
   Th,
   color,
+  geometry,
   spacing,
   typography,
 } from "@aquarela/ui";
@@ -83,7 +84,7 @@ const link = {
 const backLink = {
   ...link,
   alignSelf: "flex-start",
-  minHeight: 44,
+  minHeight: geometry.touchTarget,
   display: "inline-flex",
   alignItems: "center",
 } as const;
@@ -218,43 +219,45 @@ export default async function AdministrationPage() {
             live on the item detail screen.
           </EmptyState>
         ) : (
-          <Table
-            caption="Org-wide unit conversions effective now, resolved at the request time."
-            columnCount={4}
-          >
-            <thead>
-              <tr>
-                <Th>From</Th>
-                <Th>To</Th>
-                <Th style={numCell}>Factor</Th>
-                <Th>Effective</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {conversions.map((edge) => (
-                <tr
-                  key={`${edge.fromUnit.id}:${edge.toUnit.id}:${edge.effectiveFrom.toISOString()}`}
-                >
-                  <Td>{edge.fromUnit.code}</Td>
-                  <Td>{edge.toUnit.code}</Td>
-                  <Td style={numCell}>{trimDecimal(edge.factor)}</Td>
-                  <Td>
-                    {edge.effectiveFrom.toISOString().slice(0, 10)}
-                    {" → "}
-                    {edge.effectiveTo === null
-                      ? "open"
-                      : edge.effectiveTo.toISOString().slice(0, 10)}
-                  </Td>
+          <div style={{ overflowX: "auto", minWidth: 0 }}>
+            <Table
+              caption="Org-wide unit conversions effective now, resolved at the request time."
+              columnCount={4}
+            >
+              <thead>
+                <tr>
+                  <Th>From</Th>
+                  <Th>To</Th>
+                  <Th style={numCell}>Factor</Th>
+                  <Th>Effective</Th>
                 </tr>
-              ))}
-            </tbody>
-          </Table>
+              </thead>
+              <tbody>
+                {conversions.map((edge) => (
+                  <tr
+                    key={`${edge.fromUnit.id}:${edge.toUnit.id}:${edge.effectiveFrom.toISOString()}`}
+                  >
+                    <Td>{edge.fromUnit.code}</Td>
+                    <Td>{edge.toUnit.code}</Td>
+                    <Td style={numCell}>{trimDecimal(edge.factor)}</Td>
+                    <Td>
+                      {edge.effectiveFrom.toISOString().slice(0, 10)}
+                      {" → "}
+                      {edge.effectiveTo === null
+                        ? "open"
+                        : edge.effectiveTo.toISOString().slice(0, 10)}
+                    </Td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          </div>
         )}
         <details style={{ marginTop: spacing[4] }}>
           <summary
             style={{
               cursor: "pointer",
-              minHeight: 44,
+              minHeight: geometry.touchTarget,
               display: "flex",
               alignItems: "center",
               fontWeight: typography.fontWeight.semibold,
@@ -277,20 +280,22 @@ export default async function AdministrationPage() {
               organization yet.
             </EmptyState>
           ) : (
-            <DataTable
-              caption="Units of measure registered for this organization, ordered by code."
-              columns={[
-                { key: "code", header: "Code" },
-                { key: "dimension", header: "Dimension" },
-                { key: "base", header: "Base unit" },
-              ]}
-              rows={units.map((unit) => ({
-                code: unit.code,
-                dimension: unit.dimension,
-                base: unit.isBase ? <Badge>base</Badge> : "—",
-              }))}
-              emptyMessage="No units registered yet."
-            />
+            <div style={{ overflowX: "auto", minWidth: 0 }}>
+              <DataTable
+                caption="Units of measure registered for this organization, ordered by code."
+                columns={[
+                  { key: "code", header: "Code" },
+                  { key: "dimension", header: "Dimension" },
+                  { key: "base", header: "Base unit" },
+                ]}
+                rows={units.map((unit) => ({
+                  code: unit.code,
+                  dimension: unit.dimension,
+                  base: unit.isBase ? <Badge>base</Badge> : "—",
+                }))}
+                emptyMessage="No units registered yet."
+              />
+            </div>
           )}
         </SectionCard>
       ) : null}
@@ -303,28 +308,32 @@ export default async function AdministrationPage() {
               recorded an exception for this organization yet.
             </EmptyState>
           ) : (
-            <DataTable
-              caption="Data-quality exceptions for this organization, newest first."
-              columns={[
-                { key: "rule", header: "Rule" },
-                { key: "entity", header: "Entity" },
-                { key: "severity", header: "Severity" },
-                { key: "status", header: "Status" },
-                { key: "detected", header: "Detected" },
-                { key: "due", header: "Due" },
-              ]}
-              rows={exceptions.map((row) => ({
-                rule: row.ruleCode,
-                entity: `${row.entityType} · ${row.entityId.slice(0, 8)}`,
-                severity: <StatusPill tone={severityTone(row.severity)}>{row.severity}</StatusPill>,
-                status: (
-                  <StatusPill tone={exceptionStatusTone(row.status)}>{row.status}</StatusPill>
-                ),
-                detected: formatNorwegianDate(row.detectedAt),
-                due: formatNorwegianDate(row.dueDate),
-              }))}
-              emptyMessage="No exceptions recorded yet."
-            />
+            <div style={{ overflowX: "auto", minWidth: 0 }}>
+              <DataTable
+                caption="Data-quality exceptions for this organization, newest first."
+                columns={[
+                  { key: "rule", header: "Rule" },
+                  { key: "entity", header: "Entity" },
+                  { key: "severity", header: "Severity" },
+                  { key: "status", header: "Status" },
+                  { key: "detected", header: "Detected" },
+                  { key: "due", header: "Due" },
+                ]}
+                rows={exceptions.map((row) => ({
+                  rule: row.ruleCode,
+                  entity: `${row.entityType} · ${row.entityId.slice(0, 8)}`,
+                  severity: (
+                    <StatusPill tone={severityTone(row.severity)}>{row.severity}</StatusPill>
+                  ),
+                  status: (
+                    <StatusPill tone={exceptionStatusTone(row.status)}>{row.status}</StatusPill>
+                  ),
+                  detected: formatNorwegianDate(row.detectedAt),
+                  due: formatNorwegianDate(row.dueDate),
+                }))}
+                emptyMessage="No exceptions recorded yet."
+              />
+            </div>
           )}
         </SectionCard>
       ) : null}
@@ -337,27 +346,29 @@ export default async function AdministrationPage() {
               reverse, close, export and security change. None exist for this organization yet.
             </EmptyState>
           ) : (
-            <DataTable
-              caption="Audit events for this organization, newest first."
-              columns={[
-                { key: "time", header: "Time" },
-                { key: "action", header: "Action" },
-                { key: "entity", header: "Entity" },
-                { key: "actor", header: "Actor" },
-                { key: "reason", header: "Reason" },
-              ]}
-              rows={auditEvents.map((row) => ({
-                time: formatNorwegianDateTime(row.occurredAt),
-                action: row.action,
-                entity:
-                  row.entityId === null
-                    ? row.entityType
-                    : `${row.entityType} · ${row.entityId.slice(0, 8)}`,
-                actor: row.actorId === null ? "—" : row.actorId.slice(0, 8),
-                reason: row.reason ?? "—",
-              }))}
-              emptyMessage="No audit events recorded yet."
-            />
+            <div style={{ overflowX: "auto", minWidth: 0 }}>
+              <DataTable
+                caption="Audit events for this organization, newest first."
+                columns={[
+                  { key: "time", header: "Time" },
+                  { key: "action", header: "Action" },
+                  { key: "entity", header: "Entity" },
+                  { key: "actor", header: "Actor" },
+                  { key: "reason", header: "Reason" },
+                ]}
+                rows={auditEvents.map((row) => ({
+                  time: formatNorwegianDateTime(row.occurredAt),
+                  action: row.action,
+                  entity:
+                    row.entityId === null
+                      ? row.entityType
+                      : `${row.entityType} · ${row.entityId.slice(0, 8)}`,
+                  actor: row.actorId === null ? "—" : row.actorId.slice(0, 8),
+                  reason: row.reason ?? "—",
+                }))}
+                emptyMessage="No audit events recorded yet."
+              />
+            </div>
           )}
         </SectionCard>
       ) : null}

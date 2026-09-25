@@ -240,12 +240,14 @@ export default async function InsightsReportsPage({
         meta={`Which ${dimensionHeader.toLowerCase()}s sell most and contribute most? · ${report.groups.length} ${report.groups.length === 1 ? "group" : "groups"}`}
       >
         {hasData ? (
-          <DataTable
-            caption={`Sales, ingredient cost and contribution by ${dimensionHeader.toLowerCase()}`}
-            columns={columns}
-            rows={rows}
-            rowHref={(row) => String(row["href"])}
-          />
+          <div style={{ overflowX: "auto", minWidth: 0 }}>
+            <DataTable
+              caption={`Sales, ingredient cost and contribution by ${dimensionHeader.toLowerCase()}`}
+              columns={columns}
+              rows={rows}
+              rowHref={(row) => String(row["href"])}
+            />
+          </div>
         ) : (
           <EmptyState title="No sales in this period">
             No posted sales lines fall in {period.label}. Import a sales file and post theoretical

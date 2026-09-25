@@ -54,7 +54,6 @@ const contentColumn = {
   display: "flex",
   flexDirection: "column",
   gap: spacing[6],
-  width: "100%",
   maxWidth: 1120,
   margin: "0 auto",
   padding: `${spacing[8]}px ${spacing[4]}px`,
@@ -366,51 +365,53 @@ export default async function ProductionBatchDetailPage({
             This recipe has no input components. Completion records the output only.
           </Alert>
         ) : (
-          <Table
-            caption="Batch input lines with planned, actual and variance quantities."
-            columnCount={6}
-          >
-            <thead>
-              <tr>
-                <Th>Item</Th>
-                <Th style={numCell}>Planned</Th>
-                <Th style={numCell}>Actual</Th>
-                <Th style={numCell}>Variance</Th>
-                <Th>Reason</Th>
-                <Th>Lot</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {inputViews.map((line) => {
-                const variance = line.varianceQty;
-                return (
-                  <tr key={line.key}>
-                    <Td>{line.itemLabel}</Td>
-                    <Td style={numCell}>
-                      {trimDecimal(line.plannedQty)}
-                      {line.unitCode === null ? "" : ` ${line.unitCode}`}
-                    </Td>
-                    <Td style={numCell}>
-                      {line.actualQty === null ? "—" : trimDecimal(line.actualQty)}
-                    </Td>
-                    <Td
-                      style={{
-                        ...numCell,
-                        color:
-                          variance !== null && parseDecimal(variance, QUANTITY_SCALE) !== 0n
-                            ? color.status.warning.fg
-                            : undefined,
-                      }}
-                    >
-                      {variance === null ? "—" : trimDecimal(variance)}
-                    </Td>
-                    <Td>{orDash(line.reasonCode)}</Td>
-                    <Td>{orDash(line.lotLabel)}</Td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </Table>
+          <div style={{ overflowX: "auto", minWidth: 0 }}>
+            <Table
+              caption="Batch input lines with planned, actual and variance quantities."
+              columnCount={6}
+            >
+              <thead>
+                <tr>
+                  <Th>Item</Th>
+                  <Th style={numCell}>Planned</Th>
+                  <Th style={numCell}>Actual</Th>
+                  <Th style={numCell}>Variance</Th>
+                  <Th>Reason</Th>
+                  <Th>Lot</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {inputViews.map((line) => {
+                  const variance = line.varianceQty;
+                  return (
+                    <tr key={line.key}>
+                      <Td>{line.itemLabel}</Td>
+                      <Td style={numCell}>
+                        {trimDecimal(line.plannedQty)}
+                        {line.unitCode === null ? "" : ` ${line.unitCode}`}
+                      </Td>
+                      <Td style={numCell}>
+                        {line.actualQty === null ? "—" : trimDecimal(line.actualQty)}
+                      </Td>
+                      <Td
+                        style={{
+                          ...numCell,
+                          color:
+                            variance !== null && parseDecimal(variance, QUANTITY_SCALE) !== 0n
+                              ? color.status.warning.fg
+                              : undefined,
+                        }}
+                      >
+                        {variance === null ? "—" : trimDecimal(variance)}
+                      </Td>
+                      <Td>{orDash(line.reasonCode)}</Td>
+                      <Td>{orDash(line.lotLabel)}</Td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </Table>
+          </div>
         )}
       </SectionCard>
 
@@ -424,42 +425,44 @@ export default async function ProductionBatchDetailPage({
             output is snapshotted on the batch header as {batch.plannedOutputQty ?? "—"}.
           </Alert>
         ) : (
-          <Table
-            caption="Batch output lines with planned, actual and variance quantities."
-            columnCount={7}
-          >
-            <thead>
-              <tr>
-                <Th>Item</Th>
-                <Th>Kind</Th>
-                <Th style={numCell}>Planned</Th>
-                <Th style={numCell}>Actual</Th>
-                <Th style={numCell}>Variance</Th>
-                <Th>Lot</Th>
-                <Th>Expiry</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {outputViews.map((line) => (
-                <tr key={line.key}>
-                  <Td>{line.itemLabel}</Td>
-                  <Td>{line.kind}</Td>
-                  <Td style={numCell}>
-                    {trimDecimal(line.plannedQty)}
-                    {line.unitCode === null ? "" : ` ${line.unitCode}`}
-                  </Td>
-                  <Td style={numCell}>
-                    {line.actualQty === null ? "—" : trimDecimal(line.actualQty)}
-                  </Td>
-                  <Td style={numCell}>
-                    {line.varianceQty === null ? "—" : trimDecimal(line.varianceQty)}
-                  </Td>
-                  <Td>{orDash(line.lotLabel)}</Td>
-                  <Td>{orDash(line.expiryDate)}</Td>
+          <div style={{ overflowX: "auto", minWidth: 0 }}>
+            <Table
+              caption="Batch output lines with planned, actual and variance quantities."
+              columnCount={7}
+            >
+              <thead>
+                <tr>
+                  <Th>Item</Th>
+                  <Th>Kind</Th>
+                  <Th style={numCell}>Planned</Th>
+                  <Th style={numCell}>Actual</Th>
+                  <Th style={numCell}>Variance</Th>
+                  <Th>Lot</Th>
+                  <Th>Expiry</Th>
                 </tr>
-              ))}
-            </tbody>
-          </Table>
+              </thead>
+              <tbody>
+                {outputViews.map((line) => (
+                  <tr key={line.key}>
+                    <Td>{line.itemLabel}</Td>
+                    <Td>{line.kind}</Td>
+                    <Td style={numCell}>
+                      {trimDecimal(line.plannedQty)}
+                      {line.unitCode === null ? "" : ` ${line.unitCode}`}
+                    </Td>
+                    <Td style={numCell}>
+                      {line.actualQty === null ? "—" : trimDecimal(line.actualQty)}
+                    </Td>
+                    <Td style={numCell}>
+                      {line.varianceQty === null ? "—" : trimDecimal(line.varianceQty)}
+                    </Td>
+                    <Td>{orDash(line.lotLabel)}</Td>
+                    <Td>{orDash(line.expiryDate)}</Td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          </div>
         )}
       </SectionCard>
 

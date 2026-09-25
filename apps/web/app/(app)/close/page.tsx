@@ -34,7 +34,6 @@ const contentColumn = {
   display: "flex",
   flexDirection: "column",
   gap: spacing[6],
-  width: "100%",
   maxWidth: 1120,
   margin: "0 auto",
   padding: `${spacing[8]}px ${spacing[4]}px`,
@@ -184,7 +183,9 @@ export default async function ClosePage() {
         title="Closes"
         meta={`${rows.length} ${rows.length === 1 ? "close" : "closes"} · newest period first`}
       >
-        <CloseRegisterTable rows={rows} />
+        <div style={{ overflowX: "auto", minWidth: 0 }}>
+          <CloseRegisterTable rows={rows} />
+        </div>
       </SectionCard>
 
       <BeginCloseForm

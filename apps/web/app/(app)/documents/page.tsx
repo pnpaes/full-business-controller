@@ -15,6 +15,8 @@ import {
   Td,
   Th,
   color,
+  geometry,
+  radius,
   spacing,
   typography,
 } from "@aquarela/ui";
@@ -47,7 +49,6 @@ const contentColumn = {
   display: "flex",
   flexDirection: "column",
   gap: spacing[6],
-  width: "100%",
   maxWidth: 1120,
   margin: "0 auto",
   padding: `${spacing[8]}px ${spacing[4]}px`,
@@ -75,9 +76,9 @@ const titleLinkStyle = {
 const chipStyle = {
   display: "inline-flex",
   alignItems: "center",
-  minHeight: 44,
+  minHeight: geometry.touchTarget,
   padding: `0 ${spacing[4]}px`,
-  borderRadius: "999px",
+  borderRadius: radius.pill,
   backgroundColor: color.surface.base,
   border: `1px solid ${color.border.default}`,
   color: color.ink.secondary,
@@ -221,50 +222,52 @@ export default async function DocumentsPage({
               : "Nothing has been published for all staff in this category yet. Check back later or ask a manager."}
           </EmptyState>
         ) : (
-          <Table caption="Staff documents with their current published version" columnCount={6}>
-            <thead>
-              <tr>
-                <Th scope="col">Title</Th>
-                <Th scope="col">Category</Th>
-                <Th scope="col" className="doc-col-audience">
-                  Audience
-                </Th>
-                <Th scope="col">Status</Th>
-                <Th scope="col">Current version</Th>
-                <Th scope="col" className="doc-col-published">
-                  Published
-                </Th>
-              </tr>
-            </thead>
-            <tbody>
-              {documents.map((document, index) => {
-                const current = currentVersions[index];
-                const status = documentStatusView(document.status);
-                return (
-                  <tr key={document.id}>
-                    <Td>
-                      <a href={`/documents/${document.id}`} style={titleLinkStyle}>
-                        {document.title}
-                      </a>
-                    </Td>
-                    <Td>{documentCategoryLabel(document.category)}</Td>
-                    <Td className="doc-col-audience">
-                      <Badge>{documentAudienceLabel(document.audience)}</Badge>
-                    </Td>
-                    <Td>
-                      <StatusPill tone={status.tone}>{status.label}</StatusPill>
-                    </Td>
-                    <Td>{current === undefined ? "—" : `v${current.version}`}</Td>
-                    <Td className="doc-col-published">
-                      {current?.publishedAt === undefined || current?.publishedAt === null
-                        ? "—"
-                        : formatDocumentInstant(current.publishedAt)}
-                    </Td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </Table>
+          <div style={{ overflowX: "auto", minWidth: 0 }}>
+            <Table caption="Staff documents with their current published version" columnCount={6}>
+              <thead>
+                <tr>
+                  <Th scope="col">Title</Th>
+                  <Th scope="col">Category</Th>
+                  <Th scope="col" className="doc-col-audience">
+                    Audience
+                  </Th>
+                  <Th scope="col">Status</Th>
+                  <Th scope="col">Current version</Th>
+                  <Th scope="col" className="doc-col-published">
+                    Published
+                  </Th>
+                </tr>
+              </thead>
+              <tbody>
+                {documents.map((document, index) => {
+                  const current = currentVersions[index];
+                  const status = documentStatusView(document.status);
+                  return (
+                    <tr key={document.id}>
+                      <Td>
+                        <a href={`/documents/${document.id}`} style={titleLinkStyle}>
+                          {document.title}
+                        </a>
+                      </Td>
+                      <Td>{documentCategoryLabel(document.category)}</Td>
+                      <Td className="doc-col-audience">
+                        <Badge>{documentAudienceLabel(document.audience)}</Badge>
+                      </Td>
+                      <Td>
+                        <StatusPill tone={status.tone}>{status.label}</StatusPill>
+                      </Td>
+                      <Td>{current === undefined ? "—" : `v${current.version}`}</Td>
+                      <Td className="doc-col-published">
+                        {current?.publishedAt === undefined || current?.publishedAt === null
+                          ? "—"
+                          : formatDocumentInstant(current.publishedAt)}
+                      </Td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </Table>
+          </div>
         )}
       </SectionCard>
     </div>

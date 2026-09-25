@@ -226,85 +226,87 @@ export function UserAccessManager({ users, roles, locations }: UserAccessManager
 
       {feedback !== null ? <Alert tone={feedback.tone}>{feedback.message}</Alert> : null}
 
-      <DataTable
-        caption="Users of this organization with their roles, location scopes and status."
-        columns={[
-          { key: "user", header: "User" },
-          { key: "status", header: "Status" },
-          { key: "roles", header: "Roles" },
-          { key: "scopes", header: "Location scopes" },
-          { key: "lastLogin", header: "Last login" },
-          { key: "actions", header: "Actions" },
-        ]}
-        rows={users.map((user) => ({
-          user: (
-            <div style={{ display: "flex", flexDirection: "column", gap: spacing[1] }}>
-              <span style={{ fontWeight: typography.fontWeight.medium }}>{user.displayName}</span>
-              <span style={{ fontSize: typography.fontSize.sm, color: "inherit" }}>
-                {user.username ?? "—"}
-                {user.email === null ? "" : ` · ${user.email}`}
-              </span>
-            </div>
-          ),
-          status: (
-            <StatusPill tone={user.status === "active" ? "success" : "danger"}>
-              {user.status}
-            </StatusPill>
-          ),
-          roles:
-            user.roles.length === 0 ? (
-              "—"
-            ) : (
-              <div style={{ display: "flex", flexWrap: "wrap", gap: spacing[1] }}>
-                {user.roles.map((role) => (
-                  <Badge key={`${role.roleId}:${role.locationId ?? ""}`}>
-                    {role.code}
-                    {role.locationId === null ? "" : ` @ ${locationLabel(role.locationId)}`}
-                  </Badge>
-                ))}
+      <div style={{ overflowX: "auto", minWidth: 0 }}>
+        <DataTable
+          caption="Users of this organization with their roles, location scopes and status."
+          columns={[
+            { key: "user", header: "User" },
+            { key: "status", header: "Status" },
+            { key: "roles", header: "Roles" },
+            { key: "scopes", header: "Location scopes" },
+            { key: "lastLogin", header: "Last login" },
+            { key: "actions", header: "Actions" },
+          ]}
+          rows={users.map((user) => ({
+            user: (
+              <div style={{ display: "flex", flexDirection: "column", gap: spacing[1] }}>
+                <span style={{ fontWeight: typography.fontWeight.medium }}>{user.displayName}</span>
+                <span style={{ fontSize: typography.fontSize.sm, color: "inherit" }}>
+                  {user.username ?? "—"}
+                  {user.email === null ? "" : ` · ${user.email}`}
+                </span>
               </div>
             ),
-          scopes:
-            user.locationIds.length === 0 ? (
-              "—"
-            ) : (
-              <div style={{ display: "flex", flexWrap: "wrap", gap: spacing[1] }}>
-                {user.locationIds.map((id) => (
-                  <Badge key={id}>{locationLabel(id)}</Badge>
-                ))}
-              </div>
+            status: (
+              <StatusPill tone={user.status === "active" ? "success" : "danger"}>
+                {user.status}
+              </StatusPill>
             ),
-          lastLogin: formatLastLogin(user.lastLoginAt),
-          actions: (
-            <div style={{ display: "flex", flexWrap: "wrap", gap: spacing[2] }}>
-              <Button size="sm" variant="secondary" onClick={() => open(user, "grant")}>
-                Grant role
-              </Button>
-              <Button
-                size="sm"
-                variant="secondary"
-                disabled={user.roles.length === 0}
-                onClick={() => open(user, "revoke")}
-              >
-                Revoke role
-              </Button>
-              <Button size="sm" variant="secondary" onClick={() => open(user, "scopes")}>
-                Scopes
-              </Button>
-              {user.status === "active" ? (
-                <Button size="sm" variant="secondary" onClick={() => open(user, "disable")}>
-                  Disable
-                </Button>
+            roles:
+              user.roles.length === 0 ? (
+                "—"
               ) : (
-                <Button size="sm" variant="secondary" onClick={() => open(user, "enable")}>
-                  Enable
+                <div style={{ display: "flex", flexWrap: "wrap", gap: spacing[1] }}>
+                  {user.roles.map((role) => (
+                    <Badge key={`${role.roleId}:${role.locationId ?? ""}`}>
+                      {role.code}
+                      {role.locationId === null ? "" : ` @ ${locationLabel(role.locationId)}`}
+                    </Badge>
+                  ))}
+                </div>
+              ),
+            scopes:
+              user.locationIds.length === 0 ? (
+                "—"
+              ) : (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: spacing[1] }}>
+                  {user.locationIds.map((id) => (
+                    <Badge key={id}>{locationLabel(id)}</Badge>
+                  ))}
+                </div>
+              ),
+            lastLogin: formatLastLogin(user.lastLoginAt),
+            actions: (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: spacing[2] }}>
+                <Button size="sm" variant="secondary" onClick={() => open(user, "grant")}>
+                  Grant role
                 </Button>
-              )}
-            </div>
-          ),
-        }))}
-        emptyMessage="No users in this organization."
-      />
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={user.roles.length === 0}
+                  onClick={() => open(user, "revoke")}
+                >
+                  Revoke role
+                </Button>
+                <Button size="sm" variant="secondary" onClick={() => open(user, "scopes")}>
+                  Scopes
+                </Button>
+                {user.status === "active" ? (
+                  <Button size="sm" variant="secondary" onClick={() => open(user, "disable")}>
+                    Disable
+                  </Button>
+                ) : (
+                  <Button size="sm" variant="secondary" onClick={() => open(user, "enable")}>
+                    Enable
+                  </Button>
+                )}
+              </div>
+            ),
+          }))}
+          emptyMessage="No users in this organization."
+        />
+      </div>
 
       <Modal
         title={target === null ? "" : dialogTitle(target.action, target.user.displayName)}

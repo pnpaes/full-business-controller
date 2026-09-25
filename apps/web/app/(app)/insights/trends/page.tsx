@@ -63,6 +63,16 @@ const paragraph = {
   color: color.text.muted,
 } as const;
 
+/**
+ * Page-scoped responsive rule (the `insights` landing's pattern): the chart
+ * svg carries a fixed pixel width, so CSS constrains it to the panel and the
+ * viewBox keeps the aspect ratio — the chart reflows instead of scrolling the
+ * page.
+ */
+const pageCss = `
+.trend-chart svg { width: 100%; height: auto; }
+`;
+
 /** The direction tone: up healthy, down danger, flat neutral. */
 function directionTone(direction: "up" | "down" | "flat" | null) {
   if (direction === "up") return "success" as const;
@@ -163,6 +173,7 @@ export default async function InsightsTrendsPage({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: spacing[6] }}>
+      <style>{pageCss}</style>
       <PageHeader
         title="Trends"
         scope="Insights"
@@ -220,19 +231,21 @@ export default async function InsightsTrendsPage({
         meta={`${trend.points.length} ${trend.points.length === 1 ? "period" : "periods"} · ${meta}`}
       >
         {hasData ? (
-          <LineChart
-            points={chartPoints}
-            xLabels={chartLabels}
-            highlightIndex={chartPoints.length - 1}
-            width={760}
-            height={240}
-            ariaLabel={`How did ${trend.metricLabel.toLowerCase()} move period by period? ${trend.metricLabel} for ${meta}.`}
-            summary={`${trend.metricLabel} across ${trend.points.length} periods (${chartLabels[0] ?? "—"} to ${chartLabels[chartLabels.length - 1] ?? "—"}). The table below gives the exact value, change and direction for every period.${
-              hasUndefined
-                ? " Periods with no computable value are plotted at zero in the chart; the table shows them as n/a."
-                : ""
-            }`}
-          />
+          <div className="trend-chart">
+            <LineChart
+              points={chartPoints}
+              xLabels={chartLabels}
+              highlightIndex={chartPoints.length - 1}
+              width={760}
+              height={240}
+              ariaLabel={`How did ${trend.metricLabel.toLowerCase()} move period by period? ${trend.metricLabel} for ${meta}.`}
+              summary={`${trend.metricLabel} across ${trend.points.length} periods (${chartLabels[0] ?? "—"} to ${chartLabels[chartLabels.length - 1] ?? "—"}). The table below gives the exact value, change and direction for every period.${
+                hasUndefined
+                  ? " Periods with no computable value are plotted at zero in the chart; the table shows them as n/a."
+                  : ""
+              }`}
+            />
+          </div>
         ) : (
           <EmptyState title="No computable values in this window">
             No period in this window has a computable {trend.metricLabel.toLowerCase()}. Import and
@@ -242,11 +255,13 @@ export default async function InsightsTrendsPage({
       </SectionCard>
 
       <SectionCard title="Period by period" meta={`${trend.metricLabel} · ${meta}`}>
-        <DataTable
-          caption={`${trend.metricLabel} by period with the change and direction`}
-          columns={columns}
-          rows={rows}
-        />
+        <div style={{ overflowX: "auto", minWidth: 0 }}>
+          <DataTable
+            caption={`${trend.metricLabel} by period with the change and direction`}
+            columns={columns}
+            rows={rows}
+          />
+        </div>
       </SectionCard>
 
       <p style={paragraph}>

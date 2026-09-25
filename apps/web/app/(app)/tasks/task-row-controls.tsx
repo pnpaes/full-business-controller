@@ -1,6 +1,6 @@
 "use client";
 
-import { Alert, Button, radius, spacing, typography } from "@aquarela/ui";
+import { Alert, Button, geometry, radius, spacing, typography } from "@aquarela/ui";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -18,7 +18,7 @@ async function errorMessage(response: Response): Promise<string> {
 }
 
 const selectStyle = {
-  minHeight: 44,
+  minHeight: geometry.touchTarget,
   padding: `${spacing[2]}px`,
   borderRadius: radius.sm,
   border: "1px solid currentColor",
@@ -26,7 +26,7 @@ const selectStyle = {
   maxWidth: 200,
 } as const;
 
-const buttonStyle = { minHeight: 44 } as const;
+const buttonStyle = { minHeight: geometry.touchTarget } as const;
 
 /**
  * The inline per-row controls of one task (`DEC-122`): the assignee picker and

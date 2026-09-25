@@ -38,7 +38,6 @@ const contentColumn = {
   display: "flex",
   flexDirection: "column",
   gap: spacing[6],
-  width: "100%",
   maxWidth: 1120,
   margin: "0 auto",
   padding: `${spacing[8]}px ${spacing[4]}px`,
@@ -211,7 +210,9 @@ export default async function ProductionPage({
               title={view.label}
               meta={`${group.rows.length} ${group.rows.length === 1 ? "batch" : "batches"}`}
             >
-              <ProductionBoardTable rows={group.rows} />
+              <div style={{ overflowX: "auto", minWidth: 0 }}>
+                <ProductionBoardTable rows={group.rows} />
+              </div>
             </SectionCard>
           );
         })

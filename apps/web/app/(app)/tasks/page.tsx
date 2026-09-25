@@ -52,7 +52,6 @@ const contentColumn = {
   display: "flex",
   flexDirection: "column",
   gap: spacing[6],
-  width: "100%",
   maxWidth: 1120,
   margin: "0 auto",
   padding: `${spacing[8]}px ${spacing[4]}px`,
@@ -193,54 +192,56 @@ export default async function TasksPage({
         title="Tasks"
         meta={`${tasks.length} ${tasks.length === 1 ? "task" : "tasks"} · by due date`}
       >
-        <DataTable
-          caption="Tasks by type, priority, status, assignee and due date"
-          columns={columns}
-          rows={tasks.map((task) => {
-            const due = taskDueView(task.dueDate, today, task.status);
-            return {
-              type: task.type,
-              priority: (
-                <StatusPill tone={taskPriorityView(task.priority).tone}>
-                  {taskPriorityView(task.priority).label}
-                </StatusPill>
-              ),
-              status: (
-                <StatusPill tone={taskStatusView(task.status).tone}>
-                  {taskStatusView(task.status).label}
-                </StatusPill>
-              ),
-              assignee:
-                task.ownerId === null ? "—" : (ownerLabelById.get(task.ownerId) ?? task.ownerId),
-              due: (
-                <span>
-                  {formatTaskDay(task.dueDate)}
-                  {due === null ? null : (
-                    <>
-                      {" "}
-                      <StatusPill tone={due.tone}>{due.label}</StatusPill>
-                    </>
-                  )}
-                </span>
-              ),
-              ...(canWrite
-                ? {
-                    actions: isTerminalTaskStatus(task.status) ? (
-                      "—"
-                    ) : (
-                      <TaskRowControls
-                        taskId={task.id}
-                        ownerId={task.ownerId}
-                        users={userOptions}
-                        allowedTargets={taskAllowedTargets(task.status)}
-                      />
-                    ),
-                  }
-                : {}),
-            };
-          })}
-          emptyMessage="No tasks match. Create one below, or clear the filters."
-        />
+        <div style={{ overflowX: "auto", minWidth: 0 }}>
+          <DataTable
+            caption="Tasks by type, priority, status, assignee and due date"
+            columns={columns}
+            rows={tasks.map((task) => {
+              const due = taskDueView(task.dueDate, today, task.status);
+              return {
+                type: task.type,
+                priority: (
+                  <StatusPill tone={taskPriorityView(task.priority).tone}>
+                    {taskPriorityView(task.priority).label}
+                  </StatusPill>
+                ),
+                status: (
+                  <StatusPill tone={taskStatusView(task.status).tone}>
+                    {taskStatusView(task.status).label}
+                  </StatusPill>
+                ),
+                assignee:
+                  task.ownerId === null ? "—" : (ownerLabelById.get(task.ownerId) ?? task.ownerId),
+                due: (
+                  <span>
+                    {formatTaskDay(task.dueDate)}
+                    {due === null ? null : (
+                      <>
+                        {" "}
+                        <StatusPill tone={due.tone}>{due.label}</StatusPill>
+                      </>
+                    )}
+                  </span>
+                ),
+                ...(canWrite
+                  ? {
+                      actions: isTerminalTaskStatus(task.status) ? (
+                        "—"
+                      ) : (
+                        <TaskRowControls
+                          taskId={task.id}
+                          ownerId={task.ownerId}
+                          users={userOptions}
+                          allowedTargets={taskAllowedTargets(task.status)}
+                        />
+                      ),
+                    }
+                  : {}),
+              };
+            })}
+            emptyMessage="No tasks match. Create one below, or clear the filters."
+          />
+        </div>
       </SectionCard>
 
       {canWrite ? (

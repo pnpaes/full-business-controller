@@ -497,9 +497,8 @@ export function RegisterVersionForm({
             <div
               key={line.key}
               style={{
-                display: "grid",
-                gridTemplateColumns:
-                  "minmax(140px, 1fr) minmax(200px, 2fr) minmax(120px, 1fr) minmax(100px, 1fr) auto",
+                display: "flex",
+                flexWrap: "wrap",
                 gap: spacing[3],
                 alignItems: "end",
               }}
@@ -507,6 +506,7 @@ export function RegisterVersionForm({
               <SelectField
                 name={`line-kind-${line.key}`}
                 label="Component kind"
+                style={{ flex: "1 1 140px", minWidth: 0 }}
                 value={line.componentKind}
                 onChange={(event) =>
                   updateLine(line.key, {
@@ -526,6 +526,7 @@ export function RegisterVersionForm({
               <SelectField
                 name={`line-target-${line.key}`}
                 label={line.componentKind === "sub_recipe" ? "Sub-recipe" : "Item"}
+                style={{ flex: "2 1 200px", minWidth: 0 }}
                 value={line.targetId}
                 onChange={(event) => updateLine(line.key, { targetId: event.target.value })}
                 options={
@@ -553,6 +554,7 @@ export function RegisterVersionForm({
                 required
                 min={0}
                 step="0.000001"
+                style={{ flex: "1 1 120px", minWidth: 0 }}
                 value={line.quantity}
                 onChange={(event) => updateLine(line.key, { quantity: event.target.value })}
               />
@@ -562,6 +564,7 @@ export function RegisterVersionForm({
                 min={0}
                 max={1}
                 step="0.000001"
+                style={{ flex: "1 1 100px", minWidth: 0 }}
                 value={line.lossFactor}
                 onChange={(event) => updateLine(line.key, { lossFactor: event.target.value })}
                 help="Optional, in (0, 1]; defaults to 1."
@@ -569,6 +572,7 @@ export function RegisterVersionForm({
               <Button
                 type="button"
                 variant="secondary"
+                style={{ flexShrink: 0 }}
                 onClick={() =>
                   setLines((current) => current.filter((candidate) => candidate.key !== line.key))
                 }
@@ -604,8 +608,8 @@ export function RegisterVersionForm({
               <div
                 key={row.key}
                 style={{
-                  display: "grid",
-                  gridTemplateColumns: "2fr 1fr 2fr auto",
+                  display: "flex",
+                  flexWrap: "wrap",
                   gap: spacing[3],
                   alignItems: "end",
                 }}
@@ -613,6 +617,7 @@ export function RegisterVersionForm({
                 <SelectField
                   name={`allergen-${row.key}`}
                   label="Allergen"
+                  style={{ flex: "2 1 180px", minWidth: 0 }}
                   value={row.allergenId}
                   onChange={(event) =>
                     updateAllergenRow(row.key, { allergenId: event.target.value })
@@ -625,6 +630,7 @@ export function RegisterVersionForm({
                 <SelectField
                   name={`allergen-source-${row.key}`}
                   label="Source"
+                  style={{ flex: "1 1 130px", minWidth: 0 }}
                   value={row.source}
                   onChange={(event) =>
                     updateAllergenRow(row.key, {
@@ -640,6 +646,7 @@ export function RegisterVersionForm({
                   <SelectField
                     name={`allergen-verified-by-${row.key}`}
                     label="Verified by"
+                    style={{ flex: "2 1 180px", minWidth: 0 }}
                     value={row.verifiedBy}
                     onChange={(event) =>
                       updateAllergenRow(row.key, { verifiedBy: event.target.value })
@@ -653,6 +660,7 @@ export function RegisterVersionForm({
                 <Button
                   type="button"
                   variant="secondary"
+                  style={{ flexShrink: 0 }}
                   onClick={() =>
                     setAllergenRows((current) =>
                       current.filter((candidate) => candidate.key !== row.key),
@@ -680,8 +688,8 @@ export function RegisterVersionForm({
           <strong style={{ margin: 0 }}>Direct labour mapping (DEC-112, optional)</strong>
           <div
             style={{
-              display: "grid",
-              gridTemplateColumns: "1fr 2fr",
+              display: "flex",
+              flexWrap: "wrap",
               gap: spacing[3],
               alignItems: "end",
             }}
@@ -689,6 +697,7 @@ export function RegisterVersionForm({
             <SelectField
               name="laborRoleCode"
               label="Labour role"
+              style={{ flex: "1 1 180px", minWidth: 0 }}
               value={laborRoleCode}
               onChange={(event) => setLaborRoleCode(event.target.value)}
               placeholder="None — no labour mapping"
@@ -697,6 +706,7 @@ export function RegisterVersionForm({
             <TextField
               name="laborCostCenterId"
               label="Cost centre id"
+              style={{ flex: "2 1 220px", minWidth: 0 }}
               value={laborCostCenterId}
               onChange={(event) => setLaborCostCenterId(event.target.value)}
               help="Optional. No cost-centre list read exists yet, so the id must be pasted; the role and cost centre are all-or-nothing."

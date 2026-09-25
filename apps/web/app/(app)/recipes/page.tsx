@@ -112,7 +112,6 @@ export default async function RecipesPage() {
         display: "flex",
         flexDirection: "column",
         gap: spacing[6],
-        width: "100%",
         maxWidth: 1120,
         margin: "0 auto",
         padding: `${spacing[8]}px ${spacing[4]}px`,
@@ -185,113 +184,121 @@ export default async function RecipesPage() {
             first recipe below, then add a version with its lines and allergens.
           </EmptyState>
         ) : (
-          <Table
-            caption="Recipes with their latest version and cost preview. A cost preview requires an approved version and a resolvable cost source."
-            columnCount={6}
-          >
-            <thead>
-              <tr>
-                <Th>Code</Th>
-                <Th>Name</Th>
-                <Th>Latest version</Th>
-                <Th>State</Th>
-                <Th>Output item</Th>
-                <Th style={{ textAlign: "right" }}>Cost / usable unit</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {listed.map((entry) => {
-                const output =
-                  entry.recipe.outputItemId === null
-                    ? undefined
-                    : outputItems.get(entry.recipe.outputItemId);
-                return (
-                  <tr key={entry.recipe.id}>
-                    <Td>
-                      <a
-                        href={`/recipes/${entry.recipe.id}`}
-                        style={{
-                          color: color.brand.navy,
-                          fontWeight: typography.fontWeight.semibold,
-                          fontFamily: typography.fontFamily.mono,
-                        }}
-                      >
-                        {entry.recipe.code}
-                      </a>
-                    </Td>
-                    <Td>
-                      <a href={`/recipes/${entry.recipe.id}`} style={{ color: color.text.primary }}>
-                        {entry.recipe.name}
-                      </a>
-                    </Td>
-                    <Td>
-                      {entry.latestVersion === null ? (
-                        <span style={{ color: color.text.muted }}>—</span>
-                      ) : (
-                        `v${entry.latestVersion.versionNo}`
-                      )}
-                    </Td>
-                    <Td>
-                      {entry.latestVersion === null ? (
-                        <span style={{ color: color.text.muted }}>—</span>
-                      ) : (
-                        <StatusPill tone={stateTone(entry.latestVersion.state)}>
-                          {entry.latestVersion.state}
-                        </StatusPill>
-                      )}
-                    </Td>
-                    <Td>
-                      {entry.recipe.outputItemId === null ? (
-                        <span style={{ color: color.text.muted }}>Made to order</span>
-                      ) : (
+          <div style={{ overflowX: "auto", minWidth: 0 }}>
+            <Table
+              caption="Recipes with their latest version and cost preview. A cost preview requires an approved version and a resolvable cost source."
+              columnCount={6}
+            >
+              <thead>
+                <tr>
+                  <Th>Code</Th>
+                  <Th>Name</Th>
+                  <Th>Latest version</Th>
+                  <Th>State</Th>
+                  <Th>Output item</Th>
+                  <Th style={{ textAlign: "right" }}>Cost / usable unit</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {listed.map((entry) => {
+                  const output =
+                    entry.recipe.outputItemId === null
+                      ? undefined
+                      : outputItems.get(entry.recipe.outputItemId);
+                  return (
+                    <tr key={entry.recipe.id}>
+                      <Td>
                         <a
-                          href="/products"
-                          title={entry.recipe.outputItemId}
-                          style={{ color: color.brand.navy, textDecoration: "none" }}
+                          href={`/recipes/${entry.recipe.id}`}
+                          style={{
+                            color: color.brand.navy,
+                            fontWeight: typography.fontWeight.semibold,
+                            fontFamily: typography.fontFamily.mono,
+                          }}
                         >
-                          {output === undefined ? (
-                            <span style={{ fontFamily: typography.fontFamily.mono }}>
-                              {entry.recipe.outputItemId}
-                            </span>
-                          ) : (
-                            <span style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                              <span>{output.name}</span>
-                              <span
-                                style={{
-                                  fontFamily: typography.fontFamily.mono,
-                                  fontSize: typography.fontSize.xs,
-                                  color: color.text.muted,
-                                }}
-                              >
-                                {output.code}
-                              </span>
-                            </span>
-                          )}
+                          {entry.recipe.code}
                         </a>
-                      )}
-                    </Td>
-                    <Td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
-                      {entry.costPreview.available ? (
-                        <span
-                          title={`${entry.costPreview.currency} · yield ${trimDecimal(
-                            entry.costPreview.yieldRate,
-                          )}`}
-                          style={{ fontWeight: typography.fontWeight.semibold }}
+                      </Td>
+                      <Td>
+                        <a
+                          href={`/recipes/${entry.recipe.id}`}
+                          style={{ color: color.text.primary }}
                         >
-                          {formatMoneyAmount(entry.costPreview.costPerUsableOutputUnit)}{" "}
-                          {entry.costPreview.currency}
-                        </span>
-                      ) : (
-                        <span title={entry.costPreview.reason} style={{ color: color.text.muted }}>
-                          Not costed
-                        </span>
-                      )}
-                    </Td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </Table>
+                          {entry.recipe.name}
+                        </a>
+                      </Td>
+                      <Td>
+                        {entry.latestVersion === null ? (
+                          <span style={{ color: color.text.muted }}>—</span>
+                        ) : (
+                          `v${entry.latestVersion.versionNo}`
+                        )}
+                      </Td>
+                      <Td>
+                        {entry.latestVersion === null ? (
+                          <span style={{ color: color.text.muted }}>—</span>
+                        ) : (
+                          <StatusPill tone={stateTone(entry.latestVersion.state)}>
+                            {entry.latestVersion.state}
+                          </StatusPill>
+                        )}
+                      </Td>
+                      <Td>
+                        {entry.recipe.outputItemId === null ? (
+                          <span style={{ color: color.text.muted }}>Made to order</span>
+                        ) : (
+                          <a
+                            href="/products"
+                            title={entry.recipe.outputItemId}
+                            style={{ color: color.brand.navy, textDecoration: "none" }}
+                          >
+                            {output === undefined ? (
+                              <span style={{ fontFamily: typography.fontFamily.mono }}>
+                                {entry.recipe.outputItemId}
+                              </span>
+                            ) : (
+                              <span style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                                <span>{output.name}</span>
+                                <span
+                                  style={{
+                                    fontFamily: typography.fontFamily.mono,
+                                    fontSize: typography.fontSize.xs,
+                                    color: color.text.muted,
+                                  }}
+                                >
+                                  {output.code}
+                                </span>
+                              </span>
+                            )}
+                          </a>
+                        )}
+                      </Td>
+                      <Td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                        {entry.costPreview.available ? (
+                          <span
+                            title={`${entry.costPreview.currency} · yield ${trimDecimal(
+                              entry.costPreview.yieldRate,
+                            )}`}
+                            style={{ fontWeight: typography.fontWeight.semibold }}
+                          >
+                            {formatMoneyAmount(entry.costPreview.costPerUsableOutputUnit)}{" "}
+                            {entry.costPreview.currency}
+                          </span>
+                        ) : (
+                          <span
+                            title={entry.costPreview.reason}
+                            style={{ color: color.text.muted }}
+                          >
+                            Not costed
+                          </span>
+                        )}
+                      </Td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </Table>
+          </div>
         )}
       </SectionCard>
 
