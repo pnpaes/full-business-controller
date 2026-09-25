@@ -3,6 +3,7 @@ import {
   color,
   containerWidth,
   elevation,
+  focus,
   motion,
   radius,
   spacing,
@@ -81,8 +82,8 @@ const shellCss = `
 }
 .aq-skip-link:focus-visible {
   transform: none;
-  outline: 2px solid ${color.border.focus};
-  outline-offset: 2px;
+  outline: ${focus.ringWidth}px solid ${focus.ringColor};
+  outline-offset: ${focus.ringOffset}px;
 }
 /* ------------------------------ Light left rail ----------------------------- */
 .aq-sidebar {
@@ -108,8 +109,8 @@ const shellCss = `
 }
 .aq-sidebar .aquarela-nav-item:focus-visible,
 .aq-drawer .aquarela-nav-item:focus-visible {
-  outline: 2px solid ${color.border.focus};
-  outline-offset: -2px;
+  outline: ${focus.ringWidth}px solid ${focus.ringColor};
+  outline-offset: -${focus.ringOffset}px;
 }
 .aq-brand {
   display: flex;
@@ -120,8 +121,8 @@ const shellCss = `
   text-decoration: none;
 }
 .aq-brand:focus-visible {
-  outline: 2px solid ${color.border.focus};
-  outline-offset: -2px;
+  outline: ${focus.ringWidth}px solid ${focus.ringColor};
+  outline-offset: -${focus.ringOffset}px;
 }
 .aq-brand-name {
   display: flex;
@@ -172,8 +173,8 @@ const shellCss = `
 .aq-user { position: relative; }
 .aq-user-summary:focus-visible,
 .aq-user-item:focus-visible {
-  outline: 2px solid ${color.border.focus};
-  outline-offset: 2px;
+  outline: ${focus.ringWidth}px solid ${focus.ringColor};
+  outline-offset: ${focus.ringOffset}px;
 }
 .aq-user-summary {
   display: inline-flex;
@@ -291,8 +292,8 @@ const shellCss = `
   background-color: ${color.accent.soft};
 }
 .aq-bottomnav-item:focus-visible {
-  outline: 2px solid ${color.border.focus};
-  outline-offset: -2px;
+  outline: ${focus.ringWidth}px solid ${focus.ringColor};
+  outline-offset: -${focus.ringOffset}px;
 }
 /* ------------------------------ Mobile drawer ------------------------------ */
 .aq-drawer-backdrop {
@@ -345,8 +346,8 @@ const shellCss = `
   cursor: pointer;
 }
 .aq-close-button:focus-visible {
-  outline: 2px solid ${color.border.focus};
-  outline-offset: -2px;
+  outline: ${focus.ringWidth}px solid ${focus.ringColor};
+  outline-offset: -${focus.ringOffset}px;
 }
 /* ------------------------------- Breakpoints ------------------------------- */
 /* Composition changes at the token breakpoints (brief §18): labelled rail at
