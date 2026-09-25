@@ -6,11 +6,14 @@ import {
   getPriceVersion,
   listAllocationRules,
   listCostCards,
+  listCostCenters,
   listCostPools,
   listLaborRates,
   listOperatingCosts,
   listPriceScenarios,
   listPriceVersions,
+  MAX_COST_CENTER_LIMIT,
+  type CostCenterRecord,
 } from "@aquarela/application";
 import {
   costCardRefRequest,
@@ -170,4 +173,17 @@ export async function loadAllocationRules(
 ): Promise<readonly AllocationRuleRow[]> {
   const { organizationId, store } = context;
   return toAllocationRuleRows(await listAllocationRules(store, { organizationId }));
+}
+
+/**
+ * The organization's real cost centres (`DATA_DICTIONARY` §1), ordered by code.
+ * Bounded at the read's hard cap: the register forms use this as a picker, and a
+ * truncated page would silently hide a valid centre, so ask for the maximum the
+ * read allows rather than the default page.
+ */
+export async function loadCostCenters(
+  context: CostingReadContext,
+): Promise<readonly CostCenterRecord[]> {
+  const { organizationId, store } = context;
+  return listCostCenters(store, { organizationId, limit: MAX_COST_CENTER_LIMIT });
 }

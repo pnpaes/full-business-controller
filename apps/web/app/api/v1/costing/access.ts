@@ -45,6 +45,16 @@ export const COST_CARD_READ_ROLES = [
 export const CHANNEL_FEE_RULE_WRITE_ROLES = COST_CARD_WRITE_ROLES;
 export const CHANNEL_FEE_RULE_READ_ROLES = COST_CARD_READ_ROLES;
 
+/**
+ * Cost centres are the shared overhead/labour master data every Costs surface
+ * binds to, so listing them is a **Read** action on the same
+ * `07_SECURITY_AND_NFR.md` "Recipes/cost cards" row. Aliased to the cost-card
+ * read set (owner / general manager / location manager / kitchen / purchasing /
+ * finance / admin / analyst; `front_of_house` scores None) so the two surfaces
+ * cannot drift.
+ */
+export const COST_CENTER_READ_ROLES = COST_CARD_READ_ROLES;
+
 /** Loads the caller's roles and location scope live from server data (ADR-0003). */
 export async function loadCostingAccess(userId: string): Promise<UserAccess> {
   return loadUserAccess(getAuthStore(), userId);

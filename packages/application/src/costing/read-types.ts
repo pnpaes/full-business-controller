@@ -6,6 +6,7 @@ import type {
 import type { PriceScenarioRecord } from "./price-scenario-types";
 import type {
   AllocationRuleRecord,
+  CostCenterRecord,
   CostPoolRecord,
   LaborRateRecord,
   OperatingCostRecord,
@@ -100,4 +101,18 @@ export interface CostingReadStore {
   listAllocationRules(query: {
     readonly organizationId: string;
   }): Promise<readonly AllocationRuleReadRecord[]>;
+
+  /**
+   * One bounded page of the organization's cost centres (`DATA_DICTIONARY` §1),
+   * ordered by `code` (then `id`). `limit`/`offset` are applied by the store so a
+   * caller cannot pull the whole register; the application `listCostCenters`
+   * service validates them against `MAX_COST_CENTER_LIMIT` first.
+   */
+  listCostCenters(query: {
+    readonly organizationId: string;
+    readonly kind?: string;
+    readonly locationId?: string;
+    readonly limit: number;
+    readonly offset: number;
+  }): Promise<readonly CostCenterRecord[]>;
 }

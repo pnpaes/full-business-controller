@@ -64,10 +64,11 @@ function today(): string {
 
 /**
  * Registers an operating cost through `POST /api/v1/costing/operating-costs`
- * (COST-003). The cost-centre options come from the cost centres already
- * referenced by this organization's costing facts — cost centres are seeded
- * master data with no authoring screen yet. Amount carries its currency; the
- * tax basis is explicit (brief §8.4: money is never shown without its basis).
+ * (COST-003). The cost-centre options are the organization's real cost centres
+ * (`GET /api/v1/costing/cost-centers`, `listCostCenters`), not a pasted id. A
+ * cost centre is required by the command, so the picker is required. Amount
+ * carries its currency; the tax basis is explicit (brief §8.4: money is never
+ * shown without its basis).
  */
 export function RegisterOperatingCostForm({
   costCenters,
@@ -100,9 +101,8 @@ export function RegisterOperatingCostForm({
     return (
       <SectionCard title="Register an operating cost">
         <Alert tone="info">
-          Registering an operating cost needs a cost centre. No cost centre is referenced by this
-          organization&apos;s costing facts yet — cost centres are seeded master data, so seed the
-          demo data first.
+          Registering an operating cost needs a cost centre, and this organization has none yet —
+          cost centres are seeded master data, so seed the demo data first.
         </Alert>
       </SectionCard>
     );

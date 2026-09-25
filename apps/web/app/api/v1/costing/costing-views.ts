@@ -6,6 +6,7 @@ import type {
   CostCardDetailRecord,
   CostCardHistoryEntry,
   CostCardRecord,
+  CostCenterRecord,
   CostingItemRefRecord,
   CostingReadStore,
   CostingRefRecord,
@@ -622,7 +623,6 @@ export interface AllocationRuleRow {
   readonly effectiveFrom: string;
   readonly effectiveTo: string | null;
 }
-
 export function toAllocationRuleRows(
   rules: readonly AllocationRuleReadRecord[],
 ): readonly AllocationRuleRow[] {
@@ -637,6 +637,32 @@ export function toAllocationRuleRows(
     effectiveFrom: rule.effectiveFrom,
     effectiveTo: rule.effectiveTo,
   }));
+}
+
+/* ------------------------------ cost centres ------------------------------- */
+
+export interface CostCenterRow {
+  readonly id: string;
+  readonly locationId: string | null;
+  readonly code: string;
+  readonly name: string;
+  readonly kind: string;
+}
+
+/** The organization's cost centres as the screens/POST forms serialize them. */
+export function toCostCenterRows(
+  organizationId: string,
+  centers: readonly CostCenterRecord[],
+): readonly CostCenterRow[] {
+  return centers
+    .filter((center) => center.organizationId === organizationId)
+    .map((center) => ({
+      id: center.id,
+      locationId: center.locationId,
+      code: center.code,
+      name: center.name,
+      kind: center.kind,
+    }));
 }
 
 /* ---------------------------- channel fee rules ---------------------------- */

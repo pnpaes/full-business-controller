@@ -17,6 +17,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { calculateCostCard } from "./cost-card";
 import { createPostgresCostCardStore } from "./cost-card-postgres-store";
+import { listCostCenters } from "./list-cost-centers";
 import { calculatePriceScenario } from "./price-scenario";
 import { createPostgresPriceScenarioStore } from "./price-scenario-postgres-store";
 import { createPostgresCostingStore } from "./postgres-store";
@@ -254,6 +255,33 @@ describe.skipIf(!databaseUrl)("costing reads against PostgreSQL", () => {
       const costs = await listOperatingCosts(reads, { organizationId: orgId });
       expect(costs.map((r) => r.id)).toEqual([operatingCostId]);
       expect(costs[0]).toMatchObject({ amount: "10000.0000", currency: "NOK" });
+    });
+  });
+
+  it("lists cost centres ordered by code, org-scoped and filterable", async () => {
+    await inRollback(client.db, async (tx) => {
+      const reads = createPostgresCostingReadStore(tx);
+      const codeA = `aaa_${suffix}`;
+      const codeZ = `zzz_${suffix}`;
+
+      await tx.insert(costCenter).values([
+        { organizationId: orgId, code: codeZ, name: "Zulu", kind: "company_shared" },
+        { organizationId: orgId, code: codeA, name: "Alpha", kind: "kitchen" },
+        { organizationId: otherOrgId, code: `aaf_${suffix}`, name: "Foreign", kind: "kitchen" },
+      ]);
+
+      const all = await listCostCenters(reads, { organizationId: orgId });
+      expect(all.map((center) => center.code)).toEqual([codeA, `cc_${suffix}`, codeZ]);
+
+      const kitchen = await listCostCenters(reads, { organizationId: orgId, kind: "kitchen" });
+      expect(kitchen.map((center) => center.code)).toEqual([codeA, `cc_${suffix}`]);
+
+      const firstPage = await listCostCenters(reads, {
+        organizationId: orgId,
+        limit: 1,
+        offset: 1,
+      });
+      expect(firstPage.map((center) => center.code)).toEqual([`cc_${suffix}`]);
     });
   });
 

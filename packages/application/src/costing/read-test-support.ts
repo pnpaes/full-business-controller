@@ -12,7 +12,12 @@ import type {
   CostingRefRecord,
   CostingUnitRefRecord,
 } from "./read-types";
-import type { CostPoolRecord, LaborRateRecord, OperatingCostRecord } from "./types";
+import type {
+  CostCenterRecord,
+  CostPoolRecord,
+  LaborRateRecord,
+  OperatingCostRecord,
+} from "./types";
 
 /**
  * In-memory `CostingReadStore` for the read-service unit suite. It holds the
@@ -25,7 +30,7 @@ export class FakeCostingReadStore implements CostingReadStore {
   readonly productVariants = new Map<string, CostingRefRecord>();
   readonly locations = new Map<string, CostingRefRecord>();
   readonly channels = new Map<string, CostingRefRecord>();
-  readonly costCenters = new Map<string, CostingRefRecord>();
+  readonly costCenters = new Map<string, CostCenterRecord>();
   readonly items = new Map<string, CostingItemRefRecord>();
   readonly units = new Map<string, CostingUnitRefRecord>();
   readonly costCards = new Map<string, CostCardRecord>();
@@ -138,6 +143,27 @@ export class FakeCostingReadStore implements CostingReadStore {
     );
   }
 
+  listCostCenters(query: {
+    readonly organizationId: string;
+    readonly kind?: string;
+    readonly locationId?: string;
+    readonly limit: number;
+    readonly offset: number;
+  }): Promise<readonly CostCenterRecord[]> {
+    const rows = [...this.costCenters.values()]
+      .filter(
+        (center) =>
+          center.organizationId === query.organizationId &&
+          (query.kind === undefined || center.kind === query.kind) &&
+          (query.locationId === undefined || center.locationId === query.locationId),
+      )
+      .sort((a, b) =>
+        a.code < b.code ? -1 : a.code > b.code ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0,
+      )
+      .slice(query.offset, query.offset + query.limit);
+    return Promise.resolve(rows);
+  }
+
   /** Adds an allocation rule and records the organization its pool belongs to. */
   addAllocationRule(organizationId: string, rule: AllocationRuleReadRecord): void {
     this.allocationRules.push(rule);
@@ -207,6 +233,8 @@ export function seedCostingReadFixture(store: FakeCostingReadStore): CostingRead
     organizationId,
     code: "KITCHEN",
     name: "Kitchen",
+    locationId,
+    kind: "kitchen",
   });
   store.items.set(itemId, {
     id: itemId,

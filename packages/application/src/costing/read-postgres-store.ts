@@ -22,7 +22,12 @@ import type {
   CostingRefRecord,
   CostingUnitRefRecord,
 } from "./read-types";
-import type { CostPoolRecord, LaborRateRecord, OperatingCostRecord } from "./types";
+import type {
+  CostCenterRecord,
+  CostPoolRecord,
+  LaborRateRecord,
+  OperatingCostRecord,
+} from "./types";
 
 /**
  * Read adapter for `CostingReadStore`: maps the persistence rows to the read
@@ -255,6 +260,20 @@ export function createPostgresCostingReadStore(db: Database): CostingReadStore {
       (await repo.listCostPools(db, query_.organizationId)).map(toCostPool),
     listAllocationRules: async (query_) =>
       (await repo.listAllocationRules(db, query_.organizationId)).map(toAllocationRule),
+    listCostCenters: async (query_) => {
+      const rows = await query().costCenter.findMany({
+        where: (table, { and, eq }) =>
+          and(
+            eq(table.organizationId, query_.organizationId),
+            query_.kind === undefined ? undefined : eq(table.kind, query_.kind),
+            query_.locationId === undefined ? undefined : eq(table.locationId, query_.locationId),
+          ),
+        orderBy: (table, { asc }) => [asc(table.code), asc(table.id)],
+        limit: query_.limit,
+        offset: query_.offset,
+      });
+      return rows.map(toCostCenter);
+    },
   };
 }
 
@@ -265,4 +284,22 @@ function toRef(row: {
   readonly name: string | null;
 }): CostingRefRecord {
   return { id: row.id, organizationId: row.organizationId, code: row.code, name: row.name };
+}
+
+function toCostCenter(row: {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly locationId: string | null;
+  readonly code: string;
+  readonly name: string;
+  readonly kind: string;
+}): CostCenterRecord {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    locationId: row.locationId,
+    code: row.code,
+    name: row.name,
+    kind: row.kind,
+  };
 }

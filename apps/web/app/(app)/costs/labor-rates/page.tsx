@@ -1,7 +1,7 @@
 import { EmptyState, SectionCard, Table, Td, Th, color, spacing, typography } from "@aquarela/ui";
 import { ROLE_CODE } from "@aquarela/persistence";
 
-import { getCostingReadContext, loadLaborRates } from "../data";
+import { getCostingReadContext, loadCostCenters, loadLaborRates } from "../data";
 import { formatMoney, formatPercent, formatWindow, orDash } from "../format";
 import { RegisterLaborRateForm } from "./register-labor-rate-form";
 
@@ -17,17 +17,16 @@ const numCell = { textAlign: "right", fontVariantNumeric: "tabular-nums" } as co
  */
 export default async function LaborRatesPage() {
   const context = await getCostingReadContext();
-  const rows = await loadLaborRates(context);
+  const [rows, costCenters] = await Promise.all([
+    loadLaborRates(context),
+    loadCostCenters(context),
+  ]);
 
-  // Cost centres are seeded master data with no authoring screen; the options
-  // are the cost centres this organization's costing facts already reference.
-  const costCenterOptions = [
-    ...new Map(
-      rows
-        .filter((row) => row.costCenterName !== null)
-        .map((row) => [row.costCenterId, { id: row.costCenterId, name: row.costCenterName ?? "" }]),
-    ).values(),
-  ].map((center) => ({ id: center.id, code: null, name: center.name }));
+  const costCenterOptions = costCenters.map((center) => ({
+    id: center.id,
+    code: center.code,
+    name: center.name,
+  }));
 
   return (
     <>

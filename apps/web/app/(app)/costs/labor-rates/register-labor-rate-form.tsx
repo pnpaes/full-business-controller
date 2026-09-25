@@ -53,9 +53,10 @@ function today(): string {
 /**
  * Registers a labour rate through `POST /api/v1/costing/labor-rates` (COST-004).
  * The statutory percentages are optional; the loaded hourly rate is derived by
- * the domain command and echoed back in the confirmation. The cost-centre
- * options come from the cost centres already referenced by costing facts —
- * cost centres are seeded master data with no authoring screen yet.
+ * the domain command and echoed back in the confirmation. The cost-centre options
+ * are the organization's real cost centres (`GET /api/v1/costing/cost-centers`,
+ * `listCostCenters`), not a pasted id; the command requires one, so the picker is
+ * required.
  */
 export function RegisterLaborRateForm({
   costCenters,
@@ -80,9 +81,8 @@ export function RegisterLaborRateForm({
     return (
       <SectionCard title="Register a labour rate">
         <Alert tone="info">
-          Registering a labour rate needs a cost centre. No cost centre is referenced by this
-          organization&apos;s costing facts yet — cost centres are seeded master data, so seed the
-          demo data first.
+          Registering a labour rate needs a cost centre, and this organization has none yet — cost
+          centres are seeded master data, so seed the demo data first.
         </Alert>
       </SectionCard>
     );

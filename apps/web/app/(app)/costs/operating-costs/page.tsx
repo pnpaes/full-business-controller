@@ -4,7 +4,7 @@ import { COST_BEHAVIOR, OPERATING_COST_RECURRENCE, TAX_BASIS } from "@aquarela/p
 
 import { getDb } from "../../../../lib/db";
 
-import { getCostingReadContext, loadCostPools, loadOperatingCosts } from "../data";
+import { getCostingReadContext, loadCostCenters, loadCostPools, loadOperatingCosts } from "../data";
 import { formatMoney, formatWindow, orDash } from "../format";
 import { RegisterOperatingCostForm } from "./register-operating-cost-form";
 
@@ -19,26 +19,18 @@ const numCell = { textAlign: "right", fontVariantNumeric: "tabular-nums" } as co
  */
 export default async function OperatingCostsPage() {
   const context = await getCostingReadContext();
-  const [rows, pools, locations] = await Promise.all([
+  const [rows, pools, locations, costCenters] = await Promise.all([
     loadOperatingCosts(context),
     loadCostPools(context),
     listLocations(createPostgresInventoryStore(getDb().db), {
       organizationId: context.organizationId,
     }),
+    loadCostCenters(context),
   ]);
 
-  // Cost centres are seeded master data with no authoring screen; the options
-  // are the cost centres this organization's costing facts already reference.
-  const costCenters = [
-    ...new Map(
-      rows
-        .filter((row) => row.costCenterName !== null)
-        .map((row) => [row.costCenterId, { id: row.costCenterId, name: row.costCenterName ?? "" }]),
-    ).values(),
-  ];
   const costCenterOptions = costCenters.map((center) => ({
     id: center.id,
-    code: null,
+    code: center.code,
     name: center.name,
   }));
 
