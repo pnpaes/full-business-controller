@@ -1,12 +1,13 @@
 import {
+  createPostgresFileObjectsStore,
   createPostgresHmsStore,
   createPostgresInventoryStore,
   findIncident,
   listCorrectiveActions,
+  listFileObjects,
   listLocations,
 } from "@aquarela/application";
 import {
-  Alert,
   DataTable,
   type DataTableColumn,
   DescriptionList,
@@ -41,6 +42,7 @@ import {
   incidentSeverityView,
   incidentStatusView,
 } from "../../hms-labels";
+import { AttachEvidenceForm } from "./attach-evidence-form";
 import { IncidentUpdateForm } from "./incident-update-form";
 import { NewCorrectiveActionForm } from "./new-corrective-action-form";
 
@@ -57,12 +59,27 @@ const contentColumn = {
   padding: `${spacing[8]}px ${spacing[4]}px`,
 } as const;
 
+/** A compact, exact-enough byte label for an evidence row. */
+function formatBytes(sizeBytes: number): string {
+  if (sizeBytes < 1024) {
+    return `${sizeBytes} B`;
+  }
+  if (sizeBytes < 1024 * 1024) {
+    return `${(sizeBytes / 1024).toFixed(1)} KiB`;
+  }
+  return `${(sizeBytes / (1024 * 1024)).toFixed(1)} MiB`;
+}
+
 /**
- * One incident (`HMS-003`, `DEC-090`): the full record, its corrective actions
- * and the audited update/close controls for the edit roles. Kitchen/FOH read
- * only (`DEC-095`). Evidence is metadata-only (`DEC-090`): the file-storage port
- * exists (`DEC-132`) but the incident consumer is not wired to it, so the
- * evidence posture is stated where a photo/file would be expected.
+ * One incident (`HMS-003`, `DEC-090`): the full record, its evidence
+ * attachments, its corrective actions and the audited update/close controls for
+ * the edit roles. Kitchen/FOH read only (`DEC-095`).
+ *
+ * Evidence is wired to the `DEC-132` port (`DEC-134`): the polymorphic
+ * `hms_incident` link (`DEC-095`) is listed here through `listFileObjects` and
+ * each attachment is downloadable, while an edit-role caller can attach a new
+ * photo or report. The list is metadata only; the bytes stream from the
+ * download route.
  */
 export default async function IncidentDetailPage({
   params,
@@ -117,6 +134,13 @@ export default async function IncidentDetailPage({
   const actions = await listCorrectiveActions(store, {
     organizationId,
     incidentId: incident.id,
+    limit: 200,
+  });
+
+  const evidence = await listFileObjects(createPostgresFileObjectsStore(getDb().db), {
+    organizationId,
+    linkedEntityType: "hms_incident",
+    linkedEntityId: incident.id,
     limit: 200,
   });
 
@@ -193,6 +217,13 @@ export default async function IncidentDetailPage({
     { key: "verified", header: "Verified" },
   ];
 
+  const evidenceColumns: readonly DataTableColumn[] = [
+    { key: "file", header: "File" },
+    { key: "type", header: "Type" },
+    { key: "size", header: "Size" },
+    { key: "uploaded", header: "Uploaded" },
+  ];
+
   const canEdit = isHmsAuthorized(access, HMS_INCIDENT_EDIT_ROLES, incident.locationId);
   const canCreateAction = isHmsAuthorized(
     access,
@@ -211,11 +242,6 @@ export default async function IncidentDetailPage({
 
       <SectionCard title="Incident record" meta={`Raised ${formatHmsInstant(incident.createdAt)}`}>
         <DescriptionList items={facts} />
-        <Alert tone="info" title="Evidence is metadata-only">
-          Incident evidence (photos, files) cannot be attached yet: the file-storage port exists
-          (DEC-132), but the incident consumer is not wired to it (DEC-090), so no bytes are stored.
-          The record above and the audit trail are the evidence until the wiring lands.
-        </Alert>
       </SectionCard>
 
       {canEdit ? (
@@ -237,6 +263,27 @@ export default async function IncidentDetailPage({
           </EmptyState>
         </SectionCard>
       )}
+
+      <SectionCard
+        title="Evidence"
+        meta={`${evidence.length} ${evidence.length === 1 ? "attachment" : "attachments"}`}
+      >
+        <DataTable
+          caption="Photos and reports attached to this incident"
+          columns={evidenceColumns}
+          rowHref={(row) => `/api/v1/hms/incidents/${incident.id}/evidence/${String(row.id)}/file`}
+          rows={evidence.map((file) => ({
+            id: file.id,
+            file: file.filename,
+            type: file.mime,
+            size: formatBytes(file.sizeBytes),
+            uploaded: formatHmsInstant(file.uploadedAt),
+          }))}
+          emptyMessage="No evidence attached yet. A manager or admin can attach a photo or a report below."
+        />
+      </SectionCard>
+
+      {canEdit ? <AttachEvidenceForm incidentId={incident.id} /> : null}
 
       {canReadActions ? (
         <SectionCard

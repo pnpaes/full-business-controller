@@ -1,13 +1,17 @@
 import {
+  createPostgresFileObjectsStore,
   createPostgresHmsStore,
   findEquipment,
   listMaintenanceLogs,
   recordMaintenanceLog,
+  storeFileObject,
 } from "@aquarela/application";
 import { DomainError, NotFoundError } from "@aquarela/domain";
 
 import { requireSession } from "../../../../../../../lib/auth";
 import { getDb } from "../../../../../../../lib/db";
+import { getFileStorage } from "../../../../../../../lib/file-storage";
+import { isMultipart, parseUploadForm } from "../../../../../../../lib/file-upload";
 import { withMutationGuards } from "../../../../../../../lib/guards";
 import { jsonError, jsonOk, mapErrors } from "../../../../../../../lib/http";
 import { resolveOrganization } from "../../../../../../../lib/organization";
@@ -21,6 +25,8 @@ import {
   loadHmsAccess,
 } from "../../../access";
 import {
+  HMS_MAINTENANCE_RETENTION_POLICY,
+  HMS_MAINTENANCE_UPLOAD_POLICY,
   isUuid,
   parseMaintenanceLogPageQuery,
   parseRecordMaintenanceLogBody,
@@ -30,6 +36,21 @@ import { hmsLimiters } from "../../../limiters";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+/**
+ * Flattens a `multipart/form-data` body into the metadata object the shared
+ * parser expects, dropping the `file` part and any client `fileObjectId`: the
+ * link is set from the file actually stored, never a client claim (`ADR-0003`).
+ */
+function formBody(form: FormData): Record<string, unknown> {
+  const body: Record<string, unknown> = {};
+  for (const [key, value] of form.entries()) {
+    if (key !== "file" && key !== "fileObjectId" && typeof value === "string") {
+      body[key] = value;
+    }
+  }
+  return body;
+}
 
 /**
  * Maintenance logs recorded against one equipment row (`HMS-006`, `DEC-092`),
@@ -109,8 +130,12 @@ export async function GET(
  *
  * The actor and `performedBy` are the session user; the equipment link is the
  * path id, so the body carries `kind` (checked against `MAINTENANCE_KINDS`), the
- * `performedAt` instant and optional `notes`/`fileObjectId`. A malformed body or
- * a non-UUID id is a 400.
+ * `performedAt` instant and optional `notes`. Two body shapes are accepted:
+ * `multipart/form-data` with an optional `file` part stores the evidence through
+ * the `DEC-132` port (linked to the equipment) and records the log with
+ * `fileObjectId` (`DEC-133`); the JSON shape remains metadata-only. A file whose
+ * type is outside the evidence allow-list or over the size cap is a 400 and
+ * stores nothing. A malformed body or a non-UUID id is a 400.
  *
  * The equipment is resolved org-scoped for every caller — an unknown or
  * cross-organization id is a 404 (so a nonexistent link cannot surface as a raw
@@ -133,11 +158,6 @@ export async function POST(
       return jsonError(400);
     }
 
-    const parsed = parseRecordMaintenanceLogBody(await readJsonObject(request));
-    if (!parsed.ok) {
-      return jsonError(400);
-    }
-
     const organizationId = resolveOrganization();
     const store = createPostgresHmsStore(getDb().db);
 
@@ -149,17 +169,69 @@ export async function POST(
       return jsonError(403);
     }
 
+    let parsedBody;
+    let fileObjectId: string | null = null;
+    if (isMultipart(request)) {
+      let form: FormData;
+      try {
+        form = await request.formData();
+      } catch {
+        return jsonError(400);
+      }
+      parsedBody = parseRecordMaintenanceLogBody(formBody(form));
+      if (!parsedBody.ok) {
+        return jsonError(400);
+      }
+
+      const filePart = form.get("file");
+      if (filePart !== null && typeof filePart !== "string") {
+        const parsedUpload = await parseUploadForm(form, HMS_MAINTENANCE_UPLOAD_POLICY);
+        if (!parsedUpload.ok) {
+          return jsonError(400);
+        }
+        try {
+          const file = await storeFileObject(
+            createPostgresFileObjectsStore(getDb().db),
+            getFileStorage(),
+            {
+              organizationId,
+              actorId: session.userId,
+              filename: parsedUpload.upload.filename,
+              mime: parsedUpload.upload.mime,
+              retentionPolicy: HMS_MAINTENANCE_RETENTION_POLICY,
+              bytes: parsedUpload.upload.bytes,
+              linkedEntityType: "equipment",
+              linkedEntityId: equipment.id,
+            },
+          );
+          fileObjectId = file.id;
+        } catch (error) {
+          if (error instanceof DomainError) {
+            return jsonError(400, error.message);
+          }
+          throw error;
+        }
+      }
+    } else {
+      const parsed = parseRecordMaintenanceLogBody(await readJsonObject(request));
+      if (!parsed.ok) {
+        return jsonError(400);
+      }
+      parsedBody = parsed;
+      fileObjectId = parsed.input.fileObjectId;
+    }
+
     let log;
     try {
       log = await recordMaintenanceLog(store, {
         organizationId,
         actorId: session.userId,
         equipmentId: id,
-        kind: parsed.input.kind,
-        performedAt: parsed.input.performedAt,
+        kind: parsedBody.input.kind,
+        performedAt: parsedBody.input.performedAt,
         performedBy: session.userId,
-        notes: parsed.input.notes,
-        fileObjectId: parsed.input.fileObjectId,
+        notes: parsedBody.input.notes,
+        fileObjectId,
       });
     } catch (error) {
       if (error instanceof DomainError) {
@@ -168,6 +240,6 @@ export async function POST(
       throw error;
     }
 
-    return jsonOk({ maintenanceLogId: log.id });
+    return jsonOk({ maintenanceLogId: log.id, fileObjectId: log.fileObjectId });
   });
 }

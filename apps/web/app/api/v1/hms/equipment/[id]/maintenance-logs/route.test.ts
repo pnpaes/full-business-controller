@@ -1,4 +1,9 @@
-import type { EquipmentRecord, MaintenanceLogRecord, UserAccess } from "@aquarela/application";
+import type {
+  EquipmentRecord,
+  FileObjectRecord,
+  MaintenanceLogRecord,
+  UserAccess,
+} from "@aquarela/application";
 import { DomainError } from "@aquarela/domain";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -7,9 +12,11 @@ vi.mock("@aquarela/application", async (importOriginal) => {
   return {
     ...actual,
     createPostgresHmsStore: vi.fn(() => ({})),
+    createPostgresFileObjectsStore: vi.fn(() => ({})),
     findEquipment: vi.fn(),
     listMaintenanceLogs: vi.fn(),
     recordMaintenanceLog: vi.fn(),
+    storeFileObject: vi.fn(),
     loadUserAccess: vi.fn(),
   };
 });
@@ -19,6 +26,7 @@ vi.mock("../../../../../../../lib/auth", () => ({
   getAuthStore: vi.fn(() => ({})),
 }));
 vi.mock("../../../../../../../lib/db", () => ({ getDb: vi.fn(() => ({ db: {} })) }));
+vi.mock("../../../../../../../lib/file-storage", () => ({ getFileStorage: vi.fn(() => ({})) }));
 vi.mock("../../../../../../../lib/organization", () => ({
   resolveOrganization: vi.fn(() => "org-1"),
 }));
@@ -29,6 +37,8 @@ import * as application from "@aquarela/application";
 import { requireSession } from "../../../../../../../lib/auth";
 import { getServerSession } from "../../../../../../../lib/server-session";
 
+import { HMS_MAINTENANCE_UPLOAD_POLICY } from "../../../equipment-rows";
+
 import { GET, POST } from "./route";
 
 const ORG = "org-1";
@@ -37,6 +47,7 @@ const LOCATION = "11111111-1111-4111-8111-111111111111";
 const OTHER_LOCATION = "33333333-3333-4333-8333-333333333333";
 const EQUIPMENT_ID = "22222222-2222-4222-8222-222222222222";
 const LOG_ID = "55555555-5555-4555-8555-555555555555";
+const FILE_ID = "66666666-6666-4666-8666-666666666666";
 const PATH = `/api/v1/hms/equipment/${EQUIPMENT_ID}/maintenance-logs`;
 
 function equipmentRecord(overrides: Partial<EquipmentRecord> = {}): EquipmentRecord {
@@ -97,12 +108,58 @@ function postRequest(body: unknown): Request {
 
 const validBody = { kind: "service", performedAt: "2026-02-10T09:00:00.000Z" };
 
+function fileRecord(overrides: Partial<FileObjectRecord> = {}): FileObjectRecord {
+  return {
+    id: FILE_ID,
+    organizationId: ORG,
+    storageKey: `${ORG}/key.jpg`,
+    filename: "service.jpg",
+    mime: "image/jpeg",
+    sizeBytes: 8,
+    checksumSha256: "a".repeat(64),
+    retentionPolicy: "hms_maintenance_evidence",
+    uploadedBy: USER,
+    uploadedAt: "2026-02-10T09:00:00.000Z",
+    linkedEntityType: "equipment",
+    linkedEntityId: EQUIPMENT_ID,
+    createdAt: "2026-02-10T09:00:00.000Z",
+    ...overrides,
+  };
+}
+
+function uploadRequest(
+  fields: Record<string, string> = validBody,
+  file?: { bytes?: Uint8Array; filename?: string; type?: string },
+): Request {
+  const form = new FormData();
+  for (const [key, value] of Object.entries(fields)) {
+    form.append(key, value);
+  }
+  if (file !== undefined) {
+    form.append(
+      "file",
+      new File(
+        [Uint8Array.from(file.bytes ?? new TextEncoder().encode("photo"))],
+        file.filename ?? "service.jpg",
+        { type: file.type ?? "image/jpeg" },
+      ),
+    );
+  }
+  return new Request(`http://localhost${PATH}`, {
+    method: "POST",
+    headers: { "sec-fetch-site": "same-origin" },
+    body: form,
+  });
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(application.createPostgresHmsStore).mockReturnValue({} as never);
+  vi.mocked(application.createPostgresFileObjectsStore).mockReturnValue({} as never);
   vi.mocked(application.findEquipment).mockResolvedValue(equipmentRecord());
   vi.mocked(application.listMaintenanceLogs).mockResolvedValue([]);
   vi.mocked(application.recordMaintenanceLog).mockResolvedValue(maintenanceLogRecord());
+  vi.mocked(application.storeFileObject).mockResolvedValue(fileRecord());
   vi.mocked(application.loadUserAccess).mockResolvedValue(access(["owner"]));
   vi.mocked(getServerSession).mockResolvedValue({ userId: USER } as never);
   vi.mocked(requireSession).mockResolvedValue({
@@ -256,7 +313,11 @@ describe("POST /api/v1/hms/equipment/[id]/maintenance-logs", () => {
         fileObjectId: null,
       }),
     );
-    await expect(response.json()).resolves.toEqual({ ok: true, maintenanceLogId: LOG_ID });
+    await expect(response.json()).resolves.toEqual({
+      ok: true,
+      maintenanceLogId: LOG_ID,
+      fileObjectId: null,
+    });
   });
 
   it("lets kitchen record a maintenance log", async () => {
@@ -353,5 +414,100 @@ describe("POST /api/v1/hms/equipment/[id]/maintenance-logs", () => {
     await expect(response.json()).resolves.toEqual({
       error: "kind must be one of service, repair, inspection",
     });
+  });
+});
+
+describe("POST /api/v1/hms/equipment/[id]/maintenance-logs (multipart upload)", () => {
+  it("stores the evidence linked to the equipment and records the log with it", async () => {
+    vi.mocked(application.recordMaintenanceLog).mockResolvedValue(
+      maintenanceLogRecord({ fileObjectId: FILE_ID }),
+    );
+
+    const response = await POST(uploadRequest(undefined, {}), context());
+
+    expect(response.status).toBe(200);
+    expect(application.storeFileObject).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({
+        organizationId: ORG,
+        actorId: USER,
+        filename: "service.jpg",
+        mime: "image/jpeg",
+        retentionPolicy: "hms_maintenance_evidence",
+        linkedEntityType: "equipment",
+        linkedEntityId: EQUIPMENT_ID,
+      }),
+    );
+    expect(application.recordMaintenanceLog).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ equipmentId: EQUIPMENT_ID, fileObjectId: FILE_ID }),
+    );
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      maintenanceLogId: LOG_ID,
+      fileObjectId: FILE_ID,
+    });
+  });
+
+  it.each(["text/plain", "application/zip", "video/mp4"])(
+    "returns 400 and stores nothing for the disallowed type %s",
+    async (type) => {
+      const response = await POST(uploadRequest(undefined, { type }), context());
+
+      expect(response.status).toBe(400);
+      expect(application.storeFileObject).not.toHaveBeenCalled();
+      expect(application.recordMaintenanceLog).not.toHaveBeenCalled();
+    },
+  );
+
+  it("returns 400 and stores nothing for an oversize upload", async () => {
+    const bytes = new Uint8Array(HMS_MAINTENANCE_UPLOAD_POLICY.maxBytes + 1);
+
+    const response = await POST(uploadRequest(undefined, { bytes }), context());
+
+    expect(response.status).toBe(400);
+    expect(application.storeFileObject).not.toHaveBeenCalled();
+  });
+
+  it("records metadata only when no file part is present", async () => {
+    const response = await POST(uploadRequest(), context());
+
+    expect(response.status).toBe(200);
+    expect(application.storeFileObject).not.toHaveBeenCalled();
+    expect(application.recordMaintenanceLog).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ fileObjectId: null }),
+    );
+  });
+
+  it("returns 400 for a bad kind and stores nothing", async () => {
+    const response = await POST(uploadRequest({ ...validBody, kind: "overhaul" }, {}), context());
+
+    expect(response.status).toBe(400);
+    expect(application.storeFileObject).not.toHaveBeenCalled();
+  });
+
+  it("returns 404 for a cross-organization equipment and stores nothing", async () => {
+    vi.mocked(application.findEquipment).mockResolvedValue(undefined);
+
+    const response = await POST(uploadRequest(undefined, {}), context());
+
+    expect(response.status).toBe(404);
+    expect(application.storeFileObject).not.toHaveBeenCalled();
+  });
+
+  it("returns 403 for a location-scoped caller at another location", async () => {
+    vi.mocked(application.loadUserAccess).mockResolvedValue(
+      access(["location_manager"], [LOCATION]),
+    );
+    vi.mocked(application.findEquipment).mockResolvedValue(
+      equipmentRecord({ locationId: OTHER_LOCATION }),
+    );
+
+    const response = await POST(uploadRequest(undefined, {}), context());
+
+    expect(response.status).toBe(403);
+    expect(application.storeFileObject).not.toHaveBeenCalled();
   });
 });

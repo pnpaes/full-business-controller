@@ -72,17 +72,21 @@ describe.skipIf(!databaseUrl)("file object repository", () => {
 
   it("lists newest uploaded_at first with an entity-type filter and paging", async () => {
     await inRollback(client.db, async (tx) => {
+      const linkedId = randomUUID();
       const january = await createTestFileObject(tx, orgId, {
         uploadedAt: at("2026-01-01T00:00:00.000Z"),
         linkedEntityType: "import_run",
+        linkedEntityId: linkedId,
       });
       const february = await createTestFileObject(tx, orgId, {
         uploadedAt: at("2026-02-01T00:00:00.000Z"),
         linkedEntityType: "settlement",
+        linkedEntityId: linkedId,
       });
       const march = await createTestFileObject(tx, orgId, {
         uploadedAt: at("2026-03-01T00:00:00.000Z"),
         linkedEntityType: "import_run",
+        linkedEntityId: randomUUID(),
       });
 
       const all = await listFileObjects(tx, { organizationId: orgId });
@@ -93,6 +97,16 @@ describe.skipIf(!databaseUrl)("file object repository", () => {
         linkedEntityType: "import_run",
       });
       expect(runs.map((row) => row.id)).toEqual([march.id, january.id]);
+
+      // The polymorphic link read filters on type **and** id (`DEC-134`): the
+      // settlement shares the id but not the type, and march shares the type
+      // but not the id.
+      const linked = await listFileObjects(tx, {
+        organizationId: orgId,
+        linkedEntityType: "import_run",
+        linkedEntityId: linkedId,
+      });
+      expect(linked.map((row) => row.id)).toEqual([january.id]);
 
       const paged = await listFileObjects(tx, { organizationId: orgId, limit: 1, offset: 1 });
       expect(paged.map((row) => row.id)).toEqual([february.id]);

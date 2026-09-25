@@ -1,8 +1,16 @@
-import { createPostgresHmsStore, findIncident, updateIncident } from "@aquarela/application";
+import {
+  createPostgresFileObjectsStore,
+  createPostgresHmsStore,
+  findIncident,
+  storeFileObject,
+  updateIncident,
+} from "@aquarela/application";
 import { DomainError, NotFoundError } from "@aquarela/domain";
 
 import { requireSession } from "../../../../../../lib/auth";
 import { getDb } from "../../../../../../lib/db";
+import { getFileStorage } from "../../../../../../lib/file-storage";
+import { isMultipart, parseUploadForm } from "../../../../../../lib/file-upload";
 import { withMutationGuards } from "../../../../../../lib/guards";
 import { jsonError, jsonOk, mapErrors } from "../../../../../../lib/http";
 import { resolveOrganization } from "../../../../../../lib/organization";
@@ -15,11 +23,32 @@ import {
   isHmsAuthorized,
   loadHmsAccess,
 } from "../../access";
-import { isUuid, parseUpdateIncidentBody, toIncidentRow } from "../../incident-rows";
+import {
+  HMS_INCIDENT_RETENTION_POLICY,
+  HMS_INCIDENT_UPLOAD_POLICY,
+  isUuid,
+  parseUpdateIncidentBody,
+  toIncidentRow,
+} from "../../incident-rows";
 import { hmsLimiters } from "../../limiters";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+/**
+ * Flattens a `multipart/form-data` body into the metadata object the shared
+ * parser expects, dropping the `file` part: the evidence link is set from the
+ * file actually stored, never a client claim (`ADR-0003`).
+ */
+function formBody(form: FormData): Record<string, unknown> {
+  const body: Record<string, unknown> = {};
+  for (const [key, value] of form.entries()) {
+    if (key !== "file" && typeof value === "string") {
+      body[key] = value;
+    }
+  }
+  return body;
+}
 
 /**
  * One incident by id (`HMS-003`, `DEC-090`).
@@ -77,6 +106,18 @@ export async function GET(
  * unknown/cross-organization incident is a 404; a location-scoped caller may
  * only edit an incident at a location in their scope — resolved org-scoped
  * before the command, so another location's incident is a 403.
+ *
+ * Two body shapes are accepted (`DEC-134`): the JSON shape above, and a
+ * `multipart/form-data` body that carries those same fields plus an optional
+ * `file` part. A file is stored through the `DEC-132` port linked to the
+ * incident (`linked_entity_type = 'hms_incident'`, the `DEC-095` link) with
+ * `HMS_INCIDENT_RETENTION_POLICY`; a multipart body of only a file is a pure
+ * evidence attach and updates no incident field. Attaching evidence is an
+ * amendment, so it follows this route's `HMS_INCIDENT_EDIT_ROLES` gate: kitchen/
+ * front_of_house may raise and read incidents (`DEC-095`) but do not amend them.
+ * A type outside the evidence allow-list or over the cap is a 400 and stores
+ * nothing. The response carries `fileObjectId` (null when no evidence was
+ * attached) alongside the updated incident.
  */
 export async function PATCH(
   request: Request,
@@ -94,15 +135,33 @@ export async function PATCH(
       return jsonError(400);
     }
 
-    const parsed = parseUpdateIncidentBody(await readJsonObject(request));
-    if (!parsed.ok) {
-      return jsonError(400);
-    }
-
     const organizationId = resolveOrganization();
     const store = createPostgresHmsStore(getDb().db);
 
-    if (access.locationIds.length > 0) {
+    let parsedBody;
+    let fileObjectId: string | null = null;
+    if (isMultipart(request)) {
+      let form: FormData;
+      try {
+        form = await request.formData();
+      } catch {
+        return jsonError(400);
+      }
+      const parsed = parseUpdateIncidentBody(formBody(form));
+      if (!parsed.ok) {
+        return jsonError(400);
+      }
+      parsedBody = parsed;
+
+      const filePart = form.get("file");
+      const hasFile = filePart !== null && typeof filePart !== "string";
+      if (Object.keys(parsed.input).length === 0 && !hasFile) {
+        return jsonError(400);
+      }
+
+      // The incident is resolved org-scoped for every caller before evidence is
+      // linked (unknown/cross-organization → 404) and a scoped caller's location
+      // is applied (403), so a nonexistent link cannot surface as a raw FK error.
       const incident = await findIncident(store, { organizationId, incidentId: id });
       if (incident === undefined) {
         return jsonError(404);
@@ -110,6 +169,57 @@ export async function PATCH(
       if (!isHmsAuthorized(access, HMS_INCIDENT_EDIT_ROLES, incident.locationId)) {
         return jsonError(403);
       }
+
+      if (hasFile) {
+        const parsedUpload = await parseUploadForm(form, HMS_INCIDENT_UPLOAD_POLICY);
+        if (!parsedUpload.ok) {
+          return jsonError(400);
+        }
+        try {
+          const file = await storeFileObject(
+            createPostgresFileObjectsStore(getDb().db),
+            getFileStorage(),
+            {
+              organizationId,
+              actorId: session.userId,
+              filename: parsedUpload.upload.filename,
+              mime: parsedUpload.upload.mime,
+              retentionPolicy: HMS_INCIDENT_RETENTION_POLICY,
+              bytes: parsedUpload.upload.bytes,
+              linkedEntityType: "hms_incident",
+              linkedEntityId: id,
+            },
+          );
+          fileObjectId = file.id;
+        } catch (error) {
+          if (error instanceof DomainError) {
+            return jsonError(400, error.message);
+          }
+          throw error;
+        }
+      }
+    } else {
+      const parsed = parseUpdateIncidentBody(await readJsonObject(request));
+      if (!parsed.ok) {
+        return jsonError(400);
+      }
+      parsedBody = parsed;
+
+      if (access.locationIds.length > 0) {
+        const incident = await findIncident(store, { organizationId, incidentId: id });
+        if (incident === undefined) {
+          return jsonError(404);
+        }
+        if (!isHmsAuthorized(access, HMS_INCIDENT_EDIT_ROLES, incident.locationId)) {
+          return jsonError(403);
+        }
+      }
+    }
+
+    // A multipart body of only a file is a pure evidence attach: nothing to
+    // update, and the file object is the whole result.
+    if (Object.keys(parsedBody.input).length === 0) {
+      return jsonOk({ incidentId: id, fileObjectId });
     }
 
     let incident;
@@ -118,7 +228,7 @@ export async function PATCH(
         organizationId,
         actorId: session.userId,
         incidentId: id,
-        ...parsed.input,
+        ...parsedBody.input,
       });
     } catch (error) {
       if (error instanceof DomainError) {
@@ -127,6 +237,6 @@ export async function PATCH(
       throw error;
     }
 
-    return jsonOk({ incident: toIncidentRow(organizationId, incident) });
+    return jsonOk({ incident: toIncidentRow(organizationId, incident), fileObjectId });
   });
 }

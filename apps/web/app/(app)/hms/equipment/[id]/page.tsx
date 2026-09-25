@@ -155,9 +155,11 @@ export default async function EquipmentDetailPage({
             performedBy: log.performedBy,
             notes: log.notes ?? "—",
             evidence:
-              log.fileObjectId === null
-                ? "—"
-                : `Reference ${log.fileObjectId.slice(0, 8)}… (bytes not stored — port not wired, DEC-132)`,
+              log.fileObjectId === null ? (
+                "—"
+              ) : (
+                <a href={`/api/v1/hms/maintenance-logs/${log.id}/file`}>Download evidence</a>
+              ),
           }))}
           emptyMessage="No maintenance logged yet. Log the first service, repair or inspection below."
         />

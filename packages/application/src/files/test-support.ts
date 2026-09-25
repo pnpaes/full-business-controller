@@ -2,7 +2,12 @@ import { randomUUID } from "node:crypto";
 
 import { sha256Hex } from "./checksum";
 import type { FileStoragePort, PutFileInput, StoredFileInfo } from "./file-storage";
-import type { FileObjectRecord, FileObjectsStore, NewFileObjectRecord } from "./types";
+import type {
+  FileObjectListQuery,
+  FileObjectRecord,
+  FileObjectsStore,
+  NewFileObjectRecord,
+} from "./types";
 import type { AuditInput } from "../auth";
 
 interface FileObjectsSnapshot {
@@ -70,6 +75,24 @@ export class FakeFileObjectsStore implements FileObjectsStore {
     return record !== undefined && record.organizationId === query.organizationId
       ? record
       : undefined;
+  }
+
+  async listFileObjects(query: FileObjectListQuery): Promise<readonly FileObjectRecord[]> {
+    const rows = [...this.fileObjects.values()]
+      .filter(
+        (record) =>
+          record.organizationId === query.organizationId &&
+          record.linkedEntityType === query.linkedEntityType &&
+          record.linkedEntityId === query.linkedEntityId,
+      )
+      .sort((left, right) =>
+        left.uploadedAt === right.uploadedAt
+          ? right.id.localeCompare(left.id)
+          : right.uploadedAt.localeCompare(left.uploadedAt),
+      );
+    const offset = query.offset ?? 0;
+    const limit = query.limit ?? rows.length;
+    return rows.slice(offset, offset + limit);
   }
 }
 

@@ -2,7 +2,22 @@ import type { CorrectiveActionRecord, IncidentRecord } from "@aquarela/applicati
 
 import { isUuid } from "./hms-rows";
 
+import type { FileUploadPolicy } from "../../../../lib/file-upload";
+
 export { isUuid };
+
+/**
+ * Upload policy and retention class for the incident-evidence consumer
+ * (`DEC-134`): a scene photo or an attached report — JPEG, PNG, WebP or PDF —
+ * capped at 10 MiB, the same set and cap as the maintenance-evidence consumer
+ * (`DEC-133`), because both are HMS field evidence. These live here rather than
+ * in the route module because a Next route file may only export HTTP handlers.
+ */
+export const HMS_INCIDENT_UPLOAD_POLICY: FileUploadPolicy = {
+  allowedMime: ["image/jpeg", "image/png", "image/webp", "application/pdf"],
+  maxBytes: 10 * 1024 * 1024,
+};
+export const HMS_INCIDENT_RETENTION_POLICY = "hms_incident_evidence";
 
 /**
  * Pure query/body parsing and response mapping for the HMS incident +

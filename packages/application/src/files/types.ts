@@ -57,6 +57,17 @@ export interface NewFileObjectRecord {
   readonly createdBy: string | null;
 }
 
+/** Filters for the `file_object` metadata list read (`DEC-134`). */
+export interface FileObjectListQuery {
+  readonly organizationId: string;
+  /** Polymorphic link type (`'hms_incident'`, `DEC-095`). */
+  readonly linkedEntityType: string;
+  /** Polymorphic link id; required with `linkedEntityType`. */
+  readonly linkedEntityId: string;
+  readonly limit?: number;
+  readonly offset?: number;
+}
+
 /**
  * The persistence port for the `file_object` metadata registry. One port covers
  * the metadata table; the bytes are a separate `FileStoragePort`.
@@ -75,4 +86,10 @@ export interface FileObjectsStore {
     readonly organizationId: string;
     readonly fileObjectId: string;
   }): Promise<FileObjectRecord | undefined>;
+  /**
+   * The file objects linked to one entity, organization-scoped (`DEC-061`),
+   * newest `uploadedAt` first and metadata only — the bytes are never returned
+   * here. `listFileObjects` (application) bounds `limit`.
+   */
+  listFileObjects(query: FileObjectListQuery): Promise<readonly FileObjectRecord[]>;
 }

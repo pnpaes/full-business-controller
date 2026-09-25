@@ -67,5 +67,15 @@ export function createPostgresFileObjectsStore(db: Database): FileObjectsStore {
       });
       return row === undefined ? undefined : toFileObject(row);
     },
+    listFileObjects: async (query) => {
+      const rows = await repo.listFileObjects(db, {
+        organizationId: query.organizationId,
+        linkedEntityType: query.linkedEntityType,
+        linkedEntityId: query.linkedEntityId,
+        ...(query.limit === undefined ? {} : { limit: query.limit }),
+        ...(query.offset === undefined ? {} : { offset: query.offset }),
+      });
+      return rows.map(toFileObject);
+    },
   };
 }

@@ -1,4 +1,4 @@
-import type { IncidentRecord, UserAccess } from "@aquarela/application";
+import type { FileObjectRecord, IncidentRecord, UserAccess } from "@aquarela/application";
 import { DomainError, NotFoundError } from "@aquarela/domain";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -7,7 +7,9 @@ vi.mock("@aquarela/application", async (importOriginal) => {
   return {
     ...actual,
     createPostgresHmsStore: vi.fn(() => ({})),
+    createPostgresFileObjectsStore: vi.fn(() => ({})),
     findIncident: vi.fn(),
+    storeFileObject: vi.fn(),
     updateIncident: vi.fn(),
     loadUserAccess: vi.fn(),
   };
@@ -18,6 +20,7 @@ vi.mock("../../../../../../lib/auth", () => ({
   getAuthStore: vi.fn(() => ({})),
 }));
 vi.mock("../../../../../../lib/db", () => ({ getDb: vi.fn(() => ({ db: {} })) }));
+vi.mock("../../../../../../lib/file-storage", () => ({ getFileStorage: vi.fn(() => ({})) }));
 vi.mock("../../../../../../lib/organization", () => ({
   resolveOrganization: vi.fn(() => "org-1"),
 }));
@@ -27,6 +30,8 @@ import * as application from "@aquarela/application";
 
 import { requireSession } from "../../../../../../lib/auth";
 import { getServerSession } from "../../../../../../lib/server-session";
+
+import { HMS_INCIDENT_UPLOAD_POLICY } from "../../incident-rows";
 
 import { GET, PATCH } from "./route";
 
@@ -80,11 +85,59 @@ function patchRequest(body: unknown): Request {
   });
 }
 
+const FILE_ID = "66666666-6666-4666-8666-666666666666";
+
+function fileRecord(overrides: Partial<FileObjectRecord> = {}): FileObjectRecord {
+  return {
+    id: FILE_ID,
+    organizationId: ORG,
+    storageKey: `${ORG}/key.jpg`,
+    filename: "scene.jpg",
+    mime: "image/jpeg",
+    sizeBytes: 8,
+    checksumSha256: "a".repeat(64),
+    retentionPolicy: "hms_incident_evidence",
+    uploadedBy: USER,
+    uploadedAt: "2026-02-01T08:00:00.000Z",
+    linkedEntityType: "hms_incident",
+    linkedEntityId: INCIDENT_ID,
+    createdAt: "2026-02-01T08:00:00.000Z",
+    ...overrides,
+  };
+}
+
+function uploadRequest(
+  fields: Record<string, string> = {},
+  file?: { bytes?: Uint8Array; filename?: string; type?: string },
+): Request {
+  const form = new FormData();
+  for (const [key, value] of Object.entries(fields)) {
+    form.append(key, value);
+  }
+  if (file !== undefined) {
+    form.append(
+      "file",
+      new File(
+        [Uint8Array.from(file.bytes ?? new TextEncoder().encode("photo"))],
+        file.filename ?? "scene.jpg",
+        { type: file.type ?? "image/jpeg" },
+      ),
+    );
+  }
+  return new Request(`http://localhost${PATH}`, {
+    method: "PATCH",
+    headers: { "sec-fetch-site": "same-origin" },
+    body: form,
+  });
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(application.createPostgresHmsStore).mockReturnValue({} as never);
+  vi.mocked(application.createPostgresFileObjectsStore).mockReturnValue({} as never);
   vi.mocked(application.findIncident).mockResolvedValue(incidentRecord());
   vi.mocked(application.updateIncident).mockResolvedValue(incidentRecord());
+  vi.mocked(application.storeFileObject).mockResolvedValue(fileRecord());
   vi.mocked(application.loadUserAccess).mockResolvedValue(access(["owner"]));
   vi.mocked(getServerSession).mockResolvedValue({ userId: USER } as never);
   vi.mocked(requireSession).mockResolvedValue({
@@ -295,5 +348,104 @@ describe("PATCH /api/v1/hms/incidents/[id]", () => {
     const response = await PATCH(patchRequest({ status: "closed" }), context());
 
     expect(response.status).toBe(404);
+  });
+});
+
+describe("PATCH /api/v1/hms/incidents/[id] (evidence upload, DEC-134)", () => {
+  it("stores the evidence linked to the incident and applies the field patch", async () => {
+    const response = await PATCH(uploadRequest({ title: "Renamed" }, {}), context());
+
+    expect(response.status).toBe(200);
+    expect(application.storeFileObject).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({
+        organizationId: ORG,
+        actorId: USER,
+        filename: "scene.jpg",
+        mime: "image/jpeg",
+        retentionPolicy: "hms_incident_evidence",
+        linkedEntityType: "hms_incident",
+        linkedEntityId: INCIDENT_ID,
+      }),
+    );
+    expect(application.updateIncident).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ incidentId: INCIDENT_ID, title: "Renamed" }),
+    );
+    await expect(response.json()).resolves.toMatchObject({ ok: true, fileObjectId: FILE_ID });
+  });
+
+  it("attaches evidence with no field change (pure evidence attach)", async () => {
+    const response = await PATCH(uploadRequest(undefined, {}), context());
+
+    expect(response.status).toBe(200);
+    expect(application.storeFileObject).toHaveBeenCalled();
+    expect(application.updateIncident).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toEqual({
+      ok: true,
+      incidentId: INCIDENT_ID,
+      fileObjectId: FILE_ID,
+    });
+  });
+
+  it.each(["text/plain", "application/zip", "video/mp4"])(
+    "returns 400 and stores nothing for the disallowed type %s",
+    async (type) => {
+      const response = await PATCH(uploadRequest({ title: "Renamed" }, { type }), context());
+
+      expect(response.status).toBe(400);
+      expect(application.storeFileObject).not.toHaveBeenCalled();
+      expect(application.updateIncident).not.toHaveBeenCalled();
+    },
+  );
+
+  it("returns 400 and stores nothing for an oversize upload", async () => {
+    const bytes = new Uint8Array(HMS_INCIDENT_UPLOAD_POLICY.maxBytes + 1);
+
+    const response = await PATCH(uploadRequest({ title: "Renamed" }, { bytes }), context());
+
+    expect(response.status).toBe(400);
+    expect(application.storeFileObject).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 for a multipart body with neither fields nor a file", async () => {
+    const response = await PATCH(uploadRequest(), context());
+
+    expect(response.status).toBe(400);
+    expect(application.storeFileObject).not.toHaveBeenCalled();
+    expect(application.updateIncident).not.toHaveBeenCalled();
+  });
+
+  it("returns 403 for kitchen, which may not amend an incident", async () => {
+    vi.mocked(application.loadUserAccess).mockResolvedValue(access(["kitchen"]));
+
+    const response = await PATCH(uploadRequest(undefined, {}), context());
+
+    expect(response.status).toBe(403);
+    expect(application.storeFileObject).not.toHaveBeenCalled();
+  });
+
+  it("returns 404 for a cross-organization incident and stores nothing", async () => {
+    vi.mocked(application.findIncident).mockResolvedValue(undefined);
+
+    const response = await PATCH(uploadRequest(undefined, {}), context());
+
+    expect(response.status).toBe(404);
+    expect(application.storeFileObject).not.toHaveBeenCalled();
+  });
+
+  it("denies a location-scoped caller an incident at another location", async () => {
+    vi.mocked(application.loadUserAccess).mockResolvedValue(
+      access(["location_manager"], [LOCATION]),
+    );
+    vi.mocked(application.findIncident).mockResolvedValue(
+      incidentRecord({ locationId: OTHER_LOCATION }),
+    );
+
+    const response = await PATCH(uploadRequest(undefined, {}), context());
+
+    expect(response.status).toBe(403);
+    expect(application.storeFileObject).not.toHaveBeenCalled();
   });
 });

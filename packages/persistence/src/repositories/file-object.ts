@@ -51,13 +51,19 @@ export async function findFileObject(
 export interface ListFileObjectsQuery {
   readonly organizationId: string;
   readonly linkedEntityType?: string;
+  /**
+   * Optional polymorphic link id. Filtering by id alone is meaningless without
+   * a type (ids are not unique across entity types), so callers supply both
+   * (`DEC-134`); either may be omitted to leave that side unfiltered.
+   */
+  readonly linkedEntityId?: string;
   readonly limit?: number;
   readonly offset?: number;
 }
 
 /**
  * File objects for one organization, newest `uploaded_at` first (then `id`),
- * with an optional linked-entity-type filter. The organization filter is never
+ * with optional linked-entity filters. The organization filter is never
  * optional, so the caller never sees another tenant's rows. Paging is applied
  * after the ordering.
  */
@@ -74,6 +80,9 @@ export async function listFileObjects(
         query.linkedEntityType === undefined
           ? undefined
           : eq(fileObject.linkedEntityType, query.linkedEntityType),
+        query.linkedEntityId === undefined
+          ? undefined
+          : eq(fileObject.linkedEntityId, query.linkedEntityId),
       ),
     )
     .orderBy(desc(fileObject.uploadedAt), desc(fileObject.id))

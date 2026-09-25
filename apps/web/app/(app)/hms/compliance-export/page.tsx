@@ -78,9 +78,10 @@ export default async function ComplianceExportPage() {
             they are scoped through their incident and equipment parents.
           </li>
           <li>
-            <strong>Evidence bytes are not stored yet</strong> (DEC-132: the file-storage port
-            exists but the HMS evidence consumer is not wired to it): the bundle carries records and
-            references, not photos or files.
+            <strong>Maintenance evidence bytes are stored</strong> (DEC-133): a photo or service
+            report attached to a maintenance log is downloadable from that log.{" "}
+            <strong>Incident evidence is not wired yet</strong> (DEC-133 keeps it deferred), so the
+            bundle carries incident records and references, not incident photos or files.
           </li>
           <li>
             Every build writes an audit fact (<code>hms.compliance_export.generated</code>) —

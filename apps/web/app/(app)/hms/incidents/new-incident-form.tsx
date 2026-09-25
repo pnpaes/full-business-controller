@@ -44,9 +44,8 @@ async function errorMessage(response: Response): Promise<string> {
 /**
  * Raises an incident (`HMS-003`, `DEC-090`): where, what, when, severity and the
  * personal-data flag. The reporter is the session actor and the initial status
- * is `open`, both filled server-side. Evidence is metadata-only (`DEC-090`) —
- * the file-storage port exists (`DEC-132`) but this consumer is not wired to it,
- * so there is no photo/file upload.
+ * is `open`, both filled server-side. Evidence is attached after the incident
+ * exists, from its detail page (`DEC-134`), not here.
  */
 export function NewIncidentForm({
   locations,
@@ -190,9 +189,8 @@ export function NewIncidentForm({
           </Button>
         </div>
         <p style={{ margin: 0, opacity: 0.8 }}>
-          The incident opens with status <code>open</code> and no owner. Evidence (photos, files) is
-          metadata-only for now — the file-storage port exists (DEC-132) but this consumer is not
-          wired to it (DEC-090).
+          The incident opens with status <code>open</code> and no owner. Open it from the list to
+          attach a photo or report — evidence storage is wired (DEC-134) — and to assign an owner.
         </p>
       </form>
     </SectionCard>

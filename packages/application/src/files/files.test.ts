@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { sha256Hex } from "./checksum";
 import { createLocalFileStorageAdapter } from "./local-file-storage";
+import { DEFAULT_FILE_OBJECT_LIST_LIMIT, listFileObjects } from "./list-file-objects";
 import { readFileObject } from "./read-file-object";
 import { assertSafeStorageKey, buildStorageKey, extensionOf } from "./storage-key";
 import { storeFileObject } from "./store-file-object";
@@ -194,6 +195,80 @@ describe("readFileObject", () => {
     await expect(
       readFileObject(store, storage, { organizationId: ORG, fileObjectId }),
     ).rejects.toBeInstanceOf(DomainError);
+  });
+});
+
+describe("listFileObjects", () => {
+  async function seedLinked(
+    store: FakeFileObjectsStore,
+    storage: FakeFileStoragePort,
+    linkedEntityType: string,
+    linkedEntityId: string,
+    organizationId = ORG,
+  ) {
+    return storeFileObject(store, storage, {
+      organizationId,
+      actorId: ACTOR,
+      filename: "evidence.jpg",
+      mime: "image/jpeg",
+      retentionPolicy: "hms_incident_evidence",
+      bytes: bytesOf("evidence"),
+      linkedEntityType,
+      linkedEntityId,
+    });
+  }
+
+  it("returns the metadata for one entity link, never the bytes", async () => {
+    const { store, storage } = fixtures();
+    const mine = await seedLinked(store, storage, "hms_incident", "incident-1");
+    await seedLinked(store, storage, "hms_incident", "incident-2");
+    await seedLinked(store, storage, "equipment", "incident-1");
+
+    const rows = await listFileObjects(store, {
+      organizationId: ORG,
+      linkedEntityType: "hms_incident",
+      linkedEntityId: "incident-1",
+    });
+
+    expect(rows.map((row) => row.id)).toEqual([mine.id]);
+    expect(rows[0]).toMatchObject({
+      filename: "evidence.jpg",
+      mime: "image/jpeg",
+      linkedEntityType: "hms_incident",
+      linkedEntityId: "incident-1",
+    });
+    expect(rows[0]).not.toHaveProperty("bytes");
+  });
+
+  it("returns nothing for another organization (tenant isolation)", async () => {
+    const { store, storage } = fixtures();
+    await seedLinked(store, storage, "hms_incident", "incident-1", OTHER_ORG);
+
+    const rows = await listFileObjects(store, {
+      organizationId: ORG,
+      linkedEntityType: "hms_incident",
+      linkedEntityId: "incident-1",
+    });
+
+    expect(rows).toEqual([]);
+  });
+
+  it("applies the default limit when the caller does not ask for one", async () => {
+    const { store } = fixtures();
+    const queries: unknown[] = [];
+    const original = store.listFileObjects.bind(store);
+    store.listFileObjects = async (query) => {
+      queries.push(query);
+      return original(query);
+    };
+
+    await listFileObjects(store, {
+      organizationId: ORG,
+      linkedEntityType: "hms_incident",
+      linkedEntityId: "incident-1",
+    });
+
+    expect(queries[0]).toMatchObject({ limit: DEFAULT_FILE_OBJECT_LIST_LIMIT });
   });
 });
 
