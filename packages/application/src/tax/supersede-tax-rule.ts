@@ -26,8 +26,11 @@ export interface SupersedeTaxRuleResult {
  * append-only (`DEC-008`/`DEC-028`), so a rate change is a new rule effective
  * from a date. A rule that already carries an `effective_to` is refused rather
  * than re-ended, because re-writing an end date would silently rewrite history.
- * The instant must be strictly after the rule's own `effective_from` (the DB's
- * `tax_rule_effective_range_check`); a cross-organization id is refused.
+ * The end write is itself conditional on `effective_to is null` (see the
+ * adapter), so two concurrent supersedes cannot both pass the read and let the
+ * second overwrite the first's end instant. The instant must be strictly after
+ * the rule's own `effective_from` (the DB's `tax_rule_effective_range_check`);
+ * a cross-organization id is refused.
  */
 export async function supersedeTaxRule(
   store: TaxWriteStore,
@@ -55,9 +58,14 @@ export async function supersedeTaxRule(
       );
     }
 
+    // `findTaxRuleById` above already proved the rule exists and is
+    // organization-owned, so an empty result here means the conditional write
+    // matched no open row: a concurrent supersede ended the rule first.
     const ended = await tx.endTaxRule(input.organizationId, input.taxRuleId, effectiveTo);
     if (ended === undefined) {
-      throw new DomainError("tax rule not found in organization");
+      throw new DomainError(
+        `tax rule "${rule.code}" already ended; a concurrent supersede wrote its effective_to, and a rate change is a new rule effective from a date, not a rewritten end date`,
+      );
     }
 
     await tx.writeAudit({

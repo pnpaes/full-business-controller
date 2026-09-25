@@ -25,6 +25,16 @@ export function readOptionalString(body: Record<string, unknown>, key: string): 
 }
 
 /**
+ * True when `key` is present as a string that is empty or whitespace only. A
+ * blank optional field is malformed, not authorization to take a default:
+ * `effectiveTo: ""` must not silently become open-ended, and `scopeType: ""`
+ * must not silently become `company_wide`, so the route rejects it.
+ */
+export function isPresentBlankString(body: Record<string, unknown>, key: string): boolean {
+  return typeof body[key] === "string" && body[key].trim().length === 0;
+}
+
+/**
  * True when `key` is present but its value is not a string. The costing money
  * fields default to `"0.0000"` when *absent*, so a present-but-malformed value
  * (a JSON number or bool) must be a 400 rather than silently defaulting.

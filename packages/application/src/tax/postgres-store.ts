@@ -1,8 +1,28 @@
+import { DomainError } from "@aquarela/domain";
 import * as repo from "@aquarela/persistence";
 import type { Database, NodeDatabase } from "@aquarela/persistence";
 
 import type { TaxRuleRecord } from "./read-types";
 import type { TaxScopeRef, TaxWriteStore } from "./write-types";
+
+/** The organization-unique `code` constraint (`tax_rule_organization_id_code_key`). */
+const TAX_RULE_CODE_CONSTRAINT = "tax_rule_organization_id_code_key";
+
+/**
+ * Walks the `DrizzleQueryError` chain to the driver error: `drizzle-orm` wraps
+ * the pg error, so the SQLSTATE lives on `.cause`, not on the caught object.
+ */
+function driverError(error: unknown): { code?: string; constraint?: string } | undefined {
+  let current: unknown = error;
+  for (let depth = 0; depth < 5 && typeof current === "object" && current !== null; depth++) {
+    const code = (current as { code?: unknown }).code;
+    if (typeof code === "string") {
+      return current as { code: string; constraint?: string };
+    }
+    current = (current as { cause?: unknown }).cause;
+  }
+  return undefined;
+}
 
 /** A transaction handle has no `transaction` method of its own. */
 function isNodeDatabase(db: Database): db is NodeDatabase {
@@ -96,25 +116,41 @@ export function createPostgresTaxStore(db: Database): TaxWriteStore {
       return row === undefined ? undefined : { id: row.id, organizationId: row.organizationId };
     },
     createTaxRule: async (input) => {
-      const rows = await relational(db)
-        .insert(repo.taxRule)
-        .values({
-          organizationId: input.organizationId,
-          code: input.code,
-          name: input.name,
-          ratePct: input.ratePct,
-          taxTreatment: input.taxTreatment,
-          taxBasis: input.taxBasis,
-          recoverable: input.recoverable,
-          appliesTo: input.appliesTo,
-          scopeType: input.scopeType,
-          locationId: input.locationId,
-          channelId: input.channelId,
-          effectiveFrom: input.effectiveFrom,
-          effectiveTo: input.effectiveTo,
-        })
-        .returning();
-      return toTaxRule(rows[0]!);
+      try {
+        const rows = await relational(db)
+          .insert(repo.taxRule)
+          .values({
+            organizationId: input.organizationId,
+            code: input.code,
+            name: input.name,
+            ratePct: input.ratePct,
+            taxTreatment: input.taxTreatment,
+            taxBasis: input.taxBasis,
+            recoverable: input.recoverable,
+            appliesTo: input.appliesTo,
+            scopeType: input.scopeType,
+            locationId: input.locationId,
+            channelId: input.channelId,
+            effectiveFrom: input.effectiveFrom,
+            effectiveTo: input.effectiveTo,
+          })
+          .returning();
+        return toTaxRule(rows[0]!);
+      } catch (error) {
+        // Two concurrent creates with one code both pass `findTaxRuleByCode`;
+        // the unique constraint is the concurrency authority, so map its
+        // violation to the same domain failure the serial path raises (400).
+        const driver = driverError(error);
+        if (
+          driver?.code === "23505" &&
+          (driver.constraint === undefined || driver.constraint === TAX_RULE_CODE_CONSTRAINT)
+        ) {
+          throw new DomainError(
+            `tax rule code "${input.code}" already exists in this organization`,
+          );
+        }
+        throw error;
+      }
     },
     endTaxRule: async (organizationId, taxRuleId, effectiveTo) => {
       const row = await relational(db).query.taxRule.findFirst({
@@ -124,12 +160,21 @@ export function createPostgresTaxStore(db: Database): TaxWriteStore {
       if (row === undefined) {
         return undefined;
       }
+      // The `effective_to is null` predicate makes the write race-safe under
+      // READ COMMITTED: a concurrent supersede's committed end re-evaluates
+      // this predicate and updates zero rows, so the caller can treat the
+      // empty result as "already ended" rather than overwriting history.
       const rows = await relational(db)
         .insert(repo.taxRule)
         .values({ ...row, effectiveTo })
-        .onConflictDoUpdate({ target: repo.taxRule.id, set: { effectiveTo } })
+        .onConflictDoUpdate({
+          target: repo.taxRule.id,
+          set: { effectiveTo },
+          setWhere: repo.isNullColumn(repo.taxRule.effectiveTo),
+        })
         .returning();
-      return toTaxRule(rows[0]!);
+      const ended = rows[0];
+      return ended === undefined ? undefined : toTaxRule(ended);
     },
     writeAudit: async (input) => {
       await repo.writeAuditEvent(db, input);

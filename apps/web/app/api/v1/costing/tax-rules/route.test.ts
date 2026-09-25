@@ -157,6 +157,21 @@ describe("POST /api/v1/costing/tax-rules", () => {
     expect(badRecoverable.status).toBe(400);
   });
 
+  it("rejects a present-but-blank optional string instead of defaulting it (m7)", async () => {
+    const blankScope = await POST(postRequest({ ...validBody, scopeType: "" }));
+    expect(blankScope.status).toBe(400);
+
+    const blankEffectiveTo = await POST(postRequest({ ...validBody, effectiveTo: "   " }));
+    expect(blankEffectiveTo.status).toBe(400);
+
+    const blankChannel = await POST(
+      postRequest({ ...validBody, scopeType: "channel", channelId: "" }),
+    );
+    expect(blankChannel.status).toBe(400);
+
+    expect(application.createTaxRule).not.toHaveBeenCalled();
+  });
+
   it("maps a command DomainError (duplicate/overlap/enum) to 400 with its message", async () => {
     vi.mocked(application.createTaxRule).mockRejectedValue(
       new DomainError('tax rule "FIRST" is already effective over this window'),

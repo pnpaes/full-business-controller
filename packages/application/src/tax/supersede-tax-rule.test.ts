@@ -4,9 +4,39 @@ import { describe, expect, it } from "vitest";
 import { FakeCostingReadStore } from "../costing/read-test-support";
 
 import { createTaxRule } from "./create-tax-rule";
+import type { TaxRuleRecord } from "./read-types";
 import { resolveTaxRule } from "./resolve-tax-rule";
 import { supersedeTaxRule } from "./supersede-tax-rule";
 import { FakeTaxWriteStore } from "./test-support";
+
+/**
+ * Models the two-transaction race M2: the command's pre-read (`findTaxRuleById`)
+ * still shows the rule open, while the conditional write sees the end a
+ * concurrent supersede committed, matches zero rows and reports `undefined`.
+ */
+class ConcurrentlyEndedStore extends FakeTaxWriteStore {
+  override findTaxRuleById(taxRuleId: string): Promise<TaxRuleRecord | undefined> {
+    const rule = this.taxRules.find((candidate) => candidate.id === taxRuleId);
+    return Promise.resolve(rule === undefined ? undefined : { ...rule, effectiveTo: null });
+  }
+
+  override endTaxRule(
+    organizationId: string,
+    taxRuleId: string,
+    effectiveTo: Date,
+  ): Promise<TaxRuleRecord | undefined> {
+    const index = this.taxRules.findIndex(
+      (rule) => rule.id === taxRuleId && rule.organizationId === organizationId,
+    );
+    const current = index === -1 ? undefined : this.taxRules[index]!;
+    if (current === undefined || current.effectiveTo !== null) {
+      return Promise.resolve(undefined);
+    }
+    const updated: TaxRuleRecord = { ...current, effectiveTo };
+    this.taxRules[index] = updated;
+    return Promise.resolve(updated);
+  }
+}
 
 const ORG = "org-1";
 const ACTOR = "user-1";
@@ -85,6 +115,26 @@ describe("supersedeTaxRule", () => {
         effectiveTo: "2027-01-01T00:00:00.000Z",
       }),
     ).rejects.toThrow(/already ended/);
+  });
+
+  it("refuses a supersede that loses the concurrent write as already ended (M2)", async () => {
+    const store = new ConcurrentlyEndedStore();
+    const taxRuleId = await seedRule(store);
+    const concurrentEnd = new Date(END);
+    store.taxRules[0] = { ...store.taxRules[0]!, effectiveTo: concurrentEnd };
+
+    await expect(
+      supersedeTaxRule(store, {
+        organizationId: ORG,
+        actorId: ACTOR,
+        taxRuleId,
+        effectiveTo: "2027-01-01T00:00:00.000Z",
+      }),
+    ).rejects.toThrow(/already ended/);
+
+    // The first end is untouched and no superseded audit was written.
+    expect(store.taxRules[0]!.effectiveTo?.toISOString()).toBe(END);
+    expect(store.audits.some((audit) => audit.action === "tax.tax_rule.superseded")).toBe(false);
   });
 
   it("refuses an end at or before the rule's effective_from", async () => {

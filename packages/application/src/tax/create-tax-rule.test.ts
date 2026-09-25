@@ -158,6 +158,44 @@ describe("createTaxRule", () => {
     );
   });
 
+  it("refuses an overlap across the organization/company_wide equivalence (M1)", async () => {
+    const store = new FakeTaxWriteStore();
+    await createTaxRule(store, baseInput({ code: "ORG", scopeType: "organization" }));
+
+    // The resolver buckets `organization` and `company_wide` together and fails
+    // closed when both are effective, so the guard must treat them as one key.
+    await expect(
+      createTaxRule(store, baseInput({ code: "WIDE", scopeType: "company_wide" })),
+    ).rejects.toThrow(/tax rule "ORG" is already effective over this window/);
+  });
+
+  it("refuses a channel-scoped/location-scoped overlap for one applicability (M1)", async () => {
+    const store = new FakeTaxWriteStore();
+    store.channels.set(CHANNEL, { id: CHANNEL, organizationId: ORG });
+    store.locations.set(LOCATION, { id: LOCATION, organizationId: ORG });
+    await createTaxRule(
+      store,
+      baseInput({ code: "BY_CHANNEL", scopeType: "channel", channelId: CHANNEL }),
+    );
+
+    // `recordGoodsReceipt` passes both ids, so this pair makes the resolver
+    // refuse every scope-only resolution (no documented precedence).
+    await expect(
+      createTaxRule(
+        store,
+        baseInput({ code: "BY_LOCATION", scopeType: "location", locationId: LOCATION }),
+      ),
+    ).rejects.toThrow(/tax rule "BY_CHANNEL" is already effective over this window/);
+  });
+
+  it("refuses scopeType storage, which the resolver has no arm for (M3)", async () => {
+    const store = new FakeTaxWriteStore();
+    await expect(createTaxRule(store, baseInput({ scopeType: "storage" }))).rejects.toThrow(
+      /scopeType "storage" is not supported for tax rules/,
+    );
+    expect(store.taxRules).toHaveLength(0);
+  });
+
   it("rejects a channel or location from another organization", async () => {
     const store = new FakeTaxWriteStore();
     store.channels.set(CHANNEL, { id: CHANNEL, organizationId: "org-2" });

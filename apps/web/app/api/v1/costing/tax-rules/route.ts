@@ -18,6 +18,7 @@ import { isUuid, toTaxRuleRows } from "../costing-views";
 import { TAX_RULE_WRITE_ROLES } from "./access";
 import { taxRuleLimiters } from "./limiters";
 import {
+  isPresentBlankString,
   isPresentNonNullNonString,
   readJsonObject,
   readOptionalString,
@@ -109,7 +110,11 @@ export async function POST(request: Request): Promise<Response> {
       return jsonError(400);
     }
 
-    if (OPTIONAL_STRING_FIELDS.some((key) => isPresentNonNullNonString(body, key))) {
+    if (
+      OPTIONAL_STRING_FIELDS.some(
+        (key) => isPresentNonNullNonString(body, key) || isPresentBlankString(body, key),
+      )
+    ) {
       return jsonError(400);
     }
     if (

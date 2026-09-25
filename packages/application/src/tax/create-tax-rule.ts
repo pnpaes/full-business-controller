@@ -41,34 +41,59 @@ export interface CreateTaxRuleResult {
   readonly taxRuleId: string;
 }
 
-/** The scoped id the resolver narrows by, per the table's structure. */
-function scopedId(scopeType: string, locationId: string | null, channelId: string | null): string {
+/**
+ * The resolver's scope equivalence (`resolveTaxRule`): `organization` and
+ * `company_wide` are one org-wide bucket ("more than one organization-wide rule
+ * is effective" fails closed at `resolve-tax-rule.ts:183-188`), while a channel
+ * scope and a location scope both narrow the same applicability with no
+ * documented precedence (`resolve-tax-rule.ts:105-109`).
+ */
+type ScopeKind = "organization" | "channel" | "location" | "storage";
+
+function scopeKind(scopeType: string): ScopeKind {
   if (scopeType === "channel") {
-    return channelId ?? "";
+    return "channel";
   }
   if (scopeType === "location") {
-    return locationId ?? "";
+    return "location";
   }
-  return "";
+  if (scopeType === "storage") {
+    return "storage";
+  }
+  return "organization"; // organization | company_wide
 }
 
 /**
- * Overlap identity (`DEC-045` applicability/scope key): two rules conflict only
- * when `applies_to`, `scope_type` **and** the scoped id all match — the same
- * narrowing `resolveTaxRule` applies before it can see more than one candidate.
+ * Overlap identity (`DEC-045` applicability/scope key): two rules conflict when
+ * the resolver could see both as candidates for one request — the same org-wide
+ * bucket, the same channel or location id, or the channel/location cross-scope
+ * pair the resolver refuses to order. Keying on an exact `scope_type` would let
+ * a `company_wide` + `organization` pair or a channel + location pair pass this
+ * guard while making every resolution fail closed.
  */
-function sameScopeKey(
+function scopesConflict(
   rule: TaxRuleRecord,
-  appliesTo: string,
   scopeType: string,
   locationId: string | null,
   channelId: string | null,
 ): boolean {
+  const existing = scopeKind(rule.scopeType);
+  const incoming = scopeKind(scopeType);
+  if (existing === "organization" || incoming === "organization") {
+    return existing === incoming;
+  }
+  if (existing === incoming) {
+    if (existing === "channel") {
+      return rule.channelId === channelId;
+    }
+    if (existing === "location") {
+      return rule.locationId === locationId;
+    }
+    return false; // storage: refused for tax rules before this point
+  }
   return (
-    rule.appliesTo === appliesTo &&
-    rule.scopeType === scopeType &&
-    scopedId(rule.scopeType, rule.locationId, rule.channelId) ===
-      scopedId(scopeType, locationId, channelId)
+    (existing === "channel" && incoming === "location") ||
+    (existing === "location" && incoming === "channel")
   );
 }
 
@@ -105,13 +130,16 @@ function normalizeRate(ratePct: string): string {
  * `[effectiveFrom, effectiveTo)` window — so a `DomainError` names the field
  * before any constraint violation.
  *
- * **Overlap is refused, not stored.** Two rules effective at one instant for
- * the same `applies_to` + `scope_type` + scoped id would make `resolveTaxRule`
- * fail closed in production, so creation names the conflicting rule and
- * refuses. The DB has no exclusion constraint on `tax_rule` (unlike
- * `channel_fee_rule`), so this read-then-write inside the transaction is the
- * only guard: a concurrent create can still race, and the resolver's
- * fail-closed ambiguity check is then the backstop.
+ * **Overlap is refused, not stored.** Two rules effective at one instant that
+ * the resolver could see as one ambiguous candidate set — the same org-wide
+ * bucket, the same channel/location id, or a channel-location cross-scope pair
+ * — would make `resolveTaxRule` fail closed in production, so creation names
+ * the conflicting rule and refuses. `scope_type: "storage"` is refused outright:
+ * the resolver has no storage arm, so it would be silently inert configuration.
+ * The DB has no exclusion constraint on `tax_rule` (unlike `channel_fee_rule`),
+ * so this read-then-write inside the transaction is the only guard: a
+ * concurrent create can still race, and the resolver's fail-closed ambiguity
+ * check is then the backstop.
  */
 export async function createTaxRule(
   store: TaxWriteStore,
@@ -140,6 +168,11 @@ export async function createTaxRule(
   const scopeType = input.scopeType ?? "company_wide";
   if (!SCOPE_TYPES.includes(scopeType)) {
     throw new DomainError(`scopeType must be one of ${SCOPE_TYPES.join(", ")}`);
+  }
+  if (scopeType === "storage") {
+    throw new DomainError(
+      'scopeType "storage" is not supported for tax rules; use "company_wide", "organization", "channel" or "location"',
+    );
   }
 
   const locationId = input.locationId ?? null;
@@ -194,7 +227,8 @@ export async function createTaxRule(
     const existing = await tx.listTaxRulesByApplicability(input.organizationId, input.appliesTo);
     const overlapping = existing.find(
       (rule) =>
-        sameScopeKey(rule, input.appliesTo, scopeType, locationId, channelId) &&
+        rule.appliesTo === input.appliesTo &&
+        scopesConflict(rule, scopeType, locationId, channelId) &&
         overlaps(rule, effectiveFrom, effectiveTo),
     );
     if (overlapping !== undefined) {

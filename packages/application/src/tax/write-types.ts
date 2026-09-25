@@ -63,8 +63,11 @@ export interface TaxWriteStore {
   findLocationScope(locationId: string): Promise<TaxScopeRef | undefined>;
   createTaxRule(input: NewTaxRuleRecord): Promise<TaxRuleRecord>;
   /**
-   * Sets `effective_to` on one **organization-owned** rule and nothing else;
-   * `undefined` when the id is unknown or belongs to another organization.
+   * Sets `effective_to` on one **organization-owned** rule and nothing else,
+   * but only while it is still open (`effective_to is null`). `undefined` when
+   * the id is unknown, belongs to another organization, or was ended already —
+   * including by a concurrent transaction, which the `effective_to is null`
+   * predicate is what makes detectable.
    */
   endTaxRule(
     organizationId: string,

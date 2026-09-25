@@ -49,6 +49,7 @@ import { toChannelRows } from "../../api/v1/costing/costing-views";
 import { TAX_RULE_WRITE_ROLES } from "../../api/v1/costing/tax-rules/access";
 
 import { TaxRuleForm } from "./tax-rule-form";
+import { fractionToPercentDisplay, taxScopeLabel } from "./tax-rule-labels";
 import { TaxRuleRegister, type TaxRuleRow } from "./tax-rule-register";
 import { UnitConversionForm } from "./unit-conversion-form";
 import { UserAccessManager } from "./user-access-manager";
@@ -171,25 +172,6 @@ function exceptionStatusTone(status: string): PillTone {
   }
 }
 
-/** Tax rules are stored as a 6 dp fraction (`0.150000` = 15 %). */
-const TAX_RATE_SCALE = 6;
-
-/**
- * Converts the stored fraction to a percentage **for display only**, by moving
- * the decimal point two places on the digit string. The value is never
- * re-derived or re-scaled through a float.
- */
-function fractionToPercentDisplay(fraction: string): string {
-  const negative = fraction.startsWith("-");
-  const [whole = "0", frac = ""] = fraction.replace(/^[+-]/, "").split(".");
-  const digits = `${whole}${frac.padEnd(TAX_RATE_SCALE, "0")}`;
-  const padded = digits.padStart(TAX_RATE_SCALE + 1, "0");
-  const percentWhole = padded.slice(0, padded.length - (TAX_RATE_SCALE - 2));
-  const percentFrac = padded.slice(padded.length - (TAX_RATE_SCALE - 2));
-  const trimmed = `${percentWhole}.${percentFrac}`.replace(/\.?0+$/, "");
-  return `${negative ? "-" : ""}${trimmed.length === 0 ? "0" : trimmed}`;
-}
-
 /** Effective status of a rule at the page's single stated `asOf` (half-open window). */
 function effectiveStatusAt(
   effectiveFrom: string,
@@ -200,17 +182,6 @@ function effectiveStatusAt(
     return "future";
   }
   return effectiveTo !== null && effectiveTo <= asOfIso ? "ended" : "effective";
-}
-
-/** The scope label the register shows: the org-wide badge or the scoped ref. */
-function taxScopeLabel(scopeType: string, label: string | undefined): string {
-  if (scopeType === "channel") {
-    return label === undefined ? "channel · unknown" : `channel · ${label}`;
-  }
-  if (scopeType === "location") {
-    return label === undefined ? "location · unknown" : `location · ${label}`;
-  }
-  return scopeType === "organization" ? "organization" : "company wide";
 }
 
 export default async function AdministrationPage() {
@@ -249,13 +220,16 @@ export default async function AdministrationPage() {
   const taxRules = canReadTaxRules
     ? await listTaxRuleRegister(createPostgresTaxStore(getDb().db), { organizationId })
     : [];
-  const taxChannels = canWriteTaxRules
+  // The register (read) needs the channel/location names to label a scoped rule,
+  // so these load whenever the section is visible, not only for writers.
+  const canLabelTaxScopes = canReadTaxRules || canWriteTaxRules;
+  const taxChannels = canLabelTaxScopes
     ? await listChannels(createPostgresCostingReadStore(getDb().db), {
         organizationId,
         limit: 200,
       })
     : [];
-  const taxLocations = canWriteTaxRules
+  const taxLocations = canLabelTaxScopes
     ? await listLocations(createPostgresInventoryStore(getDb().db), { organizationId })
     : [];
   const taxAsOf = asOf.toISOString();
@@ -278,14 +252,7 @@ export default async function AdministrationPage() {
     ratePercent: fractionToPercentDisplay(rule.ratePct),
     appliesTo: rule.appliesTo,
     scopeType: rule.scopeType,
-    scopeLabel: taxScopeLabel(
-      rule.scopeType,
-      rule.channelId === null
-        ? undefined
-        : rule.locationId === null
-          ? channelLabelById.get(rule.channelId)
-          : locationLabelById.get(rule.locationId),
-    ),
+    scopeLabel: taxScopeLabel(rule, channelLabelById, locationLabelById),
     effectiveStatus: effectiveStatusAt(
       rule.effectiveFrom.toISOString(),
       rule.effectiveTo === null ? null : rule.effectiveTo.toISOString(),

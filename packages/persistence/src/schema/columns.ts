@@ -3,7 +3,7 @@
 // Reuse these instead of re-typing precision/flags so the money, quantity,
 // currency and effective-dating conventions from
 // docs/phase0/DATA_DICTIONARY.md and schemas/phase1_2_draft.sql stay uniform.
-import { sql, type SQL } from "drizzle-orm";
+import { isNull, sql, type SQL } from "drizzle-orm";
 import {
   char,
   date,
@@ -79,6 +79,13 @@ export const enumCheck = (column: AnyPgColumn, values: readonly string[]): SQL =
 /** `<to> is null or <to> > <from>` for effective-dated / active-range pairs. */
 export const rangeCheck = (from: AnyPgColumn, to: AnyPgColumn): SQL =>
   sql`${to} is null or ${to} > ${from}`;
+
+/**
+ * `<column> is null`. Exported with the other SQL helpers so an application
+ * adapter can add a conditional guard to a write without depending on
+ * `drizzle-orm` directly (it is not an application dependency).
+ */
+export const isNullColumn = (column: AnyPgColumn): SQL => isNull(column);
 
 /** Approval state requires both approver and timestamp. */
 export const approvalCheck = (
