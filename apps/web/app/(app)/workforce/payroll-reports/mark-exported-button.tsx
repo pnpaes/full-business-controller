@@ -8,9 +8,9 @@ const FALLBACK_ERROR = "Could not mark the report exported. Please try again.";
 
 /**
  * Marks one payroll report as `exported` (`WF-005`, `DEC-104`) through
- * `POST /api/v1/workforce/payroll-reports/[id]/export` with no file link —
- * the exported-bytes path is deferred (`DEC-085`), so the action records the
- * status only and the UI says so.
+ * `POST /api/v1/workforce/payroll-reports/[id]/export` with no file link — the
+ * file-storage port exists (`DEC-132`) but the payroll-export consumer is not
+ * wired to it, so the action records the status only and the UI says so.
  */
 export function MarkExportedButton({ reportId }: { readonly reportId: string }) {
   const router = useRouter();
@@ -48,8 +48,9 @@ export function MarkExportedButton({ reportId }: { readonly reportId: string }) 
         Mark as exported
       </Button>
       <p style={{ margin: 0, opacity: 0.8, fontSize: typography.fontSize.sm }}>
-        Records the exported status only — no file is produced or attached (the storage path is
-        deferred, DEC-085). Only a generated report can be exported.
+        Records the exported status only — no file is produced or attached (the file-storage port
+        exists, DEC-132, but the payroll-export consumer is not wired to it). Only a generated
+        report can be exported.
       </p>
       {error !== null ? <Alert tone="danger">{error}</Alert> : null}
     </div>

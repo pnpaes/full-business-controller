@@ -25,8 +25,9 @@ async function errorMessage(response: Response): Promise<string> {
 /**
  * Appends a maintenance-log fact (`HMS-006`, `DEC-092`): kind, performed-at
  * (now) and notes. The log is create + read only — there is no update or delete
- * command — and evidence is metadata-only (`DEC-085`/`DEC-090`): the form
- * records no file, and the screen says so where a photo would be expected.
+ * command — and evidence is metadata-only (`DEC-090`): the file-storage port
+ * exists (`DEC-132`) but this consumer is not wired to it, so the form records
+ * no file, and the screen says so where a photo would be expected.
  * Mobile-first (§8.6): large kind buttons, performed "now" by default.
  */
 export function LogMaintenanceForm({ equipmentId }: { readonly equipmentId: string }) {
@@ -100,8 +101,9 @@ export function LogMaintenanceForm({ equipmentId }: { readonly equipmentId: stri
           </Button>
         </div>
         <p style={{ margin: 0, opacity: 0.8 }}>
-          Attaching the service report or photo is not possible yet — the file store has no upload
-          port (DEC-085, DEC-090). Keep the paper evidence until the storage slice lands.
+          Attaching the service report or photo is not possible yet — the file-storage port exists
+          (DEC-132) but this consumer is not wired to it (DEC-090), so no bytes are stored. Keep the
+          paper evidence until the wiring lands.
         </p>
       </form>
     </SectionCard>

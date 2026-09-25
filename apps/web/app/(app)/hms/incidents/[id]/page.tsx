@@ -60,7 +60,8 @@ const contentColumn = {
 /**
  * One incident (`HMS-003`, `DEC-090`): the full record, its corrective actions
  * and the audited update/close controls for the edit roles. Kitchen/FOH read
- * only (`DEC-095`). Evidence is metadata-only (`DEC-085`/`DEC-090`): the
+ * only (`DEC-095`). Evidence is metadata-only (`DEC-090`): the file-storage port
+ * exists (`DEC-132`) but the incident consumer is not wired to it, so the
  * evidence posture is stated where a photo/file would be expected.
  */
 export default async function IncidentDetailPage({
@@ -211,9 +212,9 @@ export default async function IncidentDetailPage({
       <SectionCard title="Incident record" meta={`Raised ${formatHmsInstant(incident.createdAt)}`}>
         <DescriptionList items={facts} />
         <Alert tone="info" title="Evidence is metadata-only">
-          Incident evidence (photos, files) cannot be attached yet: <code>file_object</code> has no
-          upload port in the application layer (DEC-085, DEC-090). The record above and the audit
-          trail are the evidence until the storage slice lands.
+          Incident evidence (photos, files) cannot be attached yet: the file-storage port exists
+          (DEC-132), but the incident consumer is not wired to it (DEC-090), so no bytes are stored.
+          The record above and the audit trail are the evidence until the wiring lands.
         </Alert>
       </SectionCard>
 

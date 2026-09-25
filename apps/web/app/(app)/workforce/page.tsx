@@ -257,8 +257,9 @@ export default async function WorkforcePage({
       <Alert tone="info" title="Personnel documents are metadata-only">
         Personnel documents (contracts, certificates, ID documents) are visible on each employee's
         detail page to owner, general manager and admin only (DEC-087/DEC-099). File upload,
-        download and retention are <strong>not available</strong> — the storage path is deferred
-        (DEC-085), so a document row records metadata only and never implies a working file.
+        download and retention are <strong>not available</strong> — the file-storage port exists
+        (DEC-132) but the employee-document consumer is not wired to it, so a document row records
+        metadata only and never implies a working file.
       </Alert>
     </div>
   );

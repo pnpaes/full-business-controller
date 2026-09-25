@@ -152,10 +152,10 @@ export default async function HmsEquipmentPage() {
       )}
 
       <p style={{ margin: 0, opacity: 0.8 }}>
-        Maintenance evidence (photos, service reports) is metadata-only: <code>file_object</code>{" "}
-        has no upload port yet (DEC-085, DEC-090), so a log records the reference, not the bytes.{" "}
-        <Link href="/hms/compliance-export">Compliance export</Link> pulls the logs into the
-        evidence bundle.
+        Maintenance evidence (photos, service reports) is metadata-only: the file-storage port{" "}
+        exists (DEC-132) but this consumer is not wired to it (DEC-090), so a log records the{" "}
+        reference, not the bytes. <Link href="/hms/compliance-export">Compliance export</Link> pulls
+        the logs into the evidence bundle.
       </p>
     </div>
   );

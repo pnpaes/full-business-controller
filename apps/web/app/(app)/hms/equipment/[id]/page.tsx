@@ -157,7 +157,7 @@ export default async function EquipmentDetailPage({
             evidence:
               log.fileObjectId === null
                 ? "—"
-                : `Reference ${log.fileObjectId.slice(0, 8)}… (bytes deferred, DEC-085)`,
+                : `Reference ${log.fileObjectId.slice(0, 8)}… (bytes not stored — port not wired, DEC-132)`,
           }))}
           emptyMessage="No maintenance logged yet. Log the first service, repair or inspection below."
         />

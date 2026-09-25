@@ -33,8 +33,9 @@ async function errorMessage(response: Response): Promise<string> {
 /**
  * Adds one personnel document's **metadata** (`DOC-001`…`DOC-004`, `DEC-087`)
  * through `POST /api/v1/workforce/employees/[id]/documents`. There is no file
- * upload: the storage path is deferred (`DEC-085`/`DEC-099`), so the form
- * records kind, title and the validity window only and the section states that
+ * upload: the file-storage port exists (`DEC-132`) but the employee-document
+ * consumer is not wired to it (`DEC-099`), so the form records kind, title and
+ * the validity window only and the section states that
  * upload/download/retention are unavailable.
  */
 export function EmployeeDocumentForm({ employeeId, kinds }: EmployeeDocumentFormProps) {
@@ -130,7 +131,8 @@ export function EmployeeDocumentForm({ employeeId, kinds }: EmployeeDocumentForm
         </div>
         <p style={{ margin: 0, opacity: 0.8 }}>
           Metadata only: no bytes are stored, uploaded or downloadable, and retention is not
-          enforced (DEC-085, DEC-099 — the storage path is deferred).
+          enforced (the file-storage port exists, DEC-132, but the employee-document consumer is not
+          wired to it — DEC-099).
         </p>
       </form>
     </SectionCard>

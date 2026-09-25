@@ -43,8 +43,9 @@ const contentColumn = {
  * (per-employee hours, base rate, expected pay), the generation facts and the
  * mark-exported action for a `generated` report.
  *
- * The DEC-104 projection caveat and the deferred export bytes (`DEC-085`) are
- * stated on the page. Access is the `Payroll-input reports` matrix row
+ * The DEC-104 projection caveat and the not-yet-stored export bytes (`DEC-132`:
+ * the file-storage port exists but the payroll-export consumer is not wired to
+ * it) are stated on the page. Access is the `Payroll-input reports` matrix row
  * (owner, general_manager, finance, admin); anything else fails closed.
  */
 export default async function PayrollReportDetailPage({

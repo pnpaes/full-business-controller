@@ -104,8 +104,8 @@ export async function GET(
  * A malformed body (a bad `kind`, a blank `title`, a malformed day) or a
  * non-UUID id is a 400. The path employee is resolved organization-scoped
  * **before** creating, so an unknown or cross-organization employee id is a 404
- * and cannot leak; `fileObjectId` is metadata only — the storage/upload path is
- * deferred (`DEC-085`).
+ * and cannot leak; `fileObjectId` is metadata only — the file-storage port
+ * exists (`DEC-132`) but the employee-document consumer is not wired to it.
  */
 export async function POST(
   request: Request,

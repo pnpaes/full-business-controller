@@ -40,7 +40,8 @@ async function errorMessage(response: Response): Promise<string> {
  * existing `PATCH /api/v1/workforce/employee-documents/[id]` route. The row is
  * amended in place (no revision model, `DEC-087`) and the audit fact carries
  * the before/after provenance. There is still no file upload: `fileObjectId`
- * stays untouched and the bytes remain deferred (`DEC-085`/`DEC-099`).
+ * stays untouched and the bytes remain unrealised — the file-storage port
+ * exists (`DEC-132`) but this consumer is not wired to it (`DEC-099`).
  */
 export function EditEmployeeDocumentForm({
   employeeName,
@@ -139,8 +140,8 @@ export function EditEmployeeDocumentForm({
           </Button>
         </div>
         <p style={{ margin: 0, opacity: 0.8 }}>
-          Metadata only: no bytes are stored, uploaded or downloadable (DEC-085, DEC-099 — the
-          storage path is deferred).
+          Metadata only: no bytes are stored, uploaded or downloadable (the file-storage port
+          exists, DEC-132, but this consumer is not wired to it — DEC-099).
         </p>
       </form>
     </SectionCard>

@@ -27,8 +27,9 @@ export const dynamic = "force-dynamic";
  * Marks one payroll-input report exported (`WF-005`, row 14b-2): the report is
  * frozen, so this records the `exported` status transition and, when supplied,
  * the `export_file_id` of the restricted export file (`export_file_id` is a
- * deferred `file_object` FK, `DEC-085`). Limited to owner / general_manager /
- * finance / admin. The actor is the session user.
+ * `file_object` FK; the payroll-export consumer is not wired to the file-storage
+ * port yet, `DEC-132`). Limited to owner / general_manager / finance / admin.
+ * The actor is the session user.
  *
  * The body is optional: `{ exportFileId? }`, a UUID when present (else 400). A
  * non-UUID id is a 400. There is no location scope (the report is an

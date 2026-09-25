@@ -69,9 +69,10 @@ const filterChipStyle = {
  * edit or close — the detail page offers no edit controls to them.
  *
  * Reads the same application service and row shape as
- * `GET /api/v1/hms/incidents`. **Evidence is metadata-only (`DEC-085`/`DEC-090`):**
- * `file_object` has no application port, so an incident carries no photo/file
- * here — the detail page says so where a photo would be expected.
+ * `GET /api/v1/hms/incidents`. **Evidence is metadata-only (`DEC-090`):** the
+ * file-storage port exists (`DEC-132`) but the incident consumer is not wired to
+ * it, so an incident carries no photo/file here — the detail page says so where a
+ * photo would be expected.
  */
 export default async function HmsIncidentsPage({
   searchParams,
