@@ -2,7 +2,10 @@
  * Living design-system styleguide (DEC-120: the modern editorial SaaS direction
  * in `designer-agent-modern-saas-ui-brief.md`, superseding 08_UI_UX.md §8.7's
  * palette/typography/watercolor; §8.5 forms/tables and §8.4 status/warning
- * rules still govern).
+ * rules still govern. The palette and typography were re-based onto the
+ * Aquarela backoffice design system by DEC-129 — cool canvas #F1F3F8, white
+ * panels, ink #151A2D, the iris #5742BA with lavender #EEECFF — while the
+ * legacy token names remain as re-tuned aliases).
  *
  * A single review surface: every token scale and every presentation primitive
  * rendered in its variants/states on one screen. Server component, no client
@@ -155,7 +158,7 @@ export default function StyleguidePage() {
       <PageHeader
         title="Design system"
         scope="Aquarela Business Control"
-        description="The living visual language: colour, typography, spacing, radius, elevation and every presentation primitive in its variants and states (DEC-120)."
+        description="The living visual language: colour, typography, spacing, radius, elevation and every presentation primitive in its variants and states (DEC-120, re-based onto the Aquarela design system by DEC-129)."
       />
 
       <Stack gap={spacing[6]}>
@@ -163,7 +166,9 @@ export default function StyleguidePage() {
         <SectionCard title="Colour" meta="color.* tokens" headingLevel={2}>
           <Stack gap={spacing[6]}>
             <div>
-              <SubHeading hint="cream · navy · berry · green · gold">Brand</SubHeading>
+              <SubHeading hint="legacy keys, values re-tuned by DEC-129 — cream aliases the canvas, navy is the ink">
+                Brand
+              </SubHeading>
               <SwatchGrid>
                 {Object.entries(color.brand).map(([name, value]) => (
                   <Swatch key={name} name={`color.brand.${name}`} value={value} />
@@ -226,7 +231,9 @@ export default function StyleguidePage() {
             </div>
 
             <div>
-              <SubHeading hint="categorical · ≥3:1 on white">Data visualization</SubHeading>
+              <SubHeading hint="categorical · ≥3:1 on the surface tiers">
+                Data visualization
+              </SubHeading>
               <SwatchGrid>
                 {color.dataViz.categorical.map((value, index) => (
                   <Swatch
@@ -419,7 +426,7 @@ export default function StyleguidePage() {
             </div>
 
             <div>
-              <SubHeading hint="tuned for the warm-neutral canvas">Elevation</SubHeading>
+              <SubHeading hint="tuned for the cool neutral canvas #F1F3F8">Elevation</SubHeading>
               <SwatchGrid>
                 {Object.entries(elevation).map(([name, value]) => (
                   <div
@@ -710,7 +717,7 @@ export default function StyleguidePage() {
         >
           <Stack gap={spacing[6]}>
             <div>
-              <SubHeading hint="dark neutral surface, lime cue when active">
+              <SubHeading hint="transparent rows on the light canvas, lavender tint with the iris cue when active">
                 NavList / NavItem
               </SubHeading>
               <div style={{ maxWidth: 280, borderRadius: radius.md, overflow: "hidden" }}>
@@ -755,8 +762,8 @@ export default function StyleguidePage() {
                       color: color.text.secondary,
                     }}
                   >
-                    Watercolor blobs in berry, green and gold over the warm-neutral canvas — the
-                    legacy §8.7 direction (DEC-120 supersedes it).
+                    Two low-opacity washes in the lavender and info tints over the cool canvas — the
+                    legacy §8.7 backdrop, superseded by DEC-120 and re-tinted by DEC-129.
                   </span>
                 </div>
               </div>
@@ -779,7 +786,7 @@ export default function StyleguidePage() {
                       color: color.text.secondary,
                     }}
                   >
-                    A surface on the warm-neutral page.
+                    A surface on the cool neutral page.
                   </p>
                 </Card>
               ))}
