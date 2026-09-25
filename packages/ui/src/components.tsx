@@ -198,16 +198,19 @@ export const uiGlobalCss = `
 .aquarela-tooltip:focus-within .aquarela-tooltip-bubble {
   display: block;
 }
-/* Navigation rows (brief §6): quiet hover wash on the dark nav surface. */
+/* Navigation rows (brief §6; DEC-129 light sidebar): the row is transparent
+ * with ink.tertiary text at rest, so hover is a quiet muted wash under
+ * primary ink — the design system's sidebar hover, matching the shell. */
 .aquarela-nav-item {
   transition: color ${motion.duration.fast}ms ${motion.easing},
     background-color ${motion.duration.fast}ms ${motion.easing};
 }
-/* Nav hover fights NavItem's inline color/background-color, so !important
- * is required (inline styles win otherwise) — same approach as the shell. */
+/* NavItem sets its resting color/background-color inline, and inline styles
+ * win over a normal stylesheet rule, so !important is still load-bearing here
+ * (same reason as the shell's contextual nav hover). */
 .aquarela-nav-item:hover:not([aria-current="page"]) {
-  color: ${color.navigation.text} !important; /* inline styles win otherwise */
-  background-color: rgba(245, 246, 244, 0.05) !important; /* inline styles win otherwise */
+  color: ${color.ink.primary} !important; /* inline styles win otherwise */
+  background-color: ${color.surface.muted} !important; /* inline styles win otherwise */
 }
 /* Tabs (patterns.tsx): quiet hover wash on inactive tabs (brief §12). */
 .aquarela-tabs a {
