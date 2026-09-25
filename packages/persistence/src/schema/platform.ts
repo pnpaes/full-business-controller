@@ -8,6 +8,7 @@ import {
   jsonb,
   pgTable,
   text,
+  timestamp,
   unique,
   uuid,
 } from "drizzle-orm/pg-core";
@@ -243,4 +244,37 @@ export const approval = pgTable(
     index("approval_org_entity_idx").on(t.organizationId, t.entityType, t.entityId),
     index("approval_org_decision_idx").on(t.organizationId, t.decision),
   ],
+);
+
+/*
+ * `DEC-135`: the shared rate-limit counter store. One row is one limiter
+ * namespace plus caller key (the client IP), holding the hit instants still
+ * inside the sliding window as a `timestamptz[]`. It replaces the per-process
+ * in-memory map (`apps/web/lib/rate-limit.ts`) so a multi-instance deployment
+ * enforces one window instead of one per worker.
+ *
+ * The increment is a single atomic `INSERT … ON CONFLICT … DO UPDATE … WHERE …
+ * RETURNING` (see `repositories/rate-limit.ts`): the row lock serialises
+ * concurrent increments, so two parallel calls cannot both read the same count.
+ * `namespace` keeps the per-route policies isolated (the in-memory limiter got
+ * that isolation from one map per instance); there is no `organization_id`
+ * because the limiter key is the caller address, not a business fact.
+ *
+ * The table is *not* append-only — a hit array is disposable state, aged out by
+ * the window, so the row may be pruned or deleted freely (the `updated_at`
+ * column is there to support a future sweep; no sweep is built here).
+ */
+export const rateLimitCounter = pgTable(
+  "rate_limit_counter",
+  {
+    id: uuidPk(),
+    namespace: text("namespace").notNull(),
+    key: text("key").notNull(),
+    hits: timestamp("hits", { withTimezone: true, mode: "date" })
+      .array()
+      .notNull()
+      .default(sql`'{}'::timestamptz[]`),
+    updatedAt: tstz("updated_at").notNull().defaultNow(),
+  },
+  (t) => [unique("rate_limit_counter_namespace_key_key").on(t.namespace, t.key)],
 );

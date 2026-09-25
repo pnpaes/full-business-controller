@@ -26,6 +26,7 @@ export * from "./repositories/password-reset";
 export * from "./repositories/price-scenario";
 export * from "./repositories/price-version";
 export * from "./repositories/production";
+export * from "./repositories/rate-limit";
 export * from "./repositories/receiving";
 export * from "./repositories/recipes";
 export * from "./repositories/reconciliation";

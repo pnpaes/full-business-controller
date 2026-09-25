@@ -52,7 +52,9 @@ const tables = Object.values(schema).filter((value) => is(value, PgTable));
  * column, taking the count to 90. The `DEC-125` production-plan-line slice adds
  * the `production_plan_line` table plus the nullable `production_batch.planned_qty`
  * column, taking the count to 91. The `DEC-126` competitor-observation slice adds
- * the `competitor` and `competitor_observation` tables, taking the count to 93. */
+ * the `competitor` and `competitor_observation` tables, taking the count to 93.
+ * The `DEC-135` shared rate-limit counter store adds the `rate_limit_counter`
+ * table, taking the count to 94. */
 const EXPECTED_TABLES = [
   "addon_applicability",
   "adjustment_period",
@@ -114,6 +116,7 @@ const EXPECTED_TABLES = [
   "product",
   "product_recipe_assignment",
   "product_variant",
+  "rate_limit_counter",
   "recipe",
   "recipe_allergen",
   "recipe_line",

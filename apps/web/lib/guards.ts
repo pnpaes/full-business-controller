@@ -19,7 +19,7 @@ export async function withMutationGuards(
     return jsonError(403);
   }
 
-  const decision = limiter.check(clientIp(request) ?? "unknown");
+  const decision = await limiter.check(clientIp(request) ?? "unknown");
   if (!decision.allowed) {
     const response = jsonError(429);
     response.headers.set("Retry-After", String(decision.retryAfterSeconds));

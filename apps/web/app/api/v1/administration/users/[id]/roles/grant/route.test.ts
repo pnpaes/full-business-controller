@@ -16,6 +16,9 @@ vi.mock("../../../../../../../../lib/auth", () => ({
   requireSession: vi.fn(),
   getAuthStore: vi.fn(),
 }));
+// The shared rate limiter (`DEC-135`) reads the database; stubbing `getDb` keeps
+// the throttle off the network and lets its store error fail open, as designed.
+vi.mock("../../../../../../../../lib/db", () => ({ getDb: vi.fn(() => ({ db: {} })) }));
 vi.mock("../../../../../../../../lib/organization", () => ({
   resolveOrganization: vi.fn(() => "org-1"),
 }));

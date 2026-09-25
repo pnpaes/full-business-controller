@@ -34,7 +34,7 @@ export const dynamic = "force-dynamic";
  */
 export async function POST(request: Request): Promise<Response> {
   return mapErrors(async () => {
-    const throttled = checkSimulationThrottle(request);
+    const throttled = await checkSimulationThrottle(request);
     if (throttled !== undefined) {
       return throttled;
     }
