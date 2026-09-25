@@ -12,90 +12,100 @@ orientation and the next step. See "Handover archive" and "Update protocol".
 ## Resume here (next session)
 
 **Say "resume the work" and start here.** A fresh session must be able to
-continue from this section alone. (Rewritten by the 2026-09-24 design-system
-session; the W7 wave is documented in
+continue from this section alone. (Rewritten by the 2026-09-25 writer session;
+the W7 wave is documented in
 `docs/handoffs/080-2026-09-24-w7-ui-refinement-wave.md`, and the design-system
 adoption in `DEC-129`.)
 
-**State:** `main`; HEAD **`cfdb68a`**, working tree clean. Two workstreams are
-live. (1) **W7** — the UI-refinement wave of the operations-completion programme
-(`docs/ROADMAP-OPERATIONS-COMPLETION.md`) — is **complete for the screens**:
-every recorded action that has an application service plus an HTTP route is now
-reachable from a control, stale "not wired / planned" copy is purged, and WCAG
-2.2 AA and 375px mobile behaviour are enforced. Its one leftover is the
-app-shell search and scope placeholders in `apps/web/app/(app)/layout.tsx`.
-(2) **The Aquarela design-system integration (`DEC-129`) is at stage 1 of 4**:
-the theme tokens are merged into `packages/ui/src/tokens.ts` and the contrast
-gate extended with the package's own published evidence, but the **primitives
-and every screen still need the recipe values applied** — that is the next task.
-All commits are **unpushed**; nothing applied to DigitalOcean. Decision ids:
-`DEC-129` is now the **design-system adoption** and `DEC-130` the **owner
-access / HMS monitoring-log decision**, so **`DEC-131`** is reserved for the
-Users/scopes backend and the storage-port decision is **`DEC-132`**. Schema: migrations through
-**`0066`**, **93 public tables** — no migration in either workstream;
-`db:migrate` a no-op on re-run. Verification at HEAD: `typecheck`, `lint`,
+**State:** `main`; HEAD **`6ba0f0a`**, working tree clean. All wave commits are
+**unpushed**; nothing applied to DigitalOcean. **4430/4430 tests (310
+files)**; migrations through **`0066`**, **93 public tables** — no migration in
+the wave; `db:migrate` a no-op on re-run. Decision ids: `DEC-129` the
+**design-system adoption**, `DEC-130` the **owner access / HMS monitoring-log
+decision**, `DEC-131` **Users/scopes management** (recorded), `DEC-132` the
+**`file_object` storage port** (recording in flight — see below); the **next
+free id is `DEC-133`**. Verification at HEAD: `typecheck`, `lint`,
 `format:check`, `build` clean;
 `DATABASE_URL=postgres://aquarela:aquarela@localhost:5432/aquarela npm run
-test` → **4296/4296 tests (294 files)**. A dev server is expected on
+test` → **4430/4430 tests (310 files)**. A dev server is expected on
 `http://localhost:3000` (`NEXT_DIST_DIR=.next-dev`; sign in `owner` /
 `LocalDevPass123`).
 
-**Next task — finish the design-system integration (`DEC-129`), stages 2 to 4,
-then the storage port as `DEC-132`.** Read the `DEC-129` row in
-`12_OPEN_DECISIONS.md` and `docs/aquarela-design-system/{README,DESIGN-SYSTEM,INTEGRATION}.md`
-first. Those integration steps assume shadcn and Tailwind, which this repository
-does not have and must not gain (`DEC-120`, and the package's own README forbids
-running init or changing primitive libraries), so **merge the recipe VALUES into
-the existing inline-style components** — never add a dependency, a Tailwind
-config or a CSS file. The package's `component-recipes.ts` is Tailwind class
-strings, so translate the values it encodes, do not paste the classes.
+**Complete since the last rewrite.** (1) **The HMS recording unblock:**
+`70f2525` added `owner` to `HMS_RECORD_ROLES` — it was the only `*_ROLES`
+array in the repository omitting owner; no central bypass was added (the
+repository is deliberately deny-by-default), and a **regression guard**
+(`packages/application/src/auth/roles.test.ts`) now fails the build if any
+`*_ROLES` array omits owner. `03b2533` added the monitoring-point
+registration form (`register-point-form.tsx`, posting to the existing route
+and `registerMonitoringPoint` command; options from `listLocations` and
+`listStorageAreas`; `unit` stays free text per `DEC-071`) — without it
+`monitoring_point` was empty and recording unusable in practice. Verified
+end to end in the browser as the owner. `4443364` amended the
+`07_SECURITY_AND_NFR.md` §7.1 HMS monitoring-log row to match the code.
+(2) **The Administration workstream:** `8a4a5f0` added bounded org-scoped
+reads, routes and screens for units, data-quality exceptions and audit
+events (the tables and write paths already existed; the audit route
+deliberately does not return before/after payloads; role sets derived from
+§7.1, all listing owner). `968ca2e` delivered users, roles and location
+scopes — `assignRole`/`replaceLocationScopes`/`disableUser` already
+existed; the reads (`listUsers`, `listRoles`) and the symmetric commands
+(`revokeRole`, `enableUser`, the `auth.user.enabled` audit action) were
+added, routes under `/api/v1/administration/**` gated on `ADMIN_USERS_ROLES`
+(owner + admin), and a "Users & access" section. A third paste-the-id
+defect was fixed in review: the grant and scope dialogs are now location
+pickers (`code · name`), and a well-formed but non-existent location id is
+a **400 naming the unknown id**, not a foreign-key 500 (regression test).
+**User creation is deliberately NOT built** — see `DEC-131` in Open
+decisions. The Administration "Not available yet" list is now down to
+**Tax/rules and Integrations**.
 
-**Stage 2 — primitives.**
-`packages/ui/src/{primitives,components,patterns,modal,shell,charts}.tsx`: the
-3px solid focus ring with a 2px offset (never an opacity-modified ring), control
-heights 40/32/48 via `geometry.controlHeight`, table header 40 and row 56 via
-`geometry.tableRowHeight`, radii 6/10/16/24, disabled opacity 0.45, 120ms hover
-and 180ms panel transitions, and the semantic Badge/StatusPill variants
-(success, warning, danger, info, neutral, brand-soft) plus the `brand-soft`
-button variant. Preserve every existing prop, ref, event handler and behaviour.
-Fix the login password field's missing `autocomplete="current-password"` in the
-same pass.
+**In flight — three background agents, not committed yet.** The next session
+must finish, verify and commit this wave:
 
-**Stage 3 — the three named screens, verified before extending:** the overview
-(management home, `apps/web/app/(app)/page.tsx`), the inventory table
-(`apps/web/app/(app)/inventory/**`) and the product form
-(`apps/web/app/(app)/products/**`, including `register-item-form.tsx`). Check
-375 / 768 / 1280 widths, keyboard and screen-reader labels, 200% zoom and
-locale-aware Norwegian date/number/currency formatting.
-`docs/aquarela-design-system/index.html` is a **visual reference only** — its
-sample data and illustrative modules must not enter the app.
+1. **Design-system stage 2 — primitives:**
+   `packages/ui/src/{primitives,components,patterns,modal,charts}.tsx` get
+   the `DEC-129` recipe values (3px solid focus ring with a 2px offset, control
+   heights 32/40/48 via `geometry.controlHeight`, table header 40 / row 56,
+   radii 6/10/16/24, disabled opacity 0.45, 120ms hover / 180ms panel
+   transitions, the semantic Badge/StatusPill variants and the `brand-soft`
+   button variant), plus the login password field's missing
+   `autocomplete="current-password"`.
+2. **The `file_object` storage port (`DEC-132`):** local adapter; an
+   expand-only migration only if the schema genuinely needs it; **one
+   consumer first** (the document library).
+3. **Design-system stage 4 — shell + the last W7 leftover:** align the
+   already-light rail to the package's `--sidebar` set with the iris as the
+   active accent, retire the frozen inline dark surface, and resolve the
+   app-shell search/scope placeholders in
+   `apps/web/app/(app)/layout.tsx` by wiring or removing them **with the
+   reason recorded**.
 
-**Stage 4 — the shell (corrected 2026-09-24).** An earlier revision of this
-section said the package's **light sidebar with a lavender active surface**
-(`DESIGN-SYSTEM.md` sidebar row, `shadcn-theme.css` `--sidebar`) "replaces the
-retained dark shell". **That was wrong.** The live shell is _already_ a light
-rail: `apps/web/app/(app)/layout.tsx` re-seats the frozen `NavList`/`NavItem`
-primitives onto it with `background-color: transparent !important`, so
-`navigation.background`, `navigation.backgroundHover` and `brand.navyDeep` are
-**dead for the rail** (retained only for those frozen primitives and the
-styleguide). The remaining shell work is therefore **token alignment** — check
-the rail's surface, active tint and indicator against the package's `--sidebar`
-set and make the iris the active accent — plus retiring or updating the frozen
-primitives, **not** a dark-to-light conversion. Files: `packages/ui/src/shell.tsx`,
-`apps/web/app/(app)/shell-nav.tsx`, `apps/web/app/(app)/layout.tsx` (all
-single-owner). Then extend across the remaining screens, removing only one-off
-colours that duplicate the new contract.
+**Next task:** finish the in-flight wave, then **stage 3** — the three named
+screens (overview `apps/web/app/(app)/page.tsx`, the inventory table
+`apps/web/app/(app)/inventory/**`, the product form
+`apps/web/app/(app)/products/**`) verified in the browser at 375/768/1280 —
+it **waits for stage 2** because the screens must be styled against the
+updated primitives. Then verify and **commit the whole wave in layers**
+(Rule 2), then the `DEC-132` port if it has not landed. The standing recipe
+rule holds: merge the recipe VALUES into the existing inline-style components
+— never add a dependency, a Tailwind config or a CSS file (`DEC-120`, and the
+package's own README forbids running init or changing primitive libraries);
+the package's `component-recipes.ts` is Tailwind class strings, so translate
+the values it encodes, do not paste the classes. The stage-4 correction
+stands: the live shell is **already a light rail**
+(`apps/web/app/(app)/layout.tsx` re-seats the frozen `NavList`/`NavItem` with
+`background-color: transparent !important`), so the remaining shell work is
+**token alignment plus retiring the dead dark-rail primitives**
+(`navigation.background`, `navigation.backgroundHover`, `brand.navyDeep`) —
+**not** a dark-to-light conversion (corrected 2026-09-24, recorded in
+`c451c38`).
 
-**Then — the storage port as `DEC-132`.** `file_object` has no application port
-(`DEC-085`/`DEC-099`, `ADR-0006`), so **all file bytes are metadata-only** today
-across documents, employee documents, incident evidence, maintenance evidence
-and payroll export — the largest remaining honest gap. Read
-`docs/adr/0006-file-storage-and-retention.md` and the `DEC-085`/`DEC-099` rows.
-Record **`DEC-132`** (both tables, whole new lines only, no literal `|` in a
-cell) **before or with** the code; implement the port with a **local adapter**;
-add an expand-only migration only if it genuinely needs schema (rehearsed down
-path plus a runbook row); wire **one honest consumer first** (the document
-library). No cloud storage — Spaces is a later decision.
+**The `DEC-132` port, for whoever closes agent 2:** read
+`docs/adr/0006-file-storage-and-retention.md` and the `DEC-085`/`DEC-099`
+rows. Record the **`DEC-132`** decision row (both tables, whole new lines
+only, no literal `|` in a cell) **before or with** the code; no cloud
+storage — Spaces is a later decision.
 
 **Scope (do not), whole task:** do not weaken any assertion in
 `packages/ui/src/tokens.test.ts` (add or extend only); do not add a dependency,
@@ -112,7 +122,7 @@ format:check`; `npm run build` — noting that `apps/web/next-env.d.ts` and
 `git checkout -- apps/web/next-env.d.ts apps/web/tsconfig.json` before
 staging. Full suite:
 `DATABASE_URL=postgres://aquarela:aquarela@localhost:5432/aquarela npm run
-test` (≥ **4296/4296**, 294 files) — note
+test` (≥ **4430/4430**, 310 files) — note
 `packages/application/src/scheduling/scheduling.postgres.test.ts` has a known
 same-instant ordering flake (passes on re-run). **Visual work additionally
 requires the browser check:** drive the changed screens with the
@@ -132,10 +142,13 @@ the rollback approach in each body (Rule 2).
 open-point lists. Per-slice detail is in `docs/handoffs/`. The detailed list
 lives in the second "Next up" section below.
 
-1. **Next: the design-system integration stages 2-4 (`DEC-129`), then the
-   `DEC-132` file-bytes workstream** (see "Resume here").
+1. **Next: finish the in-flight wave (the three background agents), then
+   design-system stage 3, then verify/commit the wave, then the `DEC-132`
+   port** (see "Resume here").
 2. **The operations-completion waves W1–W7 are all delivered** (W7 per
-   `docs/handoffs/080-…md`); what remains is the honest-gap list, not a wave.
+   `docs/handoffs/080-…md`); the HMS blockade and the Administration reads /
+   users-scopes work are delivered since (`DEC-130`/`DEC-131`); what remains
+   is the honest-gap list, not a wave.
 
 ## What this is
 
@@ -168,8 +181,8 @@ Per-slice detail, commits and reconciliation are in `docs/handoffs/`.
 
 - `00_README.md` … `13_AGENT_BUILD_BRIEF.md` — the specification package
   (inputs, rarely edited). Start with `00_README.md`.
-- **`12_OPEN_DECISIONS.md` — the accepted decisions (`DEC-001`…`DEC-129`);
-  the authority. New decisions are appended here (next free id `DEC-131`).**
+- **`12_OPEN_DECISIONS.md` — the accepted decisions (`DEC-001`…`DEC-131`);
+  the authority. New decisions are appended here (next free id `DEC-133`).**
 - `docs/phase0/` — close-out plan, calculation contract, data dictionary, golden
   fixtures, source-data request, notes. See
   `docs/phase0/CALCULATION_CONTRACT.md`.
@@ -190,6 +203,59 @@ Per-slice detail, commits and reconciliation are in `docs/handoffs/`.
 
 ## Current status
 
+- **2026-09-25 — the HMS unblock and the Administration backends
+  (`6ba0f0a` HEAD, newest first: `6ba0f0a`, `968ca2e`, `8a4a5f0`,
+  `03b2533`, `c451c38`, `70f2525`, `4443364`):** seven commits on `main`,
+  all unpushed, no migration (through `0066`, 93 tables), closing the HMS
+  blockade and five of the six "No backend" Administration bullets.
+  `6ba0f0a` records **`DEC-131`** (users/scopes management, decision rows
+  only). `968ca2e` `feat(admin): manage users, roles and location scopes`:
+  `assignRole`/`replaceLocationScopes`/`disableUser` already existed
+  (audited, with session revocation on privilege change per `ADR-0003`), so
+  the real gap was the reads — `listUsers`/`listRoles` (org-scoped,
+  bounded, never returning password hashes/TOTP secrets/recovery codes) —
+  plus the symmetric `revokeRole`/`enableUser` commands and the
+  `auth.user.enabled` audit action; routes under
+  `/api/v1/administration/**` gated on `ADMIN_USERS_ROLES` (owner + admin,
+  from the §7.1 Users/configuration matrix row); "Users & access" section;
+  a review-found paste-the-id defect fixed (grant/scope dialogs now
+  location pickers showing `code · name`; an unknown location id is a 400
+  naming the id, not an FK 500, with a regression test). **User creation is
+  deliberately NOT built** — the open question behind `DEC-131`.
+  `8a4a5f0` `feat(admin): read surfaces for units, data quality and audit`:
+  three of the six "No backend" bullets never had missing backends — the
+  tables (`unit`, `data_quality_exception`, `audit_event`) and write paths
+  existed and only a read plus a screen were absent; bounded org-scoped
+  reads, routes and sections added; the audit route deliberately omits the
+  before/after payloads; the Administration "Not available yet" list is now
+  down to **Tax/rules and Integrations**. `03b2533`
+  `feat(hms): register a monitoring point`: `monitoring_point` had zero
+  rows and no screen could create one (`70f2525` alone left recording
+  unusable); new `register-point-form.tsx` posts to the existing route and
+  `registerMonitoringPoint` command; options from `listLocations`/
+  `listStorageAreas`; `unit` free text with the `DEC-071` note; verified
+  end to end in the browser as the owner. `c451c38`
+  `docs: correct the DEC-129 shell claim`: a false statement previously
+  recorded — the live shell is **already a light rail**
+  (`apps/web/app/(app)/layout.tsx:101`, `background-color: transparent
+!important` on the frozen `NavList`/`NavItem`), so
+  `navigation.background`/`navigation.backgroundHover`/`brand.navyDeep`
+  are dead for the rail and the remaining shell work is token alignment
+  plus retiring those primitives, not a dark-to-light conversion; fixed
+  in the `DEC-129` rows, the `tokens.ts` header and here. `70f2525`
+  `fix(hms): let the owner and general manager record monitoring
+readings`: the system owner was denied recording because
+  `HMS_RECORD_ROLES` was the **only** `*_ROLES` array in the repository
+  omitting `owner` (no implicit bypass exists in `isAuthorizedFor`, by
+  design); the role was added, a regression guard
+  (`packages/application/src/auth/roles.test.ts`) now fails the build if
+  any `*_ROLES` array omits `owner`, and one test using `["owner"]` as its
+  out-of-set role example was re-pointed to `purchasing`.
+  `4443364` `docs: amend the HMS monitoring-log matrix row and record
+DEC-130`: the §7.1 row moves to Record for owner and GM, matching the
+  code. Verification: `typecheck`, `lint`, `format:check`, `build` clean;
+  **4430/4430 tests (310 files)** with `DATABASE_URL`; `db:migrate`
+  a no-op. Reverts commit by commit (`git revert <sha>` each).
 - **2026-09-24 design-system integration, stage 1 (`1e6b548`, `8a85f60`,
   `9fdb9e6`, `cfdb68a`):** the user supplied the Aquarela backoffice design
   system v0.1.0 as `docs/aquarela-design-system/` and asked to apply it "using
@@ -235,24 +301,21 @@ findings from the W7 review` (5 files, all under `apps/web/app/(app)/**`;
   and the `security`-agent dead-pin fact are recorded in
   `docs/handoffs/080-2026-09-24-w7-ui-refinement-wave.md`. Reverts
   independently with `git revert f3adeb8`.
-- **As of:** 2026-09-24 — branch `main`; HEAD **`cfdb68a`**, working tree
-  clean. **W7 — the UI-refinement wave of the operations-completion
-  programme — is complete**, followed by the design-system stage 1 above: six commits
-  (`54022c7` reconcile forms, `5227552` costing/inventory authoring,
-  `f3201ff` workforce/HMS/document actions, `733ee83` review findings,
-  `c202c39` honesty corrections, `01a9cda` recipe-version registration +
-  item pickers, then `f3adeb8` the six-finding review fixes — the verbatim
-  list is in
-  `docs/handoffs/080-2026-09-24-w7-ui-refinement-wave.md`), all **unpushed**,
-  covering
-  sales, purchasing, inventory, costs, workforce, HMS, documents, tasks,
-  recipes, products and production across the six programme groups, with
-  tokens/WCAG 2.2 AA/375px enforced and every stale "not wired / planned"
-  label purged. **No new decision added** in the wave (next free id
-  **`DEC-129`**); **no migration** (through `0066`, **93 tables**);
-  `01a9cda`'s group re-ran from scratch after an abandoned subagent (see the
-  handoff's process facts). Lineage and full per-slice detail:
-  `docs/handoffs/README.md` and the files it lists.
+- **As of:** 2026-09-25 — branch `main`; HEAD **`6ba0f0a`**, working tree
+  clean. **4430/4430 tests (310 files)**; migrations through **`0066`**
+  (**93 tables**); nothing pushed; nothing applied to DigitalOcean.
+  **Delivered:** W7 (seven commits
+  `54022c7`…`f3adeb8` — reconcile forms, costing/inventory authoring,
+  workforce/HMS/document actions, review findings, honesty corrections,
+  recipe-version registration + item pickers, and the six-finding review
+  fixes; the verbatim list is in
+  `docs/handoffs/080-2026-09-24-w7-ui-refinement-wave.md`), the
+  design-system stage 1 above, and the 2026-09-25 HMS + Administration
+  entry at the top of this log. **In flight:** the three background
+  agents (stage-2 primitives, the `DEC-132` storage port, stage-4 shell)
+  described in "Resume here"; stage 3 and the wave verification/commit
+  follow them. Next free decision id **`DEC-133`**. Lineage and full
+  per-slice detail: `docs/handoffs/README.md` and the files it lists.
 - **The operations-completion waves W1–W7 are delivered** (`DEC-120` redesign
   through `DEC-128` recorded and implemented; per-wave detail lives in the
   decisions rows and the handoff archive — not restated here). The prior
@@ -510,29 +573,33 @@ sales_units}` in `schemas/domain-enums.yaml` and
   first versioned entity); the workflow platform (`DEC-094`/`DEC-101`,
   schema-only). The `job`/worker/outbox layer stays gated on `ADR-0004`.
 - **Schema:** migrations through **`0066`**; **93 tables** (all additive,
-  tested down paths). Next free decision id **`DEC-129`** (`DEC-120`–`DEC-128`
-  are recorded and implemented).
+  tested down paths). Next free decision id **`DEC-133`**
+  (`DEC-129`–`DEC-131` are recorded; `DEC-132` is the storage-port
+  decision being recorded by the in-flight agent).
 - **Verification (2026-09-24, at `f3adeb8`):** `typecheck`, `lint`,
   `format:check`, `build` clean; **4276/4276 tests with `DATABASE_URL`**
   (294 files); `db:migrate` a no-op through `0066`; 93 public base tables.
   (Known flake, re-observed in this wave:
   `packages/application/src/scheduling/scheduling.postgres.test.ts` can fail
   on an audit same-instant ordering assertion and passes on re-run.)
-- **Not yet built (the honest-gap list after W7 — do not imply the programme
-  is finished):** `file_object` has **no application port** (`DEC-085`/
-  `DEC-099`, `ADR-0006`), so **all file bytes are metadata-only** across
-  documents, employee documents, incident evidence, maintenance evidence and
-  payroll export — the largest remaining gap, affecting the most screens
-  (next task = the `DEC-129` posture + the port); the app-shell **search and
-  scope placeholders** in `apps/web/app/(app)/layout.tsx` are still unwired
-  (single-owner file); **no unit-catalogue read service** anywhere (unit
-  pickers impossible; recipe lines pinned to the component's base unit); **no
-  cost-centre list read** (the `DEC-112` cost centre stays a paste-the-id
-  field); `calculatePriceScenario` has **no HTTP route** (no price-scenario
-  creation UI possible); incident **owner assignment** has no HMS-scoped
-  user-list read (`listAssignableUsers` is not wired there); **Administration**
-  has no identity/configuration backend (users, roles, scopes, tax, units
-  read, audit read, data-quality read, integrations); planning/forecast
+- **Not yet built (the honest-gap list — do not imply the programme is
+  finished):** the `file_object` storage port (**in flight** — the
+  `DEC-132` agent; `DEC-085`/`DEC-099`, `ADR-0006`; until it lands
+  **all file bytes are metadata-only** across documents, employee
+  documents, incident evidence, maintenance evidence and payroll export —
+  still the largest remaining gap); the app-shell **search and scope
+  placeholders** in `apps/web/app/(app)/layout.tsx` (in flight with the
+  stage-4 agent, which wires or removes them with the reason recorded);
+  **no unit-catalogue read service** anywhere (unit pickers impossible;
+  recipe lines pinned to the component's base unit); **no cost-centre
+  list read** (the `DEC-112` cost centre stays a paste-the-id field);
+  `calculatePriceScenario` has **no HTTP route** (no price-scenario
+  creation UI possible); incident **owner assignment** is still wired to
+  `listAssignableUsers`, not a user-list read (`listUsers` now exists
+  under `/api/v1/administration/**`, so it may be re-sourceable from
+  there); **Administration** now lacks only **Tax/rules and
+  Integrations** (users/roles/scopes, units, audit and data-quality
+  reads all delivered — see the 2026-09-25 entry); planning/forecast
   **tracking** has no backend (the insights card stays honest). Standing
   items: per-process **rate limiter** needs a shared store; **reset-token
   delivery** is a no-op stub; `WF-003` self-assignment deferred (`DEC-102`);
@@ -548,6 +615,8 @@ sales_units}` in `schemas/domain-enums.yaml` and
   `ORGANIZATION_ID=1448a476-32f2-426f-b153-11a851011e48`; sign in `owner` /
   `LocalDevPass123`; MFA disabled for `owner`; demo data seeded including the
   `zettle-legacy` `import_profile`. A fresh session must restart the server.
+  Note the **permanent** monitoring point `VERIFY-1` and its reading (see the
+  open items — not removable, append-only).
 - **Nothing applied to DigitalOcean.**
 - **Open verification debt:** the per-process rate limiter needs a shared store
   before multi-instance deployment; reset-token delivery is a no-op stub until
@@ -559,25 +628,22 @@ sales_units}` in `schemas/domain-enums.yaml` and
 `docs/BUILD_ROADMAP.md` is the ordered execution tracker; §5 carries the
 open-point lists. Per-slice detail is in `docs/handoffs/`.
 
-1. **Next: the HMS + Administration workstream the owner asked for, then the
-   design-system stages.** In order: (a) the **monitoring-point registration
-   form** — `POST /api/v1/hms/monitoring-points` and the owner's permission
-   both exist, but no screen registers a point, so `monitoring_point` is empty
-   and HMS recording is unusable in practice; (b) the **three Administration
-   read slices** — Units list, Audit review and Data-quality review, whose
-   tables and write paths already exist (`unit`, `audit_event`,
-   `data_quality_exception`) and which lack only a read service plus a screen;
-   (c) **Users/scopes** — user, role and location-scope management, the largest
-   absent Administration backend and the one needing its own decision,
-   **`DEC-131`**. Then the design-system **stages 2-4** (primitives, the three
-   named screens, shell token alignment) and the **`DEC-132`** storage port.
+1. **Next: finish the in-flight wave, then stage 3, then the wave
+   verification/commit, then `DEC-132` if it has not landed** — see
+   "Resume here" for the three in-flight agents (stage-2 primitives, the
+   `DEC-132` storage port, stage-4 shell) and the scope rules. The HMS
+   blockade (owner denied recording + no point could be created) and the
+   Administration reads + users/scopes work are **delivered**
+   (`70f2525`/`03b2533`/`8a4a5f0`/`968ca2e`, `DEC-130`/`DEC-131`); only
+   Tax/rules and Integrations remain absent in Administration, and user
+   creation awaits the `DEC-131` owner decision.
 2. **Then the honest-gap queue** (see the "Not yet built" bullet in Current
    status, each recorded not silently deferred): the unit-catalogue read
    service and the cost-centre list read (they still pin recipe lines to the
    component's base unit and keep the `DEC-112` cost centre a paste-the-id
    field), `calculatePriceScenario`'s HTTP route (no price-scenario UI
-   possible without it), the HMS-scoped user-list read for incident owner
-   assignment, the Administration identity/configuration backend, and
+   possible without it), incident owner assignment (possibly re-sourced
+   from the new `listUsers` read), and
    planning/forecast tracking.
 3. **Rows 13/12/11 and the close-outs delivered — COMPLETE.** Row 13 (close
    13a/13b + reporting 13c/13d/13e-f), the cost-card composition chain
@@ -613,6 +679,22 @@ open-point lists. Per-slice detail is in `docs/handoffs/`.
 Full detail for each item lives in its slice's handoff file and in
 `docs/BUILD_ROADMAP.md` §5. Recorded, not decided — do not resolve silently.
 
+- **`DEC-131` — how a new user is created (awaiting owner/TECH):** the
+  users/roles/scopes backend is delivered (`968ca2e`), but **no screen or
+  command creates a user** and none was built without this decision. An
+  invite cannot be delivered today (the password-reset token delivery is a
+  no-op stub), and an administrator setting an initial password means
+  sharing credentials. Do not implement either arm without the owner.
+- **Standing process rule from the owner:** every subagent runs in the
+  background, and documentation is always delegated to the writer agent
+  rather than written by the coordinator.
+- **Permanent rows in the local dev database (side effect of verifying HMS
+  recording):** monitoring point `VERIFY-1` and one reading were created
+  while verifying `03b2533`; the `DELETE` was refused by the
+  `monitoring_reading` append-only trigger, so they **cannot be removed**.
+  They demonstrate the append-only guarantee, and the point can only be
+  ended by a new effective window per `DEC-127`. **Future verification
+  should use a scratch database.**
 - **Row 13 (provisional, awaiting owner/OPS):** `DEC-105` (13a) — the status
   machine has `open` unreachable through the API; the close **list** route is not
   location-filtered (the recorded systemic location-scope gap) while
@@ -746,7 +828,8 @@ cost` (the `DEC-067`/`DEC-008` valuation is asymmetric); the waste reasons axis
   published values deliberately (see `DEC-129`).
 - **Login password field lacks `autocomplete="current-password"` (minor, found
   by the stage-1 browser check):** a WCAG 1.3.5 / autofill gap on the sign-in
-  screen; fix it with the shared field primitive in stage 2.
+  screen; being fixed with the shared field primitive by the **in-flight
+  stage-2 agent** — confirm it landed before closing the wave.
 - **Row 14 (provisional, awaiting owner/OPS):** `DEC-104` — the "remaining
   planned shifts run as scheduled" assumption is **not** implemented (only
   `{assigned, completed}` shifts count, so a pre-month-end payroll report
