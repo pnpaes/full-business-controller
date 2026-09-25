@@ -1,11 +1,15 @@
 import {
+  createPostgresCostingReadStore,
   createPostgresDataQualityReadStore,
   createPostgresInventoryStore,
   createPostgresMasterDataStore,
+  createPostgresTaxStore,
   listAuditEvents,
+  listChannels,
   listDataQualityExceptions,
   listLocations,
   listRoles,
+  listTaxRuleRegister,
   listUnits,
   listUsers,
   loadUserAccess,
@@ -40,7 +44,12 @@ import {
   isAdministrationAuthorized,
 } from "../../api/v1/administration/access";
 import { toRoleRow, toUserRow } from "../../api/v1/administration/admin-rows";
+import { TAX_RULE_READ_ROLES, isCostingAuthorized } from "../../api/v1/costing/access";
+import { toChannelRows } from "../../api/v1/costing/costing-views";
+import { TAX_RULE_WRITE_ROLES } from "../../api/v1/costing/tax-rules/access";
 
+import { TaxRuleForm } from "./tax-rule-form";
+import { TaxRuleRegister, type TaxRuleRow } from "./tax-rule-register";
 import { UnitConversionForm } from "./unit-conversion-form";
 import { UserAccessManager } from "./user-access-manager";
 
@@ -51,12 +60,13 @@ export const metadata = { title: "Administration — Aquarela Business Control" 
  * Administration hub (08_UI_UX.md §8.3: users/scopes, tax/rules, units,
  * imports, integrations, audit and data quality). Capabilities with an existing
  * screen and application service are linked or rendered — Imports, the
- * conversion graph, the unit register, the data-quality exception register, the
- * audit register and the users & access management surface. Each read is gated on
- * the caller's live roles (`loadUserAccess`, ADR-0003), so a role without read
- * sees nothing rather than an empty register. Tax/rules and integrations still
- * have no application service and no route, so they stay listed as unavailable;
- * user *creation* is absent for the open security decision stated on the surface.
+ * conversion graph, the unit register, the tax-rule register and its authoring
+ * form, the data-quality exception register, the audit register and the users &
+ * access management surface. Each read is gated on the caller's live roles
+ * (`loadUserAccess`, ADR-0003), so a role without read sees nothing rather than
+ * an empty register. Integrations still has no application service and no route,
+ * so it stays listed as unavailable; user *creation* is absent for the open
+ * security decision stated on the surface.
  */
 
 const contentColumn = {
@@ -161,6 +171,48 @@ function exceptionStatusTone(status: string): PillTone {
   }
 }
 
+/** Tax rules are stored as a 6 dp fraction (`0.150000` = 15 %). */
+const TAX_RATE_SCALE = 6;
+
+/**
+ * Converts the stored fraction to a percentage **for display only**, by moving
+ * the decimal point two places on the digit string. The value is never
+ * re-derived or re-scaled through a float.
+ */
+function fractionToPercentDisplay(fraction: string): string {
+  const negative = fraction.startsWith("-");
+  const [whole = "0", frac = ""] = fraction.replace(/^[+-]/, "").split(".");
+  const digits = `${whole}${frac.padEnd(TAX_RATE_SCALE, "0")}`;
+  const padded = digits.padStart(TAX_RATE_SCALE + 1, "0");
+  const percentWhole = padded.slice(0, padded.length - (TAX_RATE_SCALE - 2));
+  const percentFrac = padded.slice(padded.length - (TAX_RATE_SCALE - 2));
+  const trimmed = `${percentWhole}.${percentFrac}`.replace(/\.?0+$/, "");
+  return `${negative ? "-" : ""}${trimmed.length === 0 ? "0" : trimmed}`;
+}
+
+/** Effective status of a rule at the page's single stated `asOf` (half-open window). */
+function effectiveStatusAt(
+  effectiveFrom: string,
+  effectiveTo: string | null,
+  asOfIso: string,
+): "effective" | "future" | "ended" {
+  if (effectiveFrom > asOfIso) {
+    return "future";
+  }
+  return effectiveTo !== null && effectiveTo <= asOfIso ? "ended" : "effective";
+}
+
+/** The scope label the register shows: the org-wide badge or the scoped ref. */
+function taxScopeLabel(scopeType: string, label: string | undefined): string {
+  if (scopeType === "channel") {
+    return label === undefined ? "channel · unknown" : `channel · ${label}`;
+  }
+  if (scopeType === "location") {
+    return label === undefined ? "location · unknown" : `location · ${label}`;
+  }
+  return scopeType === "organization" ? "organization" : "company wide";
+}
+
 export default async function AdministrationPage() {
   const session = await getServerSession();
   if (session === undefined) {
@@ -188,6 +240,60 @@ export default async function AdministrationPage() {
   const locations = canManageUsers
     ? await listLocations(createPostgresInventoryStore(getDb().db), { organizationId })
     : [];
+
+  // Tax rules: read on the costing read set, authored on the configuration set.
+  // Both reads are org-scoped (DEC-061); the register carries the effective
+  // windows so the status is computed at this page's single stated `asOf`.
+  const canReadTaxRules = isCostingAuthorized(access, TAX_RULE_READ_ROLES);
+  const canWriteTaxRules = isCostingAuthorized(access, TAX_RULE_WRITE_ROLES);
+  const taxRules = canReadTaxRules
+    ? await listTaxRuleRegister(createPostgresTaxStore(getDb().db), { organizationId })
+    : [];
+  const taxChannels = canWriteTaxRules
+    ? await listChannels(createPostgresCostingReadStore(getDb().db), {
+        organizationId,
+        limit: 200,
+      })
+    : [];
+  const taxLocations = canWriteTaxRules
+    ? await listLocations(createPostgresInventoryStore(getDb().db), { organizationId })
+    : [];
+  const taxAsOf = asOf.toISOString();
+  const channelLabelById = new Map(
+    taxChannels.flatMap((channel) =>
+      toChannelRows(organizationId, [channel]).map(
+        (row) => [row.id, `${row.code} · ${row.name}`] as const,
+      ),
+    ),
+  );
+  const locationLabelById = new Map(taxLocations.map((location) => [location.id, location.name]));
+  const taxRuleRows: TaxRuleRow[] = taxRules.map((rule) => ({
+    id: rule.id,
+    code: rule.code,
+    name: rule.name,
+    ratePct: rule.ratePct,
+    taxBasis: rule.taxBasis,
+    taxTreatment: rule.taxTreatment,
+    recoverable: rule.recoverable,
+    ratePercent: fractionToPercentDisplay(rule.ratePct),
+    appliesTo: rule.appliesTo,
+    scopeType: rule.scopeType,
+    scopeLabel: taxScopeLabel(
+      rule.scopeType,
+      rule.channelId === null
+        ? undefined
+        : rule.locationId === null
+          ? channelLabelById.get(rule.channelId)
+          : locationLabelById.get(rule.locationId),
+    ),
+    effectiveStatus: effectiveStatusAt(
+      rule.effectiveFrom.toISOString(),
+      rule.effectiveTo === null ? null : rule.effectiveTo.toISOString(),
+      taxAsOf,
+    ),
+    effectiveFrom: rule.effectiveFrom.toISOString().slice(0, 10),
+    effectiveTo: rule.effectiveTo === null ? null : rule.effectiveTo.toISOString().slice(0, 10),
+  }));
   const knownCodes = [
     ...new Set(conversions.flatMap((edge) => [edge.fromUnit.code, edge.toUnit.code])),
   ];
@@ -387,12 +493,40 @@ export default async function AdministrationPage() {
         </SectionCard>
       ) : null}
 
+      {canReadTaxRules ? (
+        <SectionCard title="Tax rules" meta={`${taxRuleRows.length} shown · PRICE-005`}>
+          <TaxRuleRegister rows={taxRuleRows} canWrite={canWriteTaxRules} />
+          {canWriteTaxRules ? (
+            <details style={{ marginTop: spacing[4] }}>
+              <summary
+                style={{
+                  cursor: "pointer",
+                  minHeight: geometry.touchTarget,
+                  display: "flex",
+                  alignItems: "center",
+                  fontWeight: typography.fontWeight.semibold,
+                  color: color.brand.navy,
+                }}
+              >
+                New tax rule
+              </summary>
+              <div style={{ marginTop: spacing[4] }}>
+                <TaxRuleForm
+                  channels={toChannelRows(organizationId, taxChannels)}
+                  locations={taxLocations.map((location) => ({
+                    id: location.id,
+                    code: location.code,
+                    name: location.name,
+                  }))}
+                />
+              </div>
+            </details>
+          ) : null}
+        </SectionCard>
+      ) : null}
+
       <SectionCard title="Not available yet" headingLevel={3} meta="No backend">
         <ul style={list}>
-          <li>
-            <Badge>No backend</Badge> Tax/rules — no tax or rule configuration service or screen
-            exists yet.
-          </li>
           <li>
             <Badge>No backend</Badge> Integrations — no integration configuration service or screen
             exists yet.
