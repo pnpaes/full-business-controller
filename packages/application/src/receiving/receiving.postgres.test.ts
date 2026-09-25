@@ -410,6 +410,8 @@ describe.skipIf(!databaseUrl)("recordGoodsReceipt against PostgreSQL", () => {
       const lines = await listGoodsReceiptLines(tx, result.goodsReceiptId);
       expect(lines[0]!.taxCodeId).toBe(rule[0]!.id);
       expect(lines[0]!.landedBaseUnitCost).toBe("0.1000");
+      // `DEC-075` (migration 0068): the resolved rate travels with the row.
+      expect(lines[0]!.appliedTaxRate).toBe("0.250000");
       const prices = await listSupplierPricesForSupplierItem(tx, fixture.supplierItemId);
       expect(prices[0]).toMatchObject({ netPackPrice: "100.0000", landedBaseUnitCost: "0.1000" });
     });
@@ -475,6 +477,8 @@ describe.skipIf(!databaseUrl)("recordGoodsReceipt against PostgreSQL", () => {
 
       // 115 inclusive at the 15 % channel override -> 15 recoverable -> 100 net.
       expect(result.lines[0]!.netPackPrice).toBe("100.0000");
+      const lines = await listGoodsReceiptLines(tx, result.goodsReceiptId);
+      expect(lines[0]!.appliedTaxRate).toBe("0.150000");
     });
   });
 
@@ -547,6 +551,61 @@ describe.skipIf(!databaseUrl)("recordGoodsReceipt against PostgreSQL", () => {
           ],
         }),
       ).rejects.toThrow(/recoverableTax is required/);
+    });
+  });
+
+  it("stores null applied_tax_rate where no rate applied (explicit amount and exclusive basis)", async () => {
+    await inRollback(client.db, async (tx) => {
+      const fixture = await createFixture(tx, orgId);
+      const store = createPostgresReceivingStore(tx);
+      const base = {
+        organizationId: orgId,
+        locationId: fixture.locationId,
+        actorId: randomUUID(),
+        receivedAt,
+        supplierId: null,
+        storeName: "Rema 1000",
+      };
+
+      const explicit = await recordGoodsReceipt(store, {
+        ...base,
+        lines: [
+          {
+            itemId: fixture.itemId,
+            receivedPackQty: "1",
+            acceptedPackQty: "1",
+            unitId: fixture.packUnitId,
+            packToBaseFactor: "1000",
+            price: "125",
+            taxBasis: "inclusive",
+            recoverableTax: "25",
+          },
+        ],
+      });
+      const exclusive = await recordGoodsReceipt(store, {
+        ...base,
+        lines: [
+          {
+            itemId: fixture.itemId,
+            receivedPackQty: "1",
+            acceptedPackQty: "1",
+            unitId: fixture.packUnitId,
+            packToBaseFactor: "1000",
+            price: "100",
+            taxBasis: "exclusive",
+          },
+        ],
+      });
+
+      // An explicit amount is not a rate, and an exclusive price carries no tax:
+      // null is the honest value, and the §5 cost is unchanged (regression guard).
+      const explicitLines = await listGoodsReceiptLines(tx, explicit.goodsReceiptId);
+      expect(explicitLines[0]!.appliedTaxRate).toBeNull();
+      expect(explicitLines[0]!.landedBaseUnitCost).toBe("0.1000");
+
+      const exclusiveLines = await listGoodsReceiptLines(tx, exclusive.goodsReceiptId);
+      expect(exclusiveLines[0]!.appliedTaxRate).toBeNull();
+      expect(exclusiveLines[0]!.landedBaseUnitCost).toBe("0.1000");
     });
   });
 });

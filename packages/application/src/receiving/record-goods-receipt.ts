@@ -218,12 +218,17 @@ interface TaxContext {
  * non-`recoverable` rule yields `0`: the input VAT is a cost, not recoverable
  * (`CALCULATION_CONTRACT §2`). The resolver fails closed, so a missing or
  * ambiguous rule surfaces as its `DomainError` rather than a guessed rate.
+ *
+ * The resolved rate is returned too, so `recordLine` can persist it verbatim
+ * (`DEC-075`): the rule is effective-dated and mutable, so the stored
+ * `landed_base_unit_cost` is only explainable from the row if the rate that
+ * produced it travels with the row.
  */
 async function resolveRecoverableTax(
   tx: ReceivingStore,
   ctx: TaxContext,
   line: ValidatedLine,
-): Promise<string> {
+): Promise<{ readonly recoverableTax: string; readonly appliedTaxRate: string }> {
   const taxCodeId = line.input.taxCodeId;
   if (taxCodeId == null) {
     // `validateLine` leaves `null` only for an inclusive line with a linked rule.
@@ -236,19 +241,30 @@ async function resolveRecoverableTax(
     locationId: ctx.locationId,
     ...(line.input.channelId == null ? {} : { channelId: line.input.channelId }),
   });
-  return resolved.rule.recoverable ? includedTax(line.input.price, resolved.ratePct) : "0";
+  return {
+    recoverableTax: resolved.rule.recoverable
+      ? includedTax(line.input.price, resolved.ratePct)
+      : "0",
+    appliedTaxRate: resolved.ratePct,
+  };
 }
 
 /**
  * Computes the landed cost, inserts the line, then appends the price history
  * (DEC-047 precedence: a real supplier item gets an effective-dated
  * `supplier_price`; anything else gets a `cost_observation`).
+ *
+ * `appliedTaxRate` is the resolved rate on the rule-derived path, or `null`
+ * where no rate applied (`DEC-075`): an explicit `recoverableTax` states an
+ * amount, not a rate, and an exclusive price carries no tax, so a null is the
+ * honest value rather than a derived one.
  */
 async function recordLine(
   tx: ReceivingStore,
   ctx: LineContext,
   line: ValidatedLine,
   recoverableTax: string,
+  appliedTaxRate: string | null,
 ): Promise<RecordedGoodsReceiptLine> {
   const item = await tx.findItem(line.input.itemId);
   if (item === undefined || item.organizationId !== ctx.organizationId) {
@@ -292,6 +308,7 @@ async function recordLine(
     discount: line.discount,
     taxBasis: line.input.taxBasis,
     taxCodeId: line.input.taxCodeId ?? null,
+    appliedTaxRate,
     allocatedFreight: line.allocatedFreight,
     importFee: line.importFee,
     lotNumber: line.input.lotNumber ?? null,
@@ -423,8 +440,18 @@ export async function recordGoodsReceipt(
       receivedAt: input.receivedAt,
     };
     const recoverableTaxes: string[] = [];
+    // `null` where no rate applied: an explicit recoverable amount or an
+    // exclusive price (DEC-075 — the rate is captured, never invented).
+    const appliedTaxRates: (string | null)[] = [];
     for (const line of validated) {
-      recoverableTaxes.push(line.recoverableTax ?? (await resolveRecoverableTax(tx, taxCtx, line)));
+      if (line.recoverableTax !== null) {
+        recoverableTaxes.push(line.recoverableTax);
+        appliedTaxRates.push(null);
+      } else {
+        const resolved = await resolveRecoverableTax(tx, taxCtx, line);
+        recoverableTaxes.push(resolved.recoverableTax);
+        appliedTaxRates.push(resolved.appliedTaxRate);
+      }
     }
 
     const receipt = await tx.createGoodsReceipt({
@@ -453,7 +480,9 @@ export async function recordGoodsReceipt(
 
     const lines: RecordedGoodsReceiptLine[] = [];
     for (const [index, line] of validated.entries()) {
-      lines.push(await recordLine(tx, ctx, line, recoverableTaxes[index]!));
+      lines.push(
+        await recordLine(tx, ctx, line, recoverableTaxes[index]!, appliedTaxRates[index]!),
+      );
     }
 
     // Sum of line price × received pack quantity (money scale, HALF_UP), so an

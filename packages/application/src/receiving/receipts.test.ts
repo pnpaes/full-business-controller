@@ -27,6 +27,7 @@ function line(
     discount: "0",
     taxBasis: "exclusive",
     taxCodeId: null,
+    appliedTaxRate: null,
     allocatedFreight: "0",
     importFee: "0",
     lotNumber: null,

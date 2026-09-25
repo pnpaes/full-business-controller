@@ -300,6 +300,8 @@ describe("recordGoodsReceipt", () => {
       expect(result.lines[0]!.netPackPrice).toBe("100.0000");
       expect(result.lines[0]!.landedBaseUnitCost).toBe("0.1000");
       expect(store.supplierPrices[0]).toMatchObject({ netPackPrice: "100.0000" });
+      // The rate that produced the tax is captured on the row (`DEC-075`).
+      expect(store.lines[0]).toMatchObject({ appliedTaxRate: "0.250000" });
     });
 
     it("resolves the same numbers an explicit 25 % amount produced before (regression guard)", async () => {
@@ -388,6 +390,66 @@ describe("recordGoodsReceipt", () => {
 
       expect(result.lines[0]!.netPackPrice).toBe("125.0000");
       expect(result.lines[0]!.landedBaseUnitCost).toBe("0.1250");
+    });
+
+    it("stores the resolved rate on the rule-derived path, not a re-derived one", async () => {
+      store.taxRules.set(
+        "fixed-vat",
+        taxRule({ id: "fixed-vat", taxTreatment: "fixed", ratePct: "0.250000" }),
+      );
+      const result = await recordGoodsReceipt(
+        store,
+        baseInput({ lines: [inclusiveLine({ taxCodeId: "fixed-vat" })] }),
+      );
+
+      // The stored rate is exactly what `resolveTaxRule` returned, so a later
+      // edit to the rule cannot change how this row's cost re-derives.
+      expect(store.lines[0]).toMatchObject({
+        appliedTaxRate: "0.250000",
+        landedBaseUnitCost: result.lines[0]!.landedBaseUnitCost,
+      });
+    });
+
+    it("captures the channel override's rate, so the stored rate is self-describing", async () => {
+      store.taxRules.set(
+        "vat-default",
+        taxRule({ id: "vat-default", appliesTo: "cost", ratePct: "0.250000" }),
+      );
+      store.taxRules.set(
+        "vat-takeaway",
+        taxRule({
+          id: "vat-takeaway",
+          appliesTo: "cost",
+          scopeType: "channel",
+          channelId: "chan-out",
+          ratePct: "0.150000",
+        }),
+      );
+      await recordGoodsReceipt(
+        store,
+        baseInput({
+          lines: [inclusiveLine({ price: "115", taxCodeId: "vat-default", channelId: "chan-out" })],
+        }),
+      );
+
+      // The winning rate (the 15 % override), not the item default's 25 %.
+      expect(store.lines[0]).toMatchObject({ appliedTaxRate: "0.150000" });
+    });
+
+    it("stores null when the caller states the recoverable amount, not a rate", async () => {
+      await recordGoodsReceipt(
+        store,
+        baseInput({ lines: [inclusiveLine({ recoverableTax: "25" })] }),
+      );
+
+      // An explicit amount is not a rate; null is the honest value (`DEC-075`).
+      expect(store.lines[0]).toMatchObject({ appliedTaxRate: null, landedBaseUnitCost: "0.1000" });
+    });
+
+    it("stores null on an exclusive price, which carries no recoverable rate", async () => {
+      await recordGoodsReceipt(store, baseInput());
+
+      expect(store.lines[0]).toMatchObject({ appliedTaxRate: null, landedBaseUnitCost: "0.0500" });
     });
 
     it("refuses an explicit amount alongside a linked rule rather than pick an authority", async () => {

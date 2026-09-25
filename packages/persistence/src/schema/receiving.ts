@@ -2,7 +2,7 @@ import { sql } from "drizzle-orm";
 import { check, date, index, pgTable, text, uuid, type AnyPgColumn } from "drizzle-orm/pg-core";
 
 import { item, unit } from "./catalog";
-import { auditColumns, enumCheck, money, orgId, quantity, tstz, uuidPk } from "./columns";
+import { auditColumns, enumCheck, money, orgId, quantity, rate, tstz, uuidPk } from "./columns";
 import { location, organization } from "./organization";
 import { supplier } from "./supplier";
 import { taxRule } from "./tax";
@@ -62,6 +62,20 @@ export const goodsReceipt = pgTable(
  * contract). `supplier_item_id` is nullable (DEC-047). There is deliberately no
  * `currency`/`other_acquisition_cost` column: the dictionary does not specify
  * them (see the slice report for the recorded ambiguities).
+ *
+ * `applied_tax_rate` (migration `0068`) is the `DEC-075` pattern applied here:
+ * the rate that produced the recoverable tax folded into `landed_base_unit_cost`
+ * is **captured verbatim and never re-derived from the rule**. The linked
+ * `tax_rule` is effective-dated and mutable (its rate, `recoverable` flag,
+ * channel override and window can change), so without the captured rate the
+ * stored cost cannot be explained from the row alone. It is
+ * `numeric(9,6)` at the 6 dp fraction scale `tax_rule.rate_pct` uses
+ * (`sales_line.applied_tax_rate` precedent). Nullable and expand-only: it is
+ * null on an explicit `recoverableTax` (the caller states an amount, not a rate)
+ * and on an exclusive price, and pre-`0068` rows stay null rather than being
+ * backfilled with a guess. No channel column is added: the channel is only a
+ * resolution *input*; once the applied rate is captured the figure is
+ * re-derivable without mirroring which scope won (over-modelling the config).
  */
 export const goodsReceiptLine = pgTable(
   "goods_receipt_line",
@@ -86,6 +100,7 @@ export const goodsReceiptLine = pgTable(
     discount: money("discount").notNull().default("0"),
     taxBasis: text("tax_basis").notNull(),
     taxCodeId: uuid("tax_code_id").references(() => taxRule.id),
+    appliedTaxRate: rate("applied_tax_rate"),
     allocatedFreight: money("allocated_freight").notNull().default("0"),
     importFee: money("import_fee").notNull().default("0"),
     lotNumber: text("lot_number"),
@@ -95,6 +110,10 @@ export const goodsReceiptLine = pgTable(
   },
   (t) => [
     check("goods_receipt_line_tax_basis_check", enumCheck(t.taxBasis, TAX_BASIS)),
+    check(
+      "goods_receipt_line_applied_tax_rate_check",
+      sql`${t.appliedTaxRate} is null or ${t.appliedTaxRate} >= 0`,
+    ),
     check("goods_receipt_line_received_pack_qty_check", sql`${t.receivedPackQty} >= 0`),
     check("goods_receipt_line_accepted_pack_qty_check", sql`${t.acceptedPackQty} >= 0`),
     check("goods_receipt_line_rejected_pack_qty_check", sql`${t.rejectedPackQty} >= 0`),

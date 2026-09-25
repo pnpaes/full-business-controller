@@ -69,6 +69,7 @@ function toGoodsReceiptLine(row: repo.GoodsReceiptLine): GoodsReceiptLineRecord 
     discount: row.discount,
     taxBasis: row.taxBasis,
     taxCodeId: row.taxCodeId,
+    appliedTaxRate: row.appliedTaxRate,
     allocatedFreight: row.allocatedFreight,
     importFee: row.importFee,
     lotNumber: row.lotNumber,

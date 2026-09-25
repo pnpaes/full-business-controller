@@ -1,0 +1,2 @@
+ALTER TABLE "goods_receipt_line" ADD COLUMN "applied_tax_rate" numeric(9, 6);--> statement-breakpoint
+ALTER TABLE "goods_receipt_line" ADD CONSTRAINT "goods_receipt_line_applied_tax_rate_check" CHECK ("goods_receipt_line"."applied_tax_rate" is null or "goods_receipt_line"."applied_tax_rate" >= 0);

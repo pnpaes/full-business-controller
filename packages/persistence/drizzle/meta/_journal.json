@@ -477,6 +477,13 @@
       "when": 1790324986583,
       "tag": "0067_rate_limit_counter",
       "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1790329967242,
+      "tag": "0068_goods_receipt_line_applied_tax_rate",
+      "breakpoints": true
     }
   ]
 }
