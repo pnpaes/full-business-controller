@@ -1,5 +1,23 @@
 # Reversibility log
 
+- **2026-09-25 Forecast-vs-actual tracking slice (DEC-138, the row-15
+  owner-authorized override; nothing pushed)**: in chronological order
+  `e52f4e5` (`feat(forecast)` — migration
+  `0070_forecast_snapshot_forecast_override.sql` expand-only +
+  persistence + application), `7c06fdd` (`feat(web)` — the routes + the
+  tracking screen), `4ba3ced` (`fix` — the review hardening), plus the
+  docs commit carrying this handoff/`CONTEXT.md` update on top.
+  **Migration rollback:** run
+  `packages/persistence/drizzle/0070_forecast_snapshot_forecast_override_down.sql`
+  — destructive **only to forecast snapshots/overrides** (both tables
+  dropped; no posted money or stock fact is affected) — then
+  `git revert <sha>` each commit; the down path was **rehearsed on a
+  scratch DB** (both tables present → absent → triggers removed →
+  dropped), never on the dev DB. Migrations now through `0070`; **97
+  public tables**; `ai_analysis_run`/`reorder_policy` remain deferred.
+  Nothing pushed; nothing applied to DigitalOcean. Details and the
+  review reconciliation: [handoff
+  083](083-2026-09-25-forecast-tracking-dec-138.md).
 - **2026-09-25 Integrations registry slice (INTG-001, `DEC-137`; nothing
   pushed)**: in chronological order `9508f1e` (`feat(integrations)` —
   migration `0069_integration_source.sql` expand-only + persistence +

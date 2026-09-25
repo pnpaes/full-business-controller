@@ -18,69 +18,57 @@ in `docs/handoffs/082-2026-09-25-integrations-registry-intg-001.md`, and
 the earlier 081 design-system/storage wave in
 `docs/handoffs/081-2026-09-25-design-system-and-storage-port-wave.md`.)
 
-**State:** branch `main`; HEAD **`64415db`** (the per-slice handoff/docs
-commit sits on top of it), working tree clean. All commits are
-**unpushed**; nothing applied to DigitalOcean. **4807/4807 tests (342
-files)**. Migrations through **`0069`**; **95 public tables** (the `0069`
-slice added the `integration_source` table); `db:migrate` a no-op on
-re-run. Decision ids recorded through **`DEC-137`**; the **next free id is
-`DEC-138`**. The Integrations Administration backend (**INTG-001**) is now
-**delivered** — `ADR-0011` Accepted (2026-09-25, owner + tech lead),
-`DEC-137` recorded — while INTG-002 publishing stays **gated on
-`ADR-0004`** (still Proposed), stated honestly on the Administration
-screen. Verification at HEAD: `typecheck`, `lint`, `format:check`,
-`next build` clean; `DATABASE_URL=postgres://aquarela:aquarela@localhost:
-5432/aquarela npm run test` → **4807/4807 (342 files)**; the `0069` down
+**State:** branch `main`; HEAD **`4ba3ced`** (the DEC-138 docs commit sits
+on top of it), working tree clean. All commits are **unpushed**; nothing
+applied to DigitalOcean. **4873/4873 tests (349 files)**. Migrations
+through **`0070`**; **97 public tables** (the `0070` slice added
+`forecast_snapshot` + `forecast_override`); `db:migrate` a no-op on
+re-run. Decision ids recorded through **`DEC-138`**; the **next free id
+is `DEC-139`**. The forecast-vs-actual tracking slice is **delivered**
+(`DEC-138`, owner-authorized override of row 15's data gate; accuracy
+stays honest on history — `insufficient_history`/`no_snapshot` are
+first-class results, never a fabricated figure), and the Integrations
+registry (**INTG-001**) is **delivered** — `ADR-0011` Accepted
+(2026-09-25, owner + tech lead), `DEC-137` recorded — while INTG-002
+publishing stays **gated on `ADR-0004`** (still Proposed). Verification
+at HEAD: `typecheck`, `lint`, `format:check`, `next build` clean;
+`DATABASE_URL=postgres://aquarela:aquarela@localhost:
+5432/aquarela npm run test` → **4873/4873 (349 files)**; the `0070` down
 path was rehearsed on a scratch DB (never the dev DB). Note
 `packages/application/src/scheduling/scheduling.postgres.test.ts` has a
 known same-instant ordering flake (passes on re-run).
 
 **Complete since the last rewrite.** Per handoff
-`docs/handoffs/082-2026-09-25-integrations-registry-intg-001.md` and the
-top of `docs/handoffs/reversibility-log.md` — do not restate per-slice
-history here. In brief: the Integrations registry slice — migration
-`0069` + persistence + application + routes + the Administration register
-screen + the six-source read-only seed, committed as `9508f1e`, `02c3081`,
-`ef23028`, `23f803f`, `64415db`, with `ADR-0011` Accepted and `DEC-137`
-accepted (not provisional). The last "No backend" Administration bullet is
-closed.
+`docs/handoffs/083-2026-09-25-forecast-tracking-dec-138.md` and the top
+of `docs/handoffs/reversibility-log.md` — do not restate per-slice
+history here. In brief: the forecast-vs-actual tracking slice — migration
+`0070` (`forecast_snapshot` + `forecast_override`, expand-only) +
+persistence + application + routes + the tracking screen, committed as
+`e52f4e5`, `7c06fdd`, `4ba3ced`, with the docs commit on top; `DEC-138`
+accepted (2026-09-25, owner). The insights honest-gap card is replaced by
+the live tracking screen.
 
 **Durable facts worth carrying forward:**
 
 1. `npm run build` must be in every verification pass — typecheck/lint/
    tests do not catch client-bundle breakage (the `@aquarela/domain` barrel
    case, fixed by `3054512`).
-2. `0069` is expand-only with the down companion
-   `0069_integration_source_down.sql` (destructive only to registry
-   configuration); its down path was rehearsed on a scratch DB and carries
-   a runbook row.
+2. `0070` is expand-only with the down companion
+   `0070_forecast_snapshot_forecast_override_down.sql` (destructive only
+   to forecast snapshots/overrides); its down path was rehearsed on a
+   scratch DB and carries a runbook row.
 
-**Next task:** the next authorized slice is **DEC-138 forecast-vs-actual
-tracking** — an owner-authorized override of roadmap row 15's data block
-(row 15's formal data gate I11 is overridden by owner authorization, but
-accuracy must stay honest: `insufficient_history` is a first-class result,
-never a fabricated figure). Recorded defaults for the slice: migration
-`0070` expand-only `forecast_snapshot` + `forecast_override`; metric/grain
-net sales amount at `day_location`; `computeForecastTracking` with MAPE
-over completed periods and `insufficient_history` below 4 completed
-periods; `recordForecastSnapshot` + append-only `recordForecastOverride`
-(mandatory reason); `GET`/`POST /api/v1/analytics/forecasts` (role-gated
-like the existing forecast route + a limiter); a tracking screen replacing
-the honest-gap card at
-`apps/web/app/(app)/insights/page.tsx:553-565`; read =
-owner/general_manager/location_manager/analyst/finance/admin, override =
-owner/general_manager/admin; advisory only, never auto-applied, fully
-reversible. **Known build prerequisites found in planning:** (a)
-`FORECAST_GRAIN` must be exported from
-`packages/persistence/src/schema/vocabularies.ts` and removed from
-`UNEXPORTED_YAML_KEYS` in `vocabularies.test.ts:130` simultaneously or the
-schema suite fails; (b) there is a `/forecast` (singular, existing) vs
-`/forecasts` (plural, new) route distinction to keep explicit; (c) the
-`DEC-011` daily/location/category grain still needs the grain mapping
-recorded. Still gated after this: the standing items (reset-token
-delivery, the worker/outbox layer on `ADR-0004`, six golden fixtures, the
-`task`↔`approval` link, `WF-003` self-assignment per `DEC-102`,
-deployment prerequisite inputs).
+**Next task:** `DEC-138` is delivered; nothing is buildable without an
+owner input. The remaining work is the standing **owner/data-gated**
+items: the reset-token delivery (the email slice — see `DEC-131`), the
+unsigned golden fixtures (owner signature — the "verified" gate), the
+`task`↔`approval` link, `WF-003` self-assignment (the login model,
+`DEC-102`), the `ADR-0004` worker/outbox layer (which also gates INTG-002
+publishing and an automated snapshot cadence for `DEC-138`), the
+deployment prerequisite inputs, and the receipt→ledger
+`storage_area_id` policy. **Do not start any of them without the
+owner input named for it** — see "Open decisions / inputs" below (next
+free decision id `DEC-139`).
 
 **Process note — one worktree, one writer:** a **second session was found
 running concurrently in this same worktree** earlier (orphaned background
@@ -95,8 +83,8 @@ editing**.
 dependency, a Tailwind config or a CSS file; do not change a workflow,
 business rule or component behaviour; do not rewrite posted money or stock
 facts; do not resolve other recorded open inputs silently; do not push; do
-not deploy or write externally (`DEC-015`). For DEC-138 specifically: the
-override is advisory only and never auto-applied.
+not deploy or write externally (`DEC-015`). Forecast overrides are
+advisory only and never auto-applied (`DEC-138`).
 
 **Verification set (exact):** `export NVM_DIR="$HOME/.nvm"; .
 "$NVM_DIR/nvm.sh"; nvm use 22`; `npm run typecheck`; `npm run lint`; `npm
@@ -106,7 +94,7 @@ every `next build`/`next dev` for the active `NEXT_DIST_DIR`; normalise
 with `git checkout -- apps/web/next-env.d.ts apps/web/tsconfig.json`
 before staging. Full suite:
 `DATABASE_URL=postgres://aquarela:aquarela@localhost:5432/aquarela npm run
-test` (≥ **4807/4807**, 342 files) — note
+test` (≥ **4873/4873**, 349 files) — note
 `packages/application/src/scheduling/scheduling.postgres.test.ts` has a
 known same-instant ordering flake (passes on re-run). **Visual work
 additionally requires the browser check:** drive the changed screens with
@@ -127,15 +115,15 @@ with the rollback approach in each body (Rule 2).
 open-point lists. Per-slice detail is in `docs/handoffs/`. The detailed list
 lives in the second "Next up" section below.
 
-1. **Next: the DEC-138 forecast-vs-actual tracking slice — the next
-   authorized slice** (an owner-authorized override of roadmap row 15's
-   data block; the full brief and its build prerequisites are in "Resume
-   here"); the Integrations Administration backend is **delivered**
+1. **The DEC-138 forecast-vs-actual tracking slice is
+   **delivered** (migration `0070`; accuracy honest on history I11); the
+   Integrations Administration backend is **delivered**
    (INTG-001, `DEC-137`; INTG-002 stays gated on `ADR-0004`); the
-   standing items remain owner/data-gated (see "Resume here" for the
-   exact list — the wave work W1–W7, the HMS blockade, the Administration
-   backends including Integrations and Tax/rules, the storage port and
-   the rate-limiter shared store `DEC-135` are all delivered).
+   standing items remain owner/data-gated and are the remainder (see
+   "Resume here" for the exact list — the wave work W1–W7, the HMS
+   blockade, the Administration backends including Integrations and
+   Tax/rules, the storage port and the rate-limiter shared store
+   `DEC-135` are all delivered).
 2. **The operations-completion waves W1–W7 are all delivered** (W7 per
    `docs/handoffs/080-…md`); the HMS blockade, the Administration reads /
    users-scopes work and the tax-rule authoring are delivered since
@@ -173,8 +161,8 @@ Per-slice detail, commits and reconciliation are in `docs/handoffs/`.
 
 - `00_README.md` … `13_AGENT_BUILD_BRIEF.md` — the specification package
   (inputs, rarely edited). Start with `00_README.md`.
-- **`12_OPEN_DECISIONS.md` — the accepted decisions (`DEC-001`…`DEC-137`);
-  the authority. New decisions are appended here (next free id `DEC-138`).**
+- **`12_OPEN_DECISIONS.md` — the accepted decisions (`DEC-001`…`DEC-138`);
+  the authority. New decisions are appended here (next free id `DEC-139`).**
 - `docs/phase0/` — close-out plan, calculation contract, data dictionary, golden
   fixtures, source-data request, notes. See
   `docs/phase0/CALCULATION_CONTRACT.md`.
@@ -194,6 +182,41 @@ Per-slice detail, commits and reconciliation are in `docs/handoffs/`.
 - `CONTEXT.md` — this file.
 
 ## Current status
+
+- **2026-09-25 — the forecast-vs-actual tracking slice delivered
+  (`DEC-138`, the row-15 override owner-authorized; HEAD `4ba3ced` +
+  the docs commit on top):** roadmap row 15's `blocked (data)` gate
+  overridden by owner authorization; accuracy stays honest on history
+  (I11). **Objective:** build the forecast-tracking slice — migration
+  `0070` (expand-only `forecast_snapshot` + `forecast_override`),
+  persistence/application, routes and the tracking screen replacing the
+  insights honest-gap card; `insufficient_history`/`no_snapshot` are
+  first-class results, no fabricated figure; overrides append-only with
+  a mandatory reason, advisory only, never auto-applied. **Commits
+  (chronological):** `e52f4e5` (migration `0070` + persistence +
+  application), `7c06fdd` (routes + tracking screen), `4ba3ced` (the
+  review hardening), plus the `docs(...)` commit on top (handoff
+  `083`, runbook row, reversibility log, `DEC-138` row, roadmap row 15,
+  CONTEXT). **Verification:** typecheck/lint/format:check clean,
+  `next build` exit 0, **4873/4873 tests (349 files)** with
+  `DATABASE_URL`; `0070` applied (no-op re-run); the `0070` down path
+  rehearsed on a scratch DB (never the dev DB). **Review
+  reconciliation:** `reviewer-qwen` — one major (cross-org `snapshotId`
+  IDOR) accepted and fixed in `4ba3ced`, plus two minors; a
+  transaction-port type hole fixed in the same commit.
+  `reviewer-minimax` — (1) the missing `0070` runbook row **accepted**
+  (this docs wave); (2) the app-only `DEC-011` grain ceiling
+  (the DB check accepts category/product) **DECLINED with reason**: the
+  DB models the full declared vocabulary and the ceiling is enforced at
+  the single port `requireSupportedForecastGrain`; three minors — the
+  `sql` re-export tag fixed, the `actor_id` FK deferral and the text
+  `period` accepted as recorded. Browser verification **PASS** at
+  1280/390 (`/insights`, `/insights/forecast`, genuine `no_snapshot`,
+  empty override reason refused). **Rollback:** run
+  `0070_forecast_snapshot_forecast_override_down.sql` (destructive only
+  to forecast snapshots/overrides; no posted money or stock fact), then
+  `git revert` each commit. **Next:** the standing owner/data-gated
+  items (see "Resume here").
 
 - **2026-09-25 — the Integrations registry delivered (INTG-001; HEAD
   `64415db` + the docs commit on top):** the last "No backend"
@@ -371,19 +394,20 @@ findings from the W7 review` (5 files, all under `apps/web/app/(app)/**`;
   and the `security`-agent dead-pin fact are recorded in
   `docs/handoffs/080-2026-09-24-w7-ui-refinement-wave.md`. Reverts
   independently with `git revert f3adeb8`.
-- **As of:** 2026-09-25 — branch `main`; HEAD **`64415db`**, working tree
-  clean. **4807/4807 tests (342
-  files)**; migrations through **`0069`**
-  (**95 tables**); nothing pushed; nothing applied to DigitalOcean.
+- **As of:** 2026-09-25 — branch `main`; HEAD **`4ba3ced`**, working tree
+  clean. **4873/4873 tests (349
+  files)**; migrations through **`0070`**
+  (**97 tables**); nothing pushed; nothing applied to DigitalOcean.
   **Delivered:** the `DEC-129` design-system completion, the `DEC-132`
   storage port, the 2026-09-25 close-out wave, the docs-only concurrency
-  audit (`2da9ba5`) and the Integrations registry (**INTG-001**,
-  `DEC-137`, `9508f1e`…`64415db`); W7 and the HMS +
+  audit (`2da9ba5`), the Integrations registry (**INTG-001**,
+  `DEC-137`, `9508f1e`…`64415db`) and the forecast-vs-actual tracking
+  slice (**`DEC-138`**, `e52f4e5`…`4ba3ced`); W7 and the HMS +
   Administration entries above (the verbatim W7 list is in
   `docs/handoffs/080-2026-09-24-w7-ui-refinement-wave.md`). **In
-  flight: nothing**; the next step (the DEC-138 forecast-tracking slice,
-  then the standing items) is in "Resume here". Next free decision id
-  **`DEC-138`**.
+  flight: nothing**; the next step (the standing owner/data-gated
+  items) is in "Resume here". Next free decision id
+  **`DEC-139`**.
   Lineage and full
   per-slice detail: `docs/handoffs/README.md` and the files it lists.
 - **The operations-completion waves W1–W7 are delivered** (`DEC-120` redesign
@@ -642,11 +666,11 @@ sales_units}` in `schemas/domain-enums.yaml` and
   (`DEC-087`/`DEC-099`); the staff document library (`DEC-088`/`DEC-100`, the
   first versioned entity); the workflow platform (`DEC-094`/`DEC-101`,
   schema-only). The `job`/worker/outbox layer stays gated on `ADR-0004`.
-- **Schema:** migrations through **`0069`**; **95 tables** (all additive,
-  tested down paths; `0069` added the `integration_source` table and its
-  down path was rehearsed on a scratch DB —
-  see the durable fact in "Resume here"). Next free decision id **`DEC-138`**
-  (`DEC-129`–`DEC-137` are recorded).
+- **Schema:** migrations through **`0070`**; **97 tables** (all additive,
+  tested down paths; `0070` added the `forecast_snapshot` and
+  `forecast_override` tables and its down path was rehearsed on a
+  scratch DB — see the durable fact in "Resume here"). Next free
+  decision id **`DEC-139`** (`DEC-129`–`DEC-138` are recorded).
 - **Verification (2026-09-25, at `9842d81`):** `typecheck`, `lint`,
   `format:check`, `build` clean; **4735/4735 tests with `DATABASE_URL`**
   (335 files); `db:migrate` a no-op through `0068`; 93 public base tables.
@@ -657,9 +681,9 @@ sales_units}` in `schemas/domain-enums.yaml` and
   finished):** the **Integrations** Administration backend is
   **delivered** (INTG-001, `DEC-137` — the registry only; INTG-002
   publishing stays gated on `ADR-0004`); planning/forecast **tracking**
-  has no backend yet (the insights card stays honest) and is the next
-  authorized slice (`DEC-138`, owner-authorized override of row 15's data
-  gate — see "Resume here"). The `file_object` storage port is **delivered** (`DEC-132`,
+  is **delivered** (`DEC-138`, migration `0070` — accuracy honest on
+  history; the category/product grains and an automated cadence stay
+  deferred). The `file_object` storage port is **delivered** (`DEC-132`,
   consumers wired per `DEC-133`/`DEC-134`; the remaining per-class
   retention/Spaces decisions are recorded in those rows), and the
   app-shell search/scope placeholders were resolved by removal (handoff
@@ -694,13 +718,18 @@ sales_units}` in `schemas/domain-enums.yaml` and
 `docs/BUILD_ROADMAP.md` is the ordered execution tracker; §5 carries the
 open-point lists. Per-slice detail is in `docs/handoffs/`.
 
-1. **Next: the DEC-138 forecast-vs-actual tracking slice is the next
-   authorized slice** (an owner-authorized override of roadmap row 15's
-   data gate I11; defaults and build prerequisites in "Resume here");
-   the Integrations registry is **delivered** (INTG-001, `DEC-137`;
-   INTG-002 gated on `ADR-0004`), and blocked rows 16–18 and the
-   standing items stay "blocked and stated" per the W6 acceptance rule —
-   see "Resume here" for the gates. The HMS
+1. **Next: the standing owner/data-gated items are the remainder —
+   nothing is buildable without an owner input** (the exact list in
+   "Resume here": reset-token delivery, the unsigned golden fixtures,
+   the `task`↔`approval` link, `WF-003` self-assignment, the
+   `ADR-0004` worker/outbox layer, the deployment prerequisite inputs,
+   the receipt→ledger `storage_area_id` policy; next free decision id
+   `DEC-139`). The forecast-tracking slice is
+   **delivered** (`DEC-138`, row 15's data gate overridden by owner
+   authorization); the Integrations registry is **delivered** (INTG-001,
+   `DEC-137`; INTG-002 gated on `ADR-0004`), and blocked rows 17–18 and
+   the standing items stay "blocked and stated" per the W6 acceptance
+   rule — see "Resume here" for the gates. The HMS
    blockade, the Administration reads/users-scopes work, the `DEC-132`
    storage port (plus its `DEC-133`/`DEC-134` consumers), the Tax/rules
    authoring (`DEC-136`) and the Integrations registry are
@@ -741,9 +770,9 @@ open-point lists. Per-slice detail is in `docs/handoffs/`.
    "verified" gate); `I8`/`I9` still gate the real rates behind them.
 8. **Rows 15–18 and the competitor/planning waves** — competitor manual
    observations landed in the completion programme (see the decisions rows);
-   row 15's data gate is overridden for the DEC-138 forecast-tracking
-   slice (owner-authorized; see "Resume here"), rows 16–18 remain blocked
-   (data / `ADR-0009`–`0011`; row 16's registry slice INTG-001 is
+   row 15's data gate is **overridden** and the forecast-tracking slice is
+   **delivered** (`DEC-138`, owner-authorized), rows 17–18 remain blocked
+   (`ADR-0009`–`0011`; row 16's registry slice INTG-001 is
    delivered, INTG-002 stays gated on `ADR-0004`).
 
 ## Open decisions / inputs (do not block development)
