@@ -120,11 +120,14 @@ a clean no-op on re-run; `EXPECTED_TABLES` unchanged.
 - **Status of the `080` open-gaps list after this wave.** Changed entries:
   the `file_object` port now **exists** with a local adapter (one consumer
   wired); the app-shell search/scope placeholders are **removed**, not
-  wired. Still open as in `080`: no unit-catalogue read, no cost-centre
+  wired; the rate-limiter shared store is **delivered** (the **DEC-135**
+  shared Postgres store, `2a4a189` + `5013011`, migration `0067` — see
+  the reversibility log for why the pair rolls back together). Still open
+  as in `080`: no unit-catalogue read, no cost-centre
   list read, no `calculatePriceScenario` HTTP route, no HMS-scoped
   assignable-user read for incident owner assignment, Administration gaps
   (Tax/rules and Integrations backends), planning/forecast tracking,
-  rate-limiter shared store, reset-token delivery stub, `WF-003`
+  reset-token delivery stub, `WF-003`
   self-assignment (`DEC-102`), unsigned golden fixtures, the
   `task`↔`approval` link, the worker/outbox layer gated on `ADR-0004` — and
   now the four deferred storage consumers listed under `9de4c5c`.

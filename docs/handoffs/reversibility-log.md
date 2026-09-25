@@ -1,7 +1,7 @@
 # Reversibility log
 
-- **2026-09-25 design-system + storage-port wave close-out (10 commits;
-  nothing pushed)**: the four in-flight agents from [handoff
+- **2026-09-25 design-system + storage-port wave close-out (nothing
+  pushed)**: the four in-flight agents from [handoff
   081](081-2026-09-25-design-system-and-storage-port-wave.md) and the two
   later workstreams all landed and were committed.
   `2805deb`, `4c423c5`, `358bc58` — the a11y/touch-target work;
@@ -16,7 +16,30 @@
   after `0068`), then `git revert 67ee852`; `6bfd5cd` is a type-only
   revert.** `3054512` — the build fix keeping the domain barrel out of
   the client bundle; **`git revert 3054512`; no migration, no schema
-  change.** Migrations now through `0068`; the `0068` down path was
+  change.** `1a791eb` — the costing channel read; **`git revert 1a791eb`;
+  no migration, no schema change.** `2a4a189` + `5013011` — the
+  **DEC-135** rate-limiter shared Postgres store, one logical layer with
+  migration `0067`. `2a4a189` was committed only in part while a second
+  session ran concurrently in the same worktree (the reflog shows two
+  `reset: moving to HEAD` events on HEAD at 11:46:02 and 11:49:18 from
+  the collision), so it is **NOT trustworthy alone**: it left HEAD broken
+  in two ways — the committed per-route `limiters.ts` declared
+  `checkSalesReportThrottle` async while its call sites still called it
+  synchronously (every request was denied on the
+  reporting/analytics/simulation routes), and migration
+  `0067_rate_limit_counter.sql` was committed without the drizzle table
+  definition in `packages/persistence/src/schema/platform.ts`, its barrel
+  export and the `EXPECTED_TABLES` entry. `5013011` completes the same
+  layer and its own body states "2a4a189 alone should not be trusted".
+  **Rollback: run
+  `packages/persistence/drizzle/0067_rate_limit_counter_down.sql` (the
+  unjournalled down companion, destructive only to throttling state; the
+  down path was rehearsed on a scratch DB — the `0067` row in
+  `docs/runbooks/persistence-migrations.md`), then `git revert 5013011`
+  followed by `git revert 2a4a189`, or both together. Never revert
+  `2a4a189` alone:** that would leave the async limiter signatures and
+  the missing schema definition inconsistent again. Migrations now
+  through `0068`; the `0068` down path was
   rehearsed on a scratch DB (recorded in the commit body and
   `docs/runbooks/persistence-migrations.md`). Nothing
   pushed; nothing applied to DigitalOcean.
