@@ -58,7 +58,9 @@ const tables = Object.values(schema).filter((value) => is(value, PgTable));
  * registry adds the `integration_source` table, taking the count to 95
  * (`publish_run` stays deferred on `ADR-0004`). The `DEC-011` forecast-vs-actual
  * tracking slice adds the `forecast_snapshot` and `forecast_override` tables,
- * taking the count to 97. */
+ * taking the count to 97. The `ADR-0004` (accepted 2026-09-26) job-projection
+ * slice adds the `job` table, taking the count to 98 (`publish_run` and the
+ * runner queue stay deferred to the worker/scheduler wave). */
 const EXPECTED_TABLES = [
   "addon_applicability",
   "adjustment_period",
@@ -102,6 +104,7 @@ const EXPECTED_TABLES = [
   "import_staging_row",
   "integration_source",
   "item",
+  "job",
   "labor_rate",
   "location",
   "maintenance_log",
@@ -177,9 +180,6 @@ const NOT_EXPECTED_TABLES = [
   // The fixed-asset register is deferred; depreciation is entered as an
   // `operating_cost` (`DATA_DICTIONARY` §4 `asset`) until its slice lands.
   "asset",
-  // The `job`/worker/outbox layer is gated on `ADR-0004`, still Proposed, per
-  // `DEC-094`; only `task`/`approval` are in the schema-only workflow slice.
-  "job",
 ];
 
 /** New DB-enforced checks added to the generated core DDL (0001). */

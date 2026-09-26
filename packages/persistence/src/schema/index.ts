@@ -20,6 +20,7 @@ export * from "./waste";
 export * from "./production";
 export * from "./sales";
 export * from "./platform";
+export * from "./jobs";
 export * from "./hms";
 export * from "./workforce";
 export * from "./document";
