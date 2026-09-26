@@ -158,8 +158,9 @@ rehearsed in staging before production (`02.7`, `10.8`).
   console/`doctl`) before the first `init` — the configuration cannot create the bucket that stores
   its own state. Naming and per-environment state keys are still owner-supplied; locking is handled
   by the single-runner apply above.
-- The worker/scheduler design depends on **ADR-0004 being accepted** and on the **Graphile Worker
-  vs pg-boss** choice — both still open.
+- **Worker/scheduler design resolved (2026-09-26):** `ADR-0004` is **Accepted** (2026-09-26,
+  `DEC-139`) with the pg-boss runner pinned `12.33.2` (`DEC-062`); the only remaining provider
+  item is the `SCHEDULED`-job conversion above.
 - Multi-tenancy posture (shared-schema vs schema/DB-per-tenant) — **owner decision**, records
   `organization_id` scoping as the current model.
 - Cost estimate for the component inventory per environment.
