@@ -72,6 +72,20 @@ not read it — the worker keeps neither variable. `TOTP_SECRET_ENCRYPTION_KEY`
 stays optional and unused for both (wire it to `web` only), and
 `ORGANIZATION_ID` is wired to `web` and `scheduler`.
 
+**AI advisory cron (`ADR-0009` / `DEC-142`).** Ships **disabled**. The scheduler registers
+`outbox.maintenance.ai_advisory` (cron `AI_ADVISORY_CRON`, default weekly Monday 06:00,
+`missed: "once"`) but the handler skips without any LLM call while `AI_ADVISORY_ENABLED` is
+unset/false. To enable: set `LLM_API_URL` (an OpenAI-compatible chat-completions endpoint),
+`LLM_API_KEY` (App Platform `SECRET`; never logged), `LLM_MODEL`, then `AI_ADVISORY_ENABLED=true`.
+Optionally set `AI_MONTHLY_COST_LIMIT` / `AI_PER_RUN_COST_LIMIT` (decimal, ≤4 dp); a run skips once
+the organization's month-to-date recorded cost reaches the monthly cap. Without all three `LLM_*`
+values the adapter fails closed and makes no request. The run records an append-only
+`ai_analysis_run` (provider/model/prompt version/inputs/output/cost) and `proposed` `ai_suggestion`
+rows only; nothing is auto-applied and nothing is published externally. **Kill switch:** set
+`AI_ADVISORY_ENABLED=false`. **Rollback:** unset the component env vars / set the flag false; no
+schema change (migration `0075`). The provider DPA/privacy review (I16) must complete before a
+production key is issued.
+
 ### Scheduler cron environment variables
 
 The `scheduler` component takes three cron expressions (the first two for

@@ -18,11 +18,12 @@ producer, the 90-day retention prune and the `DEC-139` item-8 alert
 surfaces are delivered. Per-slice detail lives in the handoff files
 under `docs/handoffs/`; this file does not restate them.)
 
-**State:** branch `main`; HEAD **`0424d73`** (the P2 platform core is
+**State:** branch `main`; HEAD **`398e698`** (the P2 platform core is
 `c66eb27`; the `ADR-0004`/`DEC-139` docs commit is `3348e78`). The
 **jobs layer is complete** — `DEC-139` fully delivered, and the recorded
 follow-ups are now closed except the system-wide prune — committed across
-eighteen layered commits, newest first: `0424d73` (password reset via SendGrid,
+nineteen layered commits, newest first: `398e698` (AI advisory row 17, migration
+`0075`), `0424d73` (password reset via SendGrid,
 `DEC-147`), `50b231e` (receipt → stock ledger,
 `DEC-145`, migration `0074`), `5d8e285` (docs: the `DEC-141`–`DEC-148` owner
 decision round), `18c4cf3` (docs: the jobs screen), `2796411` (the jobs operator screen),
@@ -39,9 +40,10 @@ pgboss provisioning + grants), `ecbe35b` (the runtime + payroll changes).
 DigitalOcean.** Rollback: **`git revert` each commit**, then
 `DROP SCHEMA pgboss CASCADE` **only when unwinding the whole jobs
 stack** — facts stay in `public.outbox_event`; migrations `0072`'s and
-`0073`/`0074`'s down files invert the index, the heartbeat table and the
-receipt-area columns. **5106/5106 tests (373 files)**; migrations through
-**`0074`** (99 public tables) plus
+`0073`/`0074`/`0075`'s down files invert the index, the heartbeat table, the
+receipt-area columns and the AI tables. **5188/5188 tests (381 files)**;
+migrations through
+**`0075`** (101 public tables) plus
 the migrator-provisioned **`pgboss`** schema (pg-boss schemaVersion 42);
 `db:migrate` a no-op re-run. **Next free decision id `DEC-149`**
 (`DEC-141`–`DEC-148` are the 2026-09-27 owner decision round). Know the
@@ -71,16 +73,17 @@ those. Post-fix verification: **4957/4957 tests (361 files)**;
 typecheck/lint/format:check clean; `next build` exit 0; `db:migrate` a
 no-op.
 
-**Next task (owner decisions taken 2026-09-27): the receipt→ledger wiring
-(`DEC-145`, `0074`, `50b231e`) and reset delivery via SendGrid (`DEC-147`,
-`0424d73`) are delivered.** The decision round (`DEC-141`–`DEC-148`) settled
-the queue: `ADR-0009` and `ADR-0010` are **Accepted**, the `DEC-065` fixtures
-are **signed**, the employee-login model is decided (`DEC-146`), INTG-002 stays
-deferred (`DEC-141`) and the deployment rehearsal stays parked (`DEC-148`).
-Buildable now, in order: (1) **row 17 AI advisory** (`ADR-0009`, advisory only,
-provider-agnostic adapter, review queue; row-17 recon done), (2) **row 18
-connectors** (`ADR-0010`, public websites + Wolt), (3) **WF-003 employee
-login** (`DEC-146`).
+**Next task: row 18 (automated connectors, `ADR-0010` Accepted — approved
+sources: public competitor websites under the `DEC-020` rules plus the Wolt
+menu subject to its terms, Instagram manual).** Delivered since the decision
+round: the receipt→ledger wiring (`DEC-145`, `0074`), reset delivery via
+SendGrid (`DEC-147`, `0424d73`) and **row 17 AI advisory** (`ADR-0009`,
+`DEC-142`, migration `0075`, `398e698` — review foundation + scheduled run,
+advisory only, kill switch default off). **WF-003 employee login is PAUSED
+pending the owner decision** (account provisioning, approval model,
+self-assign limit) — the question was raised and dismissed; do not guess it.
+INTG-002 stays deferred (`DEC-141`); the deployment rehearsal stays parked
+(`DEC-148`).
 
 - **Scope (do):** pick the next item above; each has its decision row and
   the roadmap entry. The jobs layer and its follow-ups are **complete**
@@ -96,7 +99,7 @@ login** (`DEC-146`).
 "$NVM_DIR/nvm.sh"; nvm use 22`; `npm run typecheck`; `npm run lint`;
   `npm run format:check`; `npm run build`;
   `DATABASE_URL=postgres://aquarela:aquarela@localhost:5432/aquarela npm
-run test` (≥ **5106/5106**, 373 files); `npm run db:migrate` a no-op
+run test` (≥ **5188/5188**, 381 files); `npm run db:migrate` a no-op
   re-run. Normalise the generated `apps/web/next-env.d.ts`/
   `apps/web/tsconfig.json` with `git checkout --` before staging (see the
   durable fact below). Expect the
@@ -106,7 +109,7 @@ run test` (≥ **5106/5106**, 373 files); `npm run db:migrate` a no-op
 - **Acceptance criteria:** the picked slice/row is delivered per its
   decision rows and this section's rules; the read paths stay org-scoped
   and fail-closed on authorization; the full verification set is green
-  (≥ 5106/5106, 373 files) with `build` included. For the follow-up
+  (≥ 5188/5188, 381 files) with `build` included. For the follow-up
   option: the prune covers all organizations (the `(organization_id,
 created_at)` index landed in migration `0072`, rehearsed down
   path), the heartbeat divergence check is DB-backed or the log alert
@@ -306,6 +309,18 @@ Per-slice detail, commits and reconciliation are in `docs/handoffs/`.
 
 ## Current status
 
+- **2026-09-27 — AI advisory delivered, row 17 (`ADR-0009`, `DEC-142`,
+  migration `0075`, committed `398e698`, pushed):** the append-only
+  `ai_analysis_run` provenance + mutable `ai_suggestion` review state machine
+  (99→101 tables), the application commands and the `GET /api/v1/ai/suggestions`
+  - approve/reject routes (`AI_READ_ROLES`/`AI_DECIDE_ROLES`, fail-closed), the
+    `/ai` review-queue screen, and the provider-agnostic `LlmPort` + the
+    OpenAI-compatible adapter with the `outbox.maintenance.ai_advisory` cron
+    (guard order kill switch `AI_ADVISORY_ENABLED` default false → configured →
+    cost caps → call; provider failure records a `failed` run). **Advisory only:
+    no external publish, no auto-apply.** **5188/5188 tests (381 files)**; `0075`
+    down rehearsed on a scratch DB. **Cost caps are inert until pricing exists**
+    (the adapter returns no cost estimate).
 - **2026-09-27 — password reset delivered via SendGrid (`DEC-147`,
   committed `0424d73`, pushed):** a transport-agnostic `MailPort`
   (`packages/application/src/auth/mail.ts`) + a SendGrid v3 adapter
@@ -672,11 +687,11 @@ findings from the W7 review` (5 files, all under `apps/web/app/(app)/**`;
   and the `security`-agent dead-pin fact are recorded in
   `docs/handoffs/080-2026-09-24-w7-ui-refinement-wave.md`. Reverts
   independently with `git revert f3adeb8`.
-- **As of:** 2026-09-27 — branch `main`; HEAD **`0424d73`**, working tree
+- **As of:** 2026-09-27 — branch `main`; HEAD **`398e698`**, working tree
   **clean**; the jobs stack is committed across `ecbe35b`, `8572510`,
   `0da0593`, `67e932d`, `a84ce82`, `ba27b79`, `054355f`, `911ced6`,
   `94bd965`, `d3602d0`, `0aa54f3`, `918b80a`, `d070983`, `4c89702` and
-  `2796411`, `18c4cf3`, `5d8e285`, `50b231e` and `0424d73`; **pushed to
+  `2796411`, `18c4cf3`, `5d8e285`, `50b231e`, `0424d73` and `398e698`; **pushed to
   `origin/main`**; nothing applied to
   DigitalOcean. **5106/5106 tests (373 files)**; migrations through
   **`0072`** plus the migrator-provisioned **`pgboss`** schema

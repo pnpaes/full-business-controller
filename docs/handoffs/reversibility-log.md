@@ -1,5 +1,14 @@
 # Reversibility log
 
+- **2026-09-27 AI advisory, row 17 (`ADR-0009`, `DEC-142`; uncommitted authoring)**: migration
+  `0075_ai_advisory.sql` (two tables, append-only run + mutable suggestions) + its down companion,
+  the application/HTTP review foundation and the `/ai` screen, plus the `LlmPort` adapter and the
+  `outbox.maintenance.ai_advisory` cron. **Migration rollback** = the down file (drops the triggers
+  then both tables; no posted money or stock fact), rehearsed on a **scratch DB** (tables +
+  triggers present → down → absent, 99 tables remained), never the dev DB. **Rollback** =
+  `git revert` — the cron ships disabled (`AI_ADVISORY_ENABLED` default false) and makes no external
+  write; approving a suggestion triggers no action. Details:
+  [handoff 092](092-2026-09-27-ai-advisory-row-17-adr-0009.md).
 - **2026-09-27 Password reset via SendGrid (`DEC-147`; uncommitted authoring)**:
   the `MailPort` seam, the SendGrid v3 adapter (`apps/web/lib/mail.ts`), the
   `deps.ts` wiring and the three optional env vars. **No migration.** Rollback =
