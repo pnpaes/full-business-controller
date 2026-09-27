@@ -65,28 +65,46 @@ stays optional and unused for both (wire it to `web` only), and
 
 ### Scheduler cron environment variables
 
-The `scheduler` component takes two cron expressions (both for jobs it ran
-before the pg-boss runtime arrived; the payroll cron is a **daily** job
-whose date guard fires generation only in the month's lead window):
+The `scheduler` component takes three cron expressions (the first two for
+jobs it ran before the pg-boss runtime arrived; the payroll cron is a
+**daily** job whose date guard fires generation only in the month's lead
+window; the monitor cron is a pg-boss scheduler job):
 
 - `MAINTENANCE_CRON` — default `*/15 * * * *`; the scheduled maintenance
-  job replays unpublished outbox rows (P2 recovery).
+  job replays unpublished outbox rows (P2 recovery) and prunes the `job`
+  projection (90-day retention — see "Monitoring").
 - `PAYROLL_CRON` — default `0 5 * * *` (`missed: 'once'`); the nightly
   producer for the monthly payroll-input report. The **date guard**
   decides the candidate period: current UTC month when the day is at
   least `lastDay - 3` (the lead window), previous UTC month when the day
   is ≤ 5 (outage catch-up), otherwise skip; skips too when a live report
   for the candidate period already exists.
+- `MONITOR_CRON` — default `*/5 * * * *` (`missed: 'once'`); the queue
+  monitor registered by `registerMonitor`, which evaluates the
+  `jobs.*` alert keys below and logs an `info` heartbeat each tick.
 
 ### Job progress route
 
 `GET /api/v1/jobs/[id]` exposes a job's progress from the durable `job`
 projection — org-scoped, role-gated (`owner`/`general_manager`/`finance`
 /`admin`, provisional per `DEC-101`), omitting `payload`/`error`.
-**No endpoint returns `202` yet** — the jobs route is the progress
-endpoint; a real `202 + Location` producer follows. The report generated
+The report generated
 in the lead window is **provisional** (it under-counts the remaining days
 of the in-progress period, `DEC-104`).
+
+### Async job producer (`202`)
+
+`POST /api/v1/workforce/payroll-reports?async=true` accepts the report
+request asynchronously: it enqueues the generation job and returns
+**HTTP `202`** with a `Location: /api/v1/jobs/<jobId>` header and a JSON
+body `{ok: true, jobId, jobUrl}`. Without the `async` flag the endpoint
+keeps its synchronous default (**HTTP `200`**); an invalid `?async`
+value is rejected with **`400`**. Poll the `Location` URL (the job
+progress route above) for completion. Note the web process now needs a
+reachable database with the **migrated `pgboss` schema** — it creates
+its outbox queue lazily, independent of worker/scheduler boot order —
+so the pre-deploy migration (above) must run before the web component
+serves async requests.
 
 ### Rehearsing against a production clone
 
@@ -463,6 +481,61 @@ default pending that open item.
 - Logs: pino → DO log sink; correlation IDs, no secrets (redacted by `@aquarela/logger`).
 - Migration rehearsal: every migration is rehearsed in staging with production-like data
   (`10.8`) before production deploy.
+
+### Queue alerts (`jobs.*` alert keys)
+
+The scheduler's `registerMonitor` job (cron `MONITOR_CRON`, default
+`*/5 * * * *`, `missed: 'once'`) evaluates four structured alert keys and
+emits each as a structured log line with a `jobs.*` key:
+
+- **`jobs.dead_letter`** (any value) — a job landed in the dead-letter
+  queue (`outbox-dead-letter`).
+- **`jobs.queue_depth`** — the summed pg-boss `readyCount` across queues
+  exceeds **100**.
+- **`jobs.oldest_queued_age`** — the oldest `state: "created"` queued
+  job is older than **600 s** (retry/backoff jobs excluded; the scan is
+  skipped while depth is above 1000).
+- **`jobs.stuck_pending`** — the `job` projection has a
+  `pending`/`running` row older than `stuckAfterMinutes` (default
+  **60**).
+
+Wire each key to a log-based alert on its threshold. A dead-letter
+**re-alerts every 5 min** while it sits in the queue (retained 30
+days), so configure log monitoring to **group/dedup** repeated `jobs.*`
+lines instead of paging on each occurrence.
+
+**Monitor liveness:** the monitor logs an `info` heartbeat every tick —
+alert on the heartbeat's **absence** (the cron stopped). An exhausted
+monitor cron ends `failed` in its own queue **without a dead-letter**, so
+the `jobs.dead_letter` alert cannot catch a dead monitor.
+
+**Worker heartbeat:** `apps/worker/src/main.ts` logs
+`info "worker heartbeat"` every `WORKER_HEARTBEAT_MS` (30 s). **Alert if
+absent > 120 s.** pg-boss 12 keeps work-in-progress in memory (no `wip`
+table), so cross-process worker detection is a platform **log alert**,
+not an in-app signal.
+
+**`job` projection retention (90 days):** the maintenance cron prunes
+the `job` projection to `retentionDays` (90) — **terminal statuses
+only**, org-scoped, batched. There is **no `created_at` index**:
+single-tenant, the prune filters via `job_org_status_scheduled_idx`.
+
+### DLQ weekly review runbook
+
+Dead-letter jobs are **retained 30 days**. Weekly (owner/TECH):
+
+1. Inspect the dead-letter queue (`outbox-dead-letter`) for entries
+   since the last review.
+2. For each, read the matching `job` projection row's `error` field
+   (org-scoped, 90-day retention) to see why the consumer failed.
+3. Decide **replay vs discard**: replay only when the failure cause is
+   fixed and the underlying event is still safe to re-apply (consumers
+   dedup on `outbox_event.id`); otherwise discard and record why.
+4. Record the outcome (replayed job ids, discarded job ids, reasons) in
+   the ops log.
+5. The `jobs.dead_letter` alert fires on every dead-letter; if it
+   fired, this review explains it — treat an unexplained firing as a
+   blocker until step 3 is done.
 
 ## Validation checklist
 

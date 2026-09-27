@@ -1,5 +1,37 @@
 # Reversibility log
 
+- **2026-09-27 Jobs-202 producer + retention/alerts slice (the jobs layer
+  complete; `DEC-139` fully delivered; two commits `ba27b79` + `054355f`,
+  closed by this docs update; nothing pushed)**: the file set groups by the
+  landed commits — (1) `feat(jobs,web)` `ba27b79` — the HTTP 202 producer:
+  new `packages/jobs-runtime/src/producer.ts`
+  (`enqueueJobWithDispatch(boss, db, input)`, the canonical one-transaction
+  enqueue; `payroll-schedule.ts`'s enqueue delegates to it),
+  `apps/web/lib/jobs.ts` (the `globalThis`-cached web `PgBoss`),
+  `apps/web/app/api/v1/workforce/payroll-reports/...` (`?async=true` →
+  `202` + Location), `apps/web` deps + `next.config.mjs`; (2) `feat(jobs)`
+  `054355f` — `JobStore.deleteExpiredJobs` (terminal-only, org-scoped,
+  batched) + `JobStore.countStuckJobs` + the `jobs.stuck_pending` handler
+  alert, the maintenance-cron prune after the outbox replay (`retentionDays`
+  90, `retentionLimit` 1000), the `registerMonitor` cron (`MONITOR_QUEUE`,
+  `MONITOR_CRON` default `*/5 * * * *`) with the structured alerts
+  (`jobs.dead_letter`, `jobs.queue_depth`, `jobs.oldest_queued_age`) and
+  the `info` heartbeat, and the worker heartbeat log raised `debug`→`info`.
+  **Uncommitted→committed framing:** the epics were authored uncommitted on
+  top of the handoff-085 tree and are now committed as the two commits
+  above. **No migration** in either epic — the prune is org-scoped on the
+  existing `job_org_status_scheduled_idx` (single-tenant deployment; a
+  system-wide prune + `(organization_id, created_at)` index is the recorded
+  follow-up), and migrations and the `pgboss` schema are untouched.
+  **Rollback:** `git revert ba27b79` and `git revert 054355f` — each commit
+  reverts independently. **No posted money or stock fact** — the slice only
+  enqueues jobs, prunes terminal `job` rows (`succeeded`/`failed`/
+  `dead_lettered`) and emits log alerts; the `pgboss`/`job` tables are
+  **disposable operational state** (the facts live in
+  `public.outbox_event`), so no schema drop or data recovery is needed
+  beyond the reverts. Nothing pushed; nothing applied to DigitalOcean.
+  Details and the review reconciliation:
+  [handoff 086](086-2026-09-27-jobs-202-producer-retention-alerts.md).
 - **2026-09-26 Payroll-schedule slice (the first real async
   producer/consumer + the job-progress route; ADR-0004/`DEC-139` item 5 +
   `DEC-104`; committed as `ecbe35b` + `0da0593`, closed by the docs commit

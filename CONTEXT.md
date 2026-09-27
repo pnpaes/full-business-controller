@@ -12,33 +12,39 @@ orientation and the next step. See "Handover archive" and "Update protocol".
 ## Resume here (next session)
 
 **Say "resume the work" and start here.** A fresh session must be able to
-continue from this section alone. (Rewritten by the 2026-09-26
-jobs-runtime docs session, after the payroll producer/consumer slice.
-Per-slice detail: `docs/handoffs/084-2026-09-26-jobs-runtime-pgboss-wiring.md`
-and the handoff `085` file for the payroll slice — both listed in
-`docs/handoffs/README.md`; this file does not restate them.)
+continue from this section alone. (Rewritten by the 2026-09-27 docs
+session, after the jobs layer was completed — the real HTTP `202`
+producer, the 90-day retention prune and the `DEC-139` item-8 alert
+surfaces are delivered. Per-slice detail lives in the handoff files
+under `docs/handoffs/`; this file does not restate them.)
 
-**State:** branch `main`; HEAD **`67e932d`** (docs closing the two slices;
-the P2 platform core is `c66eb27`; the `ADR-0004`/`DEC-139` docs commit is
-`3348e78`). The **jobs-runtime pg-boss wiring** and the **first real
-producer/consumer** (scheduled monthly payroll-report generation + the HTTP
-job-progress route; `ADR-0004`/`DEC-139` item 5 + `DEC-104`) are
-**COMMITTED** in four layered commits, newest first: `67e932d` (docs +
-review-fix references), `0da0593` (`apps/web` jobs route + `infra/**` env and
-plan-time check), `8572510` (persistence: pgboss provisioning + grants),
-`ecbe35b` (`packages/jobs-runtime/**`; the additive
-`packages/application/src/jobs/**` queue-field/audit change and the payroll
-slice's application/domain changes; `apps/worker` + `apps/scheduler`; root
-`package.json`/`tsconfig.json`/`vitest.config.ts`/`package-lock.json`).
-**Working tree clean; nothing pushed; nothing applied to DigitalOcean.**
-Rollback: **`git revert` each commit** (`67e932d` → `0da0593` → `8572510` →
-`ecbe35b`), then `DROP SCHEMA pgboss CASCADE` **only when unwinding the whole
-jobs stack** — facts stay in `public.outbox_event`. **4957/4957 tests (361
-files)**; migrations through **`0071`** plus the migrator-provisioned
-**`pgboss`** schema (pg-boss schemaVersion 42); `db:migrate` a no-op re-run.
-**No migration in the payroll slice.** **Next free decision id `DEC-140`.**
-Know the `packages/application/src/scheduling/scheduling.postgres.test.ts`
-same-instant ordering flake (passes on re-run).
+**State:** branch `main`; HEAD **`054355f`** (the P2 platform core is
+`c66eb27`; the `ADR-0004`/`DEC-139` docs commit is `3348e78`). The
+**jobs layer is complete** — `DEC-139` fully delivered — committed across
+seven layered commits, newest first: `054355f` (the 90-day retention prune
+
+- the item-8 alert surfaces), `ba27b79` (the real HTTP `202` producer),
+  `67e932d` (docs closing the two earlier slices), `0da0593` (`apps/web`
+  jobs route + `infra/**` env and plan-time check), `8572510` (persistence:
+  pgboss provisioning + grants), `ecbe35b` (`packages/jobs-runtime/**` +
+  the payroll slice's application/domain changes; `apps/worker` +
+  `apps/scheduler`), with `8572510`'s pgboss provisioning beneath them.
+  **The real HTTP `202` producer** (`POST
+/api/v1/workforce/payroll-reports?async=true` → `202` +
+  `Location: /api/v1/jobs/<id>`), the **90-day `job` retention prune** and
+  the **item-8 alert surfaces** (`jobs.dead_letter`, `jobs.queue_depth`,
+  `jobs.oldest_queued_age`, `jobs.stuck_pending`; the worker heartbeat via
+  a platform log alert) are **COMMITTED**.
+  **Working tree clean; nothing pushed; nothing applied to DigitalOcean.**
+  Rollback: **`git revert` each commit**, then `DROP SCHEMA pgboss CASCADE`
+  **only when unwinding the whole jobs stack** — facts stay in
+  `public.outbox_event`. **4991/4991 tests (362 files)**; migrations
+  through **`0071`** plus the migrator-provisioned **`pgboss`** schema
+  (pg-boss schemaVersion 42); `db:migrate` a no-op re-run; **no migration
+  in the 202-producer/retention/alerts work.** **Next free decision id
+  `DEC-140`.** Know the
+  `packages/application/src/scheduling/scheduling.postgres.test.ts`
+  same-instant ordering flake (passes on re-run).
 
 **Review-fix pass (`/review uncommitted`, 2026-09-26), committed in
 `ecbe35b`/`0da0593`/`8572510`:** five of six findings fixed, one declined with
@@ -63,27 +69,30 @@ those. Post-fix verification: **4957/4957 tests (361 files)**;
 typecheck/lint/format:check clean; `next build` exit 0; `db:migrate` a
 no-op.
 
-**Next task (buildable now — no owner input needed): the HTTP `202`
-producer, plus the remaining `DEC-139` items.** The first real
-producer/consumer is delivered (the `payroll-schedule` cron producer +
-the `payrollReportGenerateHandler` consumer + `GET /api/v1/jobs/[id]`
-org-scoped progress), but nothing returns `202` yet — the jobs route is
-the progress endpoint, a real `202 + Location` trigger follows.
+**Next task (buildable now — no owner input needed): the next roadmap
+row or the `DEC-139` follow-ups.** Row 20's jobs layer is done, so the
+"Next up" is either the **remaining `DEC-139` follow-ups** (the
+system-wide prune + the `(organization_id, created_at)` index — today's
+prune is org-scoped/single-tenant; a **DB-backed worker heartbeat** if
+cross-process detection is needed, since pg-boss 12 keeps WIP in
+memory and today's heartbeat is a platform log alert; **DLQ review
+automation**) **or the next programme slice named by the roadmap**
+(`docs/BUILD_ROADMAP.md` is the ordered tracker).
 
-- **Scope (do):** a trigger endpoint/command that enqueues a job inside
-  its business transaction (routed through the `createPgBossDispatcher`
-  transaction binding) and returns **`202` +
-  `Location: /api/v1/jobs/<id>`** (the progress endpoint already exists,
-  org-scoped, role-gated `JOBS_READ_ROLES`); plus the remaining `DEC-139`
-  items — the **90-day `job` retention prune**, the **item-8 alert
-  wiring** (any dead-letter; oldest queued age > 10 min; queue depth >
-  100; worker heartbeat missing > 2 min), and a **DLQ weekly-review
-  runbook** (dead-letters kept 30 days).
+- **Scope (do):** pick the next row from `docs/BUILD_ROADMAP.md` (row 20's
+  jobs layer is complete, so the remaining honest-gap queue or the next
+  programme row); if the follow-up option is picked instead: the
+  **system-wide prune + the `(organization_id, created_at)` index**, a
+  **DB-backed worker heartbeat** (pg-boss 12 has no persisted WIP — the
+  DB heartbeat is the cross-process upgrade path over today's log
+  alert), and **DLQ review automation** (the dead-letter log alert
+  re-alerts every 5 min until reviewed; an operator now works the DLQ
+  per the weekly runbook in `docs/runbooks/deployment.md`).
 - **Scope (do not):** no external publishing (INTG-002 stays gated on the
   per-source write terms I15/I18 under `DEC-015`); do not weaken any test
   assertion; do not resolve other recorded inputs silently; do not
-  implement `scheduledAt`/`startAfter` delayed delivery as part of the
-  `202` trigger (recorded deferred, see remainder).
+  implement `scheduledAt`/`startAfter` delayed delivery (recorded
+  deferred).
 - **Authoritative docs to read first:** `docs/adr/0004-jobs-and-outbox.md`;
   `DEC-139` in `12_OPEN_DECISIONS.md`;
   `docs/handoffs/084-2026-09-26-jobs-runtime-pgboss-wiring.md` + handoff
@@ -92,19 +101,22 @@ the progress endpoint, a real `202 + Location` trigger follows.
 "$NVM_DIR/nvm.sh"; nvm use 22`; `npm run typecheck`; `npm run lint`;
   `npm run format:check`; `npm run build`;
   `DATABASE_URL=postgres://aquarela:aquarela@localhost:5432/aquarela npm
-run test` (≥ **4957/4957**, 361 files); `npm run db:migrate` a no-op
+run test` (≥ **4991/4991**, 362 files); `npm run db:migrate` a no-op
   re-run. Normalise the generated `apps/web/next-env.d.ts`/
   `apps/web/tsconfig.json` with `git checkout --` before staging (see the
   durable fact below). Expect the
   `packages/application/src/scheduling/scheduling.postgres.test.ts`
   same-instant ordering flake to occasionally fail (passes on re-run).
   Commit in layers with the rollback approach in each body (Rule 2).
-- **Acceptance criteria:** the trigger enqueues atomically with its
-  business change (a rolled-back transaction leaves no outbox row, no
-  projection and no queue row) and answers `202 + Location` pointing at
-  the existing progress route; the read path stays org-scoped and
-  fail-closed on authorization; the full verification set is green
-  (≥ 4957/4957, 361 files) with `build` included.
+- **Acceptance criteria:** the picked slice/row is delivered per its
+  decision rows and this section's rules; the read paths stay org-scoped
+  and fail-closed on authorization; the full verification set is green
+  (≥ 4991/4991, 362 files) with `build` included. For the follow-up
+  option: the prune covers all organizations with the `(organization_id,
+created_at)` index (expand → migrate → contract, rehearsed down
+  path), the heartbeat divergence check is DB-backed or the log alert
+  is recorded as sufficient, and the DLQ review loop is automated or
+  explicitly rejected with a reason.
 - **Rollback:** revert each commit (or `git checkout` the tree
   pre-commit); a schema change is not expected — if one lands, follow
   expand → migrate → contract with a rehearsed down path and a runbook
@@ -136,22 +148,28 @@ run test` (≥ **4957/4957**, 361 files); `npm run db:migrate` a no-op
    working).
 6. A post-success projection-write failure causes an extra supersede
    cycle on the next delivery — audit churn only, settled state wins.
-7. The 90-day `job` retention prune (`DEC-139` item 5) is not
-   implemented.
-8. The `DEC-139` item-8 alert wiring (any dead-letter; oldest queued age
-   > 10 min; queue depth > 100; worker heartbeat missing > 2 min) is not
-   > implemented — the runtime exposes the pg-boss surfaces, but there is
-   > no alert transport.
-9. No DLQ weekly-review runbook yet (dead-letters are kept 30 days per
-   `DEC-139` item 8).
-10. Queue-existence deploy ordering: a producing process must not enqueue
-    before the worker/scheduler has created the queues.
-11. `retryLimit 5` vs `maxAttempts 5`: the 6th delivery of a failed event
+7. The **90-day `job` retention prune is organization-scoped
+   (single-tenant)** and has **no `created_at` index** (it runs off
+   `job_org_status_scheduled_idx`); the system-wide prune plus the
+   `(organization_id, created_at)` index is the recorded follow-up.
+8. The `DEC-139` item-8 alerts are **log surfaces only** —
+   `jobs.dead_letter`, `jobs.queue_depth`, `jobs.oldest_queued_age`,
+   `jobs.stuck_pending` must be wired to DO log monitoring (grouped/
+   deduped; `docs/runbooks/deployment.md`); the **dead-letter alert
+   re-alerts every 5 min until reviewed** (30-day retention; the weekly
+   DLQ review runbook is in the deployment runbook, review automation
+   is the follow-up); the **worker heartbeat is a platform log alert**
+   (pg-boss 12 keeps WIP in memory — a DB-backed heartbeat is the
+   follow-up if cross-process detection is needed).
+9. Queue-existence deploy ordering: the payroll producer creates its
+   outbox queue **lazily**, so it works regardless of worker/scheduler
+   boot order; a new producing process should do the same.
+10. `retryLimit 5` vs `maxAttempts 5`: the 6th delivery of a failed event
     is a settled no-op — documented in `packages/jobs-runtime` code
     (the `reviewer-glm` item).
-12. Partitioned queues would need migrator pre-creation, because `app`
+11. Partitioned queues would need migrator pre-creation, because `app`
     lacks DDL.
-13. INTG-002/external publishing is now gated **only** on the per-source
+12. INTG-002/external publishing is now gated **only** on the per-source
     write terms I15/I18 under `DEC-015` (`ADR-0004` is no longer a gate).
 
 **Process note — one worktree, one writer:** a second session was found
@@ -185,17 +203,24 @@ apps/web/tsconfig.json` before staging.
 open-point lists. Per-slice detail is in `docs/handoffs/`. The detailed list
 lives in the second "Next up" section below.
 
-1. **The pg-boss wiring AND the first real producer/consumer are both
-   delivered but UNCOMMITTED (HEAD `3348e78`; `ADR-0004` Accepted
-   2026-09-26, `DEC-139`).** Next task: the **HTTP `202` producer**
-   (a `202 + Location: /api/v1/jobs/<id>` trigger) plus the remaining
-   `DEC-139` items (the 90-day `job` retention prune, the item-8 alert
-   wiring, the DLQ weekly-review runbook) — exact scope, verification,
-   acceptance criteria and honest remainder in "Resume here" (next free
-   decision id `DEC-140`).
+1. **The jobs layer is COMPLETE — `DEC-139` fully delivered (HEAD
+   `054355f`).** The pg-boss wiring, the first real producer/consumer,
+   the real HTTP `202` producer (`POST
+/api/v1/workforce/payroll-reports?async=true` → `202` +
+   `Location: /api/v1/jobs/<id>`), the 90-day `job` retention prune and
+   the item-8 alert surfaces (`jobs.dead_letter`, `jobs.queue_depth`,
+   `jobs.oldest_queued_age`, `jobs.stuck_pending`; the worker heartbeat
+   via a platform log alert) are all committed. **Next task: the
+   remaining `DEC-139` follow-ups** (the system-wide prune + the
+   `(organization_id, created_at)` index; a DB-backed worker heartbeat
+   if cross-process detection is needed; DLQ review automation) **or
+   the next programme slice named by `docs/BUILD_ROADMAP.md`** — exact
+   scope, verification, acceptance criteria and honest remainder in
+   "Resume here" (next free decision id `DEC-140`).
 2. **Then the honest-gap queue** (each recorded, not silently deferred):
-   the items in the "Resume here" remainder list (queue-existence deploy
-   ordering) and the standing owner/data-gated items (reset-token
+   the `DEC-139` follow-ups above (the system-wide prune + index, the
+   DB-backed heartbeat, DLQ review automation) and the standing
+   owner/data-gated items (reset-token
    delivery, the unsigned golden fixtures, the `task`↔`approval` link,
    `WF-003` self-assignment, the deployment prerequisite inputs, the
    receipt→ledger `storage_area_id` policy).
@@ -285,11 +310,34 @@ Per-slice detail, commits and reconciliation are in `docs/handoffs/`.
 
 ## Current status
 
-- **2026-09-26 — the first real async producer/consumer delivered and
-  UNCOMMITTED on top of the also-uncommitted pg-boss wiring (HEAD
-  `3348e78`):** the scheduled monthly payroll-report generation
+- **2026-09-27 — the jobs layer is COMPLETE (`DEC-139` fully delivered;
+  HEAD `054355f`, working tree clean, nothing pushed):** the two
+  2026-09-26 entries below are committed as part of the seven-commit
+  jobs stack (`ecbe35b`…`054355f`). `ba27b79` added the real HTTP `202`
+  producer — `POST /api/v1/workforce/payroll-reports?async=true`
+  returns `202` + `Location: /api/v1/jobs/<id>`; the `web` process
+  needs the migrated `pgboss` schema and creates its outbox queue
+  lazily (independent of worker/scheduler boot order). `054355f` added
+  the 90-day `job` retention prune and the `DEC-139` item-8 alert
+  surfaces (`jobs.dead_letter`, `jobs.queue_depth`,
+  `jobs.oldest_queued_age`, `jobs.stuck_pending`; the worker heartbeat
+  is a platform log alert — pg-boss 12 keeps WIP in memory; a
+  DB-backed heartbeat is the follow-up if needed).
+  `docs/runbooks/deployment.md` gained the Monitoring extension (the
+  `MONITOR_CRON` env, the `jobs.*` alert keys, monitor liveness, the
+  worker heartbeat, the DLQ weekly review and the retention notes) and
+  `docs/BUILD_ROADMAP.md` row 20 records completion. **Verification:**
+  **4991/4991 tests (362 files)** with `DATABASE_URL`;
+  typecheck/lint/format:check clean; `next build` exit 0; `db:migrate`
+  a no-op; **no migration**. **Rollback:** per-commit `git revert` +
+  `DROP SCHEMA pgboss CASCADE` only when unwinding the whole jobs
+  stack. **Next:** the remaining `DEC-139` follow-ups or the next
+  programme slice (see "Resume here").
+- **2026-09-26 — the first real async producer/consumer delivered
+  (committed in `ecbe35b`/`8572510`/`0da0593`/`67e932d`; HEAD at the
+  time `3348e78`):** the scheduled monthly payroll-report generation
   (`ADR-0004`/`DEC-139` item 5 + `DEC-104`) + the HTTP job-progress
-  route. **What landed (uncommitted, no migration):** the
+  route. **What landed (uncommitted at the time; now committed; no migration):** the
   `payroll-schedule` cron producer in `packages/jobs-runtime` (daily,
   default `0 5 * * *`, `missed:'once'`; candidate period = current UTC
   month when `day >= lastDay-3`, else previous UTC month when `day <= 5`
@@ -325,15 +373,16 @@ pgboss CASCADE` only when unwinding the whole jobs stack. **Next:**
   the HTTP `202` producer + the remaining `DEC-139` items (see
   "Resume here").
 
-- **2026-09-26 — the jobs-runtime pg-boss slice delivered and
-  UNCOMMITTED (HEAD `3348e78`; the P2 platform core is `c66eb27):**
+- **2026-09-26 — the jobs-runtime pg-boss slice delivered (committed in
+  `ecbe35b`/`8572510`/`0da0593`/`67e932d`; HEAD at the time
+  `3348e78`; the P2 platform core is `c66eb27):**
 `ADR-0004` **Accepted** (2026-09-26, owner/tech lead) per
 **`DEC-139`** — runner pg-boss pinned `12.33.2`, delivery shape P2
 (`outbox_event`durable, consumers dedup on`outbox_event.id`, the
 runner's queue disposable/replayable). **Objective (item 9):** the
 pg-boss worker wiring and scheduler cron, proven with a non-external
 consumer and a scheduled maintenance job. **What landed
-(uncommitted):** `packages/jobs-runtime` — the boss factory
+(uncommitted at the time; now committed):** `packages/jobs-runtime` — the boss factory
 (`schema:"pgboss"`, `migrate:false`, `createSchema:false`,
 `useListenNotify:false`), per-event-type queues `outbox.<eventType>`with DLQ`outbox-dead-letter`and retry/backoff,`createPgBossDispatcher`(binds`send`to the caller's transaction via`fromDrizzle(tx, sql)`, `id = outboxEvent.id`, duplicate → `null`no-op), the idempotent`createOutboxConsumer`, the non-external
 `platform.smoke`consumer (append-only audit), and the scheduled
@@ -567,25 +616,26 @@ findings from the W7 review` (5 files, all under `apps/web/app/(app)/**`;
   and the `security`-agent dead-pin fact are recorded in
   `docs/handoffs/080-2026-09-24-w7-ui-refinement-wave.md`. Reverts
   independently with `git revert f3adeb8`.
-- **As of:** 2026-09-26 — branch `main`; HEAD **`3348e78`**, working tree
-  carries **two uncommitted slices**: the jobs-runtime pg-boss wiring
-  (handoff `084`) and the first real producer/consumer + the
-  `GET /api/v1/jobs/[id]` progress route (handoff `085`; see "Resume
-  here" for rollback). **4957/4957 tests (361 files)**; migrations
+- **As of:** 2026-09-27 — branch `main`; HEAD **`054355f`**, working tree
+  **clean**; the jobs stack is committed across `ecbe35b`, `8572510`,
+  `0da0593`, `67e932d`, `a84ce82`, `ba27b79` and `054355f`; nothing
+  pushed; nothing applied to DigitalOcean.
+  **4991/4991 tests (362 files)**; migrations
   through **`0071`** plus the migrator-provisioned **`pgboss`** schema
-  (pg-boss 42); nothing pushed; nothing applied to DigitalOcean.
-  **Delivered:** the jobs-runtime pg-boss slice (**`DEC-139`**,
-  `ADR-0004` Accepted 2026-09-26), the `DEC-129` design-system completion, the `DEC-132`
+  (pg-boss 42).
+  **Delivered:** the complete jobs layer (**`DEC-139`**,
+  `ADR-0004` Accepted 2026-09-26 — the pg-boss wiring, the first real
+  producer/consumer, the HTTP `202` producer, the 90-day retention
+  prune and the item-8 alert surfaces), the `DEC-129`
+  design-system completion, the `DEC-132`
   storage port, the 2026-09-25 close-out wave, the docs-only concurrency
   audit (`2da9ba5`), the Integrations registry (**INTG-001**,
   `DEC-137`, `9508f1e`…`64415db`) and the forecast-vs-actual tracking
   slice (**`DEC-138`**, `e52f4e5`…`4ba3ced`); W7 and the HMS +
   Administration entries above (the verbatim W7 list is in
-  `docs/handoffs/080-2026-09-24-w7-ui-refinement-wave.md`). **In
-  flight: the two uncommitted slices (pg-boss wiring + the payroll
-  schedule producer/consumer + jobs progress route) await their commit
-  layering (see "Resume here"); the next step (the HTTP `202` producer +
-  the remaining `DEC-139` items) is in "Resume here". Next free decision
+  `docs/handoffs/080-2026-09-24-w7-ui-refinement-wave.md`). **Next:**
+  the remaining `DEC-139` follow-ups or the next programme slice (see
+  "Resume here"). Next free decision
   id **`DEC-140`**.
   Lineage and full
   per-slice detail: `docs/handoffs/README.md` and the files it lists
@@ -847,8 +897,7 @@ sales_units}` in `schemas/domain-enums.yaml` and
   (`DEC-087`/`DEC-099`); the staff document library (`DEC-088`/`DEC-100`, the
   first versioned entity); the workflow platform (`DEC-094`/`DEC-101`,
   schema-only). The `job`/worker/outbox layer's gate is satisfied —
-  `ADR-0004` Accepted 2026-09-26 (`DEC-139`), the first slice delivered
-  (uncommitted).
+  `ADR-0004` Accepted 2026-09-26 (`DEC-139`), the first slice delivered.
 - **Schema:** migrations through **`0071`** plus the migrator-provisioned
   **`pgboss`** schema (pg-boss schemaVersion 42; owned by the pre-deploy
   migrator, not a numbered migration — see `docs/runbooks/
@@ -863,14 +912,11 @@ persistence-migrations.md`); **98 public tables** (the `0071`
   `packages/application/src/scheduling/scheduling.postgres.test.ts` can fail
   on an audit same-instant ordering assertion and passes on re-run.)
 - **Not yet built (the honest-gap list — do not imply the programme is
-  finished):** the **jobs-runtime pg-boss wiring AND the first real
-  producer/consumer are both delivered but UNCOMMITTED**
-  (`ADR-0004`/`DEC-139`); the **HTTP `202` producer** (a `202 + Location`
-  trigger) and the remaining `DEC-139` items (the 90-day `job` retention
-  prune, the item-8 alert wiring, the DLQ weekly-review runbook) are the
-  next task (see "Resume here", which also carries the honest remainder:
-  the queue-existence deploy ordering and the standing owner/data-gated
-  items); INTG-002
+  finished):** the jobs layer is **delivered** (`DEC-139` complete) and
+  its **follow-ups remain recorded, not silently deferred**: the
+  system-wide prune + the `(organization_id, created_at)` index, a
+  DB-backed worker heartbeat if cross-process detection is needed, and
+  DLQ review automation (see "Resume here"); INTG-002
   publishing is gated **only** on the per-source write terms I15/I18
   under `DEC-015`. The `file_object` storage port is **delivered**
   (`DEC-132`,
@@ -896,7 +942,7 @@ persistence-migrations.md`); **98 public tables** (the `0071`
 - **Open verification debt:** the shared rate-limit store is
   **delivered** (`DEC-135`, migration `0067`); only a growth sweep for
   `rate_limit_counter` remains deferred (less urgent now that the worker
-  layer exists uncommitted); reset-token delivery is a no-op stub until the email slice; palette hex
+  layer exists (committed)); reset-token delivery is a no-op stub until the email slice; palette hex
   values / data-viz palette semantics await owner sign-off; the six golden
   fixtures remain unsigned (the "verified" gate).
 
@@ -905,14 +951,17 @@ persistence-migrations.md`); **98 public tables** (the `0071`
 `docs/BUILD_ROADMAP.md` is the ordered execution tracker; §5 carries the
 open-point lists. Per-slice detail is in `docs/handoffs/`.
 
-1. **Next: the HTTP `202` producer (a `202 + Location` trigger) plus the
-   remaining `DEC-139` items — buildable now, no owner input needed.**
-   Exact scope,
+1. **Next: the remaining `DEC-139` follow-ups or the next programme
+   slice named by `docs/BUILD_ROADMAP.md` — buildable now, no owner
+   input needed.** The jobs layer is **complete** (the seven-commit
+   stack through `054355f`: pg-boss wiring, the first real
+   producer/consumer, the HTTP `202` producer, the 90-day retention
+   prune, the item-8 alert surfaces). The follow-ups: the system-wide
+   prune + the `(organization_id, created_at)` index, a DB-backed
+   worker heartbeat if cross-process detection is needed, and DLQ
+   review automation. Exact scope,
    verified commands and the honest remainder in "Resume here" (next
-   free decision id `DEC-140`). The pg-boss wiring slice AND the first
-   real producer/consumer (the scheduled payroll-report generation + the
-   job-progress route) are both **delivered but UNCOMMITTED** at HEAD
-   `3348e78`. Beyond that, the
+   free decision id `DEC-140`). Beyond that, the
    standing owner/data-gated items are the remainder (the exact list in
    "Resume here": reset-token delivery, the unsigned golden fixtures,
    the `task`↔`approval` link, `WF-003` self-assignment, the
@@ -930,9 +979,9 @@ open-point lists. Per-slice detail is in `docs/handoffs/`.
    delivered too, `DEC-135`), and user creation awaits the `DEC-131` owner
    decision.
 2. **Then the honest-gap queue** (see the "Not yet built" bullet in Current
-   status, each recorded not silently deferred): the jobs-runtime
-   remainder (the 90-day `job` retention prune, the `DEC-139` item-8
-   alert wiring, the DLQ weekly-review runbook), plus the standing items
+   status, each recorded not silently deferred): the `DEC-139`
+   follow-ups (the system-wide prune + the `created_at` index, the
+   DB-backed heartbeat, DLQ review automation), plus the standing items
    (reset-token delivery, unsigned golden fixtures, the `task`↔`approval`
    link, `WF-003` self-assignment). The previously listed
    unit-catalogue read, cost-centre list read, `calculatePriceScenario`
