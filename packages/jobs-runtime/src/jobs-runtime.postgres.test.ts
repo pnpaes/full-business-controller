@@ -452,4 +452,26 @@ describe.skipIf(!databaseUrl)("ADR-0004 P2 jobs runtime against PostgreSQL + pg-
     );
     expect(duplicate).toBeNull();
   });
+
+  it("claim 6: queues a scheduled event with start_after equal to its scheduledAt", async () => {
+    const organizationId = await createOrganization();
+    const scheduledAt = new Date(Date.now() + 60 * 60 * 1000);
+    const result = await enqueueCommitted(smokeInput(organizationId, { scheduledAt }));
+
+    const queued = await raw.query<{ start_after: Date | null }>(
+      `SELECT start_after FROM "${SCHEMA}".job WHERE id = $1`,
+      [result.outboxEventId],
+    );
+    expect(queued.rows).toHaveLength(1);
+    expect(queued.rows[0]!.start_after).toBeInstanceOf(Date);
+    expect(queued.rows[0]!.start_after!.getTime()).toBe(scheduledAt.getTime());
+
+    // The projection mirrors the delay the queue row carries.
+    const store = createPostgresJobStore(client.db);
+    const projection = await store.findJobById(organizationId, result.jobId);
+    expect(projection?.scheduledAt?.getTime()).toBe(scheduledAt.getTime());
+
+    // Drop the deferred queue row so it cannot affect the worker-based claims.
+    await boss.deleteJob(QUEUE, result.outboxEventId);
+  });
 });

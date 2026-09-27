@@ -91,6 +91,62 @@ describe("replayUnpublishedOutbox", () => {
     expect(replayed).toBe(0);
     expect(boss.sent).toHaveLength(0);
   });
+
+  it("preserves the projection's scheduledAt as startAfter on replay", async () => {
+    const store = new FakeJobStore();
+    const boss = new FakeBoss();
+    const scheduledAt = new Date("2026-07-01T12:00:00.000Z");
+    const eventId = await seedUnpublished(store);
+    await store.createScheduledJob({
+      organizationId: ORGANIZATION_ID,
+      queue: "platform.smoke",
+      kind: "platform.smoke",
+      payload: { note: "smoke" },
+      scheduledAt,
+      outboxEventId: eventId,
+    });
+
+    const replayed = await replayUnpublishedOutbox({
+      boss,
+      store,
+      organizationId: ORGANIZATION_ID,
+      limit: 10,
+    });
+
+    expect(replayed).toBe(1);
+    expect(boss.sent).toHaveLength(1);
+    expect(boss.sent[0]!.options?.id).toBe(eventId);
+    expect(boss.sent[0]!.options?.startAfter).toBe(scheduledAt);
+  });
+
+  it("sends immediately when the projection is missing or unscheduled", async () => {
+    const store = new FakeJobStore();
+    const boss = new FakeBoss();
+    // Missing projection: the outbox row has no `job` counterpart.
+    await seedUnpublished(store);
+    // Unscheduled projection: present, but `scheduledAt` is null.
+    const unscheduledId = await seedUnpublished(store);
+    await store.createScheduledJob({
+      organizationId: ORGANIZATION_ID,
+      queue: "platform.smoke",
+      kind: "platform.smoke",
+      payload: { note: "smoke" },
+      outboxEventId: unscheduledId,
+    });
+
+    const replayed = await replayUnpublishedOutbox({
+      boss,
+      store,
+      organizationId: ORGANIZATION_ID,
+      limit: 10,
+    });
+
+    expect(replayed).toBe(2);
+    expect(boss.sent).toHaveLength(2);
+    for (const sent of boss.sent) {
+      expect(sent.options).not.toHaveProperty("startAfter");
+    }
+  });
 });
 
 describe("registerMaintenance", () => {

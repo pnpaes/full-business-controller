@@ -17,6 +17,11 @@ export interface OutboxDispatchEvent {
   readonly aggregateId: string;
   /** The runner queue to route to; `enqueueOutboxEvent` defaults it to the event type. */
   readonly queue: string;
+  /**
+   * Delayed delivery: when set, the runtime must not deliver before this instant
+   * (pg-boss `startAfter`). `null`/absent means deliver immediately.
+   */
+  readonly scheduledAt?: Date | null;
 }
 
 export interface OutboxJobDispatcher {

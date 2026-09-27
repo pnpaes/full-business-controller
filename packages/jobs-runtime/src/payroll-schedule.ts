@@ -18,7 +18,8 @@ import { PAYROLL_REPORT_GENERATE_EVENT_TYPE, PAYROLL_SCHEDULE_QUEUE } from "./qu
  * assumed). Do not "fix" that here.
  *
  * The job payload is only the routing metadata, so timing comes from the cron:
- * the dispatcher has no `scheduledAt`/`startAfter` support, and none is attempted.
+ * this producer passes no `scheduledAt`, so the queued event is delivered as soon
+ * as it is enqueued (the dispatcher's `startAfter` support is not used here).
  */
 export interface PayrollScheduleOptions {
   readonly organizationId: string;

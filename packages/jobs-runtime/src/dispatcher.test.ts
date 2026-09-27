@@ -57,6 +57,21 @@ describe("createPgBossDispatcher", () => {
     expect(boss.sent[0]!.name).toBe(outboxQueueName("custom.queue"));
   });
 
+  it("passes startAfter only when the event is scheduled", async () => {
+    const boss = new FakeBoss();
+    const dispatcher = createPgBossDispatcher(boss, TX, SQL);
+    const scheduledAt = new Date("2026-07-01T12:00:00.000Z");
+
+    await dispatcher.dispatch(dispatchEvent({ scheduledAt }));
+    await dispatcher.dispatch(dispatchEvent({ scheduledAt: null }));
+    await dispatcher.dispatch(dispatchEvent());
+
+    expect(boss.sent).toHaveLength(3);
+    expect(boss.sent[0]!.options?.startAfter).toBe(scheduledAt);
+    expect(boss.sent[1]!.options).not.toHaveProperty("startAfter");
+    expect(boss.sent[2]!.options).not.toHaveProperty("startAfter");
+  });
+
   it("treats a null send result (duplicate id) as an idempotent no-op", async () => {
     const boss = new FakeBoss();
     boss.sendResult = () => null;

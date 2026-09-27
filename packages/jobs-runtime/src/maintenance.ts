@@ -21,6 +21,13 @@ export const STUCK_PENDING_ALERT = "jobs.stuck_pending";
  * the runner's queue disposable — if pg-boss loses its queue (schema dropped, a
  * swap to another runner), the durable `outbox_event` rows are re-enqueued under
  * their own ids, which deduplicates any row still queued.
+ *
+ * **Schedule preservation.** The outbox row carries no timing, but the `job`
+ * projection does (`scheduled_at`). A replay must not fire a delayed event early,
+ * so for each event one projection read (`findJobByOutboxEventId`) supplies the
+ * pg-boss `startAfter`; a past value is harmless (pg-boss delivers immediately).
+ * A missing projection or a `null` `scheduledAt` means deliver immediately, as
+ * before. This costs exactly one extra read per replayed event — no N+1 beyond it.
  */
 export interface MaintenanceJobData {
   readonly organizationId: string;
@@ -46,7 +53,14 @@ export async function replayUnpublishedOutbox(options: ReplayOptions): Promise<n
       await options.boss.createQueue(queue, queueOptionsFor(queue));
       ensured.add(queue);
     }
-    const id = await options.boss.send(queue, outboxJobPayload(event), { id: event.id });
+    // The projection holds the timing the outbox row lacks; one read per event,
+    // bounded by `limit`. Missing/unscheduled -> no `startAfter` (send now).
+    const projection = await options.store.findJobByOutboxEventId(options.organizationId, event.id);
+    const scheduledAt = projection?.scheduledAt ?? null;
+    const id = await options.boss.send(queue, outboxJobPayload(event), {
+      id: event.id,
+      ...(scheduledAt === null ? {} : { startAfter: scheduledAt }),
+    });
     if (id !== null) {
       replayed += 1;
     }

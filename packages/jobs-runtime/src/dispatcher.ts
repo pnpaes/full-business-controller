@@ -1,6 +1,6 @@
 import type { OutboxDispatchEvent, OutboxJobDispatcher } from "@aquarela/application";
 import { fromDrizzle } from "pg-boss";
-import type { DrizzleSqlTagLike, DrizzleTransactionLike } from "pg-boss";
+import type { DrizzleSqlTagLike, DrizzleTransactionLike, SendOptions } from "pg-boss";
 
 import type { BossSendApi } from "./boss";
 import { outboxJobPayload, outboxQueueName } from "./queues";
@@ -14,6 +14,11 @@ import { outboxJobPayload, outboxQueueName } from "./queues";
  * `ON CONFLICT DO NOTHING` and `send` resolves `null` — an idempotent no-op, not
  * an error. Any other failure propagates so the caller's transaction rolls back.
  *
+ * Delayed delivery: when `event.scheduledAt` is set, it is passed as pg-boss
+ * `startAfter`, so the runner holds the job until that instant. A past value is
+ * harmless (pg-boss delivers immediately). Unscheduled/`null` events are sent
+ * with no `startAfter`, exactly as before.
+ *
  * Construct one per transaction: `createPgBossDispatcher(boss, tx, sql)`.
  */
 export function createPgBossDispatcher(
@@ -24,10 +29,15 @@ export function createPgBossDispatcher(
   const db = fromDrizzle(tx, sql);
   return {
     async dispatch(event: OutboxDispatchEvent): Promise<void> {
-      await boss.send(outboxQueueName(event.queue ?? event.eventType), outboxJobPayload(event), {
-        id: event.id,
-        db,
-      });
+      const options: SendOptions = { id: event.id, db };
+      if (event.scheduledAt !== undefined && event.scheduledAt !== null) {
+        options.startAfter = event.scheduledAt;
+      }
+      await boss.send(
+        outboxQueueName(event.queue ?? event.eventType),
+        outboxJobPayload(event),
+        options,
+      );
       // send resolves null when the id already exists in the queue: idempotent no-op
     },
   };
