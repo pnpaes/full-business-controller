@@ -1,5 +1,12 @@
 # Reversibility log
 
+- **2026-09-27 M1 regression gates (`d818583`; pushed)**: the migration-chain
+  rehearsal, the day-one bootstrap smoke, the E2E smoke and the env-drift test —
+  all additive test/CI files plus the 13 env-documentation additions (commented,
+  value-less). **No migration.** Rollback = `git revert`; nothing in the app
+  changes. The chain gate itself is the machine-check proof that every
+  migration's down applies in reverse (76/76 on a scratch DB). Details:
+  [handoff 100](100-2026-09-27-m1-day-one-and-smoke-gates.md).
 - **2026-09-27 Follow-ups: invite-accept page, self-assign race guard, AI cost
   pricing (`38797a1`, `21f9687`, `17095cc`; pushed)**: the invite page is
   additive; the race guard is a stricter concurrency behaviour with no schema or

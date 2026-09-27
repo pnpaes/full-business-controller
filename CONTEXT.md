@@ -18,11 +18,11 @@ producer, the 90-day retention prune and the `DEC-139` item-8 alert
 surfaces are delivered. Per-slice detail lives in the handoff files
 under `docs/handoffs/`; this file does not restate them.)
 
-**State:** branch `main`; HEAD **`17095cc`** (the P2 platform core is
+**State:** branch `main`; HEAD **`d818583`** (the P2 platform core is
 `c66eb27`; the `ADR-0004`/`DEC-139` docs commit is `3348e78`). The
 **jobs layer is complete** — `DEC-139` fully delivered, and the recorded
 follow-ups are now closed except the system-wide prune — committed across
-twenty-six layered commits, newest first: `17095cc` (self-assign race guard), `21f9687` (AI advisory cost pricing), `38797a1` (invite-accept page), `d5193d3` (WF-003 employee login + self-assignment; competitor capture idempotency + source editing, migrations `0077`/`0078`), `edf2ba9` (competitor sources UI, row 18c), `c46c6df` (competitor collector, row 18b), `00e9168` (competitor sources, row 18a, migration `0076`), `398e698` (AI advisory row 17, migration
+twenty-seven layered commits, newest first: `d818583` (M1 regression gates: chain rehearsal, day-one smoke, E2E, env-drift), `17095cc` (self-assign race guard), `21f9687` (AI advisory cost pricing), `38797a1` (invite-accept page), `d5193d3` (WF-003 employee login + self-assignment; competitor capture idempotency + source editing, migrations `0077`/`0078`), `edf2ba9` (competitor sources UI, row 18c), `c46c6df` (competitor collector, row 18b), `00e9168` (competitor sources, row 18a, migration `0076`), `398e698` (AI advisory row 17, migration
 `0075`), `0424d73` (password reset via SendGrid,
 `DEC-147`), `50b231e` (receipt → stock ledger,
 `DEC-145`, migration `0074`), `5d8e285` (docs: the `DEC-141`–`DEC-148` owner
@@ -41,7 +41,7 @@ DigitalOcean.** Rollback: **`git revert` each commit**, then
 `DROP SCHEMA pgboss CASCADE` **only when unwinding the whole jobs
 stack** — facts stay in `public.outbox_event`; migrations `0072`'s and
 `0073`/`0074`/`0075`'s down files invert the index, the heartbeat table, the
-receipt-area columns, the AI tables, the competitor-source additions, the employee-invite table and the capture content hash. **5400/5400 tests (396 files)**;
+receipt-area columns, the AI tables, the competitor-source additions, the employee-invite table and the capture content hash. **5409/5409 tests (398 files)**;
 migrations through
 **`0078`** (103 public tables) plus
 the migrator-provisioned **`pgboss`** schema (pg-boss schemaVersion 42);
@@ -76,7 +76,7 @@ no-op.
 **Roadmap from here (the project plan, 2026-09-27 — recorded so it survives the
 session):**
 
-- **M1 — day-one + smoke regression gate (in progress; no owner input):**
+- **M1 — day-one + smoke regression gate (DELIVERED 2026-09-27, `d818583`; no owner input):**
   (a) a migration **chain rehearsal** test (all ups → all downs in reverse → ups
   again, on a scratch DB) so Rule 2 is machine-checked, not manual; (b) a
   **bootstrap smoke** in CI (fresh DB → `db:migrate` → `npm run bootstrap` →
@@ -96,8 +96,11 @@ session):**
   publishing (`publish_run`, idempotent publish jobs, confirmation read-back),
   behind the per-source write terms under `DEC-015`.
 
-**Next task: M1 (in progress).** Older context, still true — the owner-blocked
-fronts are now unblocked except INTG-002.
+**Next task: M2 — the staging rehearsal (owner-gated on the `DEC-148` inputs).**
+M1 is delivered: CI now runs a migration-chain rehearsal (up → all 76 downs →
+up), a day-one bootstrap smoke, an E2E smoke (boot + browser flow) and an
+env-drift gate. Older context, still true — the owner-blocked fronts are now
+unblocked except INTG-002.
 Delivered since: WF-003 employee login + self-assignment (`DEC-146`, `0077`) and
 the competitor follow-ups (capture idempotency + source editing, `0078`).
 Remaining buildable/follow-ups: prompt-change control; the system-wide `job`
@@ -133,7 +136,7 @@ INTG-002 stays deferred (`DEC-141`); the deployment rehearsal stays parked
 "$NVM_DIR/nvm.sh"; nvm use 22`; `npm run typecheck`; `npm run lint`;
   `npm run format:check`; `npm run build`;
   `DATABASE_URL=postgres://aquarela:aquarela@localhost:5432/aquarela npm
-run test` (≥ **5400/5400**, 396 files); `npm run db:migrate` a no-op
+run test` (≥ **5409/5409**, 398 files); `npm run db:migrate` a no-op
   re-run. Normalise the generated `apps/web/next-env.d.ts`/
   `apps/web/tsconfig.json` with `git checkout --` before staging (see the
   durable fact below). Expect the
@@ -143,7 +146,7 @@ run test` (≥ **5400/5400**, 396 files); `npm run db:migrate` a no-op
 - **Acceptance criteria:** the picked slice/row is delivered per its
   decision rows and this section's rules; the read paths stay org-scoped
   and fail-closed on authorization; the full verification set is green
-  (≥ 5400/5400, 396 files) with `build` included. For the follow-up
+  (≥ 5409/5409, 398 files) with `build` included. For the follow-up
   option: the prune covers all organizations (the `(organization_id,
 created_at)` index landed in migration `0072`, rehearsed down
   path), the heartbeat divergence check is DB-backed or the log alert
@@ -343,6 +346,14 @@ Per-slice detail, commits and reconciliation are in `docs/handoffs/`.
 
 ## Current status
 
+- **2026-09-27 — M1 regression gates delivered (committed `d818583`, pushed):**
+  the migration-chain rehearsal (up → all 76 downs newest-first → up on a
+  scratch DB; no non-reversible migration found), the day-one bootstrap smoke in
+  CI (migrate → bootstrap → assert org/owner/role/103 tables), the E2E smoke job
+  (boot next start + worker/scheduler with kill switches off, `/api/health`,
+  browser login → read `/jobs` → register a competitor source → assert, failure
+  screenshot artifact, no cloud creds) and the env-drift gate (found and fixed
+  13 undocumented raw env variables). **5409/5409 tests (398 files)**.
 - **2026-09-27 — three follow-ups closed (committed `38797a1`, `21f9687`,
   `17095cc`, pushed):** the public invite-accept page (`/invite/accept`,
   token-free, neutral errors, browser-verified); the self-assignment race guard
@@ -350,7 +361,7 @@ Per-slice detail, commits and reconciliation are in `docs/handoffs/`.
   two-transaction test); and AI advisory cost pricing
   (`LLM_PRICE_INPUT_PER_1M`/`LLM_PRICE_OUTPUT_PER_1M`, exact decimal HALF_UP,
   per-side independent, `null` when unset) which makes the caps live.
-  **5400/5400 tests (396 files)**; no migration.
+  **5409/5409 tests (398 files)**; no migration.
 - **2026-09-27 — WF-003 employee login + self-assignment and the competitor
   follow-ups (committed `d5193d3`, pushed):** migration `0077` (employee invite:
   `user_invite` + `app_user.invited_*`; manager provisions, invite email via
@@ -361,14 +372,14 @@ Per-slice detail, commits and reconciliation are in `docs/handoffs/`.
   (automated capture idempotent via a partial unique content hash; manual never
   deduped) and source editing (`PATCH`, automated mode requires approved terms).
   A security review found no blockers; its 2 mediums + 3 lows are fixed.
-  **5400/5400 tests (396 files)**; both downs rehearsed on scratch DBs.
+  **5409/5409 tests (398 files)**; both downs rehearsed on scratch DBs.
 - **2026-09-27 — competitor sources UI delivered, row 18 slice 18c (`ADR-0010`,
   `DEC-149`, committed `edf2ba9`, pushed):** the Sources section on the
   competitors screen (terms filter chips, table, per-row Approve/Reject terms
   for owner/admin and Deactivate for the write roles behind a confirmation
   modal, plus the Register-a-source form — manual opens pending, automated only
   for the terms roles and it registers already approved). Browser-verified as
-  owner. **5400/5400 tests (396 files)**; no migration. **Row 18 is complete.**
+  owner. **5409/5409 tests (398 files)**; no migration. **Row 18 is complete.**
 - **2026-09-27 — competitor collector delivered, row 18 slice 18b (`ADR-0010`,
   `DEC-149`, committed `c46c6df`, pushed):** the `competitor-collector.ts` client
   (robots.txt per origin fail-closed, >=1 req/s/host, bounded page budget,
@@ -377,7 +388,7 @@ Per-slice detail, commits and reconciliation are in `docs/handoffs/`.
   behind an off-by-default kill switch; only active + automated + approved
   sources linked to a competitor are collected, each fact a `pending`
   observation with provenance and a system actor; nothing published or applied.
-  **5400/5400 tests (396 files)**; no migration. Follow-up: no content-hash
+  **5409/5409 tests (398 files)**; no migration. Follow-up: no content-hash
   dedupe on re-runs.
 - **2026-09-27 — competitor sources delivered, row 18 slice 18a (`ADR-0010`,
   `DEC-143`, reconciliation `DEC-149`, migration `0076`, committed `00e9168`,
@@ -388,7 +399,7 @@ Per-slice detail, commits and reconciliation are in `docs/handoffs/`.
   `provenance`); the DEC-126 shape is untouched and `review_status` is §4C
   `review_state`. Application commands + `GET/POST /sources` and
   approve/reject-terms/deactivate (terms = owner/admin only). 101→102 tables.
-  **5400/5400 tests (396 files)**; `0076` down rehearsed on a scratch DB. No
+  **5409/5409 tests (398 files)**; `0076` down rehearsed on a scratch DB. No
   collector and no UI yet (**18b** next).
 - **2026-09-27 — AI advisory delivered, row 17 (`ADR-0009`, `DEC-142`,
   migration `0075`, committed `398e698`, pushed):** the append-only
@@ -768,11 +779,11 @@ findings from the W7 review` (5 files, all under `apps/web/app/(app)/**`;
   and the `security`-agent dead-pin fact are recorded in
   `docs/handoffs/080-2026-09-24-w7-ui-refinement-wave.md`. Reverts
   independently with `git revert f3adeb8`.
-- **As of:** 2026-09-27 — branch `main`; HEAD **`17095cc`**, working tree
+- **As of:** 2026-09-27 — branch `main`; HEAD **`d818583`**, working tree
   **clean**; the jobs stack is committed across `ecbe35b`, `8572510`,
   `0da0593`, `67e932d`, `a84ce82`, `ba27b79`, `054355f`, `911ced6`,
   `94bd965`, `d3602d0`, `0aa54f3`, `918b80a`, `d070983`, `4c89702` and
-  `2796411`, `18c4cf3`, `5d8e285`, `50b231e`, `0424d73`, `398e698`, `00e9168`, `c46c6df`, `edf2ba9`, `d5193d3`, `38797a1`, `21f9687` and `17095cc`; **pushed to
+  `2796411`, `18c4cf3`, `5d8e285`, `50b231e`, `0424d73`, `398e698`, `00e9168`, `c46c6df`, `edf2ba9`, `d5193d3`, `38797a1`, `21f9687`, `17095cc` and `d818583`; **pushed to
   `origin/main`**; nothing applied to
   DigitalOcean. **5106/5106 tests (373 files)**; migrations through
   **`0072`** plus the migrator-provisioned **`pgboss`** schema
