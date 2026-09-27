@@ -14,4 +14,9 @@ export const competitorLimiters = createSharedLimiters("competitors", {
   registerCompetitor: { limit: 60, windowMs: FIFTEEN_MINUTES_MS },
   recordObservation: { limit: 60, windowMs: FIFTEEN_MINUTES_MS },
   reviewObservation: { limit: 120, windowMs: FIFTEEN_MINUTES_MS },
+  // `ADR-0010`/`DEC-143`: source registration is a create (60); a terms decision
+  // and a deactivation are amendment writes (120).
+  registerSource: { limit: 60, windowMs: FIFTEEN_MINUTES_MS },
+  decideSourceTerms: { limit: 120, windowMs: FIFTEEN_MINUTES_MS },
+  deactivateSource: { limit: 120, windowMs: FIFTEEN_MINUTES_MS },
 });

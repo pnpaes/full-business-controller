@@ -10,8 +10,21 @@ export type {
   CompetitorPriceComparisonMiss,
   CompetitorPriceComparisonRow,
 } from "./compare-competitor-prices";
+export {
+  approveCompetitorSourceTerms,
+  rejectCompetitorSourceTerms,
+} from "./decide-competitor-source-terms";
+export type { DecideCompetitorSourceTermsInput } from "./decide-competitor-source-terms";
+export { deactivateCompetitorSource } from "./deactivate-competitor-source";
+export type { DeactivateCompetitorSourceInput } from "./deactivate-competitor-source";
+export { findCompetitorSource } from "./find-competitor-source";
+export type { FindCompetitorSourceQuery } from "./find-competitor-source";
 export { DEFAULT_COMPETITOR_LIMIT, listCompetitors } from "./list-competitors";
 export type { ListCompetitorsQuery } from "./list-competitors";
+export { DEFAULT_COMPETITOR_SOURCE_LIMIT, listCompetitorSources } from "./list-competitor-sources";
+export type { ListCompetitorSourcesQuery } from "./list-competitor-sources";
+export { registerCompetitorSource } from "./register-competitor-source";
+export type { RegisterCompetitorSourceInput } from "./register-competitor-source";
 export {
   COMPETITOR_OBSERVATION_DEFAULT_STATUS,
   DEFAULT_COMPETITOR_OBSERVATION_LIMIT,
@@ -31,8 +44,14 @@ export type {
   CompetitorReviewDecision,
   ReviewCompetitorObservationInput,
 } from "./review-competitor-observation";
-export { COMPETITOR_REVIEW_STATUSES } from "./types";
+export {
+  COMPETITOR_COLLECTION_MODES,
+  COMPETITOR_REVIEW_STATUSES,
+  COMPETITOR_SOURCE_TYPES,
+  COMPETITOR_TERMS_STATUSES,
+} from "./types";
 export type {
+  CompetitorCollectionMode,
   CompetitorEffectivePrice,
   CompetitorItemVariant,
   CompetitorListQuery,
@@ -40,8 +59,15 @@ export type {
   CompetitorObservationRecord,
   CompetitorRecord,
   CompetitorReviewStatus,
+  CompetitorSourceListQuery,
+  CompetitorSourceRecord,
+  CompetitorSourceType,
   CompetitorStore,
+  CompetitorTermsStatus,
   NewCompetitorObservationRecord,
   NewCompetitorRecord,
+  NewCompetitorSourceRecord,
   UpdateCompetitorObservationReviewRecord,
+  UpdateCompetitorSourceActiveToRecord,
+  UpdateCompetitorSourceTermsRecord,
 } from "./types";

@@ -1,12 +1,20 @@
-import { and, asc, desc, eq, gte, lt } from "drizzle-orm";
+import { and, asc, desc, eq, gte, isNotNull, isNull, lt } from "drizzle-orm";
 
 import type { Database } from "../client";
-import { competitor, competitorObservation, organization, productVariant } from "../schema";
+import {
+  competitor,
+  competitorObservation,
+  competitorSource,
+  organization,
+  productVariant,
+} from "../schema";
 
 export type Competitor = typeof competitor.$inferSelect;
 export type NewCompetitor = typeof competitor.$inferInsert;
 export type CompetitorObservation = typeof competitorObservation.$inferSelect;
 export type NewCompetitorObservation = typeof competitorObservation.$inferInsert;
+export type CompetitorSource = typeof competitorSource.$inferSelect;
+export type NewCompetitorSource = typeof competitorSource.$inferInsert;
 
 /*
  * `DEC-126` (`COMP-001…COMP-004`): the competitor-observation repository.
@@ -132,6 +140,14 @@ export interface CreateCompetitorObservationInput {
   readonly price: string | null;
   readonly currency: string | null;
   readonly offerNotes: string | null;
+  /** `ADR-0010`/`DEC-143`: the source this observation was captured from. */
+  readonly competitorSourceId?: string | null;
+  /** A `COMPETITOR_COLLECTION_MODE` value, or null. */
+  readonly captureMethod?: string | null;
+  readonly productCategory?: string | null;
+  readonly season?: string | null;
+  /** URL/capture time/method/content hash; defaults to `{}`. */
+  readonly provenance?: Record<string, unknown>;
   /** `pending` at capture (the column default); the review command sets the rest. */
   readonly reviewStatus?: string;
 }
@@ -154,6 +170,11 @@ export async function createCompetitorObservation(
       price: input.price,
       currency: input.currency,
       offerNotes: input.offerNotes,
+      competitorSourceId: input.competitorSourceId ?? null,
+      captureMethod: input.captureMethod ?? null,
+      productCategory: input.productCategory ?? null,
+      season: input.season ?? null,
+      ...(input.provenance === undefined ? {} : { provenance: input.provenance }),
       ...(input.reviewStatus === undefined ? {} : { reviewStatus: input.reviewStatus }),
     })
     .returning();
@@ -338,4 +359,224 @@ export async function findOrganizationCurrency(
     .where(eq(organization.id, query.organizationId))
     .limit(1);
   return rows[0]?.currency;
+}
+
+/*
+ * `ADR-0010` / `DEC-143` (`COMP-001`): the `competitor_source` repository.
+ *
+ * Every read/write is organization-scoped (`DEC-061`); a cross-organization id
+ * is an org-scoped miss. The two structural invariants
+ * (`collection_mode = 'automated'` requires `terms_status = 'approved'`, and a
+ * non-`pending` terms decision records `approved_by`/`approved_at`) are
+ * database-backed, so this layer does not re-validate them; the application
+ * validates first so a caller sees a `DomainError`. Like the rest of this
+ * module, no `audit_event` is written here — the application writes the facts.
+ */
+
+export interface CreateCompetitorSourceInput {
+  readonly organizationId: string;
+  readonly competitorName: string;
+  readonly competitorId: string | null;
+  readonly sourceType: string;
+  readonly urlOrIdentifier: string;
+  readonly collectionMode: string;
+  readonly termsStatus: string;
+  readonly approvedBy: string | null;
+  /** `timestamptz`. */
+  readonly approvedAt: Date | null;
+  readonly rateLimitNote: string | null;
+  /** ISO date (`YYYY-MM-DD`). */
+  readonly activeFrom: string;
+  readonly createdBy: string | null;
+}
+
+/** Creates one `competitor_source` row; `(organization_id, url_or_identifier)` is unique. */
+export async function createCompetitorSource(
+  db: Database,
+  input: CreateCompetitorSourceInput,
+): Promise<CompetitorSource> {
+  const rows = await db
+    .insert(competitorSource)
+    .values({
+      organizationId: input.organizationId,
+      competitorName: input.competitorName,
+      competitorId: input.competitorId,
+      sourceType: input.sourceType,
+      urlOrIdentifier: input.urlOrIdentifier,
+      collectionMode: input.collectionMode,
+      termsStatus: input.termsStatus,
+      approvedBy: input.approvedBy,
+      approvedAt: input.approvedAt,
+      rateLimitNote: input.rateLimitNote,
+      activeFrom: input.activeFrom,
+      createdBy: input.createdBy,
+    })
+    .returning();
+  return rows[0]!;
+}
+
+export interface FindCompetitorSourceQuery {
+  readonly organizationId: string;
+  readonly sourceId: string;
+}
+
+/** One source by id, organization-scoped (`DEC-061`), or `undefined`. */
+export async function findCompetitorSource(
+  db: Database,
+  query: FindCompetitorSourceQuery,
+): Promise<CompetitorSource | undefined> {
+  const rows = await db
+    .select()
+    .from(competitorSource)
+    .where(
+      and(
+        eq(competitorSource.id, query.sourceId),
+        eq(competitorSource.organizationId, query.organizationId),
+      ),
+    )
+    .limit(1);
+  return rows[0];
+}
+
+/** The same org-scoped id select, taking the row's write lock for the transaction. */
+export async function lockCompetitorSource(
+  db: Database,
+  query: FindCompetitorSourceQuery,
+): Promise<CompetitorSource | undefined> {
+  const rows = await db
+    .select()
+    .from(competitorSource)
+    .where(
+      and(
+        eq(competitorSource.id, query.sourceId),
+        eq(competitorSource.organizationId, query.organizationId),
+      ),
+    )
+    .for("update")
+    .limit(1);
+  return rows[0];
+}
+
+/** One source by its `(organization_id, url_or_identifier)` unique key, or `undefined`. */
+export async function findCompetitorSourceByUrl(
+  db: Database,
+  query: { readonly organizationId: string; readonly urlOrIdentifier: string },
+): Promise<CompetitorSource | undefined> {
+  const rows = await db
+    .select()
+    .from(competitorSource)
+    .where(
+      and(
+        eq(competitorSource.organizationId, query.organizationId),
+        eq(competitorSource.urlOrIdentifier, query.urlOrIdentifier),
+      ),
+    )
+    .limit(1);
+  return rows[0];
+}
+
+export interface UpdateCompetitorSourceTermsInput {
+  readonly organizationId: string;
+  readonly sourceId: string;
+  /** `approved` or `rejected`. */
+  readonly termsStatus: string;
+  readonly approvedBy: string;
+  /** `timestamptz`. */
+  readonly approvedAt: Date;
+  readonly updatedBy: string;
+}
+
+/** Sets the terms decision (and its actor/instant) on one org-scoped source. */
+export async function updateCompetitorSourceTerms(
+  db: Database,
+  input: UpdateCompetitorSourceTermsInput,
+): Promise<CompetitorSource | undefined> {
+  const rows = await db
+    .update(competitorSource)
+    .set({
+      termsStatus: input.termsStatus,
+      approvedBy: input.approvedBy,
+      approvedAt: input.approvedAt,
+      updatedAt: new Date(),
+      updatedBy: input.updatedBy,
+    })
+    .where(
+      and(
+        eq(competitorSource.id, input.sourceId),
+        eq(competitorSource.organizationId, input.organizationId),
+      ),
+    )
+    .returning();
+  return rows[0];
+}
+
+export interface DeactivateCompetitorSourceInput {
+  readonly organizationId: string;
+  readonly sourceId: string;
+  /** ISO date (`YYYY-MM-DD`). */
+  readonly activeTo: string;
+  readonly updatedBy: string;
+}
+
+/** Ends one org-scoped source's active window by setting `active_to`. */
+export async function deactivateCompetitorSource(
+  db: Database,
+  input: DeactivateCompetitorSourceInput,
+): Promise<CompetitorSource | undefined> {
+  const rows = await db
+    .update(competitorSource)
+    .set({
+      activeTo: input.activeTo,
+      updatedAt: new Date(),
+      updatedBy: input.updatedBy,
+    })
+    .where(
+      and(
+        eq(competitorSource.id, input.sourceId),
+        eq(competitorSource.organizationId, input.organizationId),
+      ),
+    )
+    .returning();
+  return rows[0];
+}
+
+export interface ListCompetitorSourcesQuery {
+  readonly organizationId: string;
+  /** `true` → open-ended (`active_to is null`); `false` → ended. */
+  readonly active?: boolean;
+  readonly limit?: number;
+  readonly offset?: number;
+}
+
+/** Sources for one organization, competitor-name then url ascending, paged. */
+export async function listCompetitorSources(
+  db: Database,
+  query: ListCompetitorSourcesQuery,
+): Promise<readonly CompetitorSource[]> {
+  const statement = db
+    .select()
+    .from(competitorSource)
+    .where(
+      and(
+        eq(competitorSource.organizationId, query.organizationId),
+        query.active === undefined
+          ? undefined
+          : query.active
+            ? isNull(competitorSource.activeTo)
+            : isNotNull(competitorSource.activeTo),
+      ),
+    )
+    .orderBy(
+      asc(competitorSource.competitorName),
+      asc(competitorSource.urlOrIdentifier),
+      asc(competitorSource.id),
+    )
+    .$dynamic();
+  if (query.limit !== undefined) {
+    statement.limit(query.limit);
+  }
+  if (query.offset !== undefined) {
+    statement.offset(query.offset);
+  }
+  return statement;
 }

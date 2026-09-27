@@ -1,10 +1,14 @@
 import {
+  COMPETITOR_COLLECTION_MODES,
   COMPETITOR_OBSERVATION_DEFAULT_STATUS,
   COMPETITOR_REVIEW_STATUSES,
+  COMPETITOR_SOURCE_TYPES,
   DEFAULT_COMPETITOR_LIMIT,
   DEFAULT_COMPETITOR_OBSERVATION_LIMIT,
+  DEFAULT_COMPETITOR_SOURCE_LIMIT,
   type CompetitorObservationRecord,
   type CompetitorRecord,
+  type CompetitorSourceRecord,
 } from "@aquarela/application";
 
 /**
@@ -19,6 +23,7 @@ import {
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ISO_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const MONEY = /^\d+(?:\.\d{1,4})?$/;
 const CURRENCY = /^[A-Za-z]{3}$/;
 const MAX_LIMIT = 200;
@@ -32,6 +37,11 @@ export function isUuid(value: string): boolean {
 /** True when `value` is a full ISO-8601 instant with a zone. */
 function isIsoInstant(value: string): boolean {
   return ISO_INSTANT.test(value) && !Number.isNaN(Date.parse(value));
+}
+
+/** True when `value` is an ISO calendar date (`YYYY-MM-DD`) that parses. */
+function isIsoDate(value: string): boolean {
+  return ISO_DATE.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`));
 }
 
 function readPositiveInteger(raw: string | null): number | undefined | "invalid" {
@@ -132,6 +142,41 @@ function readOptionalUuid(
   return isUuid(trimmed) ? { ok: true, value: trimmed } : { ok: false };
 }
 
+/** Optional jsonb object: absent/`null` → `null`; a non-object → invalid. */
+function readOptionalJsonObject(
+  body: Record<string, unknown>,
+  key: string,
+): { readonly ok: true; readonly value: Record<string, unknown> | null } | { readonly ok: false } {
+  const value = body[key];
+  if (value === undefined || value === null) {
+    return { ok: true, value: null };
+  }
+  if (typeof value !== "object" || Array.isArray(value)) {
+    return { ok: false };
+  }
+  return { ok: true, value: value as Record<string, unknown> };
+}
+
+/** Optional one-of `<allowed>` text: absent/blank → `null`; a foreign value → invalid. */
+function readOptionalEnum(
+  body: Record<string, unknown>,
+  key: string,
+  allowed: readonly string[],
+): { readonly ok: true; readonly value: string | null } | { readonly ok: false } {
+  const value = body[key];
+  if (value === undefined || value === null) {
+    return { ok: true, value: null };
+  }
+  if (typeof value !== "string") {
+    return { ok: false };
+  }
+  const trimmed = value.trim();
+  if (trimmed.length === 0) {
+    return { ok: true, value: null };
+  }
+  return allowed.includes(trimmed) ? { ok: true, value: trimmed } : { ok: false };
+}
+
 /** Optional non-negative decimal money: absent/blank → `null`; malformed/negative → invalid. */
 function readOptionalMoney(
   body: Record<string, unknown>,
@@ -189,6 +234,43 @@ export function parseCompetitorListQuery(searchParams: URLSearchParams): ParsedC
   return paging.ok
     ? { ok: true, query: { limit: paging.limit, offset: paging.offset } }
     : { ok: false };
+}
+
+export interface CompetitorSourceListQuery {
+  /** `true` → open-ended; `false` → ended; absent → both. */
+  readonly active?: boolean;
+  readonly limit: number;
+  readonly offset: number;
+}
+
+export type ParsedCompetitorSourceListQuery =
+  { readonly ok: true; readonly query: CompetitorSourceListQuery } | { readonly ok: false };
+
+/** Parses the source list filters; `active` is the literal `true`/`false`. */
+export function parseCompetitorSourceListQuery(
+  searchParams: URLSearchParams,
+): ParsedCompetitorSourceListQuery {
+  const activeRaw = searchParams.get("active");
+  let active: boolean | undefined;
+  if (activeRaw !== null) {
+    const value = activeRaw.trim();
+    if (value !== "true" && value !== "false") {
+      return { ok: false };
+    }
+    active = value === "true";
+  }
+  const paging = readPaging(searchParams, DEFAULT_COMPETITOR_SOURCE_LIMIT);
+  if (!paging.ok) {
+    return { ok: false };
+  }
+  return {
+    ok: true,
+    query: {
+      ...(active === undefined ? {} : { active }),
+      limit: paging.limit,
+      offset: paging.offset,
+    },
+  };
 }
 
 export interface ObservationListQuery {
@@ -319,6 +401,88 @@ export function parseCreateCompetitorBody(
   return { ok: true, input: { name, notes: notes.value } };
 }
 
+export interface RegisterCompetitorSourceBody {
+  readonly competitorName: string;
+  readonly competitorId: string | null;
+  readonly sourceType: string;
+  readonly urlOrIdentifier: string;
+  readonly collectionMode: string;
+  readonly rateLimitNote: string | null;
+  readonly activeFrom: string;
+}
+
+export type ParsedRegisterCompetitorSource =
+  { readonly ok: true; readonly input: RegisterCompetitorSourceBody } | { readonly ok: false };
+
+/** `POST /competitors/sources` body: one source to register. */
+export function parseRegisterCompetitorSourceBody(
+  body: Record<string, unknown> | undefined,
+): ParsedRegisterCompetitorSource {
+  if (body === undefined) {
+    return { ok: false };
+  }
+  const competitorName = readText(body, "competitorName", MAX_NAME);
+  const urlOrIdentifier = readText(body, "urlOrIdentifier");
+  if (competitorName === null || urlOrIdentifier === null) {
+    return { ok: false };
+  }
+  const sourceType = readOptionalEnum(body, "sourceType", COMPETITOR_SOURCE_TYPES);
+  const collectionMode = readOptionalEnum(body, "collectionMode", COMPETITOR_COLLECTION_MODES);
+  if (
+    !sourceType.ok ||
+    !collectionMode.ok ||
+    sourceType.value === null ||
+    collectionMode.value === null
+  ) {
+    return { ok: false };
+  }
+  const activeFromRaw = body["activeFrom"];
+  const activeFrom =
+    typeof activeFromRaw === "string" && isIsoDate(activeFromRaw.trim())
+      ? activeFromRaw.trim()
+      : null;
+  if (activeFrom === null) {
+    return { ok: false };
+  }
+  const competitorId = readOptionalUuid(body, "competitorId");
+  const rateLimitNote = readOptionalText(body, "rateLimitNote");
+  if (!competitorId.ok || !rateLimitNote.ok) {
+    return { ok: false };
+  }
+  return {
+    ok: true,
+    input: {
+      competitorName,
+      competitorId: competitorId.value,
+      sourceType: sourceType.value,
+      urlOrIdentifier,
+      collectionMode: collectionMode.value,
+      rateLimitNote: rateLimitNote.value,
+      activeFrom,
+    },
+  };
+}
+
+export interface DeactivateCompetitorSourceBody {
+  readonly activeTo: string;
+}
+
+export type ParsedDeactivateCompetitorSource =
+  { readonly ok: true; readonly input: DeactivateCompetitorSourceBody } | { readonly ok: false };
+
+/** `POST /competitors/sources/[id]/deactivate` body: the `active_to` date. */
+export function parseDeactivateCompetitorSourceBody(
+  body: Record<string, unknown> | undefined,
+): ParsedDeactivateCompetitorSource {
+  if (body === undefined) {
+    return { ok: false };
+  }
+  const activeToRaw = body["activeTo"];
+  const activeTo =
+    typeof activeToRaw === "string" && isIsoDate(activeToRaw.trim()) ? activeToRaw.trim() : null;
+  return activeTo === null ? { ok: false } : { ok: true, input: { activeTo } };
+}
+
 export interface RecordObservationBody {
   readonly competitorId: string;
   readonly observedAt: string;
@@ -329,6 +493,11 @@ export interface RecordObservationBody {
   readonly price: string | null;
   readonly currency: string | null;
   readonly offerNotes: string | null;
+  readonly competitorSourceId: string | null;
+  readonly captureMethod: string | null;
+  readonly productCategory: string | null;
+  readonly season: string | null;
+  readonly provenance: Record<string, unknown> | null;
 }
 
 export type ParsedRecordObservation =
@@ -367,7 +536,23 @@ export function parseRecordObservationBody(
   const price = readOptionalMoney(body, "price");
   const currency = readOptionalCurrency(body, "currency");
   const offerNotes = readOptionalText(body, "offerNotes");
-  if (!sourceUrl.ok || !itemId.ok || !price.ok || !currency.ok || !offerNotes.ok) {
+  const competitorSourceId = readOptionalUuid(body, "competitorSourceId");
+  const captureMethod = readOptionalEnum(body, "captureMethod", COMPETITOR_COLLECTION_MODES);
+  const productCategory = readOptionalText(body, "productCategory");
+  const season = readOptionalText(body, "season");
+  const provenance = readOptionalJsonObject(body, "provenance");
+  if (
+    !sourceUrl.ok ||
+    !itemId.ok ||
+    !price.ok ||
+    !currency.ok ||
+    !offerNotes.ok ||
+    !competitorSourceId.ok ||
+    !captureMethod.ok ||
+    !productCategory.ok ||
+    !season.ok ||
+    !provenance.ok
+  ) {
     return { ok: false };
   }
   return {
@@ -382,6 +567,11 @@ export function parseRecordObservationBody(
       price: price.value,
       currency: currency.value,
       offerNotes: offerNotes.value,
+      competitorSourceId: competitorSourceId.value,
+      captureMethod: captureMethod.value,
+      productCategory: productCategory.value,
+      season: season.value,
+      provenance: provenance.value,
     },
   };
 }
@@ -460,6 +650,11 @@ export interface ObservationRow {
   readonly reviewStatus: string;
   readonly reviewedBy: string | null;
   readonly reviewedAt: string | null;
+  readonly competitorSourceId: string | null;
+  readonly captureMethod: string | null;
+  readonly productCategory: string | null;
+  readonly season: string | null;
+  readonly provenance: Record<string, unknown>;
   readonly createdAt: string;
 }
 
@@ -485,8 +680,72 @@ export function toObservationRow(
     reviewStatus: observation.reviewStatus,
     reviewedBy: observation.reviewedBy,
     reviewedAt: observation.reviewedAt,
+    competitorSourceId: observation.competitorSourceId,
+    captureMethod: observation.captureMethod,
+    productCategory: observation.productCategory,
+    season: observation.season,
+    provenance: observation.provenance,
     createdAt: observation.createdAt,
   };
+}
+
+export interface CompetitorSourceRow {
+  readonly id: string;
+  readonly competitorName: string;
+  readonly competitorId: string | null;
+  readonly sourceType: string;
+  readonly urlOrIdentifier: string;
+  readonly collectionMode: string;
+  readonly termsStatus: string;
+  readonly approvedBy: string | null;
+  readonly approvedAt: string | null;
+  readonly rateLimitNote: string | null;
+  readonly activeFrom: string;
+  readonly activeTo: string | null;
+  readonly createdAt: string;
+  readonly updatedAt: string | null;
+  readonly version: number;
+}
+
+/** Maps one source to an HTTP row; `undefined` for a foreign-organization row. */
+export function toCompetitorSourceRow(
+  organizationId: string,
+  source: CompetitorSourceRecord,
+): CompetitorSourceRow | undefined {
+  if (source.organizationId !== organizationId) {
+    return undefined;
+  }
+  return {
+    id: source.id,
+    competitorName: source.competitorName,
+    competitorId: source.competitorId,
+    sourceType: source.sourceType,
+    urlOrIdentifier: source.urlOrIdentifier,
+    collectionMode: source.collectionMode,
+    termsStatus: source.termsStatus,
+    approvedBy: source.approvedBy,
+    approvedAt: source.approvedAt,
+    rateLimitNote: source.rateLimitNote,
+    activeFrom: source.activeFrom,
+    activeTo: source.activeTo,
+    createdAt: source.createdAt,
+    updatedAt: source.updatedAt,
+    version: source.version,
+  };
+}
+
+export function toCompetitorSourceRows(
+  organizationId: string,
+  sources: readonly CompetitorSourceRecord[],
+): readonly CompetitorSourceRow[] {
+  const rows: CompetitorSourceRow[] = [];
+  for (const source of sources) {
+    const row = toCompetitorSourceRow(organizationId, source);
+    if (row !== undefined) {
+      rows.push(row);
+    }
+  }
+  return rows;
 }
 
 export function toObservationRows(

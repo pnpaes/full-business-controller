@@ -54,6 +54,11 @@ function observationRecord(
     reviewStatus: "pending",
     reviewedBy: null,
     reviewedAt: null,
+    competitorSourceId: null,
+    captureMethod: null,
+    productCategory: null,
+    season: null,
+    provenance: {},
     createdAt: "2026-03-05T09:30:00.000Z",
     ...overrides,
   };
@@ -203,6 +208,46 @@ describe("POST /api/v1/competitors/observations", () => {
       error: "competitor not found in organization",
     });
   });
+
+  it("passes the §4C source link, capture method and provenance through", async () => {
+    const response = await POST(
+      postRequest({
+        competitorId: COMPETITOR_ID,
+        observedAt: OBSERVED_AT,
+        source: "website",
+        externalName: "Flat White",
+        competitorSourceId: "88888888-8888-4888-8888-888888888888",
+        captureMethod: "automated",
+        productCategory: "coffee",
+        season: "autumn",
+        provenance: { url: "https://rival.example/menu" },
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(application.recordCompetitorObservation).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        competitorSourceId: "88888888-8888-4888-8888-888888888888",
+        captureMethod: "automated",
+        productCategory: "coffee",
+        season: "autumn",
+        provenance: { url: "https://rival.example/menu" },
+      }),
+    );
+  });
+
+  it("returns 400 for a bad capture method and a non-object provenance", async () => {
+    const base = {
+      competitorId: COMPETITOR_ID,
+      observedAt: OBSERVED_AT,
+      source: "website",
+      externalName: "Flat White",
+    };
+    expect((await POST(postRequest({ ...base, captureMethod: "bogus" }))).status).toBe(400);
+    expect((await POST(postRequest({ ...base, provenance: [] }))).status).toBe(400);
+    expect(application.recordCompetitorObservation).not.toHaveBeenCalled();
+  });
 });
 
 describe("observation parsers", () => {
@@ -236,6 +281,30 @@ describe("observation parsers", () => {
         source: "x",
         externalName: "y",
         price: 42.5,
+      }).ok,
+    ).toBe(false);
+  });
+
+  it("parses the §4C source fields and rejects malformed ones", () => {
+    const parsed = parseRecordObservationBody({
+      competitorId: COMPETITOR_ID,
+      observedAt: OBSERVED_AT,
+      source: "website",
+      externalName: "Flat White",
+      competitorSourceId: "88888888-8888-4888-8888-888888888888",
+      captureMethod: "manual",
+      provenance: { url: "https://rival.example/menu" },
+    });
+    expect(parsed.ok && parsed.input.captureMethod).toBe("manual");
+    expect(parsed.ok && parsed.input.provenance).toEqual({ url: "https://rival.example/menu" });
+
+    expect(
+      parseRecordObservationBody({
+        competitorId: COMPETITOR_ID,
+        observedAt: OBSERVED_AT,
+        source: "x",
+        externalName: "y",
+        competitorSourceId: "not-a-uuid",
       }).ok,
     ).toBe(false);
   });

@@ -35,6 +35,15 @@ export const COMPETITOR_WRITE_ROLES = [
   "location_manager",
 ] as const;
 
+/**
+ * The **terms-approval** bar for a competitor source (`ADR-0010`/`DEC-143`).
+ * Approving or rejecting a source's terms is a higher bar than capturing an
+ * observation: only `owner`/`admin` may decide legal/terms status. Registering
+ * an `automated` source likewise requires this set, because that registration
+ * records the approval that enables automation.
+ */
+export const COMPETITOR_TERMS_ROLES = ["owner", "admin"] as const;
+
 /** Loads the caller's roles and location scope live from server data (ADR-0003). */
 export async function loadCompetitorAccess(userId: string): Promise<UserAccess> {
   return loadUserAccess(getAuthStore(), userId);
@@ -52,4 +61,9 @@ export function isCompetitorAuthorized(access: UserAccess, roles: readonly strin
 /** True when the caller may register a competitor or capture an observation. */
 export function canWriteCompetitors(access: UserAccess): boolean {
   return isCompetitorAuthorized(access, COMPETITOR_WRITE_ROLES);
+}
+
+/** True when the caller may approve/reject a source's terms (owner/admin). */
+export function canManageCompetitorTerms(access: UserAccess): boolean {
+  return isCompetitorAuthorized(access, COMPETITOR_TERMS_ROLES);
 }

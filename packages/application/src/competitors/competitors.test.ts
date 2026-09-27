@@ -2,10 +2,18 @@ import { DomainError, NotFoundError } from "@aquarela/domain";
 import { describe, expect, it } from "vitest";
 
 import { compareCompetitorPrices } from "./compare-competitor-prices";
+import {
+  approveCompetitorSourceTerms,
+  rejectCompetitorSourceTerms,
+} from "./decide-competitor-source-terms";
+import { deactivateCompetitorSource } from "./deactivate-competitor-source";
+import { findCompetitorSource } from "./find-competitor-source";
 import { listCompetitorObservations } from "./list-competitor-observations";
+import { listCompetitorSources } from "./list-competitor-sources";
 import { listCompetitors } from "./list-competitors";
 import { recordCompetitorObservation } from "./record-competitor-observation";
 import { registerCompetitor } from "./register-competitor";
+import { registerCompetitorSource } from "./register-competitor-source";
 import { reviewCompetitorObservation } from "./review-competitor-observation";
 import { FakeCompetitorStore } from "./test-support";
 
@@ -448,5 +456,364 @@ describe("compareCompetitorPrices", () => {
 
     const rows = await compareCompetitorPrices(store, { organizationId: ORG, from: FROM, to: TO });
     expect(rows[0]).toMatchObject({ comparable: false, reason: "currency_mismatch" });
+  });
+});
+
+describe("competitor sources (ADR-0010 / DEC-143)", () => {
+  const SOURCE_URL = "https://rival.example/menu";
+
+  it("registers a manual source pending, trims its text and audits it", async () => {
+    const store = new FakeCompetitorStore();
+    const source = await registerCompetitorSource(store, {
+      organizationId: ORG,
+      actorId: ACTOR,
+      competitorName: "  Rival Cafe  ",
+      sourceType: "website",
+      urlOrIdentifier: `  ${SOURCE_URL}  `,
+      collectionMode: "manual",
+      activeFrom: "2026-09-01",
+    });
+
+    expect(source.competitorName).toBe("Rival Cafe");
+    expect(source.urlOrIdentifier).toBe(SOURCE_URL);
+    expect(source.termsStatus).toBe("pending");
+    expect(source.approvedBy).toBeNull();
+    expect(source.approvedAt).toBeNull();
+    expect(store.audits.map((a) => a.action)).toEqual(["competitors.source.registered"]);
+  });
+
+  it("registers an automated source already approved, recording the actor", async () => {
+    const store = new FakeCompetitorStore();
+    const source = await registerCompetitorSource(store, {
+      organizationId: ORG,
+      actorId: ACTOR,
+      competitorName: "Rival Cafe",
+      sourceType: "wolt",
+      urlOrIdentifier: SOURCE_URL,
+      collectionMode: "automated",
+      activeFrom: "2026-09-01",
+    });
+
+    expect(source.collectionMode).toBe("automated");
+    expect(source.termsStatus).toBe("approved");
+    expect(source.approvedBy).toBe(ACTOR);
+    expect(source.approvedAt).not.toBeNull();
+    // The registration and the higher-bar terms approval are separate facts.
+    expect(store.audits.map((a) => a.action)).toEqual([
+      "competitors.source.registered",
+      "competitors.source.terms_approved",
+    ]);
+  });
+
+  it("rejects a duplicate url within the organization and scopes it per organization", async () => {
+    const store = new FakeCompetitorStore();
+    await registerCompetitorSource(store, {
+      organizationId: ORG,
+      actorId: ACTOR,
+      competitorName: "Rival Cafe",
+      sourceType: "website",
+      urlOrIdentifier: SOURCE_URL,
+      collectionMode: "manual",
+      activeFrom: "2026-09-01",
+    });
+    await expect(
+      registerCompetitorSource(store, {
+        organizationId: ORG,
+        actorId: ACTOR,
+        competitorName: "Rival Cafe",
+        sourceType: "website",
+        urlOrIdentifier: SOURCE_URL,
+        collectionMode: "manual",
+        activeFrom: "2026-09-01",
+      }),
+    ).rejects.toBeInstanceOf(DomainError);
+
+    const other = await registerCompetitorSource(store, {
+      organizationId: OTHER_ORG,
+      actorId: ACTOR,
+      competitorName: "Rival Cafe",
+      sourceType: "website",
+      urlOrIdentifier: SOURCE_URL,
+      collectionMode: "manual",
+      activeFrom: "2026-09-01",
+    });
+    expect(other.organizationId).toBe(OTHER_ORG);
+  });
+
+  it("rejects a bad sourceType, collectionMode and activeFrom", async () => {
+    const store = new FakeCompetitorStore();
+    const base = {
+      organizationId: ORG,
+      actorId: ACTOR,
+      competitorName: "Rival Cafe",
+      sourceType: "website",
+      urlOrIdentifier: SOURCE_URL,
+      collectionMode: "manual",
+      activeFrom: "2026-09-01",
+    } as const;
+    await expect(
+      registerCompetitorSource(store, { ...base, sourceType: "bogus" }),
+    ).rejects.toBeInstanceOf(DomainError);
+    await expect(
+      registerCompetitorSource(store, { ...base, collectionMode: "bogus" }),
+    ).rejects.toBeInstanceOf(DomainError);
+    await expect(
+      registerCompetitorSource(store, { ...base, activeFrom: "2026-09" }),
+    ).rejects.toBeInstanceOf(DomainError);
+  });
+
+  it("approves and rejects terms on a pending manual source, with actor and instant", async () => {
+    const store = new FakeCompetitorStore();
+    const source = await registerCompetitorSource(store, {
+      organizationId: ORG,
+      actorId: ACTOR,
+      competitorName: "Rival Cafe",
+      sourceType: "website",
+      urlOrIdentifier: SOURCE_URL,
+      collectionMode: "manual",
+      activeFrom: "2026-09-01",
+    });
+
+    const approved = await approveCompetitorSourceTerms(store, {
+      organizationId: ORG,
+      actorId: "owner-1",
+      sourceId: source.id,
+    });
+    expect(approved.termsStatus).toBe("approved");
+    expect(approved.approvedBy).toBe("owner-1");
+    expect(approved.approvedAt).not.toBeNull();
+    expect(store.audits.at(-1)?.action).toBe("competitors.source.terms_approved");
+
+    const rejected = await rejectCompetitorSourceTerms(store, {
+      organizationId: ORG,
+      actorId: "owner-1",
+      sourceId: source.id,
+    });
+    expect(rejected.termsStatus).toBe("rejected");
+    expect(store.audits.at(-1)?.action).toBe("competitors.source.terms_rejected");
+  });
+
+  it("refuses to reject an automated source (deactivate instead)", async () => {
+    const store = new FakeCompetitorStore();
+    const source = await registerCompetitorSource(store, {
+      organizationId: ORG,
+      actorId: ACTOR,
+      competitorName: "Rival Cafe",
+      sourceType: "wolt",
+      urlOrIdentifier: SOURCE_URL,
+      collectionMode: "automated",
+      activeFrom: "2026-09-01",
+    });
+    await expect(
+      rejectCompetitorSourceTerms(store, {
+        organizationId: ORG,
+        actorId: ACTOR,
+        sourceId: source.id,
+      }),
+    ).rejects.toBeInstanceOf(DomainError);
+    expect(store.sources.get(source.id)?.termsStatus).toBe("approved");
+  });
+
+  it("throws NotFoundError for a source outside the organization", async () => {
+    const store = new FakeCompetitorStore();
+    const source = store.seedCompetitorSource({
+      organizationId: ORG,
+      competitorName: "Rival Cafe",
+      urlOrIdentifier: SOURCE_URL,
+    });
+    await expect(
+      approveCompetitorSourceTerms(store, {
+        organizationId: OTHER_ORG,
+        actorId: ACTOR,
+        sourceId: source.id,
+      }),
+    ).rejects.toBeInstanceOf(NotFoundError);
+    await expect(
+      deactivateCompetitorSource(store, {
+        organizationId: OTHER_ORG,
+        actorId: ACTOR,
+        sourceId: source.id,
+        activeTo: "2026-12-31",
+      }),
+    ).rejects.toBeInstanceOf(NotFoundError);
+  });
+
+  it("deactivates by setting active_to, refusing a date not after active_from", async () => {
+    const store = new FakeCompetitorStore();
+    const source = await registerCompetitorSource(store, {
+      organizationId: ORG,
+      actorId: ACTOR,
+      competitorName: "Rival Cafe",
+      sourceType: "website",
+      urlOrIdentifier: SOURCE_URL,
+      collectionMode: "manual",
+      activeFrom: "2026-09-01",
+    });
+
+    await expect(
+      deactivateCompetitorSource(store, {
+        organizationId: ORG,
+        actorId: ACTOR,
+        sourceId: source.id,
+        activeTo: "2026-08-31",
+      }),
+    ).rejects.toBeInstanceOf(DomainError);
+
+    const ended = await deactivateCompetitorSource(store, {
+      organizationId: ORG,
+      actorId: ACTOR,
+      sourceId: source.id,
+      activeTo: "2026-12-31",
+    });
+    expect(ended.activeTo).toBe("2026-12-31");
+    expect(store.audits.at(-1)?.action).toBe("competitors.source.deactivated");
+  });
+
+  it("lists sources organization-scoped with the active filter", async () => {
+    const store = new FakeCompetitorStore();
+    store.seedCompetitorSource({
+      organizationId: ORG,
+      competitorName: "Zeta",
+      urlOrIdentifier: "https://zeta.example",
+    });
+    store.seedCompetitorSource({
+      organizationId: ORG,
+      competitorName: "Alpha",
+      urlOrIdentifier: "https://alpha.example",
+      activeTo: "2026-01-01",
+    });
+    store.seedCompetitorSource({
+      organizationId: OTHER_ORG,
+      competitorName: "Beta",
+      urlOrIdentifier: "https://beta.example",
+    });
+
+    const all = await listCompetitorSources(store, { organizationId: ORG });
+    expect(all.map((row) => row.competitorName)).toEqual(["Alpha", "Zeta"]);
+
+    const active = await listCompetitorSources(store, { organizationId: ORG, active: true });
+    expect(active.map((row) => row.competitorName)).toEqual(["Zeta"]);
+
+    const ended = await listCompetitorSources(store, { organizationId: ORG, active: false });
+    expect(ended.map((row) => row.competitorName)).toEqual(["Alpha"]);
+  });
+
+  it("finds a source organization-scoped and rejects a non-uuid id", async () => {
+    const store = new FakeCompetitorStore();
+    const source = store.seedCompetitorSource({
+      organizationId: ORG,
+      competitorName: "Rival Cafe",
+      urlOrIdentifier: SOURCE_URL,
+    });
+    expect(
+      (await findCompetitorSource(store, { organizationId: ORG, sourceId: source.id }))?.id,
+    ).toBe(source.id);
+    expect(
+      await findCompetitorSource(store, { organizationId: OTHER_ORG, sourceId: source.id }),
+    ).toBeUndefined();
+    await expect(
+      findCompetitorSource(store, { organizationId: ORG, sourceId: "nope" }),
+    ).rejects.toBeInstanceOf(DomainError);
+  });
+});
+
+describe("recordCompetitorObservation with a source (ADR-0010)", () => {
+  async function seeded(): Promise<{
+    store: FakeCompetitorStore;
+    competitorId: string;
+    sourceId: string;
+  }> {
+    const store = new FakeCompetitorStore();
+    const competitor = store.seedCompetitor({ organizationId: ORG, name: "Rival Cafe" });
+    const source = store.seedCompetitorSource({
+      organizationId: ORG,
+      competitorName: "Rival Cafe",
+      competitorId: competitor.id,
+      urlOrIdentifier: "https://rival.example/menu",
+      collectionMode: "automated",
+      termsStatus: "approved",
+    });
+    return { store, competitorId: competitor.id, sourceId: source.id };
+  }
+
+  it("stores the source link, capture method, category, season and provenance", async () => {
+    const { store, competitorId, sourceId } = await seeded();
+    const observation = await recordCompetitorObservation(store, {
+      organizationId: ORG,
+      actorId: ACTOR,
+      competitorId,
+      observedAt: OBSERVED_AT,
+      source: "website",
+      externalName: "Flat White",
+      competitorSourceId: sourceId,
+      captureMethod: "automated",
+      productCategory: "coffee",
+      season: "autumn",
+      provenance: { url: "https://rival.example/menu", captured_at: OBSERVED_AT },
+    });
+
+    expect(observation.competitorSourceId).toBe(sourceId);
+    expect(observation.captureMethod).toBe("automated");
+    expect(observation.productCategory).toBe("coffee");
+    expect(observation.season).toBe("autumn");
+    expect(observation.provenance).toMatchObject({ url: "https://rival.example/menu" });
+  });
+
+  it("rejects a source that is not in the organization", async () => {
+    const { store, competitorId, sourceId } = await seeded();
+    await expect(
+      recordCompetitorObservation(store, {
+        organizationId: OTHER_ORG,
+        actorId: ACTOR,
+        competitorId,
+        observedAt: OBSERVED_AT,
+        source: "website",
+        externalName: "Flat White",
+        competitorSourceId: sourceId,
+      }),
+    ).rejects.toBeInstanceOf(DomainError);
+  });
+
+  it("rejects a source linked to a different competitor", async () => {
+    const { store, competitorId, sourceId } = await seeded();
+    const other = store.seedCompetitor({ organizationId: ORG, name: "Another Cafe" });
+    await expect(
+      recordCompetitorObservation(store, {
+        organizationId: ORG,
+        actorId: ACTOR,
+        competitorId: other.id,
+        observedAt: OBSERVED_AT,
+        source: "website",
+        externalName: "Flat White",
+        competitorSourceId: sourceId,
+      }),
+    ).rejects.toBeInstanceOf(DomainError);
+    expect(competitorId).toBeDefined();
+  });
+
+  it("rejects a bad capture method and a non-object provenance", async () => {
+    const { store, competitorId } = await seeded();
+    await expect(
+      recordCompetitorObservation(store, {
+        organizationId: ORG,
+        actorId: ACTOR,
+        competitorId,
+        observedAt: OBSERVED_AT,
+        source: "website",
+        externalName: "Flat White",
+        captureMethod: "bogus",
+      }),
+    ).rejects.toBeInstanceOf(DomainError);
+    await expect(
+      recordCompetitorObservation(store, {
+        organizationId: ORG,
+        actorId: ACTOR,
+        competitorId,
+        observedAt: OBSERVED_AT,
+        source: "website",
+        externalName: "Flat White",
+        provenance: [] as unknown as Record<string, unknown>,
+      }),
+    ).rejects.toBeInstanceOf(DomainError);
   });
 });

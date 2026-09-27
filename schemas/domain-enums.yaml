@@ -166,3 +166,13 @@ staff_document_status: [draft, published, archived]
 # a timestamp; only `reviewed` observations are read as intelligence. Backs
 # `competitor_observation_review_status_check`.
 competitor_review_status: [pending, reviewed, rejected]
+
+# ADR-0010 (accepted 2026-09-27) / DEC-143 (row 18a, COMP-001): the
+# competitor-source vocabulary. `source_type` is the kind of source (Instagram
+# is manual only); `collection_mode` is how it is captured (automated is allowed
+# only for an approved permitted source); `terms_status` is the per-source
+# terms/legal decision (pending on capture; automation requires approved). The
+# observation `review_state` reuses `competitor_review_status` above.
+competitor_source_type: [website, wolt, instagram_manual, other]
+competitor_collection_mode: [automated, manual]
+competitor_terms_status: [pending, approved, rejected]

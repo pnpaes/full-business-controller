@@ -119,6 +119,11 @@ export async function POST(request: Request): Promise<Response> {
         price: parsed.input.price,
         currency: parsed.input.currency,
         offerNotes: parsed.input.offerNotes,
+        competitorSourceId: parsed.input.competitorSourceId,
+        captureMethod: parsed.input.captureMethod,
+        productCategory: parsed.input.productCategory,
+        season: parsed.input.season,
+        provenance: parsed.input.provenance,
       });
     } catch (error) {
       if (error instanceof DomainError) {

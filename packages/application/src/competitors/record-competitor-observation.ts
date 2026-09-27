@@ -1,13 +1,19 @@
 import { DomainError } from "@aquarela/domain";
 
 import { COMPETITOR_AUDIT_ACTIONS } from "./actions";
-import type { CompetitorObservationRecord, CompetitorStore } from "./types";
 import {
+  COMPETITOR_COLLECTION_MODES,
+  type CompetitorObservationRecord,
+  type CompetitorStore,
+} from "./types";
+import {
+  assertEnumValue,
   assertIsoInstant,
   assertOptionalUuid,
   assertUuid,
   optionalCurrency,
   optionalNonNegativePrice,
+  optionalRecord,
   optionalText,
   requiredText,
 } from "./validation";
@@ -28,6 +34,14 @@ export interface RecordCompetitorObservationInput {
   readonly price?: string | null;
   readonly currency?: string | null;
   readonly offerNotes?: string | null;
+  /** `ADR-0010`/`DEC-143`: the approved source this was captured from. */
+  readonly competitorSourceId?: string | null;
+  /** One of `COMPETITOR_COLLECTION_MODES`; `automated` only for an approved source. */
+  readonly captureMethod?: string | null;
+  readonly productCategory?: string | null;
+  readonly season?: string | null;
+  /** URL/capture time/method/content hash; `{}` when unknown. */
+  readonly provenance?: Record<string, unknown> | null;
 }
 
 /**
@@ -59,6 +73,14 @@ export async function recordCompetitorObservation(
   assertOptionalUuid(input.itemId, "itemId");
   const price = optionalNonNegativePrice(input.price, "price");
   const currency = optionalCurrency(input.currency);
+  assertOptionalUuid(input.competitorSourceId, "competitorSourceId");
+  const captureMethod =
+    input.captureMethod === null || input.captureMethod === undefined
+      ? null
+      : assertEnumValue(input.captureMethod, COMPETITOR_COLLECTION_MODES, "captureMethod");
+  const productCategory = optionalText(input.productCategory);
+  const season = optionalText(input.season);
+  const provenance = optionalRecord(input.provenance, "provenance");
 
   return store.withTransaction(async (tx) => {
     const competitor = await tx.findCompetitor({
@@ -67,6 +89,22 @@ export async function recordCompetitorObservation(
     });
     if (competitor === undefined) {
       throw new DomainError("competitor not found in organization");
+    }
+
+    // A supplied source must belong to this organization and, when it already
+    // names a competitor, that link must match the observation's competitor —
+    // otherwise the observation would cross-link two competitors.
+    if (input.competitorSourceId !== null && input.competitorSourceId !== undefined) {
+      const source = await tx.findCompetitorSource({
+        organizationId: input.organizationId,
+        sourceId: input.competitorSourceId,
+      });
+      if (source === undefined) {
+        throw new DomainError("competitor source not found in organization");
+      }
+      if (source.competitorId !== null && source.competitorId !== input.competitorId) {
+        throw new DomainError("competitor source belongs to a different competitor");
+      }
     }
 
     const created = await tx.createObservation({
@@ -80,6 +118,11 @@ export async function recordCompetitorObservation(
       price,
       currency,
       offerNotes,
+      competitorSourceId: input.competitorSourceId ?? null,
+      captureMethod,
+      productCategory,
+      season,
+      provenance,
     });
 
     await tx.writeAudit({
@@ -96,6 +139,8 @@ export async function recordCompetitorObservation(
         external_name: created.externalName,
         price: created.price,
         currency: created.currency,
+        competitor_source_id: created.competitorSourceId,
+        capture_method: created.captureMethod,
         review_status: created.reviewStatus,
       },
     });

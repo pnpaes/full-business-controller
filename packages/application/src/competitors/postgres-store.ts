@@ -5,10 +5,14 @@ import type {
   CompetitorEffectivePrice,
   CompetitorObservationRecord,
   CompetitorRecord,
+  CompetitorSourceRecord,
   CompetitorStore,
   NewCompetitorObservationRecord,
   NewCompetitorRecord,
+  NewCompetitorSourceRecord,
   UpdateCompetitorObservationReviewRecord,
+  UpdateCompetitorSourceActiveToRecord,
+  UpdateCompetitorSourceTermsRecord,
 } from "./types";
 
 /** A transaction handle has no `transaction` method of its own. */
@@ -47,7 +51,35 @@ function toObservation(row: repo.CompetitorObservation): CompetitorObservationRe
     reviewStatus: row.reviewStatus,
     reviewedBy: row.reviewedBy,
     reviewedAt: toIso(row.reviewedAt),
+    competitorSourceId: row.competitorSourceId,
+    captureMethod: row.captureMethod,
+    productCategory: row.productCategory,
+    season: row.season,
+    provenance: row.provenance,
     createdAt: row.createdAt.toISOString(),
+  };
+}
+
+function toCompetitorSource(row: repo.CompetitorSource): CompetitorSourceRecord {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    competitorName: row.competitorName,
+    competitorId: row.competitorId,
+    sourceType: row.sourceType,
+    urlOrIdentifier: row.urlOrIdentifier,
+    collectionMode: row.collectionMode,
+    termsStatus: row.termsStatus,
+    approvedBy: row.approvedBy,
+    approvedAt: toIso(row.approvedAt),
+    rateLimitNote: row.rateLimitNote,
+    activeFrom: row.activeFrom,
+    activeTo: row.activeTo,
+    createdAt: row.createdAt.toISOString(),
+    createdBy: row.createdBy,
+    updatedAt: toIso(row.updatedAt),
+    updatedBy: row.updatedBy,
+    version: row.version,
   };
 }
 
@@ -104,6 +136,73 @@ export function createPostgresCompetitorStore(db: Database): CompetitorStore {
       });
       return rows.map(toCompetitor);
     },
+    createCompetitorSource: async (input: NewCompetitorSourceRecord) =>
+      toCompetitorSource(
+        await repo.createCompetitorSource(db, {
+          organizationId: input.organizationId,
+          competitorName: input.competitorName,
+          competitorId: input.competitorId,
+          sourceType: input.sourceType,
+          urlOrIdentifier: input.urlOrIdentifier,
+          collectionMode: input.collectionMode,
+          termsStatus: input.termsStatus,
+          approvedBy: input.approvedBy,
+          approvedAt: input.approvedAt === null ? null : new Date(input.approvedAt),
+          rateLimitNote: input.rateLimitNote,
+          activeFrom: input.activeFrom,
+          createdBy: input.createdBy,
+        }),
+      ),
+    findCompetitorSource: async (query) => {
+      const row = await repo.findCompetitorSource(db, {
+        organizationId: query.organizationId,
+        sourceId: query.sourceId,
+      });
+      return row === undefined ? undefined : toCompetitorSource(row);
+    },
+    findCompetitorSourceByUrl: async (query) => {
+      const row = await repo.findCompetitorSourceByUrl(db, {
+        organizationId: query.organizationId,
+        urlOrIdentifier: query.urlOrIdentifier,
+      });
+      return row === undefined ? undefined : toCompetitorSource(row);
+    },
+    lockCompetitorSource: async (query) => {
+      const row = await repo.lockCompetitorSource(db, {
+        organizationId: query.organizationId,
+        sourceId: query.sourceId,
+      });
+      return row === undefined ? undefined : toCompetitorSource(row);
+    },
+    updateCompetitorSourceTerms: async (input: UpdateCompetitorSourceTermsRecord) => {
+      const row = await repo.updateCompetitorSourceTerms(db, {
+        organizationId: input.organizationId,
+        sourceId: input.sourceId,
+        termsStatus: input.termsStatus,
+        approvedBy: input.approvedBy,
+        approvedAt: new Date(input.approvedAt),
+        updatedBy: input.updatedBy,
+      });
+      return row === undefined ? undefined : toCompetitorSource(row);
+    },
+    updateCompetitorSourceActiveTo: async (input: UpdateCompetitorSourceActiveToRecord) => {
+      const row = await repo.deactivateCompetitorSource(db, {
+        organizationId: input.organizationId,
+        sourceId: input.sourceId,
+        activeTo: input.activeTo,
+        updatedBy: input.updatedBy,
+      });
+      return row === undefined ? undefined : toCompetitorSource(row);
+    },
+    listCompetitorSources: async (query) => {
+      const rows = await repo.listCompetitorSources(db, {
+        organizationId: query.organizationId,
+        ...(query.active === undefined ? {} : { active: query.active }),
+        ...(query.limit === undefined ? {} : { limit: query.limit }),
+        ...(query.offset === undefined ? {} : { offset: query.offset }),
+      });
+      return rows.map(toCompetitorSource);
+    },
     createObservation: async (input: NewCompetitorObservationRecord) =>
       toObservation(
         await repo.createCompetitorObservation(db, {
@@ -117,6 +216,11 @@ export function createPostgresCompetitorStore(db: Database): CompetitorStore {
           price: input.price,
           currency: input.currency,
           offerNotes: input.offerNotes,
+          competitorSourceId: input.competitorSourceId,
+          captureMethod: input.captureMethod,
+          productCategory: input.productCategory,
+          season: input.season,
+          provenance: input.provenance,
         }),
       ),
     findObservation: async (query) => {

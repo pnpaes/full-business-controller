@@ -9,10 +9,15 @@ import type {
   CompetitorObservationListQuery,
   CompetitorObservationRecord,
   CompetitorRecord,
+  CompetitorSourceListQuery,
+  CompetitorSourceRecord,
   CompetitorStore,
   NewCompetitorObservationRecord,
   NewCompetitorRecord,
+  NewCompetitorSourceRecord,
   UpdateCompetitorObservationReviewRecord,
+  UpdateCompetitorSourceActiveToRecord,
+  UpdateCompetitorSourceTermsRecord,
 } from "./types";
 
 /** A seeded effective price version in the fake (half-open `[from, to)` window). */
@@ -32,6 +37,7 @@ export interface FakeCompetitorEffectivePrice {
 interface CompetitorSnapshot {
   readonly competitors: Map<string, CompetitorRecord>;
   readonly observations: Map<string, CompetitorObservationRecord>;
+  readonly sources: Map<string, CompetitorSourceRecord>;
   readonly audits: AuditInput[];
 }
 
@@ -50,6 +56,7 @@ function fakeId(head: string, n: number): string {
 export class FakeCompetitorStore implements CompetitorStore {
   readonly competitors = new Map<string, CompetitorRecord>();
   readonly observations = new Map<string, CompetitorObservationRecord>();
+  readonly sources = new Map<string, CompetitorSourceRecord>();
   readonly audits: AuditInput[] = [];
 
   /** `${organizationId}:${itemId}` → the selling variant id. */
@@ -59,6 +66,7 @@ export class FakeCompetitorStore implements CompetitorStore {
 
   private competitorSequence = 0;
   private observationSequence = 0;
+  private sourceSequence = 0;
 
   private nextCompetitorId(): string {
     this.competitorSequence += 1;
@@ -70,10 +78,16 @@ export class FakeCompetitorStore implements CompetitorStore {
     return fakeId("2", this.observationSequence);
   }
 
+  private nextSourceId(): string {
+    this.sourceSequence += 1;
+    return fakeId("3", this.sourceSequence);
+  }
+
   async withTransaction<T>(fn: (store: CompetitorStore) => Promise<T>): Promise<T> {
     const snapshot: CompetitorSnapshot = {
       competitors: new Map(this.competitors),
       observations: new Map(this.observations),
+      sources: new Map(this.sources),
       audits: [...this.audits],
     };
     try {
@@ -83,6 +97,8 @@ export class FakeCompetitorStore implements CompetitorStore {
       for (const [key, value] of snapshot.competitors) this.competitors.set(key, value);
       this.observations.clear();
       for (const [key, value] of snapshot.observations) this.observations.set(key, value);
+      this.sources.clear();
+      for (const [key, value] of snapshot.sources) this.sources.set(key, value);
       this.audits.length = 0;
       this.audits.push(...snapshot.audits);
       throw error;
@@ -146,6 +162,140 @@ export class FakeCompetitorStore implements CompetitorStore {
     return rows.slice(offset, offset + (query.limit ?? rows.length));
   }
 
+  async createCompetitorSource(input: NewCompetitorSourceRecord): Promise<CompetitorSourceRecord> {
+    const duplicate = await this.findCompetitorSourceByUrl({
+      organizationId: input.organizationId,
+      urlOrIdentifier: input.urlOrIdentifier,
+    });
+    if (duplicate !== undefined) {
+      throw new DomainError("competitor source already exists for this organization");
+    }
+    const record: CompetitorSourceRecord = {
+      id: this.nextSourceId(),
+      organizationId: input.organizationId,
+      competitorName: input.competitorName,
+      competitorId: input.competitorId,
+      sourceType: input.sourceType,
+      urlOrIdentifier: input.urlOrIdentifier,
+      collectionMode: input.collectionMode,
+      termsStatus: input.termsStatus,
+      approvedBy: input.approvedBy,
+      approvedAt: input.approvedAt,
+      rateLimitNote: input.rateLimitNote,
+      activeFrom: input.activeFrom,
+      activeTo: null,
+      createdAt: new Date().toISOString(),
+      createdBy: input.createdBy,
+      updatedAt: null,
+      updatedBy: null,
+      version: 1,
+    };
+    this.sources.set(record.id, record);
+    return record;
+  }
+
+  async findCompetitorSource(query: {
+    readonly organizationId: string;
+    readonly sourceId: string;
+  }): Promise<CompetitorSourceRecord | undefined> {
+    const row = this.sources.get(query.sourceId);
+    return row !== undefined && row.organizationId === query.organizationId ? row : undefined;
+  }
+
+  async findCompetitorSourceByUrl(query: {
+    readonly organizationId: string;
+    readonly urlOrIdentifier: string;
+  }): Promise<CompetitorSourceRecord | undefined> {
+    return [...this.sources.values()].find(
+      (row) =>
+        row.organizationId === query.organizationId &&
+        row.urlOrIdentifier === query.urlOrIdentifier,
+    );
+  }
+
+  /** The fake has no row locks, so locking is the same id read. */
+  async lockCompetitorSource(query: {
+    readonly organizationId: string;
+    readonly sourceId: string;
+  }): Promise<CompetitorSourceRecord | undefined> {
+    return this.findCompetitorSource(query);
+  }
+
+  async updateCompetitorSourceTerms(
+    input: UpdateCompetitorSourceTermsRecord,
+  ): Promise<CompetitorSourceRecord | undefined> {
+    const existing = await this.findCompetitorSource({
+      organizationId: input.organizationId,
+      sourceId: input.sourceId,
+    });
+    if (existing === undefined) {
+      return undefined;
+    }
+    const record: CompetitorSourceRecord = {
+      ...existing,
+      termsStatus: input.termsStatus,
+      approvedBy: input.approvedBy,
+      approvedAt: input.approvedAt,
+      updatedAt: new Date().toISOString(),
+      updatedBy: input.updatedBy,
+      version: existing.version + 1,
+    };
+    this.sources.set(record.id, record);
+    return record;
+  }
+
+  async updateCompetitorSourceActiveTo(
+    input: UpdateCompetitorSourceActiveToRecord,
+  ): Promise<CompetitorSourceRecord | undefined> {
+    const existing = await this.findCompetitorSource({
+      organizationId: input.organizationId,
+      sourceId: input.sourceId,
+    });
+    if (existing === undefined) {
+      return undefined;
+    }
+    const record: CompetitorSourceRecord = {
+      ...existing,
+      activeTo: input.activeTo,
+      updatedAt: new Date().toISOString(),
+      updatedBy: input.updatedBy,
+      version: existing.version + 1,
+    };
+    this.sources.set(record.id, record);
+    return record;
+  }
+
+  async listCompetitorSources(
+    query: CompetitorSourceListQuery,
+  ): Promise<readonly CompetitorSourceRecord[]> {
+    const insertionOrder = new Map<string, number>();
+    let index = 0;
+    for (const id of this.sources.keys()) {
+      insertionOrder.set(id, index);
+      index += 1;
+    }
+    const rows = [...this.sources.values()]
+      .filter((row) => row.organizationId === query.organizationId)
+      .filter((row) =>
+        query.active === undefined
+          ? true
+          : query.active
+            ? row.activeTo === null
+            : row.activeTo !== null,
+      )
+      .sort((a, b) => {
+        if (a.competitorName !== b.competitorName) {
+          return a.competitorName < b.competitorName ? -1 : 1;
+        }
+        if (a.urlOrIdentifier !== b.urlOrIdentifier) {
+          return a.urlOrIdentifier < b.urlOrIdentifier ? -1 : 1;
+        }
+        return (insertionOrder.get(a.id) ?? 0) - (insertionOrder.get(b.id) ?? 0);
+      });
+    const offset = query.offset ?? 0;
+    return rows.slice(offset, offset + (query.limit ?? rows.length));
+  }
+
   async createObservation(
     input: NewCompetitorObservationRecord,
   ): Promise<CompetitorObservationRecord> {
@@ -164,6 +314,11 @@ export class FakeCompetitorStore implements CompetitorStore {
       reviewStatus: "pending",
       reviewedBy: null,
       reviewedAt: null,
+      competitorSourceId: input.competitorSourceId,
+      captureMethod: input.captureMethod,
+      productCategory: input.productCategory,
+      season: input.season,
+      provenance: input.provenance,
       createdAt: new Date().toISOString(),
     };
     this.observations.set(record.id, record);
@@ -288,6 +443,46 @@ export class FakeCompetitorStore implements CompetitorStore {
     return record;
   }
 
+  /** Seeds a competitor source directly (bypassing the commands). */
+  seedCompetitorSource(input: {
+    readonly organizationId: string;
+    readonly id?: string;
+    readonly competitorName: string;
+    readonly competitorId?: string | null;
+    readonly sourceType?: string;
+    readonly urlOrIdentifier: string;
+    readonly collectionMode?: string;
+    readonly termsStatus?: string;
+    readonly approvedBy?: string | null;
+    readonly approvedAt?: string | null;
+    readonly rateLimitNote?: string | null;
+    readonly activeFrom?: string;
+    readonly activeTo?: string | null;
+  }): CompetitorSourceRecord {
+    const record: CompetitorSourceRecord = {
+      id: input.id ?? this.nextSourceId(),
+      organizationId: input.organizationId,
+      competitorName: input.competitorName,
+      competitorId: input.competitorId ?? null,
+      sourceType: input.sourceType ?? "website",
+      urlOrIdentifier: input.urlOrIdentifier,
+      collectionMode: input.collectionMode ?? "manual",
+      termsStatus: input.termsStatus ?? "pending",
+      approvedBy: input.approvedBy ?? null,
+      approvedAt: input.approvedAt ?? null,
+      rateLimitNote: input.rateLimitNote ?? null,
+      activeFrom: input.activeFrom ?? "2026-01-01",
+      activeTo: input.activeTo ?? null,
+      createdAt: new Date().toISOString(),
+      createdBy: null,
+      updatedAt: null,
+      updatedBy: null,
+      version: 1,
+    };
+    this.sources.set(record.id, record);
+    return record;
+  }
+
   /** Seeds an observation directly (bypassing the commands), any review status. */
   seedObservation(input: {
     readonly organizationId: string;
@@ -300,6 +495,11 @@ export class FakeCompetitorStore implements CompetitorStore {
     readonly currency?: string | null;
     readonly source?: string;
     readonly reviewStatus?: string;
+    readonly competitorSourceId?: string | null;
+    readonly captureMethod?: string | null;
+    readonly productCategory?: string | null;
+    readonly season?: string | null;
+    readonly provenance?: Record<string, unknown>;
   }): CompetitorObservationRecord {
     const record: CompetitorObservationRecord = {
       id: input.id ?? this.nextObservationId(),
@@ -314,6 +514,11 @@ export class FakeCompetitorStore implements CompetitorStore {
       currency: input.currency ?? null,
       offerNotes: null,
       reviewStatus: input.reviewStatus ?? "pending",
+      competitorSourceId: input.competitorSourceId ?? null,
+      captureMethod: input.captureMethod ?? null,
+      productCategory: input.productCategory ?? null,
+      season: input.season ?? null,
+      provenance: input.provenance ?? {},
       reviewedBy:
         input.reviewStatus === "pending" || input.reviewStatus === undefined
           ? null

@@ -2,6 +2,7 @@ import { DomainError } from "@aquarela/domain";
 import {
   competitor as competitorTable,
   competitorObservation as competitorObservationTable,
+  competitorSource as competitorSourceTable,
   createDb,
   type DatabaseTransaction,
   type DbClient,
@@ -10,9 +11,12 @@ import {
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import { approveCompetitorSourceTerms } from "./decide-competitor-source-terms";
+import { deactivateCompetitorSource } from "./deactivate-competitor-source";
 import { createPostgresCompetitorStore } from "./postgres-store";
 import { recordCompetitorObservation } from "./record-competitor-observation";
 import { registerCompetitor } from "./register-competitor";
+import { registerCompetitorSource } from "./register-competitor-source";
 import { reviewCompetitorObservation } from "./review-competitor-observation";
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -241,6 +245,213 @@ describe.skipIf(!databaseUrl)("competitor observations against PostgreSQL", () =
           price: "-1",
         }),
       ).rejects.toThrow();
+    });
+  });
+
+  it("registers a manual source pending and an automated source already approved", async () => {
+    await inRollback(client.db, async (tx) => {
+      const store = createPostgresCompetitorStore(tx);
+      const manual = await registerCompetitorSource(store, {
+        organizationId: orgId,
+        actorId,
+        competitorName: `Manual ${suffix}`,
+        sourceType: "website",
+        urlOrIdentifier: `https://manual.example/${suffix}`,
+        collectionMode: "manual",
+        activeFrom: "2026-09-01",
+      });
+      expect(manual.termsStatus).toBe("pending");
+      expect(manual.approvedBy).toBeNull();
+
+      const automated = await registerCompetitorSource(store, {
+        organizationId: orgId,
+        actorId,
+        competitorName: `Auto ${suffix}`,
+        sourceType: "wolt",
+        urlOrIdentifier: `https://wolt.example/${suffix}`,
+        collectionMode: "automated",
+        activeFrom: "2026-09-01",
+      });
+      expect(automated.collectionMode).toBe("automated");
+      expect(automated.termsStatus).toBe("approved");
+      expect(automated.approvedBy).toBe(actorId);
+      expect(automated.approvedAt).not.toBeNull();
+
+      // A duplicate URL is refused at the application (and by the unique key).
+      await expect(
+        registerCompetitorSource(store, {
+          organizationId: orgId,
+          actorId,
+          competitorName: `Manual ${suffix}`,
+          sourceType: "website",
+          urlOrIdentifier: `https://manual.example/${suffix}`,
+          collectionMode: "manual",
+          activeFrom: "2026-09-01",
+        }),
+      ).rejects.toBeInstanceOf(DomainError);
+
+      // The organization dimension scopes the URL uniqueness.
+      const other = await registerCompetitorSource(store, {
+        organizationId: otherOrgId,
+        actorId,
+        competitorName: `Manual ${suffix}`,
+        sourceType: "website",
+        urlOrIdentifier: `https://manual.example/${suffix}`,
+        collectionMode: "manual",
+        activeFrom: "2026-09-01",
+      });
+      expect(other.id).not.toBe(manual.id);
+    });
+  });
+
+  it("enforces the source invariants at the database", async () => {
+    // Each raw insert runs in its own rolled-back transaction: a constraint
+    // violation aborts the surrounding transaction.
+    await inRollback(client.db, async (tx) => {
+      // An automated source with pending terms violates the automation check.
+      await expect(
+        tx.insert(competitorSourceTable).values({
+          organizationId: orgId,
+          competitorName: "Raw Auto",
+          sourceType: "website",
+          urlOrIdentifier: `https://raw-auto.example/${randomUUID()}`,
+          collectionMode: "automated",
+          termsStatus: "pending",
+          activeFrom: "2026-09-01",
+        }),
+      ).rejects.toThrow();
+
+      // A non-pending terms status without an approver/instant is refused.
+      await expect(
+        tx.insert(competitorSourceTable).values({
+          organizationId: orgId,
+          competitorName: "Raw Approved",
+          sourceType: "website",
+          urlOrIdentifier: `https://raw-approved.example/${randomUUID()}`,
+          collectionMode: "manual",
+          termsStatus: "approved",
+          activeFrom: "2026-09-01",
+        }),
+      ).rejects.toThrow();
+
+      // A blank URL or competitor name is refused.
+      await expect(
+        tx.insert(competitorSourceTable).values({
+          organizationId: orgId,
+          competitorName: " ",
+          sourceType: "website",
+          urlOrIdentifier: `https://raw-blank.example/${randomUUID()}`,
+          collectionMode: "manual",
+          activeFrom: "2026-09-01",
+        }),
+      ).rejects.toThrow();
+    });
+  });
+
+  it("decides terms, refuses rejecting an automated source, and deactivates", async () => {
+    await inRollback(client.db, async (tx) => {
+      const store = createPostgresCompetitorStore(tx);
+      const manual = await registerCompetitorSource(store, {
+        organizationId: orgId,
+        actorId,
+        competitorName: `Decide ${suffix}`,
+        sourceType: "website",
+        urlOrIdentifier: `https://decide.example/${suffix}`,
+        collectionMode: "manual",
+        activeFrom: "2026-09-01",
+      });
+
+      const approved = await approveCompetitorSourceTerms(store, {
+        organizationId: orgId,
+        actorId,
+        sourceId: manual.id,
+      });
+      expect(approved.termsStatus).toBe("approved");
+      expect(approved.approvedBy).toBe(actorId);
+      expect(approved.approvedAt).not.toBeNull();
+
+      // A foreign-organization decision is a NotFound (surfaced as the domain's
+      // NotFoundError, which extends DomainError).
+      await expect(
+        approveCompetitorSourceTerms(store, {
+          organizationId: otherOrgId,
+          actorId,
+          sourceId: manual.id,
+        }),
+      ).rejects.toBeInstanceOf(DomainError);
+
+      await expect(
+        deactivateCompetitorSource(store, {
+          organizationId: orgId,
+          actorId,
+          sourceId: manual.id,
+          activeTo: "2026-08-01",
+        }),
+      ).rejects.toBeInstanceOf(DomainError);
+
+      const ended = await deactivateCompetitorSource(store, {
+        organizationId: orgId,
+        actorId,
+        sourceId: manual.id,
+        activeTo: "2026-12-31",
+      });
+      expect(ended.activeTo).toBe("2026-12-31");
+    });
+  });
+
+  it("links an observation to a source and refuses a foreign source", async () => {
+    await inRollback(client.db, async (tx) => {
+      const store = createPostgresCompetitorStore(tx);
+      const competitor = await registerCompetitor(store, {
+        organizationId: orgId,
+        actorId,
+        name: `Sourced Rival ${suffix}`,
+      });
+      const source = await registerCompetitorSource(store, {
+        organizationId: orgId,
+        actorId,
+        competitorName: `Sourced Rival ${suffix}`,
+        competitorId: competitor.id,
+        sourceType: "website",
+        urlOrIdentifier: `https://sourced.example/${suffix}`,
+        collectionMode: "automated",
+        activeFrom: "2026-09-01",
+      });
+
+      const observation = await recordCompetitorObservation(store, {
+        organizationId: orgId,
+        actorId,
+        competitorId: competitor.id,
+        observedAt: OBSERVED_AT,
+        source: "website",
+        externalName: "Flat White",
+        competitorSourceId: source.id,
+        captureMethod: "automated",
+        productCategory: "coffee",
+        season: "autumn",
+        provenance: { url: "https://sourced.example/menu" },
+      });
+      expect(observation.competitorSourceId).toBe(source.id);
+      expect(observation.captureMethod).toBe("automated");
+      expect(observation.provenance).toMatchObject({ url: "https://sourced.example/menu" });
+
+      // A source in another organization is refused before the write.
+      const foreignCompetitor = await registerCompetitor(store, {
+        organizationId: otherOrgId,
+        actorId,
+        name: `Foreign Rival ${suffix}`,
+      });
+      await expect(
+        recordCompetitorObservation(store, {
+          organizationId: otherOrgId,
+          actorId,
+          competitorId: foreignCompetitor.id,
+          observedAt: OBSERVED_AT,
+          source: "website",
+          externalName: "Flat White",
+          competitorSourceId: source.id,
+        }),
+      ).rejects.toBeInstanceOf(DomainError);
     });
   });
 });

@@ -50,6 +50,11 @@ function observationRecord(
     reviewStatus: "reviewed",
     reviewedBy: USER,
     reviewedAt: "2026-03-06T09:00:00.000Z",
+    competitorSourceId: null,
+    captureMethod: null,
+    productCategory: null,
+    season: null,
+    provenance: {},
     createdAt: "2026-03-05T09:30:00.000Z",
     ...overrides,
   };

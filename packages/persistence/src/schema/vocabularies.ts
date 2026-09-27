@@ -555,3 +555,18 @@ export const FORECAST_GRAIN = [
   "day_location_category",
   "day_location_product",
 ] as const;
+
+// `ADR-0010` (accepted 2026-09-27) / `DEC-143` (row 18a, `COMP-001`, `DEC-149`):
+// the competitor-source vocabulary, from `schemas/domain-enums.yaml`. `source_type`
+// is the kind of source (Instagram stays `instagram_manual` — never scraped);
+// `collection_mode` is how it is captured (`automated` is allowed only for an
+// approved permitted source, enforced by
+// `competitor_source_automation_requires_approval_check`); `terms_status` is the
+// per-source terms/legal decision (`pending` on capture; automation requires
+// `approved`). The observation review state reuses the existing
+// `COMPETITOR_REVIEW_STATUS` (its §4C `review_state`).
+export const COMPETITOR_SOURCE_TYPE = ["website", "wolt", "instagram_manual", "other"] as const;
+
+export const COMPETITOR_COLLECTION_MODE = ["automated", "manual"] as const;
+
+export const COMPETITOR_TERMS_STATUS = ["pending", "approved", "rejected"] as const;

@@ -1,4 +1,9 @@
-import { COMPETITOR_REVIEW_STATUS } from "@aquarela/persistence";
+import {
+  COMPETITOR_COLLECTION_MODE,
+  COMPETITOR_REVIEW_STATUS,
+  COMPETITOR_SOURCE_TYPE,
+  COMPETITOR_TERMS_STATUS,
+} from "@aquarela/persistence";
 
 import type { AuditInput } from "../auth";
 
@@ -21,6 +26,24 @@ export const COMPETITOR_REVIEW_STATUSES: readonly string[] = COMPETITOR_REVIEW_S
 
 /** Narrow type for `competitor_observation.review_status`, so comparisons cannot drift. */
 export type CompetitorReviewStatus = (typeof COMPETITOR_REVIEW_STATUS)[number];
+
+/** The `competitor_source_type` vocabulary (`ADR-0010`/`DEC-143`). */
+export const COMPETITOR_SOURCE_TYPES: readonly string[] = COMPETITOR_SOURCE_TYPE;
+
+/** The `competitor_collection_mode` vocabulary. */
+export const COMPETITOR_COLLECTION_MODES: readonly string[] = COMPETITOR_COLLECTION_MODE;
+
+/** The `competitor_terms_status` vocabulary. */
+export const COMPETITOR_TERMS_STATUSES: readonly string[] = COMPETITOR_TERMS_STATUS;
+
+/** A `competitor_source.source_type` value. */
+export type CompetitorSourceType = (typeof COMPETITOR_SOURCE_TYPE)[number];
+
+/** A `competitor_source.collection_mode` value. */
+export type CompetitorCollectionMode = (typeof COMPETITOR_COLLECTION_MODE)[number];
+
+/** A `competitor_source.terms_status` value. */
+export type CompetitorTermsStatus = (typeof COMPETITOR_TERMS_STATUS)[number];
 
 /** One `competitor` row (`DEC-126`). */
 export interface CompetitorRecord {
@@ -59,6 +82,14 @@ export interface CompetitorObservationRecord {
   readonly reviewedBy: string | null;
   /** `timestamptz`, ISO; null until reviewed. */
   readonly reviewedAt: string | null;
+  /** `ADR-0010`/`DEC-143`: the source captured from, or null. */
+  readonly competitorSourceId: string | null;
+  /** A `COMPETITOR_COLLECTION_MODES` value, or null. */
+  readonly captureMethod: string | null;
+  readonly productCategory: string | null;
+  readonly season: string | null;
+  /** URL/capture time/method/content hash; `{}` when unknown. */
+  readonly provenance: Record<string, unknown>;
   /** `timestamptz`, ISO. */
   readonly createdAt: string;
 }
@@ -76,6 +107,93 @@ export interface NewCompetitorObservationRecord {
   readonly price: string | null;
   readonly currency: string | null;
   readonly offerNotes: string | null;
+  /** `ADR-0010`/`DEC-143`: the source captured from, or null. */
+  readonly competitorSourceId: string | null;
+  /** A `COMPETITOR_COLLECTION_MODES` value, or null. */
+  readonly captureMethod: string | null;
+  readonly productCategory: string | null;
+  readonly season: string | null;
+  /** URL/capture time/method/content hash; `{}` when unknown. */
+  readonly provenance: Record<string, unknown>;
+}
+
+/** One `competitor_source` row (`ADR-0010`/`DEC-143`, `COMP-001`). */
+export interface CompetitorSourceRecord {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly competitorName: string;
+  /** Optional link to the internal competitor master (deferred); null until set. */
+  readonly competitorId: string | null;
+  /** One of `COMPETITOR_SOURCE_TYPES`. */
+  readonly sourceType: string;
+  readonly urlOrIdentifier: string;
+  /** One of `COMPETITOR_COLLECTION_MODES`. */
+  readonly collectionMode: string;
+  /** One of `COMPETITOR_TERMS_STATUSES`. */
+  readonly termsStatus: string;
+  readonly approvedBy: string | null;
+  /** `timestamptz`, ISO; null until a terms decision. */
+  readonly approvedAt: string | null;
+  readonly rateLimitNote: string | null;
+  /** ISO date (`YYYY-MM-DD`). */
+  readonly activeFrom: string;
+  /** ISO date (`YYYY-MM-DD`), or null while open-ended. */
+  readonly activeTo: string | null;
+  /** `timestamptz`, ISO. */
+  readonly createdAt: string;
+  readonly createdBy: string | null;
+  /** `timestamptz`, ISO; null until first mutation. */
+  readonly updatedAt: string | null;
+  readonly updatedBy: string | null;
+  readonly version: number;
+}
+
+/** A source to register. */
+export interface NewCompetitorSourceRecord {
+  readonly organizationId: string;
+  readonly competitorName: string;
+  readonly competitorId: string | null;
+  readonly sourceType: string;
+  readonly urlOrIdentifier: string;
+  readonly collectionMode: string;
+  readonly termsStatus: string;
+  readonly approvedBy: string | null;
+  /** `timestamptz`, ISO. */
+  readonly approvedAt: string | null;
+  readonly rateLimitNote: string | null;
+  /** ISO date (`YYYY-MM-DD`). */
+  readonly activeFrom: string;
+  readonly createdBy: string | null;
+}
+
+/** The terms decision the port writes (`approved` or `rejected`). */
+export interface UpdateCompetitorSourceTermsRecord {
+  readonly organizationId: string;
+  readonly sourceId: string;
+  /** `approved` or `rejected`. */
+  readonly termsStatus: string;
+  readonly approvedBy: string;
+  /** `timestamptz`, ISO. */
+  readonly approvedAt: string;
+  readonly updatedBy: string;
+}
+
+/** The deactivation the port writes (sets `active_to`). */
+export interface UpdateCompetitorSourceActiveToRecord {
+  readonly organizationId: string;
+  readonly sourceId: string;
+  /** ISO date (`YYYY-MM-DD`). */
+  readonly activeTo: string;
+  readonly updatedBy: string;
+}
+
+/** Source filters for the store read. */
+export interface CompetitorSourceListQuery {
+  readonly organizationId: string;
+  /** `true` → open-ended (`active_to is null`); `false` → ended. */
+  readonly active?: boolean;
+  readonly limit?: number;
+  readonly offset?: number;
 }
 
 /** The one-shot review decision the port writes. */
@@ -162,6 +280,34 @@ export interface CompetitorStore {
     readonly name: string;
   }): Promise<CompetitorRecord | undefined>;
   listCompetitors(query: CompetitorListQuery): Promise<readonly CompetitorRecord[]>;
+  /** Creates one source (`(organizationId, urlOrIdentifier)` is unique). */
+  createCompetitorSource(input: NewCompetitorSourceRecord): Promise<CompetitorSourceRecord>;
+  /** One source by id, organization-scoped (`DEC-061`), or `undefined`. */
+  findCompetitorSource(query: {
+    readonly organizationId: string;
+    readonly sourceId: string;
+  }): Promise<CompetitorSourceRecord | undefined>;
+  /** One source by its `(organizationId, urlOrIdentifier)` unique key, or `undefined`. */
+  findCompetitorSourceByUrl(query: {
+    readonly organizationId: string;
+    readonly urlOrIdentifier: string;
+  }): Promise<CompetitorSourceRecord | undefined>;
+  /** The same id read, taking the row's write lock (`SELECT … FOR UPDATE`). */
+  lockCompetitorSource(query: {
+    readonly organizationId: string;
+    readonly sourceId: string;
+  }): Promise<CompetitorSourceRecord | undefined>;
+  /** Sets the terms decision and its actor/instant on one org-scoped source. */
+  updateCompetitorSourceTerms(
+    input: UpdateCompetitorSourceTermsRecord,
+  ): Promise<CompetitorSourceRecord | undefined>;
+  /** Ends one org-scoped source's active window (`active_to`). */
+  updateCompetitorSourceActiveTo(
+    input: UpdateCompetitorSourceActiveToRecord,
+  ): Promise<CompetitorSourceRecord | undefined>;
+  listCompetitorSources(
+    query: CompetitorSourceListQuery,
+  ): Promise<readonly CompetitorSourceRecord[]>;
   /** Creates one observation; it opens `pending`. */
   createObservation(input: NewCompetitorObservationRecord): Promise<CompetitorObservationRecord>;
   /** One observation by id, organization-scoped (`DEC-061`), or `undefined`. */

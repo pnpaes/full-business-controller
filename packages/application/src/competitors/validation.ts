@@ -41,6 +41,38 @@ export function assertUuid(value: string, field: string): void {
   }
 }
 
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Asserts `value` is an ISO calendar date (`YYYY-MM-DD`) that actually parses.
+ * Returns the value so a caller can use the assertion as a normaliser.
+ */
+export function assertIsoDate(value: string, field: string): string {
+  if (!ISO_DATE.test(value) || Number.isNaN(Date.parse(`${value}T00:00:00Z`))) {
+    throw new DomainError(`${field} must be an ISO date (YYYY-MM-DD)`);
+  }
+  return value;
+}
+
+/** Asserts `value` is one of `allowed`; returns it. A closed vocabulary never drifts. */
+export function assertEnumValue(value: string, allowed: readonly string[], field: string): string {
+  if (!allowed.includes(value)) {
+    throw new DomainError(`${field} must be one of ${allowed.join(", ")}`);
+  }
+  return value;
+}
+
+/** An optional jsonb object; absent/`null` → `{}`; a non-object is a `DomainError`. */
+export function optionalRecord(value: unknown, field: string): Record<string, unknown> {
+  if (value === null || value === undefined) {
+    return {};
+  }
+  if (typeof value !== "object" || Array.isArray(value)) {
+    throw new DomainError(`${field} must be a JSON object`);
+  }
+  return value as Record<string, unknown>;
+}
+
 export function assertOptionalUuid(value: string | null | undefined, field: string): void {
   if (value === null || value === undefined) {
     return;
