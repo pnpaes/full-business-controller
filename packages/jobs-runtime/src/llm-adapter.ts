@@ -160,12 +160,19 @@ export function providerLabel(apiUrl: string | undefined): string {
   }
 }
 
-function readTokenCount(usage: unknown, key: string): number {
+/** The first numeric field among `keys` wins; absent or non-numeric counts as 0. */
+function readTokenCount(usage: unknown, keys: readonly string[]): number {
   if (usage === null || typeof usage !== "object") {
     return 0;
   }
-  const value = (usage as Record<string, unknown>)[key];
-  return typeof value === "number" ? tokenCount(value) : 0;
+  const record = usage as Record<string, unknown>;
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "number") {
+      return tokenCount(value);
+    }
+  }
+  return 0;
 }
 
 /** The raw read: pricing is applied by the caller from the configured table. */
@@ -181,15 +188,16 @@ function readCompletion(payload: unknown): RawCompletion {
   if (!Array.isArray(choices) || choices.length === 0) {
     throw new Error("llm response has no choices");
   }
-  const first = choices[0];
+  const first =
+    choices[0] !== null && typeof choices[0] === "object"
+      ? (choices[0] as Record<string, unknown>)
+      : undefined;
   const message =
-    first !== null && typeof first === "object"
-      ? (first as Record<string, unknown>)["message"]
+    first !== undefined && first["message"] !== null && typeof first["message"] === "object"
+      ? (first["message"] as Record<string, unknown>)
       : undefined;
-  const content =
-    message !== null && typeof message === "object"
-      ? (message as Record<string, unknown>)["content"]
-      : undefined;
+  // Chat-completions carry `message.content`; a legacy completion carries `text`.
+  const content = message?.["content"] ?? first?.["text"];
   if (typeof content !== "string") {
     throw new Error("llm response is missing choices[0].message.content");
   }
@@ -197,8 +205,8 @@ function readCompletion(payload: unknown): RawCompletion {
   return {
     text: content,
     tokenCounts: {
-      input: readTokenCount(usage, "prompt_tokens"),
-      output: readTokenCount(usage, "completion_tokens"),
+      input: readTokenCount(usage, ["prompt_tokens", "input_tokens"]),
+      output: readTokenCount(usage, ["completion_tokens", "output_tokens"]),
     },
   };
 }

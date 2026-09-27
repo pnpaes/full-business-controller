@@ -196,6 +196,69 @@ describe("createOpenAiCompatibleLlmAdapter", () => {
     expect(result.costEstimate).toBe("0.0000");
   });
 
+  it("prices a response using input_tokens/output_tokens", async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async () =>
+      jsonResponse({
+        choices: [{ message: { content: "hello" } }],
+        usage: { input_tokens: 1000, output_tokens: 500 },
+      }),
+    );
+    const adapter = createOpenAiCompatibleLlmAdapter({
+      apiUrl: API_URL,
+      apiKey: API_KEY,
+      model: "m",
+      priceInputPer1M: "2.000000",
+      priceOutputPer1M: "4.000000",
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+
+    const result = await adapter.complete({ system: "s", user: "u" });
+    expect(result.tokenCounts).toEqual({ input: 1000, output: 500 });
+    expect(result.costEstimate).toBe("0.0040");
+  });
+
+  it("prefers the OpenAI names when both usage shapes are present", async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async () =>
+      jsonResponse({
+        choices: [{ message: { content: "hello" } }],
+        usage: {
+          prompt_tokens: 7,
+          completion_tokens: 11,
+          input_tokens: 1000,
+          output_tokens: 500,
+        },
+      }),
+    );
+    const adapter = createOpenAiCompatibleLlmAdapter({
+      apiUrl: API_URL,
+      apiKey: API_KEY,
+      model: "m",
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+
+    const result = await adapter.complete({ system: "s", user: "u" });
+    expect(result.tokenCounts).toEqual({ input: 7, output: 11 });
+  });
+
+  it("parses a completion-style response with choices[0].text only", async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async () =>
+      jsonResponse({
+        choices: [{ text: "hello" }],
+        usage: { prompt_tokens: 3, completion_tokens: 4 },
+      }),
+    );
+    const adapter = createOpenAiCompatibleLlmAdapter({
+      apiUrl: API_URL,
+      apiKey: API_KEY,
+      model: "m",
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+
+    const result = await adapter.complete({ system: "s", user: "u" });
+    expect(result.text).toBe("hello");
+    expect(result.tokenCounts).toEqual({ input: 3, output: 4 });
+  });
+
   it("fails construction on a malformed price", () => {
     expect(() => createOpenAiCompatibleLlmAdapter({ priceInputPer1M: "1.1234567" })).toThrow();
     expect(() => createOpenAiCompatibleLlmAdapter({ priceOutputPer1M: "-1" })).toThrow();
