@@ -87,6 +87,7 @@ export async function POST(request: Request): Promise<Response> {
       organizationId,
       actorId: session.userId,
       locationId: parsed.input.locationId,
+      ...(parsed.input.storageAreaId === null ? {} : { storageAreaId: parsed.input.storageAreaId }),
       supplierId: parsed.input.supplierId,
       storeName: parsed.input.storeName,
       deliveryRef: parsed.input.deliveryRef,

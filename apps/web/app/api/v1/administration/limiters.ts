@@ -19,4 +19,5 @@ export const administrationLimiters = createSharedLimiters("administration", {
   enableUser: { limit: 120, windowMs: FIFTEEN_MINUTES_MS },
   createIntegrationSource: { limit: 120, windowMs: FIFTEEN_MINUTES_MS },
   updateIntegrationSource: { limit: 120, windowMs: FIFTEEN_MINUTES_MS },
+  setLocationDefaultStorageArea: { limit: 120, windowMs: FIFTEEN_MINUTES_MS },
 });

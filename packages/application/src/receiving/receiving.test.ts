@@ -72,6 +72,46 @@ function buildStore(): FakeReceivingStore {
     packUnitId: "pack",
     packToBaseUnitFactor: "1000",
   });
+  // The slice-8 ledger port (`DEC-145`): the receipt posts each line through
+  // `postStockMovement`, which validates the organization, a stocked item, the
+  // unit and a storage area belonging to the location — so the in-memory
+  // inventory fixture must mirror the receiving items/units here.
+  store.inventory.organizations.set(ORG, { id: ORG, currency: "NOK" });
+  store.inventory.locations.set("loc-1", {
+    id: "loc-1",
+    organizationId: ORG,
+    code: "MAIN",
+    name: "Main",
+    kind: "operating",
+    defaultStorageAreaId: "area-1",
+  });
+  store.inventory.storageAreas.set("area-1", {
+    id: "area-1",
+    organizationId: ORG,
+    locationId: "loc-1",
+    code: "DRY",
+    name: "Dry store",
+    kind: "dry_store",
+    isTransit: false,
+  });
+  for (const unit of ["g", "pack", "ml"] as const) {
+    const receiving = store.units.get(unit)!;
+    store.inventory.units.set(unit, {
+      id: receiving.id,
+      organizationId: receiving.organizationId,
+      code: receiving.code,
+      dimension: receiving.dimension,
+    });
+  }
+  store.inventory.items.set("item-1", {
+    id: "item-1",
+    organizationId: ORG,
+    code: "ITEM-1",
+    name: "Item 1",
+    baseUnitId: "g",
+    inventoryPolicy: "stocked",
+    lotTracked: false,
+  });
   return store;
 }
 
@@ -680,5 +720,83 @@ describe("recordGoodsReceipt", () => {
     await expect(recordGoodsReceipt(store, baseInput({ lines: [] }))).rejects.toThrow(
       /at least one line/,
     );
+  });
+
+  describe("stock-ledger posting and storage-area resolution (DEC-145)", () => {
+    it("posts one receipt movement into the location's default storage area", async () => {
+      const result = await recordGoodsReceipt(store, baseInput());
+
+      const movements = [...store.inventory.stockMovements.values()];
+      expect(movements).toHaveLength(1);
+      expect(movements[0]).toMatchObject({
+        organizationId: ORG,
+        locationId: "loc-1",
+        storageAreaId: "area-1",
+        movementType: "receipt",
+        sourceType: "goods_receipt",
+        sourceId: result.goodsReceiptId,
+        quantityDelta: "2000.000000",
+        unitCost: "0.0500",
+        idempotencyKey: `receipt-${result.goodsReceiptId}-${result.lines[0]!.goodsReceiptLineId}`,
+      });
+      // The resolved default is posted, but the receipt row stores the override
+      // only (null here), so a later default change does not rewrite history.
+      expect(store.receipts[0]).toMatchObject({ storageAreaId: null });
+    });
+
+    it("posts into the explicit override, which wins over the location default", async () => {
+      store.inventory.storageAreas.set("area-2", {
+        id: "area-2",
+        organizationId: ORG,
+        locationId: "loc-1",
+        code: "CHILL",
+        name: "Chiller",
+        kind: "refrigerator",
+        isTransit: false,
+      });
+
+      await recordGoodsReceipt(store, baseInput({ storageAreaId: "area-2" }));
+
+      const movements = [...store.inventory.stockMovements.values()];
+      expect(movements).toHaveLength(1);
+      expect(movements[0]).toMatchObject({ storageAreaId: "area-2" });
+      expect(store.receipts[0]).toMatchObject({ storageAreaId: "area-2" });
+    });
+
+    it("fails closed when neither the override nor the location default resolves", async () => {
+      store.inventory.locations.set("loc-1", {
+        id: "loc-1",
+        organizationId: ORG,
+        code: "MAIN",
+        name: "Main",
+        kind: "operating",
+        defaultStorageAreaId: null,
+      });
+
+      await expect(recordGoodsReceipt(store, baseInput())).rejects.toThrow(
+        /no storage area to receive into/,
+      );
+      // Nothing was created: no receipt, no line, no movement.
+      expect(store.receipts).toHaveLength(0);
+      expect(store.lines).toHaveLength(0);
+      expect(store.inventory.stockMovements.size).toBe(0);
+    });
+
+    it("posts the line's lot when a lot number is present", async () => {
+      const result = await recordGoodsReceipt(
+        store,
+        baseInput({
+          lines: [{ ...baseInput().lines[0]!, lotNumber: "LOT-1", expiryDate: "2026-12-31" }],
+        }),
+      );
+
+      const movement = [...store.inventory.stockMovements.values()][0]!;
+      expect(movement.lotId).not.toBeNull();
+      expect(store.inventory.stockLots.get(movement.lotId!)).toMatchObject({
+        lotNumber: "LOT-1",
+        expiryDate: "2026-12-31",
+      });
+      expect(movement.sourceId).toBe(result.goodsReceiptId);
+    });
   });
 });

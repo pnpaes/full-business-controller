@@ -110,6 +110,7 @@ describe("registerStorageArea", () => {
       code: "F",
       name: "F",
       kind: "operating",
+      defaultStorageAreaId: null,
     });
 
     await expect(

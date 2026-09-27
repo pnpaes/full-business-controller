@@ -38,6 +38,7 @@ describe("parseReceiptBody", () => {
     expect(parsed.input.locationId).toBe(LOCATION);
     expect(parsed.input.supplierId).toBe(SUPPLIER);
     expect(parsed.input.storeName).toBeNull();
+    expect(parsed.input.storageAreaId).toBeNull();
     expect(parsed.input.deliveryRef).toBe("slip-1");
     expect(parsed.input.receivedAt).toBe("2026-09-19T10:00:00.000Z");
 
@@ -66,6 +67,16 @@ describe("parseReceiptBody", () => {
 
   it("rejects a purchase with neither a supplier nor a store name", () => {
     expect(parseReceiptBody(baseBody({ supplierId: null, storeName: null })).ok).toBe(false);
+  });
+
+  it("carries an optional storage-area override and rejects a malformed one (DEC-145)", () => {
+    const area = "77777777-7777-4777-8777-777777777777";
+    const parsed = parseReceiptBody(baseBody({ storageAreaId: area }));
+
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.input.storageAreaId).toBe(area);
+    expect(parseReceiptBody(baseBody({ storageAreaId: "not-a-uuid" })).ok).toBe(false);
   });
 
   it("carries an inclusive line's recoverable tax through unchanged", () => {

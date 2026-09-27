@@ -18,6 +18,8 @@ export { listStorageAreas } from "./list-storage-areas";
 export type { ListStorageAreasQuery } from "./list-storage-areas";
 export { registerStorageArea } from "./register-storage-area";
 export type { RegisterStorageAreaInput } from "./register-storage-area";
+export { setLocationDefaultStorageArea } from "./set-location-default-storage-area";
+export type { SetLocationDefaultStorageAreaInput } from "./set-location-default-storage-area";
 export { reverseStockMovement } from "./reverse-stock-movement";
 export type {
   ReverseStockMovementInput,

@@ -42,6 +42,7 @@ function toLocation(row: repo.Location): InventoryLocationRecord {
     code: row.code,
     name: row.name,
     kind: row.kind,
+    defaultStorageAreaId: row.defaultStorageAreaId,
   };
 }
 
@@ -152,6 +153,10 @@ export function createPostgresInventoryStore(db: Database): InventoryStore {
     },
     findLocation: async (locationId) => {
       const row = await repo.findLocationById(db, locationId);
+      return row === undefined ? undefined : toLocation(row);
+    },
+    setLocationDefaultStorageArea: async (query) => {
+      const row = await repo.setLocationDefaultStorageArea(db, query);
       return row === undefined ? undefined : toLocation(row);
     },
     findStorageArea: async (storageAreaId) => {

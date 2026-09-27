@@ -3,6 +3,7 @@ import * as repo from "@aquarela/persistence";
 import type { Database, NodeDatabase } from "@aquarela/persistence";
 
 import { createPostgresCostingReadStore } from "../costing/read-postgres-store";
+import { createPostgresInventoryStore } from "../inventory";
 
 import type {
   GoodsReceiptLineRecord,
@@ -113,6 +114,9 @@ export function createPostgresReceivingStore(db: Database): ReceivingStore {
   // Reuses the costing read adapter's tax-rule projection; the receiving store
   // exposes it so `recordGoodsReceipt` can resolve an inclusive line's rate.
   const taxReads = createPostgresCostingReadStore(db);
+  // The slice-8 ledger port on the same handle, so the receipt posts its stock
+  // movements through `postStockMovement` on the same transaction (`DEC-145`).
+  const inventory = createPostgresInventoryStore(db);
   return {
     withTransaction: async (fn) => {
       if (!isNodeDatabase(db)) {
@@ -120,6 +124,7 @@ export function createPostgresReceivingStore(db: Database): ReceivingStore {
       }
       return db.transaction((tx) => fn(createPostgresReceivingStore(tx)));
     },
+    inventory,
     findItem: async (itemId) => {
       const row = await repo.findItemById(db, itemId);
       return row === undefined

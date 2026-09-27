@@ -12,6 +12,7 @@ import {
 } from "@aquarela/domain";
 import { TAX_BASIS } from "@aquarela/persistence";
 
+import { postStockMovement } from "../inventory";
 import { resolveTaxRule } from "../tax/resolve-tax-rule";
 
 import { RECEIVING_AUDIT_ACTIONS } from "./actions";
@@ -59,6 +60,12 @@ export interface RecordGoodsReceiptLineInput {
 export interface RecordGoodsReceiptInput {
   readonly organizationId: string;
   readonly locationId: string;
+  /**
+   * `DEC-145`: an explicit per-receipt storage-area override. When omitted/null
+   * the receipt posts into the receiving location's default storage area; when
+   * neither resolves the command fails closed and nothing is created.
+   */
+  readonly storageAreaId?: string | null;
   /** Accepts the receipt (`accepted_by`) and is recorded on the audit row. */
   readonly actorId: string;
   readonly receivedAt: Date;
@@ -92,6 +99,11 @@ export interface RecordedGoodsReceiptLine {
 export interface RecordGoodsReceiptResult {
   readonly goodsReceiptId: string;
   readonly lines: readonly RecordedGoodsReceiptLine[];
+  /**
+   * The posted `stock_movement` ids, one per line in line order (`DEC-145`), so
+   * a caller can link the receipt to the ledger facts it produced.
+   */
+  readonly movementIds: readonly string[];
 }
 
 interface ValidatedLine {
@@ -406,9 +418,14 @@ async function appendPriceHistory(
 
 /**
  * Records an accepted goods receipt (PROC-002): validates the lines at the trust
- * boundary, computes each line's landed base-unit cost (§5, B1), and appends the
- * price history plus an audit row in one transaction. Stock movements are **not**
- * posted: that is the inventory slice (slice 8), gated on `ADR-0005` (Proposed).
+ * boundary, computes each line's landed base-unit cost (§5, B1), appends the
+ * price history and an audit row, and posts one `receipt` stock movement per
+ * line — all in one transaction (`DEC-145`). The destination storage area
+ * resolves to the explicit per-receipt override, else the receiving location's
+ * default storage area; when neither resolves the command fails closed before
+ * creating any movement. Each movement's idempotency key is
+ * `receipt-<receiptId>-<lineId>`, so a replay within the receipt cannot
+ * double-post.
  */
 export async function recordGoodsReceipt(
   store: ReceivingStore,
@@ -430,6 +447,29 @@ export async function recordGoodsReceipt(
       if (supplier === undefined || supplier.organizationId !== input.organizationId) {
         throw new DomainError("supplier not found in organization");
       }
+    }
+
+    // Resolve the destination storage area before any insert (`DEC-145`): the
+    // explicit per-receipt override wins, else the receiving location's default.
+    // A receipt with neither fails closed, so no receipt/line/movement is left
+    // behind by an unresolvable destination.
+    const location = await tx.inventory.findLocation(input.locationId);
+    if (location === undefined || location.organizationId !== input.organizationId) {
+      throw new DomainError("location not found in organization");
+    }
+    const override = input.storageAreaId ?? null;
+    const resolvedStorageAreaId = override ?? location.defaultStorageAreaId ?? null;
+    if (resolvedStorageAreaId === null) {
+      throw new DomainError(
+        "no storage area to receive into: the receipt has no storageAreaId and the receiving location has no default storage area (DEC-145)",
+      );
+    }
+    const storageArea = await tx.inventory.findStorageArea(resolvedStorageAreaId);
+    if (storageArea === undefined || storageArea.organizationId !== input.organizationId) {
+      throw new DomainError("storage area not found in organization");
+    }
+    if (storageArea.locationId !== input.locationId) {
+      throw new DomainError("storage area does not belong to the receipt location");
     }
 
     // Resolve every inclusive line's recoverable tax before any insert, so an
@@ -459,6 +499,9 @@ export async function recordGoodsReceipt(
       supplierId,
       storeName,
       locationId: input.locationId,
+      // Persist the explicit override only; the resolved default is recorded on
+      // the movements, not frozen onto the receipt (`DEC-145`).
+      storageAreaId: override,
       purchaseOrderId: input.purchaseOrderId ?? null,
       deliveryRef: input.deliveryRef ?? null,
       receivedAt: input.receivedAt,
@@ -485,6 +528,41 @@ export async function recordGoodsReceipt(
       );
     }
 
+    // Post one `receipt` movement per line into the resolved storage area
+    // (`DEC-145`), on the same transaction as the receipt: a failure on any line
+    // (a non-stocked item, a lot-tracked item with no lot) rolls back the whole
+    // receipt rather than leaving an unledgered acceptance. The per-line key
+    // `receipt-<receiptId>-<lineId>` makes a replay idempotent; it must not
+    // contain ':' (the ledger reserves ':' for its internal `:revaluation`
+    // suffix).
+    const movementIds: string[] = [];
+    for (const [index, line] of validated.entries()) {
+      const recorded = lines[index]!;
+      const posted = await postStockMovement(tx.inventory, {
+        organizationId: input.organizationId,
+        actorId: input.actorId,
+        locationId: input.locationId,
+        storageAreaId: resolvedStorageAreaId,
+        itemId: line.input.itemId,
+        movementType: "receipt",
+        sourceType: "goods_receipt",
+        sourceId: receipt.id,
+        quantityDelta: recorded.baseQtyAccepted,
+        unitCost: recorded.landedBaseUnitCost,
+        occurredAt: input.receivedAt.toISOString(),
+        lot:
+          line.input.lotNumber == null
+            ? null
+            : {
+                lotNumber: line.input.lotNumber,
+                expiryDate: line.input.expiryDate ?? null,
+                receivedAt: input.receivedAt.toISOString(),
+              },
+        idempotencyKey: `receipt-${receipt.id}-${recorded.goodsReceiptLineId}`,
+      });
+      movementIds.push(posted.movementId);
+    }
+
     // Sum of line price × received pack quantity (money scale, HALF_UP), so an
     // auditor can reconcile the receipt without joining the lines. A fixed
     // derived number — no secret, no free text.
@@ -505,6 +583,6 @@ export async function recordGoodsReceipt(
       after: { status: "accepted", lineCount: lines.length, gross_total: grossTotal.toString() },
     });
 
-    return { goodsReceiptId: receipt.id, lines };
+    return { goodsReceiptId: receipt.id, lines, movementIds };
   });
 }

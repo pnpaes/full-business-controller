@@ -3,7 +3,7 @@ import { check, date, index, pgTable, text, uuid, type AnyPgColumn } from "drizz
 
 import { item, unit } from "./catalog";
 import { auditColumns, enumCheck, money, orgId, quantity, rate, tstz, uuidPk } from "./columns";
-import { location, organization } from "./organization";
+import { location, organization, storageArea } from "./organization";
 import { supplier } from "./supplier";
 import { taxRule } from "./tax";
 import { RECEIPT_STATUS, TAX_BASIS } from "./vocabularies";
@@ -25,6 +25,12 @@ export const goodsReceipt = pgTable(
     locationId: uuid("location_id")
       .notNull()
       .references(() => location.id),
+    // DEC-145: the explicit per-receipt storage-area override. Nullable and
+    // expand-only; when null the receipt's storage area resolves to the
+    // receiving location's `default_storage_area_id` at posting time. The
+    // coherence guard (migration `0074`) asserts the override belongs to the
+    // receipt's location and organization.
+    storageAreaId: uuid("storage_area_id").references(() => storageArea.id),
     // FK purchase_order(id) when that table is declared (deferred slice).
     purchaseOrderId: uuid("purchase_order_id"),
     deliveryRef: text("delivery_ref"),

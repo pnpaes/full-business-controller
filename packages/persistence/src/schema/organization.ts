@@ -1,5 +1,14 @@
 import { sql } from "drizzle-orm";
-import { boolean, check, date, pgTable, text, unique, uuid } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  check,
+  date,
+  pgTable,
+  text,
+  unique,
+  uuid,
+  type AnyPgColumn,
+} from "drizzle-orm/pg-core";
 
 import { currency, enumCheck, jsonObject, orgId, rangeCheck, tstz, uuidPk } from "./columns";
 import { COST_CENTER_KIND, LOCATION_KIND, STORAGE_AREA_KIND } from "./vocabularies";
@@ -26,6 +35,14 @@ export const location = pgTable(
       .notNull()
       .default(sql`current_date`),
     activeTo: date("active_to"),
+    // DEC-145: the receiving location's default storage area, a fallback for a
+    // receipt with no explicit per-receipt override. Forward-referenced because
+    // `storage_area` is declared below and itself FKs back to `location`. The
+    // coherence guard (migration `0074`) asserts the area belongs to this
+    // location and organization.
+    defaultStorageAreaId: uuid("default_storage_area_id").references(
+      (): AnyPgColumn => storageArea.id,
+    ),
   },
   (t) => [
     unique("location_organization_id_code_key").on(t.organizationId, t.code),

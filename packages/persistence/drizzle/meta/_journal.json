@@ -519,6 +519,13 @@
       "when": 1790499229781,
       "tag": "0073_worker_heartbeat",
       "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1790503111114,
+      "tag": "0074_receipt_stock_ledger_area",
+      "breakpoints": true
     }
   ]
 }

@@ -1,6 +1,7 @@
 import type { UnitDimension } from "@aquarela/domain";
 
 import type { AuditInput } from "../auth";
+import type { InventoryStore } from "../inventory";
 import type { TaxReadStore } from "../tax/read-types";
 
 /**
@@ -45,6 +46,12 @@ export interface NewReceiptRecord {
   readonly supplierId: string | null;
   readonly storeName: string | null;
   readonly locationId: string;
+  /**
+   * `DEC-145`: the explicit per-receipt storage-area override, persisted on the
+   * receipt. Nullable; when null the posting resolves the receiving location's
+   * default storage area instead.
+   */
+  readonly storageAreaId: string | null;
   readonly purchaseOrderId: string | null;
   readonly deliveryRef: string | null;
   readonly receivedAt: Date;
@@ -220,6 +227,15 @@ export interface ListGoodsReceiptsQuery {
 export interface ReceivingStore extends TaxReadStore {
   /** Binds `fn` to one transaction so the receipt, its price history and the audit row commit together. */
   withTransaction<T>(fn: (store: ReceivingStore) => Promise<T>): Promise<T>;
+  /**
+   * The slice-8 ledger port bound to the same transaction (`DEC-145`), so
+   * `recordGoodsReceipt` posts each line's `receipt` movement through
+   * `postStockMovement` on the receipt's own transaction. Composed rather than
+   * extended (unlike the production/counts/transfers stores) because this
+   * port's `findUnit` must carry `isBase` and `findItem` must stay the
+   * receiving projection, which the `InventoryStore` shapes do not.
+   */
+  readonly inventory: InventoryStore;
   findItem(itemId: string): Promise<ReceivingItem | undefined>;
   findUnit(unitId: string): Promise<ReceivingUnit | undefined>;
   findSupplier(supplierId: string): Promise<ReceivingSupplier | undefined>;

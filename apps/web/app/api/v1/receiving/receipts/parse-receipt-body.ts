@@ -42,6 +42,8 @@ export interface ParsedReceiptLine {
 
 export interface ParsedReceiptBody {
   readonly locationId: string;
+  /** `DEC-145`: explicit per-receipt storage-area override; null = use the location default. */
+  readonly storageAreaId: string | null;
   readonly supplierId: string | null;
   readonly storeName: string | null;
   readonly deliveryRef: string | null;
@@ -190,6 +192,7 @@ export function parseReceiptBody(body: unknown): ParseReceiptBodyResult {
     return { ok: false };
   }
   const locationId = requiredUuid(object, "locationId");
+  const storageAreaId = optionalUuid(object, "storageAreaId");
   const supplierId = optionalUuid(object, "supplierId");
   const storeName = optionalString(object, "storeName");
   const deliveryRef = optionalString(object, "deliveryRef");
@@ -197,6 +200,7 @@ export function parseReceiptBody(body: unknown): ParseReceiptBodyResult {
   const receivedAt = requiredString(object, "receivedAt");
   if (
     locationId === undefined ||
+    storageAreaId === "invalid" ||
     supplierId === "invalid" ||
     storeName === "invalid" ||
     deliveryRef === "invalid" ||
@@ -231,6 +235,7 @@ export function parseReceiptBody(body: unknown): ParseReceiptBodyResult {
     ok: true,
     input: {
       locationId,
+      storageAreaId,
       supplierId,
       storeName,
       deliveryRef,

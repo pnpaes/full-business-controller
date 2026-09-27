@@ -52,6 +52,7 @@ async function addReceipt(
     supplierId: overrides.supplierId ?? null,
     storeName: "Test Store",
     locationId: overrides.locationId ?? "loc-1",
+    storageAreaId: null,
     purchaseOrderId: null,
     deliveryRef: null,
     receivedAt,

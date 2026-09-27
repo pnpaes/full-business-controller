@@ -9,16 +9,22 @@ import {
   listCostObservationsForItem,
   listGoodsReceiptLines,
   listGoodsReceiptsForOrganization,
+  listStockMovements,
   listSupplierPricesForSupplierItem,
   location,
+  storageArea,
+  stockLot,
   taxRule,
   type DatabaseTransaction,
   type DbClient,
   type NodeDatabase,
   unit,
 } from "@aquarela/persistence";
+import { eq } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+
+import { createPostgresInventoryStore, postStockMovement } from "../inventory";
 
 import { createPostgresReceivingStore } from "./postgres-store";
 import { recordGoodsReceipt, type RecordGoodsReceiptInput } from "./record-goods-receipt";
@@ -46,6 +52,8 @@ async function inRollback(
 
 interface Fixture {
   readonly locationId: string;
+  readonly storageAreaId: string;
+  readonly otherStorageAreaId: string;
   readonly itemId: string;
   readonly packUnitId: string;
   readonly supplierId: string;
@@ -61,10 +69,36 @@ async function createFixture(tx: DatabaseTransaction, orgId: string): Promise<Fi
     .insert(unit)
     .values({ organizationId: orgId, code: `pack_${suffix}`, dimension: "package", isBase: false })
     .returning();
+  // The location is created with a default storage area (`DEC-145`), so a
+  // receipt with no explicit override posts into it.
   const createdLocation = await tx
     .insert(location)
     .values({ organizationId: orgId, code: `loc_${suffix}`, name: "Test Location" })
     .returning();
+  const area = await tx
+    .insert(storageArea)
+    .values({
+      organizationId: orgId,
+      locationId: createdLocation[0]!.id,
+      code: `DRY_${suffix}`,
+      name: "Dry store",
+      kind: "dry_store",
+    })
+    .returning();
+  const otherArea = await tx
+    .insert(storageArea)
+    .values({
+      organizationId: orgId,
+      locationId: createdLocation[0]!.id,
+      code: `CHILL_${suffix}`,
+      name: "Chiller",
+      kind: "refrigerator",
+    })
+    .returning();
+  await tx
+    .update(location)
+    .set({ defaultStorageAreaId: area[0]!.id })
+    .where(eq(location.id, createdLocation[0]!.id));
   const flour = await tx
     .insert(item)
     .values({
@@ -92,6 +126,8 @@ async function createFixture(tx: DatabaseTransaction, orgId: string): Promise<Fi
 
   return {
     locationId: createdLocation[0]!.id,
+    storageAreaId: area[0]!.id,
+    otherStorageAreaId: otherArea[0]!.id,
     itemId: flour[0]!.id,
     packUnitId: pack[0]!.id,
     supplierId: supplier.id,
@@ -606,6 +642,157 @@ describe.skipIf(!databaseUrl)("recordGoodsReceipt against PostgreSQL", () => {
       const exclusiveLines = await listGoodsReceiptLines(tx, exclusive.goodsReceiptId);
       expect(exclusiveLines[0]!.appliedTaxRate).toBeNull();
       expect(exclusiveLines[0]!.landedBaseUnitCost).toBe("0.1000");
+    });
+  });
+
+  describe("stock-ledger posting and storage-area resolution (DEC-145)", () => {
+    const exclusiveLine = (fixture: Fixture) => ({
+      supplierItemId: fixture.supplierItemId,
+      itemId: fixture.itemId,
+      receivedPackQty: "2",
+      acceptedPackQty: "2",
+      unitId: fixture.packUnitId,
+      packToBaseFactor: "1000",
+      price: "100",
+      discount: "5",
+      taxBasis: "exclusive",
+      allocatedFreight: "3",
+      importFee: "2",
+    });
+
+    it("posts one receipt movement per line with the resolved area, quantity, cost and lot", async () => {
+      await inRollback(client.db, async (tx) => {
+        const fixture = await createFixture(tx, orgId);
+        const result = await recordGoodsReceipt(createPostgresReceivingStore(tx), {
+          organizationId: orgId,
+          locationId: fixture.locationId,
+          actorId: randomUUID(),
+          receivedAt,
+          supplierId: fixture.supplierId,
+          lines: [{ ...exclusiveLine(fixture), lotNumber: "LOT-1", expiryDate: "2026-12-31" }],
+        });
+
+        const movements = await listStockMovements(tx, {
+          organizationId: orgId,
+          sourceType: "goods_receipt",
+          sourceId: result.goodsReceiptId,
+        });
+        expect(movements).toHaveLength(1);
+        const movement = movements[0]!;
+        // The receipt carried no override, so the location default resolves.
+        expect(movement).toMatchObject({
+          organizationId: orgId,
+          locationId: fixture.locationId,
+          storageAreaId: fixture.storageAreaId,
+          movementType: "receipt",
+          quantityDelta: "2000.000000",
+          unitCost: "0.0500",
+          sourceType: "goods_receipt",
+          sourceId: result.goodsReceiptId,
+          idempotencyKey: `receipt-${result.goodsReceiptId}-${result.lines[0]!.goodsReceiptLineId}`,
+        });
+        expect(movement.lotId).not.toBeNull();
+        const lots = await tx.select().from(stockLot).where(eq(stockLot.id, movement.lotId!));
+        expect(lots[0]).toMatchObject({ lotNumber: "LOT-1", expiryDate: "2026-12-31" });
+      });
+    });
+
+    it("uses the explicit override over the location default", async () => {
+      await inRollback(client.db, async (tx) => {
+        const fixture = await createFixture(tx, orgId);
+        const result = await recordGoodsReceipt(createPostgresReceivingStore(tx), {
+          organizationId: orgId,
+          locationId: fixture.locationId,
+          storageAreaId: fixture.otherStorageAreaId,
+          actorId: randomUUID(),
+          receivedAt,
+          supplierId: fixture.supplierId,
+          lines: [exclusiveLine(fixture)],
+        });
+
+        const movements = await listStockMovements(tx, {
+          organizationId: orgId,
+          sourceType: "goods_receipt",
+          sourceId: result.goodsReceiptId,
+        });
+        expect(movements).toHaveLength(1);
+        expect(movements[0]).toMatchObject({ storageAreaId: fixture.otherStorageAreaId });
+        // The override is persisted on the receipt row, not only on the movement.
+        const receipt = await findGoodsReceiptById(tx, result.goodsReceiptId);
+        expect(receipt).toMatchObject({ storageAreaId: fixture.otherStorageAreaId });
+      });
+    });
+
+    it("fails closed (no movement, no receipt) when neither area resolves", async () => {
+      await inRollback(client.db, async (tx) => {
+        const fixture = await createFixture(tx, orgId);
+        await tx
+          .update(location)
+          .set({ defaultStorageAreaId: null })
+          .where(eq(location.id, fixture.locationId));
+
+        await expect(
+          recordGoodsReceipt(createPostgresReceivingStore(tx), {
+            organizationId: orgId,
+            locationId: fixture.locationId,
+            actorId: randomUUID(),
+            receivedAt,
+            supplierId: fixture.supplierId,
+            lines: [exclusiveLine(fixture)],
+          }),
+        ).rejects.toThrow(/no storage area to receive into/);
+
+        const movements = await listStockMovements(tx, {
+          organizationId: orgId,
+          sourceType: "goods_receipt",
+        });
+        expect(movements).toHaveLength(0);
+        expect(await listGoodsReceiptsForOrganization(tx, orgId)).toHaveLength(0);
+      });
+    });
+
+    it("does not double-post when the same idempotency key is replayed", async () => {
+      await inRollback(client.db, async (tx) => {
+        const fixture = await createFixture(tx, orgId);
+        const result = await recordGoodsReceipt(createPostgresReceivingStore(tx), {
+          organizationId: orgId,
+          locationId: fixture.locationId,
+          actorId: randomUUID(),
+          receivedAt,
+          supplierId: fixture.supplierId,
+          lines: [{ ...exclusiveLine(fixture), lotNumber: "LOT-2", expiryDate: "2026-11-30" }],
+        });
+        const [movement] = await listStockMovements(tx, {
+          organizationId: orgId,
+          sourceType: "goods_receipt",
+          sourceId: result.goodsReceiptId,
+        });
+        expect(movement).toBeDefined();
+
+        const replay = await postStockMovement(createPostgresInventoryStore(tx), {
+          organizationId: orgId,
+          actorId: movement!.postedBy,
+          locationId: fixture.locationId,
+          storageAreaId: fixture.storageAreaId,
+          itemId: fixture.itemId,
+          movementType: "receipt",
+          sourceType: "goods_receipt",
+          sourceId: result.goodsReceiptId,
+          quantityDelta: "2000.000000",
+          unitCost: "0.0500",
+          occurredAt: receivedAt.toISOString(),
+          idempotencyKey: movement!.idempotencyKey!,
+        });
+
+        expect(replay.replayed).toBe(true);
+        expect(replay.movementId).toBe(movement!.id);
+        const after = await listStockMovements(tx, {
+          organizationId: orgId,
+          sourceType: "goods_receipt",
+          sourceId: result.goodsReceiptId,
+        });
+        expect(after).toHaveLength(1);
+      });
     });
   });
 });

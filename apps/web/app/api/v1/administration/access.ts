@@ -64,6 +64,16 @@ export const ADMIN_DATA_QUALITY_READ_ROLES = [
 export const ADMIN_AUDIT_READ_ROLES = ["owner", "general_manager", "admin"] as const;
 
 /**
+ * Roles that may set a location's default storage area (`DEC-145`). This is
+ * location configuration that decides where every receipt at a site lands in
+ * the stock ledger, so it sits with the operational-configuration row of the
+ * §7.1 matrix: the owner (grants), the general manager (operations) and the
+ * technical admin. `owner` is listed explicitly (`DEC-130`); there is no
+ * implicit admin bypass.
+ */
+export const ADMIN_LOCATION_DEFAULT_ROLES = ["owner", "general_manager", "admin"] as const;
+
+/**
  * Roles that may read and manage users, roles and location scopes (§7.1
  * "Users/configuration" row: **Owner** grants, **Admin (Technical)** as
  * required, every other role None). Deliberately the narrowest set on this

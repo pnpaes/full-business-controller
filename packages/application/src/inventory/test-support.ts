@@ -66,6 +66,23 @@ export class FakeInventoryStore implements InventoryStore {
     return Promise.resolve(this.locations.get(locationId));
   }
 
+  setLocationDefaultStorageArea(query: {
+    readonly organizationId: string;
+    readonly locationId: string;
+    readonly storageAreaId: string;
+  }): Promise<InventoryLocationRecord | undefined> {
+    const existing = this.locations.get(query.locationId);
+    if (existing === undefined || existing.organizationId !== query.organizationId) {
+      return Promise.resolve(undefined);
+    }
+    const record: InventoryLocationRecord = {
+      ...existing,
+      defaultStorageAreaId: query.storageAreaId,
+    };
+    this.locations.set(record.id, record);
+    return Promise.resolve(record);
+  }
+
   findStorageArea(storageAreaId: string): Promise<InventoryStorageAreaRecord | undefined> {
     return Promise.resolve(this.storageAreas.get(storageAreaId));
   }
@@ -391,6 +408,7 @@ export function seedInventoryFixture(store: FakeInventoryStore): InventoryFixtur
     code: "MAIN",
     name: "Main",
     kind: "operating",
+    defaultStorageAreaId: storageAreaId,
   });
   store.locations.set(otherLocationId, {
     id: otherLocationId,
@@ -398,6 +416,7 @@ export function seedInventoryFixture(store: FakeInventoryStore): InventoryFixtur
     code: "OTHER",
     name: "Other",
     kind: "operating",
+    defaultStorageAreaId: null,
   });
   store.locations.set(transitLocationId, {
     id: transitLocationId,
@@ -405,6 +424,7 @@ export function seedInventoryFixture(store: FakeInventoryStore): InventoryFixtur
     code: "TRANSIT",
     name: "Transit",
     kind: "virtual_transit",
+    defaultStorageAreaId: null,
   });
   store.storageAreas.set(storageAreaId, {
     id: storageAreaId,

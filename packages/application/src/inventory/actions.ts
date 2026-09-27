@@ -8,4 +8,5 @@ export const INVENTORY_AUDIT_ACTIONS = {
   stockMovementReversed: "inventory.stock_movement.reversed",
   revaluationPosted: "inventory.stock_balance.revaluation_posted",
   storageAreaRegistered: "inventory.storage_area.registered",
+  locationDefaultStorageAreaSet: "inventory.location.default_storage_area_set",
 } as const;

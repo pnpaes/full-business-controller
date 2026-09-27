@@ -468,6 +468,33 @@ export async function findLocationById(db: Database, id: string): Promise<Locati
   return rows[0];
 }
 
+export interface SetLocationDefaultStorageAreaQuery {
+  readonly organizationId: string;
+  readonly locationId: string;
+  readonly storageAreaId: string;
+}
+
+/**
+ * Sets a location's `default_storage_area_id` (`DEC-145`), org-scoped so a
+ * foreign organization's location can never be updated. The command layer
+ * org-checks the location and asserts the area belongs to it first; the
+ * migration `0074` coherence guard is the database backstop. Returns the
+ * updated row, or `undefined` when no location matched the organization.
+ */
+export async function setLocationDefaultStorageArea(
+  db: Database,
+  query: SetLocationDefaultStorageAreaQuery,
+): Promise<Location | undefined> {
+  const rows = await db
+    .update(location)
+    .set({ defaultStorageAreaId: query.storageAreaId })
+    .where(
+      and(eq(location.id, query.locationId), eq(location.organizationId, query.organizationId)),
+    )
+    .returning();
+  return rows[0];
+}
+
 export async function findOrganizationById(
   db: Database,
   id: string,

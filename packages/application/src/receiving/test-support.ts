@@ -7,6 +7,7 @@ import {
 } from "@aquarela/domain";
 
 import type { AuditInput } from "../auth";
+import { FakeInventoryStore } from "../inventory/test-support";
 import type { TaxRuleRecord, TaxRuleSummaryRecord } from "../tax/read-types";
 import type {
   GoodsReceiptLineRecord,
@@ -54,6 +55,13 @@ function toTaxRuleSummary(rule: TaxRuleRecord): TaxRuleSummaryRecord {
  * `receiving.postgres.test.ts` covers the real adapter.
  */
 export class FakeReceivingStore implements ReceivingStore {
+  /**
+   * The slice-8 ledger port (`DEC-145`): the receipt posts its stock movements
+   * here, so the unit suite exercises the real `postStockMovement` path. Seed
+   * it with the organization/location/storage-area/item/unit fixture the
+   * posting validates against.
+   */
+  readonly inventory = new FakeInventoryStore();
   readonly units = new Map<string, ReceivingUnit>();
   readonly items = new Map<string, ReceivingItem>();
   readonly suppliers = new Map<string, ReceivingSupplier>();

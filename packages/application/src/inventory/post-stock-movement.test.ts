@@ -147,6 +147,7 @@ describe("postStockMovement", () => {
       code: "X",
       name: "X",
       kind: "operating",
+      defaultStorageAreaId: null,
     });
     store.storageAreas.set("area-other-org", {
       id: "area-other-org",
@@ -782,6 +783,7 @@ describe("postStockMovement", () => {
       code: "B",
       name: "B",
       kind: "operating",
+      defaultStorageAreaId: null,
     });
     store.storageAreas.set("area-b", {
       id: "area-b",

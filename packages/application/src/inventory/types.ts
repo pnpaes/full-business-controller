@@ -31,6 +31,13 @@ export interface InventoryLocationRecord {
   readonly code: string;
   readonly name: string;
   readonly kind: string;
+  /**
+   * `DEC-145`: the location's default storage area, a fallback for a receipt
+   * with no explicit override. Nullable and expand-only; the resolution fails
+   * closed when a receipt has neither an override nor a default. Optional so a
+   * read projection that does not select it can omit it (treated as `null`).
+   */
+  readonly defaultStorageAreaId?: string | null;
 }
 
 export interface InventoryStorageAreaRecord {
@@ -218,6 +225,17 @@ export interface InventoryStore {
   findOrganization(organizationId: string): Promise<InventoryOrganizationRecord | undefined>;
   findItem(itemId: string): Promise<InventoryItemRecord | undefined>;
   findLocation(locationId: string): Promise<InventoryLocationRecord | undefined>;
+  /**
+   * Sets a location's default storage area (`DEC-145`), org-scoped. The command
+   * org-checks the location and asserts the area belongs to it first; the
+   * `0074` coherence guard is the database backstop. `undefined` when no
+   * location matched the organization.
+   */
+  setLocationDefaultStorageArea(query: {
+    readonly organizationId: string;
+    readonly locationId: string;
+    readonly storageAreaId: string;
+  }): Promise<InventoryLocationRecord | undefined>;
   findStorageArea(storageAreaId: string): Promise<InventoryStorageAreaRecord | undefined>;
   findStorageAreaByCode(query: {
     readonly organizationId: string;
