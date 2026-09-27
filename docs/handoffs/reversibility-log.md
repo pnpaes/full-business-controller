@@ -1,5 +1,18 @@
 # Reversibility log
 
+- **2026-09-27 Job retention index + scheduled delivery (`94bd965` +
+  `d3602d0`; pushed)**: (1) `feat(persistence)` `94bd965` — migration
+  `0072_job_org_created_at_idx.sql` (expand-only index on
+  `job (organization_id, created_at)`) + `0072_job_org_created_at_idx_down.sql`
+  (drops the index; no row touched) + snapshot/journal + the runbook row.
+  **Migration rollback:** run the down file — the index only, no table and no
+  row; rehearsed on a **scratch DB** (index present → down applied → index
+  absent while `job` and its other two indexes stayed), never the dev DB.
+  (2) `fix(jobs)` `d3602d0` — `OutboxDispatchEvent.scheduledAt` reaches
+  pg-boss `startAfter`, and `replayUnpublishedOutbox` preserves the
+  projection's schedule; **rollback** = `git revert` (additive: unscheduled
+  events keep the immediate path). No posted money or stock fact is touched.
+  Details: [handoff 087](087-2026-09-27-job-retention-index-and-scheduled-delivery.md).
 - **2026-09-27 Jobs-202 producer + retention/alerts slice (the jobs layer
   complete; `DEC-139` fully delivered; two commits `ba27b79` + `054355f`,
   closed by this docs update; nothing pushed)**: the file set groups by the

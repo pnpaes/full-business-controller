@@ -18,35 +18,28 @@ producer, the 90-day retention prune and the `DEC-139` item-8 alert
 surfaces are delivered. Per-slice detail lives in the handoff files
 under `docs/handoffs/`; this file does not restate them.)
 
-**State:** branch `main`; HEAD **`054355f`** (the P2 platform core is
+**State:** branch `main`; HEAD **`d3602d0`** (the P2 platform core is
 `c66eb27`; the `ADR-0004`/`DEC-139` docs commit is `3348e78`). The
 **jobs layer is complete** — `DEC-139` fully delivered — committed across
-seven layered commits, newest first: `054355f` (the 90-day retention prune
-
-- the item-8 alert surfaces), `ba27b79` (the real HTTP `202` producer),
-  `67e932d` (docs closing the two earlier slices), `0da0593` (`apps/web`
-  jobs route + `infra/**` env and plan-time check), `8572510` (persistence:
-  pgboss provisioning + grants), `ecbe35b` (`packages/jobs-runtime/**` +
-  the payroll slice's application/domain changes; `apps/worker` +
-  `apps/scheduler`), with `8572510`'s pgboss provisioning beneath them.
-  **The real HTTP `202` producer** (`POST
-/api/v1/workforce/payroll-reports?async=true` → `202` +
-  `Location: /api/v1/jobs/<id>`), the **90-day `job` retention prune** and
-  the **item-8 alert surfaces** (`jobs.dead_letter`, `jobs.queue_depth`,
-  `jobs.oldest_queued_age`, `jobs.stuck_pending`; the worker heartbeat via
-  a platform log alert) are **COMMITTED**.
-  **Working tree clean; nothing pushed; nothing applied to DigitalOcean.**
-  Rollback: **`git revert` each commit**, then `DROP SCHEMA pgboss CASCADE`
-  **only when unwinding the whole jobs stack** — facts stay in
-  `public.outbox_event`. **4991/4991 tests (362 files)**; migrations
-  through **`0072`** (the `0072_job_org_created_at_idx` retention
-  index, added **uncommitted**; `db:migrate` re-run is a no-op) plus
-  the migrator-provisioned **`pgboss`** schema
-  (pg-boss schemaVersion 42); `db:migrate` a no-op re-run; **no migration
-  in the 202-producer/retention/alerts work.** **Next free decision id
-  `DEC-140`.** Know the
-  `packages/application/src/scheduling/scheduling.postgres.test.ts`
-  same-instant ordering flake (passes on re-run).
+nine layered commits, newest first: `d3602d0` (honoured `scheduledAt` via
+pg-boss `startAfter` in dispatch and replay), `94bd965` (migration `0072`,
+the job retention index), `054355f` (the 90-day retention prune + the
+item-8 alert surfaces), `ba27b79` (the real HTTP `202` producer),
+`67e932d` (docs closing the two earlier slices), `0da0593` (`apps/web`
+jobs route + `infra/**` env and plan-time check), `8572510` (persistence:
+pgboss provisioning + grants), `ecbe35b` (`packages/jobs-runtime/**` +
+the payroll slice's application/domain changes; `apps/worker` +
+`apps/scheduler`).
+**Working tree clean; pushed to `origin/main`; nothing applied to
+DigitalOcean.** Rollback: **`git revert` each commit**, then
+`DROP SCHEMA pgboss CASCADE` **only when unwinding the whole jobs
+stack** — facts stay in `public.outbox_event`; migration `0072`'s down
+file drops the retention index. **4995/4995 tests (362 files)**;
+migrations through **`0072`** plus the migrator-provisioned **`pgboss`**
+schema (pg-boss schemaVersion 42); `db:migrate` a no-op re-run. **Next
+free decision id `DEC-140`.** Know the
+`packages/application/src/scheduling/scheduling.postgres.test.ts`
+same-instant ordering flake (passes on re-run).
 
 **Review-fix pass (`/review uncommitted`, 2026-09-26), committed in
 `ecbe35b`/`0da0593`/`8572510`:** five of six findings fixed, one declined with
@@ -93,9 +86,7 @@ automation**) **or the next programme slice named by the roadmap**
   per the weekly runbook in `docs/runbooks/deployment.md`).
 - **Scope (do not):** no external publishing (INTG-002 stays gated on the
   per-source write terms I15/I18 under `DEC-015`); do not weaken any test
-  assertion; do not resolve other recorded inputs silently; do not
-  implement `scheduledAt`/`startAfter` delayed delivery (recorded
-  deferred).
+  assertion; do not resolve other recorded inputs silently.
 - **Authoritative docs to read first:** `docs/adr/0004-jobs-and-outbox.md`;
   `DEC-139` in `12_OPEN_DECISIONS.md`;
   `docs/handoffs/084-2026-09-26-jobs-runtime-pgboss-wiring.md` + handoff
@@ -104,7 +95,7 @@ automation**) **or the next programme slice named by the roadmap**
 "$NVM_DIR/nvm.sh"; nvm use 22`; `npm run typecheck`; `npm run lint`;
   `npm run format:check`; `npm run build`;
   `DATABASE_URL=postgres://aquarela:aquarela@localhost:5432/aquarela npm
-run test` (≥ **4991/4991**, 362 files); `npm run db:migrate` a no-op
+run test` (≥ **4995/4995**, 362 files); `npm run db:migrate` a no-op
   re-run. Normalise the generated `apps/web/next-env.d.ts`/
   `apps/web/tsconfig.json` with `git checkout --` before staging (see the
   durable fact below). Expect the
@@ -114,7 +105,7 @@ run test` (≥ **4991/4991**, 362 files); `npm run db:migrate` a no-op
 - **Acceptance criteria:** the picked slice/row is delivered per its
   decision rows and this section's rules; the read paths stay org-scoped
   and fail-closed on authorization; the full verification set is green
-  (≥ 4991/4991, 362 files) with `build` included. For the follow-up
+  (≥ 4995/4995, 362 files) with `build` included. For the follow-up
   option: the prune covers all organizations (the `(organization_id,
 created_at)` index landed in migration `0072`, rehearsed down
   path), the heartbeat divergence check is DB-backed or the log alert
@@ -133,9 +124,10 @@ created_at)` index landed in migration `0072`, rehearsed down
    the handler's conservative refusal to supersede an `exported` report
    is **deliberate** (it throws inside the same `FOR UPDATE`-locked
    transaction that generates, so the posture holds under redelivery).
-2. `scheduledAt`/`startAfter` delayed delivery is unimplemented — the
-   current-month candidate fires on the daily cron's lead-window guard,
-   not at a scheduled instant.
+2. Delayed delivery is implemented at the enqueue level
+   (`OutboxDispatchEvent.scheduledAt` → pg-boss `startAfter`, preserved on
+   replay, `d3602d0`) but nothing yet passes a `scheduledAt` — the payroll
+   cron fires on its daily lead-window guard, not at a scheduled instant.
 3. The jobs access set `JOBS_READ_ROLES`
    (owner/general_manager/finance/admin) is **provisional** per
    `DEC-101`.
@@ -339,6 +331,22 @@ Per-slice detail, commits and reconciliation are in `docs/handoffs/`.
   `DROP SCHEMA pgboss CASCADE` only when unwinding the whole jobs
   stack. **Next:** the remaining `DEC-139` follow-ups or the next
   programme slice (see "Resume here").
+- **2026-09-27 — the last two `DEC-139` follow-ups closed (committed
+  `94bd965` + `d3602d0`, pushed):** migration `0072` adds
+  `job_org_created_at_idx (organization_id, created_at)` so the
+  org-scoped, terminal-only retention prune range-scans `created_at`
+  (drizzle-generated, expand-only; down companion drops the index;
+  rehearsed on a scratch DB; a data-backed `EXPLAIN` shows the
+  `Bitmap Index Scan`), and the `scheduledAt` fix makes
+  `OutboxDispatchEvent.scheduledAt` reach pg-boss `startAfter` and
+  preserves the projection's schedule on replay. **Verification:**
+  **4995/4995 tests (362 files)**; typecheck/lint/format:check clean;
+  `next build` exit 0; `db:migrate` a no-op.
+- **2026-09-27 — jobs layer completed (committed `ba27b79` + `054355f`,
+  since pushed):** the real HTTP `202` producer (`POST
+/api/v1/workforce/payroll-reports?async=true` → `202` +
+  `Location: /api/v1/jobs/<id>`), the 90-day retention prune and the
+  item-8 alert surfaces.
 - **2026-09-26 — the first real async producer/consumer delivered
   (committed in `ecbe35b`/`8572510`/`0da0593`/`67e932d`; HEAD at the
   time `3348e78`):** the scheduled monthly payroll-report generation
@@ -624,12 +632,12 @@ findings from the W7 review` (5 files, all under `apps/web/app/(app)/**`;
   independently with `git revert f3adeb8`.
 - **As of:** 2026-09-27 — branch `main`; HEAD **`054355f`**, working tree
   **clean**; the jobs stack is committed across `ecbe35b`, `8572510`,
-  `0da0593`, `67e932d`, `a84ce82`, `ba27b79` and `054355f`; nothing
-  pushed; nothing applied to DigitalOcean.
-  **4991/4991 tests (362 files)**; migrations
-  through **`0072`** plus the migrator-provisioned **`pgboss`** schema
+  `0da0593`, `67e932d`, `a84ce82`, `ba27b79`, `054355f`, `94bd965`
+  and `d3602d0`; **pushed to `origin/main`**; nothing applied to
+  DigitalOcean. **4995/4995 tests (362 files)**; migrations through
+  **`0072`** plus the migrator-provisioned **`pgboss`** schema
   (pg-boss 42) — migration `0072` (`0072_job_org_created_at_idx`, the
-  `DEC-139` retention index) is added **uncommitted** (dev `db:migrate`
+  `DEC-139` retention index; committed `94bd965`; dev `db:migrate`
   applied it and re-ran as a no-op; down path rehearsed on a scratch
   DB).
   **Delivered:** the complete jobs layer (**`DEC-139`**,
