@@ -2,6 +2,7 @@ import {
   createPostgresCompetitorStore,
   listCompetitorObservations,
   listCompetitors,
+  listCompetitorSources,
   compareCompetitorPrices,
   type CompetitorObservationStatusFilter,
 } from "@aquarela/application";
@@ -27,20 +28,25 @@ import { resolveOrganization } from "../../../../lib/organization";
 import { getServerSession } from "../../../../lib/server-session";
 import {
   COMPETITOR_READ_ROLES,
+  canManageCompetitorTerms,
   canWriteCompetitors,
   isCompetitorAuthorized,
   loadCompetitorAccess,
 } from "../../../api/v1/competitors/access";
 
 import { CompetitorFilters } from "./competitor-filters";
+import { CompetitorSourceActions, RegisterSourceForm } from "./competitor-source-forms";
 import { NewCompetitorForm, RecordObservationForm } from "./competitor-forms";
 import { ObservationReviewControls } from "./observation-review-controls";
 import {
+  COMPETITOR_TERMS_FILTERS,
   comparisonReasonLabel,
   dayStartInstant,
   formatDay,
   formatInstantUTC,
   reviewStatusView,
+  termsFilterLabel,
+  termsStatusView,
 } from "./competitor-labels";
 
 export const dynamic = "force-dynamic";
@@ -104,6 +110,7 @@ export default async function CompetitorsPage({
     readonly competitorId?: string;
     readonly from?: string;
     readonly to?: string;
+    readonly terms?: string;
   }>;
 }) {
   const session = await getServerSession();
@@ -137,6 +144,11 @@ export default async function CompetitorsPage({
     params.competitorId !== undefined && UUID.test(params.competitorId)
       ? params.competitorId
       : undefined;
+  const terms =
+    params.terms !== undefined &&
+    (COMPETITOR_TERMS_FILTERS as readonly string[]).includes(params.terms)
+      ? params.terms
+      : "all";
   const today = isoDay(new Date());
   const toDay = params.to !== undefined && DAY.test(params.to) ? params.to : today;
   const fromDay =
@@ -146,10 +158,12 @@ export default async function CompetitorsPage({
   const db = getDb().db;
   const store = createPostgresCompetitorStore(db);
   const canWrite = canWriteCompetitors(access);
+  const canManageTerms = canManageCompetitorTerms(access);
 
-  const [currency, competitors, observations, comparisons] = await Promise.all([
+  const [currency, competitors, sources, observations, comparisons] = await Promise.all([
     findOrganizationCurrency(db, { organizationId }),
     listCompetitors(store, { organizationId, limit: REGISTER_LIMIT }),
+    listCompetitorSources(store, { organizationId, limit: REGISTER_LIMIT }),
     listCompetitorObservations(store, {
       organizationId,
       status: status as CompetitorObservationStatusFilter,
@@ -168,6 +182,9 @@ export default async function CompetitorsPage({
   const currencyCode = currency ?? "NOK";
   const competitorNameById = new Map(competitors.map((row) => [row.id, row.name] as const));
   const competitorOptions = competitors.map((row) => ({ id: row.id, name: row.name }));
+  const visibleSources =
+    terms === "all" ? sources : sources.filter((row) => row.termsStatus === terms);
+  const visibleSourceCount = visibleSources.length;
 
   // Resolve reviewers to a profile label; an unresolved id falls back to the id.
   const reviewerIds = [
@@ -250,6 +267,105 @@ export default async function CompetitorsPage({
       </SectionCard>
 
       {canWrite ? <NewCompetitorForm /> : null}
+
+      <SectionCard
+        title="Sources"
+        meta={`${visibleSourceCount} shown · automated collection needs approved terms (ADR-0010)`}
+      >
+        <p style={{ ...note, marginBottom: spacing[3] }}>
+          A source is a permitted place we may observe; automation is enabled only for an{" "}
+          <strong>automated</strong> source whose <strong>terms are approved</strong>. Instagram
+          stays manual. The collector ships disabled and nothing here starts it.
+        </p>
+        <nav
+          aria-label="Filter sources by terms status"
+          style={{ display: "flex", flexWrap: "wrap", gap: spacing[2], marginBottom: spacing[3] }}
+        >
+          {COMPETITOR_TERMS_FILTERS.map((value) => {
+            const active = value === terms;
+            return (
+              <a
+                key={value}
+                href={`?terms=${encodeURIComponent(value)}`}
+                aria-current={active ? "true" : undefined}
+                style={{
+                  padding: `${spacing[1]}px ${spacing[3]}px`,
+                  borderRadius: 999,
+                  border: `1px solid ${active ? "transparent" : "rgba(0,0,0,0.15)"}`,
+                  background: active ? "rgba(0,0,0,0.06)" : "transparent",
+                  fontWeight: active
+                    ? typography.fontWeight.semibold
+                    : typography.fontWeight.regular,
+                  textDecoration: "none",
+                  color: "inherit",
+                }}
+              >
+                {termsFilterLabel(value)}
+              </a>
+            );
+          })}
+        </nav>
+        <div style={{ overflowX: "auto", minWidth: 0 }}>
+          <DataTable
+            caption="Competitor sources and their terms status"
+            columns={[
+              { key: "source", header: "Source" },
+              { key: "competitor", header: "Competitor" },
+              { key: "type", header: "Type" },
+              { key: "mode", header: "Mode" },
+              { key: "terms", header: "Terms" },
+              { key: "active", header: "Active" },
+              { key: "note", header: "Rate-limit note" },
+              ...(canWrite || canManageTerms
+                ? [{ key: "actions", header: "Terms / active" } as DataTableColumn]
+                : []),
+            ]}
+            rows={visibleSources.map((row) => {
+              const view = termsStatusView(row.termsStatus);
+              return {
+                source: row.urlOrIdentifier,
+                competitor: row.competitorName,
+                type: row.sourceType,
+                mode: row.collectionMode,
+                terms: (
+                  <span title={view.description}>
+                    <StatusPill tone={view.tone}>{view.label}</StatusPill>
+                  </span>
+                ),
+                active: `${formatDay(row.activeFrom)} → ${row.activeTo === null ? "open" : formatDay(row.activeTo)}`,
+                note: row.rateLimitNote ?? "—",
+                ...(canWrite || canManageTerms
+                  ? {
+                      actions: (
+                        <CompetitorSourceActions
+                          sourceId={row.id}
+                          termsStatus={row.termsStatus}
+                          activeTo={row.activeTo}
+                          canManageTerms={canManageTerms}
+                          canWrite={canWrite}
+                        />
+                      ),
+                    }
+                  : {}),
+              };
+            })}
+            emptyMessage={`No sources match this filter (${terms}). Register a permitted source below.`}
+          />
+        </div>
+      </SectionCard>
+
+      {canWrite ? (
+        <SectionCard title="Register a source" meta="terms approval is a higher bar (owner/admin)">
+          <RegisterSourceForm canRegisterAutomated={canManageTerms} />
+        </SectionCard>
+      ) : (
+        <SectionCard title="Register a source" meta="write roles only">
+          <EmptyState title="Registering is not available for your role">
+            Registering a competitor source needs a competitor write role; approving terms needs
+            owner or admin (ADR-0010, DEC-149).
+          </EmptyState>
+        </SectionCard>
+      )}
 
       <SectionCard
         title="Observation register"

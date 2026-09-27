@@ -64,6 +64,46 @@ export function comparisonReasonLabel(reason: string): string {
   return COMPARISON_REASON_LABEL[reason] ?? reason;
 }
 
+/**
+ * `competitor_source.terms_status` → tone/label (`ADR-0010`/`DEC-143`): only an
+ * `approved` source may be collected automatically, so `pending` is a warning
+ * ("not permitted yet") rather than a neutral state.
+ */
+export const COMPETITOR_TERMS_STATUS_VIEW: Record<string, ReviewStatusView> = {
+  pending: {
+    label: "Pending",
+    tone: "warning",
+    description: "Terms not yet approved — automated collection is not permitted.",
+  },
+  approved: {
+    label: "Approved",
+    tone: "success",
+    description: "Terms approved — automated collection is permitted.",
+  },
+  rejected: {
+    label: "Rejected",
+    tone: "info",
+    description: "Terms rejected — automation is never permitted for this source.",
+  },
+};
+
+export function termsStatusView(status: string): ReviewStatusView {
+  return (
+    COMPETITOR_TERMS_STATUS_VIEW[status] ?? {
+      label: status,
+      tone: "info",
+      description: "Unknown terms status.",
+    }
+  );
+}
+
+/** The filter chips for the source register, in display order. */
+export const COMPETITOR_TERMS_FILTERS = ["pending", "approved", "rejected", "all"] as const;
+
+export function termsFilterLabel(status: string): string {
+  return status === "all" ? "All" : termsStatusView(status).label;
+}
+
 /** `2026-03-05T09:30:00.000Z` → `2026-03-05`. */
 export function formatDay(instant: string): string {
   return instant.slice(0, 10);
