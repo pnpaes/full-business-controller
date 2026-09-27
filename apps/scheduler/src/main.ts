@@ -2,6 +2,11 @@ import { loadConfig } from "@aquarela/config";
 import {
   createOpenAiCompatibleLlmAdapter,
   DEFAULT_AI_ADVISORY_CRON,
+  DEFAULT_COMPETITOR_COLLECTION_CRON,
+  DEFAULT_COMPETITOR_MAX_PAGES_PER_RUN,
+  DEFAULT_COMPETITOR_MIN_DELAY_MS,
+  DEFAULT_COMPETITOR_TIMEOUT_MS,
+  DEFAULT_COMPETITOR_USER_AGENT,
   startScheduler,
 } from "@aquarela/jobs-runtime";
 import { createLogger } from "@aquarela/logger";
@@ -17,6 +22,24 @@ function positiveInt(name: string, value: string | undefined, fallback: number):
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed <= 0) {
     throw new Error(`${name} must be a positive integer, got "${value}"`);
+  }
+  return parsed;
+}
+
+/**
+ * A positive integer not below `min`. `COMPETITOR_MIN_DELAY_MS` uses its floor
+ * (1000 ms) so a configured value can never breach the `DEC-149` ≤ 1 req/s policy.
+ */
+function boundedInt(
+  name: string,
+  value: string | undefined,
+  fallback: number,
+  min: number,
+): number {
+  if (value === undefined) return fallback;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < min) {
+    throw new Error(`${name} must be an integer >= ${min}, got "${value}"`);
   }
   return parsed;
 }
@@ -61,6 +84,31 @@ const aiAdvisoryCron = process.env.AI_ADVISORY_CRON?.trim() || DEFAULT_AI_ADVISO
 const aiMonthlyCostLimit = costLimit("AI_MONTHLY_COST_LIMIT", process.env.AI_MONTHLY_COST_LIMIT);
 const aiPerRunCostLimit = costLimit("AI_PER_RUN_COST_LIMIT", process.env.AI_PER_RUN_COST_LIMIT);
 
+// Competitor collection (`ADR-0010`, `DEC-143`/`DEC-149`): the kill switch
+// defaults OFF, so the cron is registered but makes no request until enabled.
+// `COMPETITOR_MIN_DELAY_MS` cannot go below 1000 to honour the ≤ 1 req/s policy.
+const competitorEnabled = flag(process.env.COMPETITOR_COLLECTION_ENABLED);
+const competitorCron =
+  process.env.COMPETITOR_COLLECTION_CRON?.trim() || DEFAULT_COMPETITOR_COLLECTION_CRON;
+const competitorUserAgent =
+  process.env.COMPETITOR_USER_AGENT?.trim() || DEFAULT_COMPETITOR_USER_AGENT;
+const competitorMaxPages = positiveInt(
+  "COMPETITOR_MAX_PAGES_PER_RUN",
+  process.env.COMPETITOR_MAX_PAGES_PER_RUN,
+  DEFAULT_COMPETITOR_MAX_PAGES_PER_RUN,
+);
+const competitorMinDelay = boundedInt(
+  "COMPETITOR_MIN_DELAY_MS",
+  process.env.COMPETITOR_MIN_DELAY_MS,
+  DEFAULT_COMPETITOR_MIN_DELAY_MS,
+  DEFAULT_COMPETITOR_MIN_DELAY_MS,
+);
+const competitorTimeout = positiveInt(
+  "COMPETITOR_TIMEOUT_MS",
+  process.env.COMPETITOR_TIMEOUT_MS,
+  DEFAULT_COMPETITOR_TIMEOUT_MS,
+);
+
 // Smoke semantics preserved: with SCHEDULER_TICKS set, emit that many ticks then
 // stop pg-boss and exit 0; otherwise run as a long-lived cron scheduler.
 const intervalMs = positiveInt("SCHEDULER_INTERVAL_MS", process.env.SCHEDULER_INTERVAL_MS, 60000);
@@ -82,6 +130,14 @@ const scheduler = await startScheduler({
     monthlyCostLimit: aiMonthlyCostLimit ?? null,
     perRunCostLimit: aiPerRunCostLimit ?? null,
   },
+  competitorCollection: {
+    enabled: competitorEnabled,
+    cron: competitorCron,
+    userAgent: competitorUserAgent,
+    maxPagesPerRun: competitorMaxPages,
+    minDelayMs: competitorMinDelay,
+    timeoutMs: competitorTimeout,
+  },
   logger,
 }).catch((error: unknown) => {
   logger.error({ err: error }, "scheduler failed to start");
@@ -93,6 +149,7 @@ logger.info(
     nodeEnv: config.NODE_ENV,
     aiAdvisoryEnabled,
     aiAdvisoryConfigured: llm.configured,
+    competitorCollectionEnabled: competitorEnabled,
   },
   "scheduler started; outbox replay cron registered",
 );

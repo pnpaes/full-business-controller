@@ -33,6 +33,46 @@ export type {
   ParsedAiAdvisoryOutput,
   ParsedAiSuggestion,
 } from "./ai-advisory";
+export {
+  COMPETITOR_CAPTURE_METHOD,
+  COMPETITOR_RETRY_DELAY_CAP_MS,
+  createCompetitorCollectorRun,
+  DEFAULT_COMPETITOR_COLLECTION_CRON,
+  DEFAULT_COMPETITOR_MAX_PAGES_PER_RUN,
+  DEFAULT_COMPETITOR_MAX_RETRIES,
+  DEFAULT_COMPETITOR_MIN_DELAY_MS,
+  DEFAULT_COMPETITOR_RETRY_BASE_DELAY_MS,
+  DEFAULT_COMPETITOR_TIMEOUT_MS,
+  DEFAULT_COMPETITOR_USER_AGENT,
+  extractFactsFromHtml,
+  isCollectableSource,
+  isPathAllowed,
+  MAX_FACTS_PER_PAGE,
+  MAX_HTML_CHARS,
+  MAX_ROBOTS_BYTES,
+  normalizePriceValue,
+  parseRobotsTxt,
+  registerCompetitorCollection,
+  robotsAgentToken,
+  robotsPatternMatches,
+  runCompetitorCollection,
+} from "./competitor-collector";
+export type {
+  CollectFailReason,
+  CollectOutcome,
+  CollectSkipReason,
+  CollectorLogger,
+  CompetitorCollectionJobData,
+  CompetitorCollectionOptions,
+  CompetitorCollectionOutcome,
+  CompetitorCollectionRunDeps,
+  CompetitorCollectionSkipReason,
+  CompetitorCollectorOptions,
+  CompetitorCollectorRun,
+  ExtractedFact,
+  RobotsGroup,
+  RobotsRule,
+} from "./competitor-collector";
 export { createBoss } from "./boss";
 export type {
   BossMonitorApi,
@@ -104,6 +144,7 @@ export type {
 } from "./monitor";
 export {
   AI_ADVISORY_QUEUE,
+  COMPETITOR_COLLECTION_QUEUE,
   DEAD_LETTER_QUEUE_OPTIONS,
   ensureQueues,
   MAINTENANCE_QUEUE,
@@ -132,7 +173,11 @@ export type {
 } from "./payroll-schedule";
 export { enqueueJobWithDispatch } from "./producer";
 export { startScheduler } from "./scheduler";
-export type { SchedulerAiAdvisoryOptions, SchedulerOptions } from "./scheduler";
+export type {
+  SchedulerAiAdvisoryOptions,
+  SchedulerCompetitorCollectionOptions,
+  SchedulerOptions,
+} from "./scheduler";
 export { installShutdownHandlers } from "./shutdown";
 export { startWorker } from "./worker";
 export type { WorkerOptions } from "./worker";

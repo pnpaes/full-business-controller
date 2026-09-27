@@ -5,6 +5,8 @@ import { registerAiAdvisorySchedule } from "./ai-advisory";
 import type { AiAdvisoryLlm } from "./ai-advisory";
 import { createBoss } from "./boss";
 import type { JobsRuntimeHandle } from "./boss";
+import { registerCompetitorCollection } from "./competitor-collector";
+import type { CompetitorCollectionOptions } from "./competitor-collector";
 import type { OutboxHandlerRegistry } from "./consumer";
 import { defaultOutboxHandlers } from "./handlers";
 import { startHeartbeat } from "./heartbeat";
@@ -14,6 +16,7 @@ import { registerMonitor } from "./monitor";
 import { registerPayrollSchedule } from "./payroll-schedule";
 import {
   AI_ADVISORY_QUEUE,
+  COMPETITOR_COLLECTION_QUEUE,
   ensureQueues,
   MAINTENANCE_QUEUE,
   MONITOR_QUEUE,
@@ -32,6 +35,8 @@ export interface SchedulerOptions {
   readonly monitorCron?: string;
   /** The AI-advisory cron and its kill switch (`ADR-0009`); omitted = not registered. */
   readonly aiAdvisory?: SchedulerAiAdvisoryOptions;
+  /** The competitor-collection cron and its kill switch (`ADR-0010`). */
+  readonly competitorCollection?: SchedulerCompetitorCollectionOptions;
   readonly limit?: number;
   readonly handlers?: OutboxHandlerRegistry;
   readonly logger: RuntimeLogger;
@@ -48,6 +53,12 @@ export interface SchedulerAiAdvisoryOptions {
   readonly actorId?: string | null;
   readonly maxTokens?: number;
 }
+
+/** The competitor-collection cron configuration the scheduler registers. */
+export type SchedulerCompetitorCollectionOptions = Pick<
+  CompetitorCollectionOptions,
+  "enabled" | "cron" | "userAgent" | "maxPagesPerRun" | "minDelayMs" | "timeoutMs"
+>;
 
 /**
  * The scheduler runtime: own pg-boss cron (`schedule: true`) and run the outbox
@@ -70,6 +81,7 @@ export async function startScheduler(options: SchedulerOptions): Promise<JobsRun
     PAYROLL_SCHEDULE_QUEUE,
     MONITOR_QUEUE,
     ...(options.aiAdvisory === undefined ? [] : [AI_ADVISORY_QUEUE]),
+    ...(options.competitorCollection === undefined ? [] : [COMPETITOR_COLLECTION_QUEUE]),
   ];
 
   // `DEC-139` item 8: DB heartbeat so the in-app monitor can detect a dead worker.
@@ -114,6 +126,18 @@ export async function startScheduler(options: SchedulerOptions): Promise<JobsRun
         perRunCostLimit: options.aiAdvisory.perRunCostLimit ?? null,
         actorId: options.aiAdvisory.actorId ?? null,
         maxTokens: options.aiAdvisory.maxTokens,
+      });
+    }
+    if (options.competitorCollection !== undefined) {
+      await registerCompetitorCollection(boss, client.db, {
+        organizationId: options.organizationId,
+        cron: options.competitorCollection.cron,
+        enabled: options.competitorCollection.enabled,
+        logger,
+        userAgent: options.competitorCollection.userAgent,
+        maxPagesPerRun: options.competitorCollection.maxPagesPerRun,
+        minDelayMs: options.competitorCollection.minDelayMs,
+        timeoutMs: options.competitorCollection.timeoutMs,
       });
     }
     logger.info(

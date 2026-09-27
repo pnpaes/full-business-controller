@@ -35,6 +35,15 @@ export const PAYROLL_REPORT_GENERATE_EVENT_TYPE = "workforce.payroll_report.gene
  */
 export const AI_ADVISORY_QUEUE = "outbox.maintenance.ai_advisory";
 
+/**
+ * The scheduled competitor-collection cron queue (`ADR-0010`, `DEC-143`/`DEC-149`,
+ * row 18b). The scheduler registers a weekly cron that fetches the approved
+ * automated sources directly (no outbox event — there is nothing to consume
+ * downstream); the cron queue carries only the organization id. The kill switch
+ * lives in the handler.
+ */
+export const COMPETITOR_COLLECTION_QUEUE = "outbox.maintenance.competitor_collection";
+
 export function outboxQueueName(eventType: string): string {
   return `outbox.${eventType}`;
 }
@@ -108,12 +117,14 @@ export function queueOptionsFor(name: string): OutboxQueueOptions {
     name === MAINTENANCE_QUEUE ||
     name === PAYROLL_SCHEDULE_QUEUE ||
     name === MONITOR_QUEUE ||
-    name === AI_ADVISORY_QUEUE
+    name === AI_ADVISORY_QUEUE ||
+    name === COMPETITOR_COLLECTION_QUEUE
   ) {
-    // The payroll, monitor and AI-advisory crons are maintenance-grade jobs: a
-    // cron re-run is cheap and idempotent, so they share the maintenance retry
-    // policy rather than the outbox delivery policy (and never dead-letter to the
-    // outbox DLQ, which would otherwise trip the monitor's own dead-letter alert).
+    // The payroll, monitor, AI-advisory and competitor-collection crons are
+    // maintenance-grade jobs: a cron re-run is cheap and idempotent, so they share
+    // the maintenance retry policy rather than the outbox delivery policy (and
+    // never dead-letter to the outbox DLQ, which would otherwise trip the
+    // monitor's own dead-letter alert).
     return MAINTENANCE_QUEUE_OPTIONS;
   }
   return OUTBOX_QUEUE_OPTIONS;

@@ -20,7 +20,8 @@ import {
 
 export interface RecordCompetitorObservationInput {
   readonly organizationId: string;
-  readonly actorId: string;
+  /** `null` for a system capture (e.g. the automated collector, `DEC-149`). */
+  readonly actorId: string | null;
   readonly competitorId: string;
   /** `timestamptz`, ISO-8601 instant. */
   readonly observedAt: string;

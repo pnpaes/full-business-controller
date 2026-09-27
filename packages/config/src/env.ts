@@ -50,6 +50,12 @@ export const envSchema = z.object({
   LLM_MODEL: z.string().min(1).optional(),
   AI_MONTHLY_COST_LIMIT: z.string().min(1).optional(),
   AI_PER_RUN_COST_LIMIT: z.string().min(1).optional(),
+  // Competitor collection (`ADR-0010`, `DEC-143`/`DEC-149`). The identifying
+  // user-agent is optional and secret-free; the other `COMPETITOR_*` values (the
+  // kill switch, the cron, the page budget, the per-host delay and the timeout)
+  // are read raw by the scheduler and validated there, so they are not
+  // constrained here (the `AI_ADVISORY_*` convention).
+  COMPETITOR_USER_AGENT: z.string().min(1).optional(),
 });
 
 export type AppConfig = Readonly<z.infer<typeof envSchema>>;
