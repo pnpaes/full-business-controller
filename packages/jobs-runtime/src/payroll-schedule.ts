@@ -1,16 +1,11 @@
-import {
-  createPostgresJobStore,
-  createPostgresSchedulingStore,
-  enqueueOutboxEvent,
-} from "@aquarela/application";
+import { createPostgresSchedulingStore } from "@aquarela/application";
 import type { EnqueueOutboxEventResult, SchedulingStore } from "@aquarela/application";
 import { lastDayOfUtcMonth } from "@aquarela/domain";
 import type { NodeDatabase } from "@aquarela/persistence";
-import { sql } from "drizzle-orm";
 
 import type { JobsBoss } from "./boss";
-import { createPgBossDispatcher } from "./dispatcher";
 import type { RuntimeLogger } from "./logging";
+import { enqueueJobWithDispatch } from "./producer";
 import { PAYROLL_REPORT_GENERATE_EVENT_TYPE, PAYROLL_SCHEDULE_QUEUE } from "./queues";
 
 /**
@@ -116,8 +111,9 @@ export async function evaluatePayrollSchedule(
 /**
  * Enqueues the payroll-report generation event atomically: the durable
  * `outbox_event`, the `job` projection, the pg-boss queue insert and the audit
- * fact commit or roll back together (the `ADR-0004` P2 seam). `aggregateId` is
- * the organization id, which is a uuid.
+ * fact commit or roll back together (the `ADR-0004` P2 seam). Delegates to the
+ * shared {@link enqueueJobWithDispatch}; `aggregateId` is the organization id,
+ * which is a uuid.
  */
 export async function enqueuePayrollReportGeneration(
   db: NodeDatabase,
@@ -125,23 +121,15 @@ export async function enqueuePayrollReportGeneration(
   organizationId: string,
   period: PayrollPeriod,
 ): Promise<EnqueueOutboxEventResult> {
-  return db.transaction(async (tx) => {
-    const store = createPostgresJobStore(tx);
-    const dispatcher = createPgBossDispatcher(boss, tx, sql);
-    return enqueueOutboxEvent(
-      store,
-      {
-        organizationId,
-        eventType: PAYROLL_REPORT_GENERATE_EVENT_TYPE,
-        aggregateType: "payroll_report",
-        aggregateId: organizationId,
-        payload: { periodStart: period.periodStart, periodEnd: period.periodEnd },
-        // Bare event type: the dispatcher applies `outboxQueueName` itself, so
-        // passing the already-prefixed name would double-prefix it.
-        queue: PAYROLL_REPORT_GENERATE_EVENT_TYPE,
-      },
-      dispatcher,
-    );
+  return enqueueJobWithDispatch(boss, db, {
+    organizationId,
+    eventType: PAYROLL_REPORT_GENERATE_EVENT_TYPE,
+    aggregateType: "payroll_report",
+    aggregateId: organizationId,
+    payload: { periodStart: period.periodStart, periodEnd: period.periodEnd },
+    // Bare event type: the dispatcher applies `outboxQueueName` itself, so
+    // passing the already-prefixed name would double-prefix it.
+    queue: PAYROLL_REPORT_GENERATE_EVENT_TYPE,
   });
 }
 

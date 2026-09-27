@@ -21,6 +21,7 @@ vi.mock("../../../../../lib/auth", () => ({
   getAuthStore: vi.fn(() => ({})),
 }));
 vi.mock("../../../../../lib/db", () => ({ getDb: vi.fn(() => ({ db: {} })) }));
+vi.mock("../../../../../lib/jobs", () => ({ enqueuePayrollReportGeneration: vi.fn() }));
 vi.mock("../../../../../lib/organization", () => ({ resolveOrganization: vi.fn(() => "org-1") }));
 vi.mock("../../../../../lib/server-session", () => ({ getServerSession: vi.fn() }));
 
@@ -28,6 +29,7 @@ import * as application from "@aquarela/application";
 
 import { requireSession } from "../../../../../lib/auth";
 import { AuthHttpError } from "../../../../../lib/errors";
+import { enqueuePayrollReportGeneration } from "../../../../../lib/jobs";
 import { getServerSession } from "../../../../../lib/server-session";
 
 import { parseGeneratePayrollReportBody, parsePayrollReportListQuery } from "../workforce-rows";
@@ -37,6 +39,7 @@ import { GET, POST } from "./route";
 const ORG = "org-1";
 const USER = "user-1";
 const REPORT_ID = "55555555-5555-4555-8555-555555555555";
+const JOB_ID = "77777777-7777-4777-8777-777777777777";
 const PERIOD_START = "2026-03-01";
 const PERIOD_END = "2026-04-01";
 const PATH = "/api/v1/workforce/payroll-reports";
@@ -72,8 +75,8 @@ function getRequest(query = ""): Request {
   return new Request(`http://localhost${PATH}${query}`);
 }
 
-function postRequest(body: unknown): Request {
-  return new Request(`http://localhost${PATH}`, {
+function postRequest(body: unknown, query = ""): Request {
+  return new Request(`http://localhost${PATH}${query}`, {
     method: "POST",
     headers: { "content-type": "application/json", "sec-fetch-site": "same-origin" },
     body: JSON.stringify(body),
@@ -86,6 +89,7 @@ beforeEach(() => {
   vi.mocked(application.listPayrollReports).mockResolvedValue([]);
   vi.mocked(application.generatePayrollReport).mockResolvedValue(reportRecord());
   vi.mocked(application.loadUserAccess).mockResolvedValue(access(["owner"]));
+  vi.mocked(enqueuePayrollReportGeneration).mockResolvedValue({ jobId: JOB_ID });
   vi.mocked(getServerSession).mockResolvedValue({ userId: USER } as never);
   vi.mocked(requireSession).mockResolvedValue({
     session: { userId: USER },
@@ -280,6 +284,104 @@ describe("POST /api/v1/workforce/payroll-reports", () => {
     const response = await POST(postRequest({ periodStart: PERIOD_START, periodEnd: PERIOD_END }));
 
     expect(response.status).toBe(404);
+  });
+
+  describe("async mode", () => {
+    it("enqueues and returns 202 with Location when ?async=true", async () => {
+      const response = await POST(
+        postRequest({ periodStart: PERIOD_START, periodEnd: PERIOD_END }, "?async=true"),
+      );
+
+      expect(response.status).toBe(202);
+      expect(response.headers.get("Location")).toBe(`/api/v1/jobs/${JOB_ID}`);
+      await expect(response.json()).resolves.toEqual({
+        ok: true,
+        jobId: JOB_ID,
+        jobUrl: `/api/v1/jobs/${JOB_ID}`,
+      });
+      expect(enqueuePayrollReportGeneration).toHaveBeenCalledWith({
+        organizationId: ORG,
+        periodStart: PERIOD_START,
+        periodEnd: PERIOD_END,
+      });
+      expect(application.generatePayrollReport).not.toHaveBeenCalled();
+    });
+
+    it.each(["", "?async=false"])(
+      "still generates synchronously and returns 200 with %j",
+      async (query) => {
+        const response = await POST(
+          postRequest({ periodStart: PERIOD_START, periodEnd: PERIOD_END }, query),
+        );
+
+        expect(response.status).toBe(200);
+        await expect(response.json()).resolves.toEqual({ ok: true, payrollReport: row() });
+        expect(application.generatePayrollReport).toHaveBeenCalled();
+        expect(enqueuePayrollReportGeneration).not.toHaveBeenCalled();
+      },
+    );
+
+    it.each(["?async=1", "?async=yes", "?async="])(
+      "returns 400 for the invalid async flag %j",
+      async (query) => {
+        const response = await POST(
+          postRequest({ periodStart: PERIOD_START, periodEnd: PERIOD_END }, query),
+        );
+
+        expect(response.status).toBe(400);
+        expect(application.generatePayrollReport).not.toHaveBeenCalled();
+        expect(enqueuePayrollReportGeneration).not.toHaveBeenCalled();
+      },
+    );
+
+    it.each([undefined, {}, { periodStart: PERIOD_START }])(
+      "returns 400 for the malformed body %j in async mode",
+      async (body) => {
+        const response = await POST(postRequest(body, "?async=true"));
+
+        expect(response.status).toBe(400);
+        expect(enqueuePayrollReportGeneration).not.toHaveBeenCalled();
+        expect(application.generatePayrollReport).not.toHaveBeenCalled();
+      },
+    );
+
+    it.each(["location_manager", "kitchen", "front_of_house", "purchasing", "analyst"])(
+      "returns 403 for %s in async mode",
+      async (role) => {
+        vi.mocked(application.loadUserAccess).mockResolvedValue(access([role]));
+
+        const response = await POST(
+          postRequest({ periodStart: PERIOD_START, periodEnd: PERIOD_END }, "?async=true"),
+        );
+
+        expect(response.status).toBe(403);
+        expect(enqueuePayrollReportGeneration).not.toHaveBeenCalled();
+      },
+    );
+
+    it("returns 401 for an async mutation when signed out", async () => {
+      vi.mocked(requireSession).mockRejectedValue(new AuthHttpError(401));
+
+      const response = await POST(
+        postRequest({ periodStart: PERIOD_START, periodEnd: PERIOD_END }, "?async=true"),
+      );
+
+      expect(response.status).toBe(401);
+      expect(enqueuePayrollReportGeneration).not.toHaveBeenCalled();
+    });
+
+    it("maps an enqueue DomainError to 400 with its message", async () => {
+      vi.mocked(enqueuePayrollReportGeneration).mockRejectedValue(
+        new DomainError("payload must be an object"),
+      );
+
+      const response = await POST(
+        postRequest({ periodStart: PERIOD_START, periodEnd: PERIOD_END }, "?async=true"),
+      );
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toEqual({ error: "payload must be an object" });
+    });
   });
 });
 

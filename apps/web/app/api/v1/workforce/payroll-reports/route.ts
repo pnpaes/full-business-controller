@@ -9,6 +9,7 @@ import { requireSession } from "../../../../../lib/auth";
 import { getDb } from "../../../../../lib/db";
 import { withMutationGuards } from "../../../../../lib/guards";
 import { jsonError, jsonOk, mapErrors } from "../../../../../lib/http";
+import { enqueuePayrollReportGeneration } from "../../../../../lib/jobs";
 import { resolveOrganization } from "../../../../../lib/organization";
 import { readJsonObject } from "../../../../../lib/request";
 import { getServerSession } from "../../../../../lib/server-session";
@@ -91,6 +92,12 @@ export async function GET(request: Request): Promise<Response> {
  * is a command rejection. Generating is limited to owner / general_manager /
  * finance / admin (`location_manager` is matrix None). A command that cannot
  * find a referenced record is a typed `NotFoundError` → 404.
+ *
+ * **Async mode.** `?async=true` enqueues the generation instead of generating
+ * inline and answers `202` with `Location: /api/v1/jobs/<jobId>`; the default
+ * (and `?async=false`) is the synchronous `200 + payrollReport`. Any other
+ * `async` value is a 400. Session, access, limiter, body parser and error
+ * mapping are identical in both modes; only the async branch returns a 202.
  */
 export async function POST(request: Request): Promise<Response> {
   return withMutationGuards(request, shiftLimiters.generatePayrollReport, async () => {
@@ -105,7 +112,36 @@ export async function POST(request: Request): Promise<Response> {
       return jsonError(400);
     }
 
+    const asyncParam = new URL(request.url).searchParams.get("async");
+    if (asyncParam !== null && asyncParam !== "true" && asyncParam !== "false") {
+      return jsonError(400);
+    }
+
     const organizationId = resolveOrganization();
+
+    if (asyncParam === "true") {
+      let jobId: string;
+      try {
+        ({ jobId } = await enqueuePayrollReportGeneration({
+          organizationId,
+          periodStart: parsed.input.periodStart,
+          periodEnd: parsed.input.periodEnd,
+        }));
+      } catch (error) {
+        if (error instanceof DomainError) {
+          return jsonError(error instanceof NotFoundError ? 404 : 400, error.message);
+        }
+        throw error;
+      }
+      const jobUrl = `/api/v1/jobs/${jobId}`;
+      // No helper builds a 202/Location; the body mirrors `jsonOk`'s shape so
+      // the client can follow `jobUrl` to the existing poll endpoint.
+      return Response.json(
+        { ok: true, jobId, jobUrl },
+        { status: 202, headers: { Location: jobUrl } },
+      );
+    }
+
     const store = createPostgresSchedulingStore(getDb().db);
 
     let report;

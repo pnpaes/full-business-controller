@@ -11,12 +11,13 @@ const nextConfig = {
     "@aquarela/application",
     "@aquarela/config",
     "@aquarela/domain",
+    "@aquarela/jobs-runtime",
     "@aquarela/logger",
     "@aquarela/persistence",
     "@aquarela/ui",
   ],
   // Native/Node-only server dependencies must stay unbundled in route handlers.
-  serverExternalPackages: ["@node-rs/argon2", "pg"],
+  serverExternalPackages: ["@node-rs/argon2", "pg", "pg-boss"],
 };
 
 export default nextConfig;

@@ -57,6 +57,7 @@ export type {
   PayrollScheduleJobData,
   PayrollScheduleOptions,
 } from "./payroll-schedule";
+export { enqueueJobWithDispatch } from "./producer";
 export { startScheduler } from "./scheduler";
 export type { SchedulerOptions } from "./scheduler";
 export { installShutdownHandlers } from "./shutdown";
