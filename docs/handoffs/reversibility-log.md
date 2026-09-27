@@ -1,5 +1,17 @@
 # Reversibility log
 
+- **2026-09-27 DLQ review automation + DB-backed worker heartbeat
+  (`918b80a` + `d070983`; pushed)**: (1) `feat(jobs,web)` `918b80a` — the
+  dead-letter commands (`retryDeadLetteredJob` / `discardDeadLetteredJob`),
+  the persistence resets/clears, and the `GET /api/v1/jobs` +
+  `/retry` + `/discard` routes; **rollback** = `git revert` (additive;
+  retry/replay are id-deduped on `outbox_event.id`). (2) `feat(jobs)`
+  `d070983` — migration `0073_worker_heartbeat.sql` + down companion
+  (`DROP TABLE worker_heartbeat`), the heartbeat writer and the monitor
+  check; **migration rollback** = run the down file (liveness state only),
+  rehearsed on a **scratch DB** (table present → down → absent), never the
+  dev DB. No business row and no posted money or stock fact is touched.
+  Details: [handoff 088](088-2026-09-27-dlq-review-automation-and-worker-heartbeat.md).
 - **2026-09-27 Job retention index + scheduled delivery (`94bd965` +
   `d3602d0`; pushed)**: (1) `feat(persistence)` `94bd965` — migration
   `0072_job_org_created_at_idx.sql` (expand-only index on

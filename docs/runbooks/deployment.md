@@ -485,7 +485,7 @@ default pending that open item.
 ### Queue alerts (`jobs.*` alert keys)
 
 The scheduler's `registerMonitor` job (cron `MONITOR_CRON`, default
-`*/5 * * * *`, `missed: 'once'`) evaluates four structured alert keys and
+`*/5 * * * *`, `missed: 'once'`) evaluates five structured alert keys and
 emits each as a structured log line with a `jobs.*` key:
 
 - **`jobs.dead_letter`** (any value) — a job landed in the dead-letter
@@ -498,6 +498,9 @@ emits each as a structured log line with a `jobs.*` key:
 - **`jobs.stuck_pending`** — the `job` projection has a
   `pending`/`running` row older than `stuckAfterMinutes` (default
   **60**).
+- **`jobs.worker_heartbeat_missing`** — no `worker`-role heartbeat in
+  `worker_heartbeat` is newer than `WORKER_HEARTBEAT_ALERT_SECONDS`
+  (**120 s**).
 
 Wire each key to a log-based alert on its threshold. A dead-letter
 **re-alerts every 5 min** while it sits in the queue (retained 30
@@ -509,16 +512,20 @@ alert on the heartbeat's **absence** (the cron stopped). An exhausted
 monitor cron ends `failed` in its own queue **without a dead-letter**, so
 the `jobs.dead_letter` alert cannot catch a dead monitor.
 
-**Worker heartbeat:** `apps/worker/src/main.ts` logs
-`info "worker heartbeat"` every `WORKER_HEARTBEAT_MS` (30 s). **Alert if
-absent > 120 s.** pg-boss 12 keeps work-in-progress in memory (no `wip`
-table), so cross-process worker detection is a platform **log alert**,
-not an in-app signal.
+**Worker heartbeat:** the worker and scheduler upsert a `worker_heartbeat`
+row (migration `0073`) every 30 s (`WORKER_HEARTBEAT_MS`; identity
+`<role>:<hostname>:<pid>` or `WORKER_HEARTBEAT_ID`), and the monitor alerts
+`jobs.worker_heartbeat_missing` when the newest `worker` beat is older than
+120 s — the in-app, cross-process dead-worker signal (pg-boss 12 keeps
+work-in-progress in memory, no `wip` table). The worker also logs
+`info "worker heartbeat"` every 30 s; the platform **log alert** on its
+absence remains a secondary signal. On shutdown the heartbeat timer is
+cleared.
 
 **`job` projection retention (90 days):** the maintenance cron prunes
 the `job` projection to `retentionDays` (90) — **terminal statuses
-only**, org-scoped, batched. There is **no `created_at` index**:
-single-tenant, the prune filters via `job_org_status_scheduled_idx`.
+only**, org-scoped, batched, range-scanning `job_org_created_at_idx`
+(migration `0072`).
 
 ### DLQ weekly review runbook
 
@@ -528,11 +535,23 @@ Dead-letter jobs are **retained 30 days**. Weekly (owner/TECH):
    since the last review.
 2. For each, read the matching `job` projection row's `error` field
    (org-scoped, 90-day retention) to see why the consumer failed.
-3. Decide **replay vs discard**: replay only when the failure cause is
-   fixed and the underlying event is still safe to re-apply (consumers
-   dedup on `outbox_event.id`); otherwise discard and record why.
+3. Decide **replay vs discard** via the API (no direct SQL):
+   - List/inspect candidates with `GET /api/v1/jobs?status=dead_lettered`
+     (read: owner / general_manager / finance / admin).
+   - **Replay** (cause fixed, event safe to re-apply):
+     `POST /api/v1/jobs/<id>/retry` — resets the job to `pending`, clears
+     the outbox dead-letter and re-sends the event; the maintenance replay
+     is the fallback if the send fails, and consumers dedup on
+     `outbox_event.id`. Owner / general_manager / admin only.
+   - **Discard** (not safe to re-apply): `POST /api/v1/jobs/<id>/discard`
+     — terminal `failed`; the outbox row stays `dead_lettered` (review
+     marker) and is marked published so it is not replayed. Owner /
+     general_manager / admin only.
+   - Both mutations return `{ ok: true, job }`; a non-`dead_lettered` job
+     is `400` and an unknown or other-organization id `404`.
 4. Record the outcome (replayed job ids, discarded job ids, reasons) in
-   the ops log.
+   the ops log; each action writes a `jobs.job.retried` /
+   `jobs.job.discarded` audit fact.
 5. The `jobs.dead_letter` alert fires on every dead-letter; if it
    fired, this review explains it — treat an unexplained firing as a
    blocker until step 3 is done.

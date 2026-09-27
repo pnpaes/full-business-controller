@@ -18,26 +18,27 @@ producer, the 90-day retention prune and the `DEC-139` item-8 alert
 surfaces are delivered. Per-slice detail lives in the handoff files
 under `docs/handoffs/`; this file does not restate them.)
 
-**State:** branch `main`; HEAD **`d3602d0`** (the P2 platform core is
+**State:** branch `main`; HEAD **`d070983`** (the P2 platform core is
 `c66eb27`; the `ADR-0004`/`DEC-139` docs commit is `3348e78`). The
-**jobs layer is complete** — `DEC-139` fully delivered — committed across
-nine layered commits, newest first: `d3602d0` (honoured `scheduledAt` via
-pg-boss `startAfter` in dispatch and replay), `94bd965` (migration `0072`,
-the job retention index), `054355f` (the 90-day retention prune + the
-item-8 alert surfaces), `ba27b79` (the real HTTP `202` producer),
-`67e932d` (docs closing the two earlier slices), `0da0593` (`apps/web`
-jobs route + `infra/**` env and plan-time check), `8572510` (persistence:
-pgboss provisioning + grants), `ecbe35b` (`packages/jobs-runtime/**` +
-the payroll slice's application/domain changes; `apps/worker` +
-`apps/scheduler`).
+**jobs layer is complete** — `DEC-139` fully delivered, and the recorded
+follow-ups are now closed except the system-wide prune — committed across
+thirteen layered commits, newest first: `d070983` (the DB-backed worker
+heartbeat, migration `0073`), `918b80a` (DLQ review automation + the
+operator job list), `0aa54f3` (docs), `d3602d0` (honoured `scheduledAt`
+via pg-boss `startAfter`), `94bd965` (migration `0072`, the job retention
+index), `911ced6` (docs closing the jobs layer), `054355f` (the 90-day
+retention prune + the item-8 alert surfaces), `ba27b79` (the real HTTP
+`202` producer), `a84ce82`/`67e932d` (docs), `0da0593` (`apps/web` jobs
+route + `infra/**` env and plan-time check), `8572510` (persistence:
+pgboss provisioning + grants), `ecbe35b` (the runtime + payroll changes).
 **Working tree clean; pushed to `origin/main`; nothing applied to
 DigitalOcean.** Rollback: **`git revert` each commit**, then
 `DROP SCHEMA pgboss CASCADE` **only when unwinding the whole jobs
-stack** — facts stay in `public.outbox_event`; migration `0072`'s down
-file drops the retention index. **4995/4995 tests (362 files)**;
-migrations through **`0072`** plus the migrator-provisioned **`pgboss`**
-schema (pg-boss schemaVersion 42); `db:migrate` a no-op re-run. **Next
-free decision id `DEC-140`.** Know the
+stack** — facts stay in `public.outbox_event`; migrations `0072`'s and
+`0073`'s down files invert the index and the heartbeat table. **5075/5075
+tests (368 files)**; migrations through **`0073`** (99 public tables) plus
+the migrator-provisioned **`pgboss`** schema (pg-boss schemaVersion 42);
+`db:migrate` a no-op re-run. **Next free decision id `DEC-140`.** Know the
 `packages/application/src/scheduling/scheduling.postgres.test.ts`
 same-instant ordering flake (passes on re-run).
 
@@ -64,26 +65,22 @@ those. Post-fix verification: **4957/4957 tests (361 files)**;
 typecheck/lint/format:check clean; `next build` exit 0; `db:migrate` a
 no-op.
 
-**Next task (buildable now — no owner input needed): the next roadmap
-row or the `DEC-139` follow-ups.** Row 20's jobs layer is done, so the
-"Next up" is either the **remaining `DEC-139` follow-ups** (the
-system-wide prune — the `(organization_id, created_at)` index landed
-in migration `0072`; a **DB-backed worker heartbeat** if
-cross-process detection is needed, since pg-boss 12 keeps WIP in
-memory and today's heartbeat is a platform log alert; **DLQ review
-automation**) **or the next programme slice named by the roadmap**
-(`docs/BUILD_ROADMAP.md` is the ordered tracker).
+**Next task (buildable now — no owner input needed): the next programme
+row, or the last `DEC-139` follow-up.** Row 20's jobs layer is complete and
+its follow-ups are closed except the **system-wide prune** (the
+`(organization_id, created_at)` index landed in `0072`; the DLQ review
+automation and the DB-backed worker heartbeat landed 2026-09-27). The
+roadmap's remaining rows (16 INTG-002 publishing, 17, 18) are **owner/data
+gated** on I15/I18 / `ADR-0009` / `ADR-0010`, so the honest next step is
+either the system-wide prune or an owner decision to unblock a programme
+row (`docs/BUILD_ROADMAP.md` is the ordered tracker).
 
-- **Scope (do):** pick the next row from `docs/BUILD_ROADMAP.md` (row 20's
-  jobs layer is complete, so the remaining honest-gap queue or the next
-  programme row); if the follow-up option is picked instead: the
-  **system-wide prune** (the `(organization_id, created_at)` index
-  landed in migration `0072`), a
-  **DB-backed worker heartbeat** (pg-boss 12 has no persisted WIP — the
-  DB heartbeat is the cross-process upgrade path over today's log
-  alert), and **DLQ review automation** (the dead-letter log alert
-  re-alerts every 5 min until reviewed; an operator now works the DLQ
-  per the weekly runbook in `docs/runbooks/deployment.md`).
+- **Scope (do):** pick the next row from `docs/BUILD_ROADMAP.md`; if the
+  follow-up option is picked instead: the **system-wide prune** (a
+  non-org-scoped retention delete; the index landed in `0072`). The
+  **DB-backed worker heartbeat** (`0073`, `jobs.worker_heartbeat_missing`)
+  and **DLQ review automation** (`GET /api/v1/jobs` +
+  `/retry` + `/discard`) are **delivered**.
 - **Scope (do not):** no external publishing (INTG-002 stays gated on the
   per-source write terms I15/I18 under `DEC-015`); do not weaken any test
   assertion; do not resolve other recorded inputs silently.
@@ -95,7 +92,7 @@ automation**) **or the next programme slice named by the roadmap**
 "$NVM_DIR/nvm.sh"; nvm use 22`; `npm run typecheck`; `npm run lint`;
   `npm run format:check`; `npm run build`;
   `DATABASE_URL=postgres://aquarela:aquarela@localhost:5432/aquarela npm
-run test` (≥ **4995/4995**, 362 files); `npm run db:migrate` a no-op
+run test` (≥ **5075/5075**, 368 files); `npm run db:migrate` a no-op
   re-run. Normalise the generated `apps/web/next-env.d.ts`/
   `apps/web/tsconfig.json` with `git checkout --` before staging (see the
   durable fact below). Expect the
@@ -105,7 +102,7 @@ run test` (≥ **4995/4995**, 362 files); `npm run db:migrate` a no-op
 - **Acceptance criteria:** the picked slice/row is delivered per its
   decision rows and this section's rules; the read paths stay org-scoped
   and fail-closed on authorization; the full verification set is green
-  (≥ 4995/4995, 362 files) with `build` included. For the follow-up
+  (≥ 5075/5075, 368 files) with `build` included. For the follow-up
   option: the prune covers all organizations (the `(organization_id,
 created_at)` index landed in migration `0072`, rehearsed down
   path), the heartbeat divergence check is DB-backed or the log alert
@@ -206,19 +203,16 @@ lives in the second "Next up" section below.
    `Location: /api/v1/jobs/<id>`), the 90-day `job` retention prune and
    the item-8 alert surfaces (`jobs.dead_letter`, `jobs.queue_depth`,
    `jobs.oldest_queued_age`, `jobs.stuck_pending`; the worker heartbeat
-   via a platform log alert) are all committed. **Next task: the
-   remaining `DEC-139` follow-ups** (the system-wide prune — the
-   `(organization_id, created_at)` index landed in migration `0072`; a DB-backed worker heartbeat
-   if cross-process detection is needed; DLQ review automation) **or
-   the next programme slice named by `docs/BUILD_ROADMAP.md`** — exact
-   scope, verification, acceptance criteria and honest remainder in
-   "Resume here" (next free decision id `DEC-140`).
+   via a platform log alert) are all committed. **Next task: the last
+   `DEC-139` follow-up (the system-wide prune; the `(organization_id,
+created_at)` index landed in `0072`) or an owner decision to unblock a
+   programme row** — the DLQ review automation and the DB-backed worker
+   heartbeat (`jobs.worker_heartbeat_missing`, migration `0073`) landed
+   2026-09-27 — exact scope, verification, acceptance criteria and honest
+   remainder in "Resume here" (next free decision id `DEC-140`).
 2. **Then the honest-gap queue** (each recorded, not silently deferred):
-   the `DEC-139` follow-ups above (the remaining system-wide prune —
-   the `(organization_id, created_at)` index landed in migration
-   `0072`; the
-   DB-backed heartbeat, DLQ review automation) and the standing
-   owner/data-gated items (reset-token
+   the remaining `DEC-139` follow-up (the system-wide prune) and the
+   standing owner/data-gated items (reset-token
    delivery, the unsigned golden fixtures, the `task`↔`approval` link,
    `WF-003` self-assignment, the deployment prerequisite inputs, the
    receipt→ledger `storage_area_id` policy).
@@ -308,6 +302,14 @@ Per-slice detail, commits and reconciliation are in `docs/handoffs/`.
 
 ## Current status
 
+- **2026-09-27 — jobs operator tooling delivered (committed `918b80a` +
+  `d070983`, pushed):** DLQ review automation (`GET /api/v1/jobs`, `POST
+/api/v1/jobs/[id]/retry|discard` under `JOBS_ADMIN_ROLES`; retry
+  re-dispatches with the maintenance replay as the safety net, discard also
+  stamps the outbox published so the replay cannot re-run it) and the
+  DB-backed worker heartbeat (migration `0073`, the `worker_heartbeat`
+  table; `jobs.worker_heartbeat_missing` > 120 s). No migration in the DLQ
+  work; `0073` in the heartbeat. **5075/5075 tests (368 files)**.
 - **2026-09-27 — the jobs layer is COMPLETE (`DEC-139` fully delivered;
   HEAD `054355f`, working tree clean, nothing pushed):** the two
   2026-09-26 entries below are committed as part of the seven-commit
@@ -630,11 +632,12 @@ findings from the W7 review` (5 files, all under `apps/web/app/(app)/**`;
   and the `security`-agent dead-pin fact are recorded in
   `docs/handoffs/080-2026-09-24-w7-ui-refinement-wave.md`. Reverts
   independently with `git revert f3adeb8`.
-- **As of:** 2026-09-27 — branch `main`; HEAD **`054355f`**, working tree
+- **As of:** 2026-09-27 — branch `main`; HEAD **`d070983`**, working tree
   **clean**; the jobs stack is committed across `ecbe35b`, `8572510`,
-  `0da0593`, `67e932d`, `a84ce82`, `ba27b79`, `054355f`, `94bd965`
-  and `d3602d0`; **pushed to `origin/main`**; nothing applied to
-  DigitalOcean. **4995/4995 tests (362 files)**; migrations through
+  `0da0593`, `67e932d`, `a84ce82`, `ba27b79`, `054355f`, `911ced6`,
+  `94bd965`, `d3602d0`, `0aa54f3`, `918b80a` and `d070983`; **pushed to
+  `origin/main`**; nothing applied to
+  DigitalOcean. **5075/5075 tests (368 files)**; migrations through
   **`0072`** plus the migrator-provisioned **`pgboss`** schema
   (pg-boss 42) — migration `0072` (`0072_job_org_created_at_idx`, the
   `DEC-139` retention index; committed `94bd965`; dev `db:migrate`
@@ -918,8 +921,9 @@ sales_units}` in `schemas/domain-enums.yaml` and
 - **Schema:** migrations through **`0072`** plus the migrator-provisioned
   **`pgboss`** schema (pg-boss schemaVersion 42; owned by the pre-deploy
   migrator, not a numbered migration — see `docs/runbooks/
-persistence-migrations.md`); **98 public tables** (the `0071`
-  `job` projection and the `0072` retention index are additive and their
+persistence-migrations.md`); **99 public tables** (the `0071`
+  `job` projection, the `0072` retention index and the `0073`
+  `worker_heartbeat` table are additive and their
   down paths are untouched; the facts
   stay in `public.outbox_event` under the slice rollback). Next free
   decision id **`DEC-140`** (`DEC-129`–`DEC-139` are recorded).
@@ -931,10 +935,11 @@ persistence-migrations.md`); **98 public tables** (the `0071`
   on an audit same-instant ordering assertion and passes on re-run.)
 - **Not yet built (the honest-gap list — do not imply the programme is
   finished):** the jobs layer is **delivered** (`DEC-139` complete) and
-  its **follow-ups remain recorded, not silently deferred**: the
-  system-wide prune + the `(organization_id, created_at)` index, a
-  DB-backed worker heartbeat if cross-process detection is needed, and
-  DLQ review automation (see "Resume here"); INTG-002
+  its **follow-ups remain recorded, not silently deferred**: only the
+  system-wide prune is outstanding (the `(organization_id, created_at)`
+  index landed in `0072`; the DB-backed worker heartbeat in `0073` and
+  the DLQ review automation landed 2026-09-27) — see "Resume here";
+  INTG-002
   publishing is gated **only** on the per-source write terms I15/I18
   under `DEC-015`. The `file_object` storage port is **delivered**
   (`DEC-132`,
@@ -998,8 +1003,9 @@ open-point lists. Per-slice detail is in `docs/handoffs/`.
    decision.
 2. **Then the honest-gap queue** (see the "Not yet built" bullet in Current
    status, each recorded not silently deferred): the `DEC-139`
-   follow-ups (the system-wide prune + the `created_at` index, the
-   DB-backed heartbeat, DLQ review automation), plus the standing items
+   follow-ups (only the system-wide prune; the `created_at` index is in
+   `0072`, the heartbeat in `0073`, the DLQ automation delivered), plus
+   the standing items
    (reset-token delivery, unsigned golden fixtures, the `task`↔`approval`
    link, `WF-003` self-assignment). The previously listed
    unit-catalogue read, cost-centre list read, `calculatePriceScenario`
