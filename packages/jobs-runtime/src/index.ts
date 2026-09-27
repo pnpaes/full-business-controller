@@ -105,9 +105,15 @@ export {
   startHeartbeat,
 } from "./heartbeat";
 export type { HeartbeatOptions, HeartbeatRole } from "./heartbeat";
-export { createOpenAiCompatibleLlmAdapter, providerLabel } from "./llm-adapter";
+export {
+  computeLlmCostEstimate,
+  createOpenAiCompatibleLlmAdapter,
+  LLM_PRICE_SCALE,
+  providerLabel,
+} from "./llm-adapter";
 export type {
   LlmLogger,
+  LlmPriceTable,
   OpenAiCompatibleLlmAdapter,
   OpenAiCompatibleLlmAdapterOptions,
 } from "./llm-adapter";

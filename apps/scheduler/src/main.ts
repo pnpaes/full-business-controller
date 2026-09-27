@@ -64,6 +64,19 @@ function costLimit(name: string, value: string | undefined): string | undefined 
   return trimmed;
 }
 
+/** A non-negative decimal string at up to 6 dp (a per-1M-token price). */
+function price(name: string, value: string | undefined): string | undefined {
+  if (value === undefined) return undefined;
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return undefined;
+  if (!/^\d+(\.\d{1,6})?$/.test(trimmed)) {
+    throw new Error(
+      `${name} must be a non-negative decimal with at most 6 decimals, got "${value}"`,
+    );
+  }
+  return trimmed;
+}
+
 const organizationId = process.env.ORGANIZATION_ID?.trim();
 if (organizationId === undefined || organizationId.length === 0) {
   logger.error("ORGANIZATION_ID is required for the scheduler outbox replay");
@@ -72,11 +85,15 @@ if (organizationId === undefined || organizationId.length === 0) {
 
 // AI advisory (`ADR-0009`, `DEC-142`): the kill switch defaults OFF. The adapter
 // fails closed without all three LLM_* values, and the per-run/monthly caps are
-// optional non-negative decimals.
+// optional non-negative decimals. The per-1M-token prices are operator-supplied
+// (no vendor price is hardcoded): with neither set the adapter reports no cost
+// and the caps stay inert; one side set prices only that side's tokens.
 const llm = createOpenAiCompatibleLlmAdapter({
   apiUrl: process.env.LLM_API_URL,
   apiKey: process.env.LLM_API_KEY,
   model: process.env.LLM_MODEL,
+  priceInputPer1M: price("LLM_PRICE_INPUT_PER_1M", process.env.LLM_PRICE_INPUT_PER_1M),
+  priceOutputPer1M: price("LLM_PRICE_OUTPUT_PER_1M", process.env.LLM_PRICE_OUTPUT_PER_1M),
   logger,
 });
 const aiAdvisoryEnabled = flag(process.env.AI_ADVISORY_ENABLED);

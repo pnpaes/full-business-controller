@@ -58,6 +58,12 @@ export const envSchema = z.object({
   LLM_MODEL: z.string().min(1).optional(),
   AI_MONTHLY_COST_LIMIT: z.string().min(1).optional(),
   AI_PER_RUN_COST_LIMIT: z.string().min(1).optional(),
+  // Per-1,000,000-token prices (no vendor price is hardcoded). Decimal strings
+  // at up to 6 dp, validated by the scheduler at boot (the `AI_ADVISORY_*`
+  // convention). With neither set the adapter reports no cost and the caps stay
+  // inert; one side set prices only that side's tokens.
+  LLM_PRICE_INPUT_PER_1M: z.string().min(1).optional(),
+  LLM_PRICE_OUTPUT_PER_1M: z.string().min(1).optional(),
   // Competitor collection (`ADR-0010`, `DEC-143`/`DEC-149`). The identifying
   // user-agent is optional and secret-free; the other `COMPETITOR_*` values (the
   // kill switch, the cron, the page budget, the per-host delay and the timeout)

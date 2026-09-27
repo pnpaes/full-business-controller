@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createOpenAiCompatibleLlmAdapter, providerLabel } from "./llm-adapter";
+import {
+  computeLlmCostEstimate,
+  createOpenAiCompatibleLlmAdapter,
+  providerLabel,
+} from "./llm-adapter";
 
 const API_KEY = "sk-super-secret-key";
 const API_URL = "https://api.example.ai/v1/chat/completions";
@@ -24,6 +28,75 @@ describe("providerLabel", () => {
     expect(providerLabel(API_URL)).toBe("api.example.ai");
     expect(providerLabel("not a url")).toBe("openai-compatible");
     expect(providerLabel(undefined)).toBe("openai-compatible");
+  });
+});
+
+describe("computeLlmCostEstimate", () => {
+  it("returns null when neither price is set (absent, null or blank)", () => {
+    expect(computeLlmCostEstimate({ input: 1000, output: 500 }, {})).toBeNull();
+    expect(
+      computeLlmCostEstimate({ input: 1000, output: 500 }, { inputPer1M: null, outputPer1M: null }),
+    ).toBeNull();
+    expect(
+      computeLlmCostEstimate({ input: 1000, output: 500 }, { inputPer1M: "", outputPer1M: "   " }),
+    ).toBeNull();
+  });
+
+  it("prices both sides with exact decimal arithmetic", () => {
+    // 1000/1e6 × 2.000000 + 500/1e6 × 4.000000 = 0.002 + 0.002
+    expect(
+      computeLlmCostEstimate(
+        { input: 1000, output: 500 },
+        { inputPer1M: "2.000000", outputPer1M: "4.000000" },
+      ),
+    ).toBe("0.0040");
+  });
+
+  it("prices only the side that is set (the unset side is zero)", () => {
+    expect(
+      computeLlmCostEstimate({ input: 1_000_000, output: 999_999 }, { inputPer1M: "2.5" }),
+    ).toBe("2.5000");
+    expect(
+      computeLlmCostEstimate({ input: 999_999, output: 1_000_000 }, { outputPer1M: "2.5" }),
+    ).toBe("2.5000");
+  });
+
+  it("treats an explicit zero price as set, not absent", () => {
+    expect(
+      computeLlmCostEstimate(
+        { input: 1000, output: 500 },
+        { inputPer1M: "0", outputPer1M: "0.000000" },
+      ),
+    ).toBe("0.0000");
+  });
+
+  it("rounds HALF_UP once at numeric(19,4)", () => {
+    // 3,000,000 tokens × 0.000050 = 0.00015 → half rounds up
+    expect(
+      computeLlmCostEstimate({ input: 3_000_000, output: 0 }, { inputPer1M: "0.000050" }),
+    ).toBe("0.0002");
+    // 1 token × 0.000049 = 0.000000049 → rounds down
+    expect(computeLlmCostEstimate({ input: 1, output: 0 }, { inputPer1M: "0.000049" })).toBe(
+      "0.0000",
+    );
+  });
+
+  it("treats a negative, fractional or non-finite token count as zero", () => {
+    expect(
+      computeLlmCostEstimate(
+        { input: -5, output: Number.NaN },
+        { inputPer1M: "2", outputPer1M: "2" },
+      ),
+    ).toBe("0.0000");
+    expect(computeLlmCostEstimate({ input: 2.7, output: 0 }, { inputPer1M: "1" })).toBe("0.0000");
+  });
+
+  it("throws a DomainError on a malformed price", () => {
+    expect(() =>
+      computeLlmCostEstimate({ input: 1, output: 1 }, { inputPer1M: "1.1234567" }),
+    ).toThrow();
+    expect(() => computeLlmCostEstimate({ input: 1, output: 1 }, { inputPer1M: "-1" })).toThrow();
+    expect(() => computeLlmCostEstimate({ input: 1, output: 1 }, { inputPer1M: "abc" })).toThrow();
   });
 });
 
@@ -64,6 +137,68 @@ describe("createOpenAiCompatibleLlmAdapter", () => {
       { role: "system", content: "sys" },
       { role: "user", content: "usr" },
     ]);
+  });
+
+  it("attaches a cost estimate when a price table is configured", async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async () =>
+      jsonResponse({
+        choices: [{ message: { content: "hello" } }],
+        usage: { prompt_tokens: 1000, completion_tokens: 500 },
+      }),
+    );
+    const adapter = createOpenAiCompatibleLlmAdapter({
+      apiUrl: API_URL,
+      apiKey: API_KEY,
+      model: "m",
+      priceInputPer1M: "2.000000",
+      priceOutputPer1M: "4.000000",
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+
+    const result = await adapter.complete({ system: "s", user: "u" });
+    expect(result.costEstimate).toBe("0.0040");
+  });
+
+  it("reports no cost estimate when the price table is blank or absent", async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async () =>
+      jsonResponse({
+        choices: [{ message: { content: "hello" } }],
+        usage: { prompt_tokens: 1000, completion_tokens: 500 },
+      }),
+    );
+    const adapter = createOpenAiCompatibleLlmAdapter({
+      apiUrl: API_URL,
+      apiKey: API_KEY,
+      model: "m",
+      priceInputPer1M: "   ",
+      priceOutputPer1M: "",
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+
+    const result = await adapter.complete({ system: "s", user: "u" });
+    expect(result.costEstimate).toBeNull();
+  });
+
+  it("prices a response with no usage block as zero, not null", async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async () =>
+      jsonResponse({ choices: [{ message: { content: "x" } }] }),
+    );
+    const adapter = createOpenAiCompatibleLlmAdapter({
+      apiUrl: API_URL,
+      apiKey: API_KEY,
+      model: "m",
+      priceInputPer1M: "2.000000",
+      priceOutputPer1M: "4.000000",
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+
+    const result = await adapter.complete({ system: "s", user: "u" });
+    expect(result.costEstimate).toBe("0.0000");
+  });
+
+  it("fails construction on a malformed price", () => {
+    expect(() => createOpenAiCompatibleLlmAdapter({ priceInputPer1M: "1.1234567" })).toThrow();
+    expect(() => createOpenAiCompatibleLlmAdapter({ priceOutputPer1M: "-1" })).toThrow();
   });
 
   it("defaults missing token usage to zero", async () => {
