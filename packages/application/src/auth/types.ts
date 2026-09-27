@@ -254,11 +254,13 @@ export interface AuthDeps {
   /**
    * Out-of-band delivery of a password-reset token. `beginPasswordReset` never
    * returns the plaintext token; it hands it to this port only for an active
-   * account. Absent = the token is dropped (no delivery channel configured yet).
+   * account. The recipient `email` is nullable (some accounts log in by username
+   * only). Absent = the token is dropped (no delivery channel configured).
    */
   readonly deliverResetToken?: (delivery: {
     readonly organizationId: string;
     readonly userId: string;
+    readonly email: string | null;
     readonly token: string;
   }) => Promise<void>;
   /** Required by MFA operations; absent everywhere else. */

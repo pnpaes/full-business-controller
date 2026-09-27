@@ -31,6 +31,14 @@ export const envSchema = z.object({
       message: "must be a base64-encoded 32-byte key",
     })
     .optional(),
+  // Outbound password-reset delivery via SendGrid (`DEC-147`). All optional and
+  // secret-free here: without them the reset stays admin-issued and the adapter
+  // fails closed. `SENDGRID_API_KEY` is a secret supplied at deploy; `MAIL_FROM`
+  // is the verified sender; `APP_BASE_URL` is the public origin used to build
+  // the reset-page link (no token is ever placed in a URL, `ADR-0003`).
+  SENDGRID_API_KEY: z.string().min(1).optional(),
+  MAIL_FROM: z.string().min(1).optional(),
+  APP_BASE_URL: z.string().url().optional(),
 });
 
 export type AppConfig = Readonly<z.infer<typeof envSchema>>;

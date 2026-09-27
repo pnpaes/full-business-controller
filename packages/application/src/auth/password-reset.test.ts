@@ -8,14 +8,30 @@ import { FakeAuthStore, NOW, ORG, authDeps, userWithPassword } from "./test-supp
 import type { AuthDeps } from "./types";
 
 /** Captures reset tokens the way an out-of-band delivery channel would. */
-function delivery(): { deps: AuthDeps; tokens: string[] } {
+function delivery(): {
+  deps: AuthDeps;
+  tokens: string[];
+  deliveries: Array<{
+    organizationId: string;
+    userId: string;
+    email: string | null;
+    token: string;
+  }>;
+} {
   const tokens: string[] = [];
+  const deliveries: Array<{
+    organizationId: string;
+    userId: string;
+    email: string | null;
+    token: string;
+  }> = [];
   const deps = authDeps({
-    deliverResetToken: async ({ token }) => {
-      tokens.push(token);
+    deliverResetToken: async (delivery_) => {
+      tokens.push(delivery_.token);
+      deliveries.push(delivery_);
     },
   });
-  return { deps, tokens };
+  return { deps, tokens, deliveries };
 }
 
 describe("beginPasswordReset", () => {
@@ -53,7 +69,7 @@ describe("beginPasswordReset", () => {
   it("delivers a token for an active user and stores only its hash with the TTL expiry", async () => {
     const store = new FakeAuthStore();
     const user = await userWithPassword(store, "correct-password");
-    const { deps, tokens } = delivery();
+    const { deps, tokens, deliveries } = delivery();
 
     const result = await beginPasswordReset(
       store,
@@ -66,6 +82,14 @@ describe("beginPasswordReset", () => {
     expect(tokens).toHaveLength(1);
     const token = tokens[0] ?? "";
     expect(token).toMatch(/^[A-Za-z0-9_-]+$/);
+    // The delivery port gets the recipient address so the runtime can email it;
+    // the token itself is passed here and nowhere else on the result.
+    expect(deliveries[0]).toEqual({
+      organizationId: ORG,
+      userId: user.id,
+      email: user.email,
+      token,
+    });
 
     const stored = [...store.resetTokens.values()][0];
     expect(stored?.userId).toBe(user.id);

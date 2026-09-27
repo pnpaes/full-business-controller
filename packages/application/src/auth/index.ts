@@ -74,6 +74,8 @@ export type {
   CompletePasswordResetResult,
 } from "./password-reset";
 
+export type { MailPort, PasswordResetEmailMessage } from "./mail";
+
 export { createPostgresAuthStore } from "./postgres-store";
 
 export {

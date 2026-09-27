@@ -83,6 +83,7 @@ export async function beginPasswordReset(
       await deps.deliverResetToken({
         organizationId: input.organizationId,
         userId: user.id,
+        email: user.email,
         token,
       });
     }
