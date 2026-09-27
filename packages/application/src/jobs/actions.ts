@@ -9,6 +9,7 @@ export const JOB_AUDIT_ACTIONS = {
   jobSucceeded: "jobs.job.succeeded",
   jobFailed: "jobs.job.failed",
   jobDeadLettered: "jobs.job.dead_lettered",
+  jobConsumed: "jobs.job.consumed",
 } as const;
 
 /** The enqueue audit targets the outbox event (the durable fact). */

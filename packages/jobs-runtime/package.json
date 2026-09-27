@@ -1,0 +1,18 @@
+{
+  "name": "@aquarela/jobs-runtime",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "types": "./src/index.ts",
+  "dependencies": {
+    "@aquarela/application": "*",
+    "@aquarela/config": "*",
+    "@aquarela/logger": "*",
+    "@aquarela/persistence": "*",
+    "drizzle-orm": "0.45.2",
+    "pg-boss": "12.33.2"
+  }
+}

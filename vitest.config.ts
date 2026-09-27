@@ -17,6 +17,7 @@ export default defineConfig({
       "@aquarela/domain/money": resolvePackage("./packages/domain/src/money.ts"),
       "@aquarela/domain/quantity": resolvePackage("./packages/domain/src/quantity.ts"),
       "@aquarela/domain": resolvePackage("./packages/domain/src/index.ts"),
+      "@aquarela/jobs-runtime": resolvePackage("./packages/jobs-runtime/src/index.ts"),
       "@aquarela/logger": resolvePackage("./packages/logger/src/index.ts"),
       "@aquarela/persistence": resolvePackage("./packages/persistence/src/index.ts"),
     },

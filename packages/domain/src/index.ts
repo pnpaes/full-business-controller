@@ -48,6 +48,7 @@ export {
   assertCloseChecklist,
   buildClosePrerequisites,
   buildCloseSnapshot,
+  lastDayOfUtcMonth,
   resolveClosePeriod,
 } from "./period-close";
 export type { ClosePeriod, ClosePrerequisites, CloseSnapshot } from "./period-close";

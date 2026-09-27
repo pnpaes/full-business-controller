@@ -8,6 +8,7 @@
   },
   "dependencies": {
     "@aquarela/config": "*",
+    "@aquarela/jobs-runtime": "*",
     "@aquarela/logger": "*",
     "tsx": "^4.20.0"
   }

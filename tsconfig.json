@@ -24,6 +24,7 @@
       "@aquarela/application": ["./packages/application/src/index.ts"],
       "@aquarela/config": ["./packages/config/src/index.ts"],
       "@aquarela/domain": ["./packages/domain/src/index.ts"],
+      "@aquarela/jobs-runtime": ["./packages/jobs-runtime/src/index.ts"],
       "@aquarela/logger": ["./packages/logger/src/index.ts"],
       "@aquarela/persistence": ["./packages/persistence/src/index.ts"]
     }

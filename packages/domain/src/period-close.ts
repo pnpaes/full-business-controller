@@ -93,8 +93,12 @@ function assertCalendarDate(value: string, field: string): void {
   }
 }
 
-/** The last day of `value`'s UTC calendar month, where `value` is the first day. */
-function lastDayOfUtcMonth(firstDay: string): string {
+/**
+ * The last day of `value`'s UTC calendar month, where `value` is the first day
+ * (`YYYY-MM-DD`). Exported because the payroll-report scheduler derives the
+ * current month's window from it rather than re-implementing the calendar.
+ */
+export function lastDayOfUtcMonth(firstDay: string): string {
   const year = Number.parseInt(firstDay.slice(0, 4), 10);
   const month = Number.parseInt(firstDay.slice(5, 7), 10);
   // `Date.UTC(year, month, 0)` is day 0 of the following month = the last day of

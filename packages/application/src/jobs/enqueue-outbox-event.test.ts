@@ -55,6 +55,7 @@ describe("enqueueOutboxEvent", () => {
 
     expect(dispatcher.dispatched).toHaveLength(1);
     expect(dispatcher.dispatched[0]!.id).toBe(result.outboxEventId);
+    expect(dispatcher.dispatched[0]!.queue).toBe("sales.import.completed");
 
     expect(store.audits).toHaveLength(1);
     expect(store.audits[0]).toMatchObject({
@@ -63,6 +64,16 @@ describe("enqueueOutboxEvent", () => {
       entityType: "outbox_event",
       entityId: result.outboxEventId,
     });
+  });
+
+  it("dispatches to the explicit queue override when one is supplied", async () => {
+    const store = new FakeJobStore();
+    const dispatcher = new FakeOutboxJobDispatcher();
+
+    await enqueueOutboxEvent(store, baseInput({ queue: "imports.heavy" }), dispatcher);
+
+    expect(dispatcher.dispatched).toHaveLength(1);
+    expect(dispatcher.dispatched[0]!.queue).toBe("imports.heavy");
   });
 
   it("dedups a repeat enqueue while the natural-key event is unpublished", async () => {

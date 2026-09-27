@@ -18,7 +18,8 @@ export interface GeneratePayrollReportInput {
   readonly periodStart: string;
   /** `date`, `YYYY-MM-DD`; must be after `periodStart`. */
   readonly periodEnd: string;
-  readonly actorId: string;
+  /** The acting user; `null` means system-initiated (e.g. the scheduler cron). */
+  readonly actorId: string | null;
 }
 
 /**

@@ -165,6 +165,7 @@ export async function enqueueOutboxEvent(
       eventType: normalized.eventType,
       aggregateType: normalized.aggregateType,
       aggregateId: normalized.aggregateId,
+      queue: normalized.queue,
     });
 
     await tx.writeAudit({

@@ -1,6 +1,9 @@
 import { loadConfig } from "@aquarela/config";
+import { startWorker } from "@aquarela/jobs-runtime";
 import { createLogger } from "@aquarela/logger";
 
+// `loadConfig()` requires DATABASE_URL, so a missing/unusable URL fails loudly at
+// boot (the deploy spec runs this with `tsx`, and there is no health check).
 const config = loadConfig();
 const logger = createLogger({ name: "worker" });
 
@@ -13,16 +16,23 @@ function positiveInt(name: string, value: string | undefined, fallback: number):
   return parsed;
 }
 
+// Smoke semantics preserved: with WORKER_TICKS set, emit that many heartbeats
+// then stop pg-boss and exit 0; otherwise run as a long-lived consumer.
 const heartbeatMs = positiveInt("WORKER_HEARTBEAT_MS", process.env.WORKER_HEARTBEAT_MS, 30000);
 const ticks =
   process.env.WORKER_TICKS === undefined
     ? undefined
     : positiveInt("WORKER_TICKS", process.env.WORKER_TICKS, 1);
 
-logger.info(
-  { nodeEnv: config.NODE_ENV },
-  "worker started; queue consumer not wired yet because ADR-0004 is still Proposed",
-);
+const worker = await startWorker({
+  connectionString: config.DATABASE_URL,
+  logger,
+}).catch((error: unknown) => {
+  logger.error({ err: error }, "worker failed to start");
+  process.exit(1);
+});
+
+logger.info({ nodeEnv: config.NODE_ENV }, "worker started; consuming outbox queues");
 
 let tick = 0;
 const timer = setInterval(() => {
@@ -31,15 +41,6 @@ const timer = setInterval(() => {
   if (ticks !== undefined && tick >= ticks) {
     clearInterval(timer);
     logger.info({ ticks: tick }, "worker smoke run complete");
-    process.exit(0);
+    void worker.stop().finally(() => process.exit(0));
   }
 }, heartbeatMs);
-
-function shutdown(signal: string): void {
-  clearInterval(timer);
-  logger.info({ signal }, "worker shutting down");
-  process.exit(0);
-}
-
-process.on("SIGTERM", () => shutdown("SIGTERM"));
-process.on("SIGINT", () => shutdown("SIGINT"));

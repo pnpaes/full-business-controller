@@ -15,6 +15,8 @@ export interface OutboxDispatchEvent {
   readonly eventType: string;
   readonly aggregateType: string;
   readonly aggregateId: string;
+  /** The runner queue to route to; `enqueueOutboxEvent` defaults it to the event type. */
+  readonly queue: string;
 }
 
 export interface OutboxJobDispatcher {
