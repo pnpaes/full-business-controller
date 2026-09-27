@@ -1,7 +1,7 @@
 # ADR-0010 — Competitor source automation
 
-- **Status:** Proposed (needs owner + tech-lead acceptance)
-- This ADR is a proposal; implementation must not rely on it until status is `Accepted`.
+- **Status:** Accepted (2026-09-27, owner + tech lead — `DEC-143`)
+- Accepted with the `DEC-020` rules and the approved source list: **public competitor websites** (per-source terms/legal review, `robots.txt` and rate-limit respect) **plus the Wolt menu, subject to its terms permitting**; **Instagram stays manual capture** (no scraping). Every observation passes human review before it influences any decision; provenance (source URL + capture date) is recorded; no personal data. Row 18's connector/optimization slice may now be built.
 - **Date:** 2026-09-14
 - **Deciders:** BUS, TECH
 - **Related:** DEC-020, DEC-039, COMP-003, COMP-004; `07.12`; `03.8`

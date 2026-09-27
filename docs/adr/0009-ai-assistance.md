@@ -1,7 +1,7 @@
 # ADR-0009 — AI-assisted analysis and suggestions
 
-- **Status:** Proposed (needs owner + tech-lead acceptance)
-- This ADR is a proposal; implementation must not rely on it until status is `Accepted`.
+- **Status:** Accepted (2026-09-27, owner + tech lead — `DEC-142`)
+- Accepted with the strict **advisory-only** posture: suggestions are never auto-applied, human review precedes any influence (`DEC-039`), and no external publish is made. The implementation sits behind a provider-agnostic OpenAI-compatible adapter (`LLM_API_URL`/`LLM_API_KEY`/`LLM_MODEL`); the provider privacy/DPA review (I16) remains the operational input before a production key is issued. Row 17's FCST-004 advisory slice may now be built.
 - **Date:** 2026-09-14
 - **Deciders:** TECH, BUS
 - **Related:** DEC-039, DEC-011, FCST-004
