@@ -246,6 +246,17 @@ const AREAS: readonly Area[] = [
       </Glyph>
     ),
   },
+  {
+    href: "/jobs",
+    label: "Jobs",
+    icon: (
+      <Glyph>
+        <rect x="4" y="4" width="16" height="5" rx="1.5" />
+        <rect x="4" y="11" width="16" height="5" rx="1.5" />
+        <path d="M8 19h8" />
+      </Glyph>
+    ),
+  },
 ];
 
 /**
