@@ -1,5 +1,15 @@
 # Reversibility log
 
+- **2026-09-27 Receipt → stock ledger (`50b231e`; pushed)**: `feat(inventory,receiving)`
+  + migration `0074_receipt_stock_ledger_area.sql` (two expand-only nullable FKs
+  plus two cross-location coherence guards) and its down companion. **Migration
+  rollback** = run the down file (drops the guards then the columns; no
+  `stock_movement` or other ledger row is touched), rehearsed on a **scratch DB**
+  (columns + triggers present, guards reject cross-location values, down applied,
+  columns/triggers absent, 99 tables remain), never the dev DB. **Rollback** =
+  `git revert 50b231e` — pre-`0074` receipts revert to posting nothing. No posted
+  money or stock fact is edited; the new movements are ordinary ledger appends.
+  Details: [handoff 090](090-2026-09-27-receipt-to-ledger-dec-145.md).
 - **2026-09-27 Jobs operator screen (`2796411`; pushed)**: `feat(web)` — the
   `/jobs` server page + client register + labels, and the nav entry. No
   migration, no dependency. **Rollback** = `git revert 2796411`; the screen is

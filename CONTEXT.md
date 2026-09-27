@@ -18,11 +18,13 @@ producer, the 90-day retention prune and the `DEC-139` item-8 alert
 surfaces are delivered. Per-slice detail lives in the handoff files
 under `docs/handoffs/`; this file does not restate them.)
 
-**State:** branch `main`; HEAD **`2796411`** (the P2 platform core is
+**State:** branch `main`; HEAD **`50b231e`** (the P2 platform core is
 `c66eb27`; the `ADR-0004`/`DEC-139` docs commit is `3348e78`). The
 **jobs layer is complete** — `DEC-139` fully delivered, and the recorded
 follow-ups are now closed except the system-wide prune — committed across
-fourteen layered commits, newest first: `2796411` (the jobs operator screen),
+seventeen layered commits, newest first: `50b231e` (receipt → stock ledger,
+`DEC-145`, migration `0074`), `5d8e285` (docs: the `DEC-141`–`DEC-148` owner
+decision round), `18c4cf3` (docs: the jobs screen), `2796411` (the jobs operator screen),
 `4c89702` (docs: `DEC-140`), `d070983` (the DB-backed worker
 heartbeat, migration `0073`), `918b80a` (DLQ review automation + the
 operator job list), `0aa54f3` (docs), `d3602d0` (honoured `scheduledAt`
@@ -36,8 +38,9 @@ pgboss provisioning + grants), `ecbe35b` (the runtime + payroll changes).
 DigitalOcean.** Rollback: **`git revert` each commit**, then
 `DROP SCHEMA pgboss CASCADE` **only when unwinding the whole jobs
 stack** — facts stay in `public.outbox_event`; migrations `0072`'s and
-`0073`'s down files invert the index and the heartbeat table. **5081/5081
-tests (369 files)**; migrations through **`0073`** (99 public tables) plus
+`0073`/`0074`'s down files invert the index, the heartbeat table and the
+receipt-area columns. **5093/5093 tests (370 files)**; migrations through
+**`0074`** (99 public tables) plus
 the migrator-provisioned **`pgboss`** schema (pg-boss schemaVersion 42);
 `db:migrate` a no-op re-run. **Next free decision id `DEC-149`**
 (`DEC-141`–`DEC-148` are the 2026-09-27 owner decision round). Know the
@@ -67,18 +70,16 @@ those. Post-fix verification: **4957/4957 tests (361 files)**;
 typecheck/lint/format:check clean; `next build` exit 0; `db:migrate` a
 no-op.
 
-**Next task (owner decisions taken 2026-09-27 — several fronts now
-unblocked): the lead item is the receipt-to-ledger wiring.** The owner
-decision round (`DEC-141`–`DEC-148`) settled the queue: `ADR-0009` and
+**Next task (owner decisions taken 2026-09-27): the receipt→ledger wiring is
+delivered** (`DEC-145`, migration `0074`, commit `50b231e`, handoff `090`).
+The decision round (`DEC-141`–`DEC-148`) settled the queue: `ADR-0009` and
 `ADR-0010` are **Accepted**, the `DEC-065` fixtures are **signed**, the
-receipt destination policy is decided (`DEC-145`), the employee-login model
-is decided (`DEC-146`), reset delivery is Resend (`DEC-147`), INTG-002 stays
-deferred (`DEC-141`) and the deployment rehearsal stays parked (`DEC-148`).
-Buildable now, in order: (1) **receipt→ledger storage area**
-(`DEC-145`, `post-stock-movement.ts` — the lead item), (2) **reset delivery
-via Resend** (`DEC-147`), (3) **row 17 AI advisory** (`ADR-0009`, advisory
-only, provider-agnostic adapter), (4) **row 18 connectors** (`ADR-0010`,
-public websites + Wolt), (5) **WF-003 employee login** (`DEC-146`).
+employee-login model is decided (`DEC-146`), reset delivery is Resend
+(`DEC-147`), INTG-002 stays deferred (`DEC-141`) and the deployment rehearsal
+stays parked (`DEC-148`). Buildable now, in order: (1) **reset delivery via
+Resend** (`DEC-147`), (2) **row 17 AI advisory** (`ADR-0009`, advisory only,
+provider-agnostic adapter), (3) **row 18 connectors** (`ADR-0010`, public
+websites + Wolt), (4) **WF-003 employee login** (`DEC-146`).
 
 - **Scope (do):** pick the next item above; each has its decision row and
   the roadmap entry. The jobs layer and its follow-ups are **complete**
@@ -94,7 +95,7 @@ public websites + Wolt), (5) **WF-003 employee login** (`DEC-146`).
 "$NVM_DIR/nvm.sh"; nvm use 22`; `npm run typecheck`; `npm run lint`;
   `npm run format:check`; `npm run build`;
   `DATABASE_URL=postgres://aquarela:aquarela@localhost:5432/aquarela npm
-run test` (≥ **5081/5081**, 369 files); `npm run db:migrate` a no-op
+run test` (≥ **5093/5093**, 370 files); `npm run db:migrate` a no-op
   re-run. Normalise the generated `apps/web/next-env.d.ts`/
   `apps/web/tsconfig.json` with `git checkout --` before staging (see the
   durable fact below). Expect the
@@ -104,7 +105,7 @@ run test` (≥ **5081/5081**, 369 files); `npm run db:migrate` a no-op
 - **Acceptance criteria:** the picked slice/row is delivered per its
   decision rows and this section's rules; the read paths stay org-scoped
   and fail-closed on authorization; the full verification set is green
-  (≥ 5081/5081, 369 files) with `build` included. For the follow-up
+  (≥ 5093/5093, 370 files) with `build` included. For the follow-up
   option: the prune covers all organizations (the `(organization_id,
 created_at)` index landed in migration `0072`, rehearsed down
   path), the heartbeat divergence check is DB-backed or the log alert
@@ -304,6 +305,16 @@ Per-slice detail, commits and reconciliation are in `docs/handoffs/`.
 
 ## Current status
 
+- **2026-09-27 — receipt → stock ledger wired (`DEC-145`, committed
+  `50b231e`, pushed):** migration `0074` adds `location.default_storage_area_id`
+  and `goods_receipt.storage_area_id` (expand-only nullable FKs) plus two
+  cross-location coherence guards; `recordGoodsReceipt` resolves
+  `override ?? location default`, fails closed when neither resolves, and posts
+  one `receipt` `stock_movement` per line in the receipt transaction with a
+  `receipt-<receiptId>-<lineId>` idempotency key; `POST /api/v1/receiving/receipts`
+  takes the optional override and a new Administration route sets the location
+  default. **5093/5093 tests (370 files)**; guards + down rehearsed on a scratch
+  DB.
 - **2026-09-27 — owner decision round (`DEC-141`–`DEC-148`, recorded; next
   free `DEC-149`):** INTG-002 stays deferred/read-only (`DEC-141`);
   `ADR-0009` **Accepted** — AI advisory, advisory-only, provider-agnostic
@@ -651,13 +662,13 @@ findings from the W7 review` (5 files, all under `apps/web/app/(app)/**`;
   and the `security`-agent dead-pin fact are recorded in
   `docs/handoffs/080-2026-09-24-w7-ui-refinement-wave.md`. Reverts
   independently with `git revert f3adeb8`.
-- **As of:** 2026-09-27 — branch `main`; HEAD **`2796411`**, working tree
+- **As of:** 2026-09-27 — branch `main`; HEAD **`50b231e`**, working tree
   **clean**; the jobs stack is committed across `ecbe35b`, `8572510`,
   `0da0593`, `67e932d`, `a84ce82`, `ba27b79`, `054355f`, `911ced6`,
   `94bd965`, `d3602d0`, `0aa54f3`, `918b80a`, `d070983`, `4c89702` and
-  `2796411`; **pushed to
+  `2796411`, `18c4cf3`, `5d8e285` and `50b231e`; **pushed to
   `origin/main`**; nothing applied to
-  DigitalOcean. **5081/5081 tests (369 files)**; migrations through
+  DigitalOcean. **5093/5093 tests (370 files)**; migrations through
   **`0072`** plus the migrator-provisioned **`pgboss`** schema
   (pg-boss 42) — migration `0072` (`0072_job_org_created_at_idx`, the
   `DEC-139` retention index; committed `94bd965`; dev `db:migrate`

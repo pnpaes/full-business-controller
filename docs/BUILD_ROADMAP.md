@@ -571,9 +571,15 @@ dates assigned):
   by the slice-8 adversarial reviews and implementation (uncommitted working tree at
   HEAD `f7b1db7`); record each owner/TECH resolution in `12_OPEN_DECISIONS.md` (next
   free id **`DEC-066`**); do not resolve silently:
-  1. Goods-receipt acceptance is not yet wired to the ledger: a receipt has no
+  1. ~~Goods-receipt acceptance is not yet wired to the ledger: a receipt has no
      destination `storage_area_id`, so the receipt→movement integration and its
-     storage-area policy are unresolved (surface: `post-stock-movement.ts`). owner/TECH.
+     storage-area policy are unresolved (surface: `post-stock-movement.ts`).~~ resolved
+     2026-09-27 (`DEC-145`, migration `0074`): a receipt posts one `receipt`
+     `stock_movement` per line on the receipt's own transaction; the destination resolves
+     to the explicit per-receipt `goods_receipt.storage_area_id` override, else
+     `location.default_storage_area_id`, and fails closed when neither resolves;
+     `POST /api/v1/receiving/receipts` accepts the optional override and
+     `POST /api/v1/administration/locations/default-storage-area` sets the location default.
   2. Per-source reversal semantics are not enumerated: reversing a non-receipt
      movement posts movement type `correction` (only `receipt` →
      `receipt_reversal`); `DEC-028` defines the semantics per source type (receipt,
@@ -635,8 +641,10 @@ dates assigned):
   flight); record each owner/TECH resolution in `12_OPEN_DECISIONS.md` (next free id
   **`DEC-066`**); do not resolve silently. (Where an item overlaps a slice-8 point
   above, the slice-8 numbering is retained and noted.)
-  1. Receipts are not wired to the ledger: a receipt still has no destination
-     storage area, so it does not post a stock movement (overlaps slice-8 point 1).
+  1. ~~Receipts are not wired to the ledger: a receipt still has no destination
+     storage area, so it does not post a stock movement~~ resolved 2026-09-27
+     (`DEC-145`, migration `0074` — overlaps slice-8 point 1; see the slice-8
+     resolution note).
      owner/TECH.
   2. Per-source reversal semantics (`DEC-028`) are not implemented in
      `reverseStockMovement` (overlaps slice-8 point 2). owner/TECH.
@@ -704,7 +712,8 @@ dates assigned):
   5. Lot-tracked cross-location transfer policy. owner/OPS.
   6. Per-source reversal semantics (`DEC-028`) are not yet implemented (overlaps
      slice-8 point 2). owner/TECH.
-  7. Receipts are not wired to the ledger (overlaps slice-8 point 1). owner/TECH.
+  7. ~~Receipts are not wired to the ledger (overlaps slice-8 point 1)~~ resolved
+     2026-09-27 (`DEC-145`, migration `0074`).
   8. `lotTracked` is unenforced (overlaps slice-8 point 3). owner/TECH.
   9. `DEC-009` daily theoretical consumption is not implemented (overlaps slice-8
       point 6). owner/TECH.
