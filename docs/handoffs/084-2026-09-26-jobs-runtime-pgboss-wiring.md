@@ -1,7 +1,8 @@
 # 084 — 2026-09-26 — Jobs runtime: pg-boss worker wiring and scheduler cron (ADR-0004, DEC-139)
 
-On branch `main` at HEAD `3348e78`; the whole slice is **uncommitted** in the
-working tree (nothing staged, nothing pushed, nothing applied to
+On branch `main`; the slice was authored as uncommitted work on top of
+`3348e78` and is now **committed** as `ecbe35b` + `8572510`, closed by the
+docs commit `67e932d` (working tree clean, nothing pushed, nothing applied to
 DigitalOcean).
 
 ## What was decided and what was built.

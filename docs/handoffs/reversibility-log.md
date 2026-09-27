@@ -2,8 +2,8 @@
 
 - **2026-09-26 Payroll-schedule slice (the first real async
   producer/consumer + the job-progress route; ADR-0004/`DEC-139` item 5 +
-  `DEC-104`; whole slice uncommitted at HEAD `3348e78`, on top of the
-  uncommitted 084 jobs-runtime slice; nothing pushed)**: file set —
+  `DEC-104`; committed as `ecbe35b` + `0da0593`, closed by the docs commit
+  `67e932d`; nothing pushed)**: file set —
   `packages/jobs-runtime/src/{payroll-schedule.ts,handlers.ts,queues.ts,consumer.ts,worker.ts,scheduler.ts,index.ts}`
   (+ tests), `packages/application/src/scheduling/generate-payroll-report.ts`
   (`actorId` widened to `string | null`),
@@ -14,8 +14,7 @@
   **No migration** — the report writes ride the existing `payroll_report`
   table and its lock; migrations and the `pgboss` schema are untouched, and
   the `0700`-style down paths are untouched. **Rollback:** revert the
-  commits (or `git checkout .` the uncommitted tree — noting it reverts the
-  084 slice with it unless that is committed first); **no posted money or
+  commits (`0da0593`, `ecbe35b`, `67e932d`); **no posted money or
   stock fact** — the slice only creates `payroll_report` rows through the
   existing system command, queued jobs and audit rows, all ordinary
   operator-grade appends. Suggested layering: `feat(jobs)` (producer +
@@ -23,8 +22,9 @@
   applied to DigitalOcean. Details and the review reconciliation:
   [handoff 085](085-2026-09-26-payroll-schedule-producer-consumer.md).
 - **2026-09-26 Jobs-runtime slice (pg-boss worker wiring + scheduler cron;
-  ADR-0004/DEC-139; whole slice uncommitted at HEAD `3348e78`; nothing
-  pushed)**: the file set groups by the four suggested commits — (1)
+  ADR-0004/DEC-139; committed as `ecbe35b` + `8572510`, closed by the docs
+  commit `67e932d`; nothing pushed)**: the file set groups by the landed
+  commits — (1)
   `feat(jobs)` — `packages/jobs-runtime/**`, the additive
   `packages/application/src/jobs/**` change, `apps/worker` + `apps/scheduler`,
   root
@@ -40,8 +40,8 @@
   metadata**: the facts are retained in `public.outbox_event`), rehearsed on
   a **scratch DB** (`public.job`/`public.outbox_event` and the 98 public
   tables survived intact; never rehearsed on the dev DB).
-  **Rollback statement:** revert the commits (or `git checkout` the
-  uncommitted tree), then drop the schema; no posted money or stock fact is
+  **Rollback statement:** revert the commits (`ecbe35b`, `8572510`,
+  `67e932d`), then drop the schema; no posted money or stock fact is
   touched. Nothing pushed; nothing applied to DigitalOcean. Details and the
   review reconciliation: [handoff
   084](084-2026-09-26-jobs-runtime-pgboss-wiring.md).

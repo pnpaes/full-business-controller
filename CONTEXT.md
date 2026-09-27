@@ -18,29 +18,31 @@ Per-slice detail: `docs/handoffs/084-2026-09-26-jobs-runtime-pgboss-wiring.md`
 and the handoff `085` file for the payroll slice — both listed in
 `docs/handoffs/README.md`; this file does not restate them.)
 
-**State:** branch `main`; HEAD **`3348e78`** (the `ADR-0004`/`DEC-139` docs
-commit; the P2 platform core is `c66eb27`). **Two slices are UNCOMMITTED in
-the working tree:** (i) the **jobs-runtime pg-boss wiring** (file set:
-`packages/jobs-runtime/**`; the additive `packages/application/src/jobs/**`
-queue-field/audit change; `apps/worker` + `apps/scheduler`; root
-`package.json`/`tsconfig.json`/`vitest.config.ts`/`package-lock.json`;
-`packages/persistence/scripts/migrate.mjs` +
-`packages/persistence/package.json`; `infra/bootstrap/pgboss-grants.sql`;
-docs), and (ii) the **first real producer/consumer** on top of it — the
-scheduled monthly payroll-report generation + the HTTP job-progress route
-(`ADR-0004`/`DEC-139` item 5 + `DEC-104`; per-slice detail: handoff `085`).
-Rollback: `git checkout` the tree (or `git revert` each commit once
-committed), then `DROP SCHEMA pgboss CASCADE` **only when unwinding the
-whole jobs stack** — facts stay in `public.outbox_event`. **4957/4957 tests
-(361 files)**; migrations through **`0071`** plus the migrator-provisioned
+**State:** branch `main`; HEAD **`67e932d`** (docs closing the two slices;
+the P2 platform core is `c66eb27`; the `ADR-0004`/`DEC-139` docs commit is
+`3348e78`). The **jobs-runtime pg-boss wiring** and the **first real
+producer/consumer** (scheduled monthly payroll-report generation + the HTTP
+job-progress route; `ADR-0004`/`DEC-139` item 5 + `DEC-104`) are
+**COMMITTED** in four layered commits, newest first: `67e932d` (docs +
+review-fix references), `0da0593` (`apps/web` jobs route + `infra/**` env and
+plan-time check), `8572510` (persistence: pgboss provisioning + grants),
+`ecbe35b` (`packages/jobs-runtime/**`; the additive
+`packages/application/src/jobs/**` queue-field/audit change and the payroll
+slice's application/domain changes; `apps/worker` + `apps/scheduler`; root
+`package.json`/`tsconfig.json`/`vitest.config.ts`/`package-lock.json`).
+**Working tree clean; nothing pushed; nothing applied to DigitalOcean.**
+Rollback: **`git revert` each commit** (`67e932d` → `0da0593` → `8572510` →
+`ecbe35b`), then `DROP SCHEMA pgboss CASCADE` **only when unwinding the whole
+jobs stack** — facts stay in `public.outbox_event`. **4957/4957 tests (361
+files)**; migrations through **`0071`** plus the migrator-provisioned
 **`pgboss`** schema (pg-boss schemaVersion 42); `db:migrate` a no-op re-run.
-**No migration in the payroll slice.** Nothing pushed; nothing applied to
-DigitalOcean. **Next free decision id `DEC-140`.**
+**No migration in the payroll slice.** **Next free decision id `DEC-140`.**
 Know the `packages/application/src/scheduling/scheduling.postgres.test.ts`
 same-instant ordering flake (passes on re-run).
 
-**Review-fix pass (`/review uncommitted`, 2026-09-26) folded into the
-uncommitted tree:** five of six findings fixed, one declined with evidence
+**Review-fix pass (`/review uncommitted`, 2026-09-26), committed in
+`ecbe35b`/`0da0593`/`8572510`:** five of six findings fixed, one declined with
+evidence
 (full detail in handoff `085`'s "Review-fix pass" section). The migrator
 (`packages/persistence/scripts/migrate.mjs`) now applies the pgboss runtime
 grants itself after provisioning, under advisory lock `8675309`, to the

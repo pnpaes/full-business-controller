@@ -1,9 +1,9 @@
 # 085 — 2026-09-26 — Payroll schedule: the first real async producer/consumer and the job-progress route (ADR-0004, DEC-139 item 5, DEC-104)
 
-On branch `main` at HEAD `3348e78`; the whole slice is **uncommitted** in the
-working tree, on top of the also-uncommitted pg-boss wiring slice (handoff
-084). Nothing staged, nothing pushed, nothing applied to DigitalOcean. No
-migration.
+On branch `main`; the slice was authored as uncommitted work on top of
+`3348e78` and is now **committed** as `ecbe35b` + `0da0593`, closed by the
+docs commit `67e932d` (working tree clean, nothing pushed, nothing applied to
+DigitalOcean). No migration.
 
 ## What was decided and what was built.
 
