@@ -1,5 +1,11 @@
 # Reversibility log
 
+- **2026-09-27 Competitor sources UI, row 18 slice 18c (`edf2ba9`; pushed)**:
+  the Sources section on the competitors screen + the source forms/actions and
+  the terms labels. **No migration.** Rollback = `git revert edf2ba9` — the
+  screen is additive and every action stays gated by the API. No posted money or
+  stock fact is touched. Details:
+  [handoff 096](096-2026-09-27-competitor-sources-ui-row-18c.md).
 - **2026-09-27 Competitor collector, row 18 slice 18b (`ADR-0010`, `DEC-149`;
   uncommitted authoring)**: the `competitor-collector.ts` client (robots,
   per-host delay, budget, backoff, fact extraction, content hash) and the
