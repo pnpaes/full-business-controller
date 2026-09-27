@@ -86,6 +86,23 @@ rows only; nothing is auto-applied and nothing is published externally. **Kill s
 schema change (migration `0075`). The provider DPA/privacy review (I16) must complete before a
 production key is issued.
 
+**Competitor collection (row 18b, `ADR-0010` / `DEC-143` / `DEC-149`).** Prereq:
+migration `0076` applied (delivered) and the `pgboss` schema present — no new migration.
+Register sources in the app, then an owner/admin terms decision sets
+`terms_status='approved'`; only **active + `collection_mode='automated'` + approved**
+sources that are linked to a competitor are collected. Enable on the **scheduler**
+component: `COMPETITOR_COLLECTION_ENABLED=true` (default off), set
+`COMPETITOR_USER_AGENT` to a real contact, keep `COMPETITOR_MIN_DELAY_MS >= 1000`.
+The cron (`COMPETITOR_COLLECTION_CRON`, default weekly Monday 07:00) is registered even
+while disabled. Behaviour: honours `robots.txt` per user-agent and **fails closed** if it
+cannot be fetched/parsed; ≤ 1 request/second/host; a bounded per-run page budget; 429/5xx
+retried with backoff. Captured facts become `pending` observations for human review;
+**nothing is auto-published or applied**. Verify: the scheduler logs
+`competitor collection cron run finished` with `{sources,collected,observations,skipped,failed}`;
+with the switch off it makes **no** request. Rollback: set the flag false and restart (immediate),
+or `git revert` (no schema change). Hosts whose `robots.txt` 404/500 are skipped by design.
+Known follow-up: no content-hash dedupe, so repeated runs re-record pending observations.
+
 ### Scheduler cron environment variables
 
 The `scheduler` component takes three cron expressions (the first two for

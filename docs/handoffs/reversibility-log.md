@@ -1,5 +1,14 @@
 # Reversibility log
 
+- **2026-09-27 Competitor collector, row 18 slice 18b (`ADR-0010`, `DEC-149`;
+  uncommitted authoring)**: the `competitor-collector.ts` client (robots,
+  per-host delay, budget, backoff, fact extraction, content hash) and the
+  `outbox.maintenance.competitor_collection` cron. **No migration.**
+  **Rollback** = `git revert` the slice, or set `COMPETITOR_COLLECTION_ENABLED=false`
+  for an immediate stop (the cron is registered but makes no request while off).
+  Observations already written stay `pending` and can be rejected; nothing is
+  auto-published or applied and no posted money or stock fact is touched.
+  Details: [handoff 095](095-2026-09-27-competitor-collector-row-18b.md).
 - **2026-09-27 Competitor sources, row 18 slice 18a (`ADR-0010`, `DEC-143`,
   `DEC-149`; uncommitted authoring)**: migration `0076_competitor_source.sql`
   (new `competitor_source` + nullable `competitor_observation` extensions) and
