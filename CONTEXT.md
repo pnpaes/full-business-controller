@@ -39,7 +39,9 @@ seven layered commits, newest first: `054355f` (the 90-day retention prune
   Rollback: **`git revert` each commit**, then `DROP SCHEMA pgboss CASCADE`
   **only when unwinding the whole jobs stack** — facts stay in
   `public.outbox_event`. **4991/4991 tests (362 files)**; migrations
-  through **`0071`** plus the migrator-provisioned **`pgboss`** schema
+  through **`0072`** (the `0072_job_org_created_at_idx` retention
+  index, added **uncommitted**; `db:migrate` re-run is a no-op) plus
+  the migrator-provisioned **`pgboss`** schema
   (pg-boss schemaVersion 42); `db:migrate` a no-op re-run; **no migration
   in the 202-producer/retention/alerts work.** **Next free decision id
   `DEC-140`.** Know the
@@ -72,8 +74,8 @@ no-op.
 **Next task (buildable now — no owner input needed): the next roadmap
 row or the `DEC-139` follow-ups.** Row 20's jobs layer is done, so the
 "Next up" is either the **remaining `DEC-139` follow-ups** (the
-system-wide prune + the `(organization_id, created_at)` index — today's
-prune is org-scoped/single-tenant; a **DB-backed worker heartbeat** if
+system-wide prune — the `(organization_id, created_at)` index landed
+in migration `0072`; a **DB-backed worker heartbeat** if
 cross-process detection is needed, since pg-boss 12 keeps WIP in
 memory and today's heartbeat is a platform log alert; **DLQ review
 automation**) **or the next programme slice named by the roadmap**
@@ -82,7 +84,8 @@ automation**) **or the next programme slice named by the roadmap**
 - **Scope (do):** pick the next row from `docs/BUILD_ROADMAP.md` (row 20's
   jobs layer is complete, so the remaining honest-gap queue or the next
   programme row); if the follow-up option is picked instead: the
-  **system-wide prune + the `(organization_id, created_at)` index**, a
+  **system-wide prune** (the `(organization_id, created_at)` index
+  landed in migration `0072`), a
   **DB-backed worker heartbeat** (pg-boss 12 has no persisted WIP — the
   DB heartbeat is the cross-process upgrade path over today's log
   alert), and **DLQ review automation** (the dead-letter log alert
@@ -112,8 +115,8 @@ run test` (≥ **4991/4991**, 362 files); `npm run db:migrate` a no-op
   decision rows and this section's rules; the read paths stay org-scoped
   and fail-closed on authorization; the full verification set is green
   (≥ 4991/4991, 362 files) with `build` included. For the follow-up
-  option: the prune covers all organizations with the `(organization_id,
-created_at)` index (expand → migrate → contract, rehearsed down
+  option: the prune covers all organizations (the `(organization_id,
+created_at)` index landed in migration `0072`, rehearsed down
   path), the heartbeat divergence check is DB-backed or the log alert
   is recorded as sufficient, and the DLQ review loop is automated or
   explicitly rejected with a reason.
@@ -149,9 +152,10 @@ created_at)` index (expand → migrate → contract, rehearsed down
 6. A post-success projection-write failure causes an extra supersede
    cycle on the next delivery — audit churn only, settled state wins.
 7. The **90-day `job` retention prune is organization-scoped
-   (single-tenant)** and has **no `created_at` index** (it runs off
-   `job_org_status_scheduled_idx`); the system-wide prune plus the
-   `(organization_id, created_at)` index is the recorded follow-up.
+   (single-tenant)** and has no `created_at` index to lean on until the
+   `0072` index (it ran off `job_org_status_scheduled_idx`); the
+   system-wide prune (the `(organization_id, created_at)` index landed
+   in migration `0072`) is the recorded follow-up.
 8. The `DEC-139` item-8 alerts are **log surfaces only** —
    `jobs.dead_letter`, `jobs.queue_depth`, `jobs.oldest_queued_age`,
    `jobs.stuck_pending` must be wired to DO log monitoring (grouped/
@@ -211,14 +215,16 @@ lives in the second "Next up" section below.
    the item-8 alert surfaces (`jobs.dead_letter`, `jobs.queue_depth`,
    `jobs.oldest_queued_age`, `jobs.stuck_pending`; the worker heartbeat
    via a platform log alert) are all committed. **Next task: the
-   remaining `DEC-139` follow-ups** (the system-wide prune + the
-   `(organization_id, created_at)` index; a DB-backed worker heartbeat
+   remaining `DEC-139` follow-ups** (the system-wide prune — the
+   `(organization_id, created_at)` index landed in migration `0072`; a DB-backed worker heartbeat
    if cross-process detection is needed; DLQ review automation) **or
    the next programme slice named by `docs/BUILD_ROADMAP.md`** — exact
    scope, verification, acceptance criteria and honest remainder in
    "Resume here" (next free decision id `DEC-140`).
 2. **Then the honest-gap queue** (each recorded, not silently deferred):
-   the `DEC-139` follow-ups above (the system-wide prune + index, the
+   the `DEC-139` follow-ups above (the remaining system-wide prune —
+   the `(organization_id, created_at)` index landed in migration
+   `0072`; the
    DB-backed heartbeat, DLQ review automation) and the standing
    owner/data-gated items (reset-token
    delivery, the unsigned golden fixtures, the `task`↔`approval` link,
@@ -621,8 +627,11 @@ findings from the W7 review` (5 files, all under `apps/web/app/(app)/**`;
   `0da0593`, `67e932d`, `a84ce82`, `ba27b79` and `054355f`; nothing
   pushed; nothing applied to DigitalOcean.
   **4991/4991 tests (362 files)**; migrations
-  through **`0071`** plus the migrator-provisioned **`pgboss`** schema
-  (pg-boss 42).
+  through **`0072`** plus the migrator-provisioned **`pgboss`** schema
+  (pg-boss 42) — migration `0072` (`0072_job_org_created_at_idx`, the
+  `DEC-139` retention index) is added **uncommitted** (dev `db:migrate`
+  applied it and re-ran as a no-op; down path rehearsed on a scratch
+  DB).
   **Delivered:** the complete jobs layer (**`DEC-139`**,
   `ADR-0004` Accepted 2026-09-26 — the pg-boss wiring, the first real
   producer/consumer, the HTTP `202` producer, the 90-day retention
@@ -898,11 +907,12 @@ sales_units}` in `schemas/domain-enums.yaml` and
   first versioned entity); the workflow platform (`DEC-094`/`DEC-101`,
   schema-only). The `job`/worker/outbox layer's gate is satisfied —
   `ADR-0004` Accepted 2026-09-26 (`DEC-139`), the first slice delivered.
-- **Schema:** migrations through **`0071`** plus the migrator-provisioned
+- **Schema:** migrations through **`0072`** plus the migrator-provisioned
   **`pgboss`** schema (pg-boss schemaVersion 42; owned by the pre-deploy
   migrator, not a numbered migration — see `docs/runbooks/
 persistence-migrations.md`); **98 public tables** (the `0071`
-  `job` projection is additive and its down path is untouched; the facts
+  `job` projection and the `0072` retention index are additive and their
+  down paths are untouched; the facts
   stay in `public.outbox_event` under the slice rollback). Next free
   decision id **`DEC-140`** (`DEC-129`–`DEC-139` are recorded).
 - **Verification (2026-09-25, at `9842d81`):** `typecheck`, `lint`,

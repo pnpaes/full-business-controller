@@ -58,5 +58,6 @@ export const job = pgTable(
     check("job_attempts_non_negative_check", sql`${t.attempts} >= 0 and ${t.maxAttempts} >= 0`),
     index("job_org_status_scheduled_idx").on(t.organizationId, t.status, t.scheduledAt),
     index("job_org_outbox_event_idx").on(t.organizationId, t.outboxEventId),
+    index("job_org_created_at_idx").on(t.organizationId, t.createdAt),
   ],
 );

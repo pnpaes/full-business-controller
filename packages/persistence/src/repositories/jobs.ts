@@ -241,12 +241,9 @@ export interface DeleteExpiredJobsInput {
  * case is a projection whose pg-boss job vanished (consumer crashed). Non-terminal
  * rows are never touched here.
  *
- * Organization-scoped because every `job` read/write is (`DEC-061`) and because
- * the table has no `created_at` index: the prune leans on
- * `job_org_status_scheduled_idx (organization_id, status, scheduled_at)` to filter
- * org + terminal status. A system-wide prune plus a `(organization_id,
- * created_at)` index is the recorded follow-up; the deployment is single-tenant,
- * so an org-scoped prune is sufficient for now (still no migration in this epic).
+ * Organization-scoped because every `job` read/write is (`DEC-061`). The prune
+ * range-scans `job_org_created_at_idx (organization_id, created_at)` and filters
+ * terminal statuses (`succeeded`/`failed`/`dead_lettered`).
  */
 export async function deleteExpiredJobs(
   db: Database,
