@@ -41,8 +41,11 @@ typecheck / lint / format:check clean; `next build` exit 0; **5386/5386 tests
 (395 files)** with `DATABASE_URL`; `db:migrate` applied `0078` and is a no-op on
 re-run; the down path rehearsed on a scratch DB (column + partial index present →
 down → absent, 103 tables and `competitor_source`'s 18 columns intact).
-**Not browser-verified**: the Edit affordance is covered by typecheck and the
-PATCH route tests, but no live click-through was run.
+**Browser-verified** (by the orchestrator, after the commit): the Sources row
+shows the **Edit** control and the "Edit this source?" modal opens with the URL
+prefilled, the collection-mode select and the "Switching to automated needs the
+source's terms approved" hint; it cancels cleanly, and the seeded row was removed
+afterwards.
 
 ## Deferred / recorded.
 
