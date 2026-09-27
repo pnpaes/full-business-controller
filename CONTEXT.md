@@ -73,7 +73,31 @@ those. Post-fix verification: **4957/4957 tests (361 files)**;
 typecheck/lint/format:check clean; `next build` exit 0; `db:migrate` a
 no-op.
 
-**Next task: the owner-blocked fronts are now unblocked except INTG-002.**
+**Roadmap from here (the project plan, 2026-09-27 — recorded so it survives the
+session):**
+
+- **M1 — day-one + smoke regression gate (in progress; no owner input):**
+  (a) a migration **chain rehearsal** test (all ups → all downs in reverse → ups
+  again, on a scratch DB) so Rule 2 is machine-checked, not manual; (b) a
+  **bootstrap smoke** in CI (fresh DB → `db:migrate` → `npm run bootstrap` →
+  assert the org/owner/role rows and the table count) so the real day-one path is
+  proven on every push; (c) an **E2E smoke** job (boot web — and worker/scheduler
+  with their kill switches off — hit `/api/health`, log in as the bootstrapped
+  owner, one read plus one mutation, screenshot on failure) because CI today
+  stops at `npm run build` and nothing proves the app runs; (d) an **env-drift**
+  test asserting `env.ts` ⇄ `.env.example` ⇄ raw `process.env` reads ⇄
+  Terraform `var.*`/`.tfvars` agree, plus a no-real-secret guard.
+- **M2 — staging rehearsal (owner-gated, `DEC-148`):** apply the deployment
+  runbook to a real staging environment (DO token, Spaces state bucket,
+  sanitized-data owner, legacy instance-slug check, domains), wire the real
+  secrets (`SENDGRID_API_KEY`, `LLM_*`) and turn on monitoring/alerts; fix what
+  only a real deploy reveals.
+- **M3 — the last gated feature (owner-gated, `I15`/`I18`):** INTG-002
+  publishing (`publish_run`, idempotent publish jobs, confirmation read-back),
+  behind the per-source write terms under `DEC-015`.
+
+**Next task: M1 (in progress).** Older context, still true — the owner-blocked
+fronts are now unblocked except INTG-002.
 Delivered since: WF-003 employee login + self-assignment (`DEC-146`, `0077`) and
 the competitor follow-ups (capture idempotency + source editing, `0078`).
 Remaining buildable/follow-ups: prompt-change control; the system-wide `job`
