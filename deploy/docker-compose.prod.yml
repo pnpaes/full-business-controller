@@ -1,0 +1,161 @@
+# Single-VM deployment (the new primary deploy path).
+#
+# One DigitalOcean droplet runs Postgres (Docker) + web + worker + scheduler +
+# Caddy. No managed database, no Spaces, no App Platform. This file is ADDITIVE:
+# the App Platform / Terraform path (infra/, docs/runbooks/deployment.md) stays as
+# a documented alternative and is not touched by this stack.
+#
+# Data lives on the droplet's attached DO volume, mounted at /srv/aquarela:
+#   /srv/aquarela/pgdata    Postgres data directory (bind-mounted into `postgres`)
+#   /srv/aquarela/uploads   local file-storage root (FILE_STORAGE_ROOT)
+#   /srv/aquarela/caddy     Caddy's /data (TLS certs) and /config
+#   /srv/aquarela/backups   nightly pg_dump output (deploy/backup.sh)
+# See deploy/bootstrap-vm.sh for how the volume is created, formatted and mounted.
+#
+# Secrets live ONLY in deploy/.env.prod (git-ignored); this file has no `${...}`
+# interpolation and no secrets. Run from inside deploy/ (or with -f) so the
+# default project directory is deploy/, which is what makes `env_file: ./.env.prod`
+# and `./Caddyfile` resolve:
+#
+#   docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env.prod up -d
+
+name: aquarela
+
+# Resource ceiling is a 2 GB / 1 vCPU droplet (s-1vcpu-2gb). Every service is
+# capped so one runaway container cannot OOM the box; `restart: unless-stopped`
+# everywhere so the stack survives a reboot and a Docker daemon restart.
+x-app-image: &app-image
+  image: aquarela-app:latest
+
+x-app-env: &app-env
+  env_file:
+    - ./.env.prod
+
+x-app-logging: &app-logging
+  # Keep Docker's json-file logs bounded so the 1 vCPU/2 GB box does not fill its
+  # disk with logs. Operators read logs with `docker compose logs`.
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    <<: *app-logging
+    # No host port: the database is reachable only on the compose network, never
+    # from the public internet.
+    expose:
+      - "5432"
+    environment:
+      # Fixed, non-secret identity. Only the password is injected (interpolated
+      # from deploy/.env.prod via `--env-file`), so this container does not see the
+      # app's other secrets. The value must match the password in DATABASE_URL /
+      # DATABASE_MIGRATIONS_URL.
+      POSTGRES_USER: aquarela
+      POSTGRES_DB: aquarela
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in deploy/.env.prod}
+    volumes:
+      - /srv/aquarela/pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aquarela -d aquarela"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    # Tuned down for a 2 GB box with low concurrency. These are conservative
+    # ceilings, not a performance target.
+    command:
+      - postgres
+      - -c
+      - shared_buffers=256MB
+      - -c
+      - effective_cache_size=768MB
+      - -c
+      - work_mem=8MB
+      - -c
+      - maintenance_work_mem=64MB
+      - -c
+      - max_connections=50
+      - -c
+      - wal_compression=on
+      - -c
+      - log_min_duration_statement=2000
+    mem_limit: 640m
+
+  web:
+    <<: [*app-image, *app-env, *app-logging]
+    # Builds the shared image once; worker/scheduler reuse the same tag.
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    command: ["npm", "run", "start", "--workspace", "@aquarela/web"]
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      FILE_STORAGE_ROOT: /data/uploads
+    volumes:
+      - /srv/aquarela/uploads:/data/uploads
+    expose:
+      - "3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:3000/api/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+    mem_limit: 768m
+
+  worker:
+    <<: [*app-image, *app-env, *app-logging]
+    command: ["npm", "run", "start", "--workspace", "@aquarela/worker"]
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+    depends_on:
+      postgres:
+        condition: service_healthy
+      web:
+        condition: service_started
+    mem_limit: 256m
+
+  scheduler:
+    <<: [*app-image, *app-env, *app-logging]
+    command: ["npm", "run", "start", "--workspace", "@aquarela/scheduler"]
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+    depends_on:
+      postgres:
+        condition: service_healthy
+      web:
+        condition: service_started
+    mem_limit: 256m
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    <<: *app-logging
+    # Caddy needs only its domain (non-secret), interpolated from deploy/.env.prod
+    # via `--env-file`; it does not receive the app's secrets.
+    environment:
+      CADDY_DOMAIN: ${CADDY_DOMAIN:?CADDY_DOMAIN must be set in deploy/.env.prod}
+    # The only service exposed to the internet. 80/443 for HTTP + automatic HTTPS.
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - /srv/aquarela/caddy/data:/data
+      - /srv/aquarela/caddy/config:/config
+    depends_on:
+      web:
+        condition: service_healthy
+    mem_limit: 128m

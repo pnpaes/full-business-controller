@@ -23,6 +23,7 @@ references
 *.md
 .github
 infra
+deploy
 .terraform
 *.tfstate
 *.tfstate.*

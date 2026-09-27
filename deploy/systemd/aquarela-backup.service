@@ -1,0 +1,15 @@
+[Unit]
+Description=Aquarela Business Control - nightly Postgres backup
+Documentation=file:/opt/aquarela/deploy/restore.md
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+# The repository must be cloned at /opt/aquarela (see deploy/README.md).
+ExecStart=/opt/aquarela/deploy/backup.sh
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=6
+# Never overlap with the next timer run.
+TimeoutStartSec=3600

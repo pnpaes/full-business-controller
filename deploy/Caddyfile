@@ -1,0 +1,43 @@
+# Caddy reverse proxy for the single-VM stack (deploy/docker-compose.prod.yml).
+#
+# The site address is the CADDY_DOMAIN value from deploy/.env.prod. A bare public
+# hostname enables automatic HTTPS: Caddy obtains and renews a Let's Encrypt /
+# ZeroSSL certificate on first boot and redirects HTTP -> HTTPS. Requirements:
+# point the domain's A record at the droplet and allow inbound 80/443 (80 is used
+# for the ACME HTTP challenge).
+#
+# Local, TLS-less smoke test only: set CADDY_DOMAIN=":80" in the throwaway env
+# file; Caddy then serves plain HTTP on port 80 with no certificate.
+{$CADDY_DOMAIN} {
+	encode zstd gzip
+
+	# Route server errors that occur before the app responds (e.g. upstream down)
+	# through a tiny static handler instead of leaking a Caddy error page.
+	handle_errors {
+		respond "Service temporarily unavailable" 503
+	}
+
+	# Single backend: the Next web app. /api/health is both a real route and the
+	# upstream health probe, so Caddy takes the backend out of rotation when it
+	# stops answering 200.
+	reverse_proxy web:3000 {
+		health_uri /api/health
+		health_interval 30s
+		health_timeout 5s
+		health_status 200
+	}
+
+	log {
+		output stderr
+		format console
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		# Caddy identifies itself by default; drop that.
+		-Server
+	}
+}
