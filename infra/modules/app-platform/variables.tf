@@ -127,7 +127,7 @@ variable "spaces_secret_key" {
 }
 
 variable "organization_id" {
-  description = "Organization id this install serves (printed by `npm run bootstrap`); empty adds no ORGANIZATION_ID env var."
+  description = "Organization id this install serves (printed by `npm run bootstrap`); empty adds no ORGANIZATION_ID env var, and is only valid for environments that never run the scheduler or web. The scheduler component exits 1 at boot without it (and the web auth layer needs it); a non-blocking plan-time check warns when empty."
   type        = string
   default     = null
 }

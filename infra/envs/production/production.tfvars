@@ -17,9 +17,13 @@ web_instance_count      = 2
 pool_size               = 20
 log_level               = "info"
 
-# App-runtime wiring (empty adds nothing; both are per environment):
+# App-runtime wiring — both are per environment (empty adds no env var):
 #   organization_id            — the id printed by the first-owner bootstrap
 #                                (`npm run bootstrap`); safe to commit once known.
+#                                Required wherever the scheduler or web runs — the
+#                                scheduler exits 1 without it (a plan-time check
+#                                warns, does not block; empty is only valid for
+#                                environments that never run scheduler/web).
 #   totp_secret_encryption_key — generated base64 32-byte key (required for MFA);
 #                                a SECRET, so supply it via
 #                                TF_VAR_totp_secret_encryption_key, never here

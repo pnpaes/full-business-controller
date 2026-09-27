@@ -30,20 +30,25 @@ locals {
     },
   ]
 
-  # Web-only runtime env. The auth layer pins the one organization this install
-  # serves (ORGANIZATION_ID, printed by `npm run bootstrap`) and seals TOTP
-  # secrets with a generated base64 32-byte key. Worker/scheduler read neither,
-  # so they keep the shared runtime_env. Empty values add nothing.
+  # ORGANIZATION_ID — the one organization this install serves (printed by
+  # `npm run bootstrap`). The web auth layer pins it, and the scheduler's
+  # organization-scoped outbox replay requires it (it exits 1 without it).
+  # `worker` reads neither, so it stays on the shared runtime_env. An
+  # empty value adds nothing.
+  organization_env = var.organization_id == null || var.organization_id == "" ? [] : [
+    {
+      key   = "ORGANIZATION_ID"
+      value = var.organization_id
+      scope = "RUN_TIME"
+      type  = "GENERAL"
+    },
+  ]
+
+  # Web-only runtime env: the shared runtime_env plus ORGANIZATION_ID and the
+  # base64 32-byte key sealing TOTP secrets at rest.
   web_env = concat(
     local.runtime_env,
-    var.organization_id == null || var.organization_id == "" ? [] : [
-      {
-        key   = "ORGANIZATION_ID"
-        value = var.organization_id
-        scope = "RUN_TIME"
-        type  = "GENERAL"
-      },
-    ],
+    local.organization_env,
     var.totp_secret_encryption_key == null || var.totp_secret_encryption_key == "" ? [] : [
       {
         key   = "TOTP_SECRET_ENCRYPTION_KEY"
@@ -53,6 +58,11 @@ locals {
       },
     ],
   )
+
+  # Scheduler-only runtime env: the shared runtime_env plus ORGANIZATION_ID. The
+  # scheduler registers the organization-scoped outbox replay cron and exits 1
+  # without it, so it no longer uses the bare runtime_env. `worker` is unchanged.
+  scheduler_env = concat(local.runtime_env, local.organization_env)
 
   # The migration job uses the DIRECT/session URL only (see the comment on the job).
   migrate_env = [
@@ -72,6 +82,22 @@ locals {
 
   # Only add alert destinations when there is somewhere to send them.
   alert_destinations = length(var.alert_emails) > 0 || var.slack_webhook_url != "" ? [1] : []
+}
+
+# Plan-time guardrail (non-blocking) for the ORGANIZATION_ID requirement.
+#
+# `local.organization_env` silently omits ORGANIZATION_ID when the input is
+# empty, but the scheduler component now exits 1 at boot without it (its
+# organization-scoped outbox replay and payroll cron need the organization),
+# and the web auth layer needs it too. An empty value is still allowed on
+# purpose — environments that never run the scheduler/web rely on it, and the
+# repo's offline `plan` with dummy/empty inputs must keep working — so this is
+# a `check` (warning only), never a `validation`/`precondition` (hard fail).
+check "organization_id_set" {
+  assert {
+    condition     = trimspace(coalesce(var.organization_id, "")) != ""
+    error_message = "organization_id is empty: no ORGANIZATION_ID env var will be set. The scheduler component exits 1 at boot without it, and the web auth layer throws ConfigError(\"ORGANIZATION_ID is not set\") until it is set. Supply the id printed by `npm run bootstrap` — safe to commit in the env's tfvars once known."
+  }
 }
 
 resource "digitalocean_app" "this" {
@@ -225,7 +251,7 @@ resource "digitalocean_app" "this" {
       }
 
       dynamic "env" {
-        for_each = local.runtime_env
+        for_each = local.scheduler_env
         content {
           key   = env.value.key
           value = env.value.value
