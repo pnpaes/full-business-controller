@@ -1,5 +1,19 @@
 # Reversibility log
 
+- **2026-09-27 WF-003 employee login + self-assignment, and competitor capture
+  idempotency + source editing (`d5193d3`; pushed)**: two migrations and their
+  downs in one commit — `0077_user_invite.sql` (new `user_invite` + nullable
+  `app_user` invite columns) and `0078_competitor_observation_content_hash.sql`
+  (nullable `content_hash` + a partial unique index). Each migration's down was
+  rehearsed on a **scratch DB** (`0077`: table + columns present → down →
+  absent, 102 public tables remained; `0078`: column + partial index present →
+  down → absent, 103 tables and `competitor_source`'s 18 columns intact), never
+  the dev DB. **Rollback** = run both down files (no `app_user`/session/reset/
+  observation row and no posted money or stock fact is touched) then
+  `git revert d5193d3` — the commit carries both slices because the migrations
+  share the drizzle `_journal.json`, so a partial revert would strand a journal
+  entry. Details: [handoff 097](097-2026-09-27-wf-003-employee-login-self-assignment.md),
+  [handoff 098](098-2026-09-27-competitor-idempotency-and-source-edit.md).
 - **2026-09-27 Competitor sources UI, row 18 slice 18c (`edf2ba9`; pushed)**:
   the Sources section on the competitors screen + the source forms/actions and
   the terms labels. **No migration.** Rollback = `git revert edf2ba9` — the
