@@ -7,8 +7,15 @@ import type { OutboxHandlerRegistry } from "./consumer";
 import { defaultOutboxHandlers } from "./handlers";
 import type { RuntimeLogger } from "./logging";
 import { registerMaintenance } from "./maintenance";
+import { registerMonitor } from "./monitor";
 import { registerPayrollSchedule } from "./payroll-schedule";
-import { ensureQueues, MAINTENANCE_QUEUE, PAYROLL_SCHEDULE_QUEUE, outboxQueueName } from "./queues";
+import {
+  ensureQueues,
+  MAINTENANCE_QUEUE,
+  MONITOR_QUEUE,
+  PAYROLL_SCHEDULE_QUEUE,
+  outboxQueueName,
+} from "./queues";
 import { installShutdownHandlers } from "./shutdown";
 
 export interface SchedulerOptions {
@@ -17,6 +24,8 @@ export interface SchedulerOptions {
   readonly cron: string;
   /** The payroll-generation cron (`PAYROLL_CRON`); defaults to `0 5 * * *`. */
   readonly payrollCron?: string;
+  /** The alert-monitor cron (`MONITOR_CRON`); defaults to every five minutes. */
+  readonly monitorCron?: string;
   readonly limit?: number;
   readonly handlers?: OutboxHandlerRegistry;
   readonly logger: RuntimeLogger;
@@ -41,6 +50,7 @@ export async function startScheduler(options: SchedulerOptions): Promise<JobsRun
     ...Object.keys(handlers).map((eventType) => outboxQueueName(eventType)),
     MAINTENANCE_QUEUE,
     PAYROLL_SCHEDULE_QUEUE,
+    MONITOR_QUEUE,
   ];
 
   let stopped = false;
@@ -65,9 +75,19 @@ export async function startScheduler(options: SchedulerOptions): Promise<JobsRun
       cron: options.payrollCron ?? "0 5 * * *",
       logger,
     });
+    await registerMonitor(boss, {
+      queues,
+      cron: options.monitorCron ?? "*/5 * * * *",
+      logger,
+    });
     logger.info(
-      { cron: options.cron, payrollCron: options.payrollCron ?? "0 5 * * *", queues },
-      "scheduler registered the outbox maintenance and payroll crons",
+      {
+        cron: options.cron,
+        payrollCron: options.payrollCron ?? "0 5 * * *",
+        monitorCron: options.monitorCron ?? "*/5 * * * *",
+        queues,
+      },
+      "scheduler registered the outbox maintenance, payroll and monitor crons",
     );
   } catch (error) {
     logger.error({ err: error }, "scheduler failed to start");

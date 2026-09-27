@@ -36,6 +36,7 @@ const scheduler = await startScheduler({
   organizationId,
   cron: process.env.MAINTENANCE_CRON?.trim() || "*/15 * * * *",
   payrollCron: process.env.PAYROLL_CRON?.trim() || "0 5 * * *",
+  monitorCron: process.env.MONITOR_CRON?.trim() || "*/5 * * * *",
   logger,
 }).catch((error: unknown) => {
   logger.error({ err: error }, "scheduler failed to start");

@@ -1,7 +1,10 @@
 import { PgBoss } from "pg-boss";
 import type {
   ConstructorOptions,
+  FindJobsOptions,
+  JobWithMetadata,
   Queue,
+  QueueResult,
   ScheduleOptions,
   SendOptions,
   UpdateQueueOptions,
@@ -60,7 +63,22 @@ export interface BossQueueApi {
   updateQueue(name: string, options: UpdateQueueOptions): Promise<void>;
 }
 
-export type JobsBoss = BossSendApi & BossWorkApi & BossScheduleApi & BossQueueApi;
+/**
+ * The read-only pg-boss monitoring surface (12.33.2): queue counters
+ * (`getQueues`/`getQueue`) and job rows (`findJobs`). `FindJobsOptions` has no
+ * order/limit, so a caller bounded by queue depth must scan and compute the
+ * aggregate itself (see the monitor).
+ */
+export interface BossMonitorApi {
+  getQueues(names?: string[]): Promise<readonly QueueResult[]>;
+  getQueue(name: string): Promise<QueueResult | null>;
+  findJobs<T = object>(
+    name: string,
+    options?: FindJobsOptions,
+  ): Promise<readonly JobWithMetadata<T>[]>;
+}
+
+export type JobsBoss = BossSendApi & BossWorkApi & BossScheduleApi & BossQueueApi & BossMonitorApi;
 
 /** The handle a started worker/scheduler returns; `stop` is idempotent. */
 export interface JobsRuntimeHandle {

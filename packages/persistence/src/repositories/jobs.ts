@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, lt, sql } from "drizzle-orm";
 
 import type { Database } from "../client";
 import { job } from "../schema";
@@ -29,6 +29,10 @@ const SUCCEEDED_FROM = ["running"];
 const FAILED_FROM = ["running"];
 /** A dead-letter follows a failed attempt, whether or not the failure was recorded first. */
 const DEAD_LETTERED_FROM = ["running", "failed"];
+/** The terminal statuses eligible for retention pruning; non-terminal rows are never deleted. */
+const PRUNABLE_STATUSES = ["succeeded", "failed", "dead_lettered"] as const;
+/** The non-terminal statuses an aged row is stuck in (a lost delivery, not garbage). */
+const NON_TERMINAL_STATUSES = ["pending", "running"] as const;
 
 /** Creates one scheduled job projection; `outbox_event_id` links it to its event. */
 export async function createScheduledJob(db: Database, input: NewJob): Promise<Job> {
@@ -216,4 +220,81 @@ export async function markJobDeadLettered(
     )
     .returning();
   return rows[0];
+}
+
+export interface DeleteExpiredJobsInput {
+  readonly organizationId: string;
+  readonly olderThan: Date;
+  /** The maximum rows to delete in one call; the prune is batched by the caller. */
+  readonly limit: number;
+}
+
+/**
+ * Retention prune: deletes **terminal** job projections (`succeeded`/`failed`/
+ * `dead_lettered`) whose `created_at` is older than `olderThan`, organization-
+ * scoped and capped at `limit` rows, returning the count deleted.
+ *
+ * Terminal-only: an old `pending`/`running` row is an anomaly (a stuck or lost
+ * delivery), not garbage — deleting it would erase the evidence, so the
+ * maintenance handler surfaces it via {@link countStuckJobs} (`jobs.stuck_pending`)
+ * instead. The monitor cannot do it: it reads only pg-boss, and the divergence
+ * case is a projection whose pg-boss job vanished (consumer crashed). Non-terminal
+ * rows are never touched here.
+ *
+ * Organization-scoped because every `job` read/write is (`DEC-061`) and because
+ * the table has no `created_at` index: the prune leans on
+ * `job_org_status_scheduled_idx (organization_id, status, scheduled_at)` to filter
+ * org + terminal status. A system-wide prune plus a `(organization_id,
+ * created_at)` index is the recorded follow-up; the deployment is single-tenant,
+ * so an org-scoped prune is sufficient for now (still no migration in this epic).
+ */
+export async function deleteExpiredJobs(
+  db: Database,
+  input: DeleteExpiredJobsInput,
+): Promise<number> {
+  const expiredIds = db
+    .select({ id: job.id })
+    .from(job)
+    .where(
+      and(
+        eq(job.organizationId, input.organizationId),
+        inArray(job.status, [...PRUNABLE_STATUSES]),
+        lt(job.createdAt, input.olderThan),
+      ),
+    )
+    .limit(input.limit);
+  const deleted = await db.delete(job).where(inArray(job.id, expiredIds)).returning({ id: job.id });
+  return deleted.length;
+}
+
+export interface CountStuckJobsInput {
+  readonly organizationId: string;
+  /** Rows created before this instant are old enough to be stuck. */
+  readonly olderThan: Date;
+}
+
+/**
+ * Counts **non-terminal** job projections (`pending`/`running`) whose `created_at`
+ * is older than `olderThan`, organization-scoped (`DEC-061`).
+ *
+ * This covers the divergence the retention prune deliberately preserves: when a
+ * consumer crashes after claiming a job, the pg-boss job can vanish while the
+ * projection stays `pending`/`running` forever. The monitor reads only pg-boss, so
+ * it can never see that row — the maintenance handler calls this and raises
+ * `jobs.stuck_pending`. The cut is `created_at`, not `started_at`, so a row that
+ * was never claimed also counts. Org-scoped like every `job` read; the terminal-only
+ * prune never removes these rows, so an aged one keeps counting until resolved.
+ */
+export async function countStuckJobs(db: Database, input: CountStuckJobsInput): Promise<number> {
+  const rows = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(job)
+    .where(
+      and(
+        eq(job.organizationId, input.organizationId),
+        inArray(job.status, [...NON_TERMINAL_STATUSES]),
+        lt(job.createdAt, input.olderThan),
+      ),
+    );
+  return rows[0]?.count ?? 0;
 }

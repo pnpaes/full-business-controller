@@ -11,6 +11,10 @@ import type { BossQueueApi } from "./boss";
  */
 export const OUTBOX_DEAD_LETTER_QUEUE = "outbox-dead-letter";
 export const MAINTENANCE_QUEUE = "outbox.maintenance.replay";
+// The monitor queue name lives here with the other queue-name constants so
+// `queueOptionsFor` can classify it without importing `./monitor` (which imports
+// this module); `./monitor` re-exports it.
+export const MONITOR_QUEUE = "outbox.maintenance.monitor";
 
 /**
  * The scheduled producer's cron queue (`DEC-139` first real producer): the
@@ -92,10 +96,11 @@ export function queueOptionsFor(name: string): OutboxQueueOptions {
   if (name === OUTBOX_DEAD_LETTER_QUEUE) {
     return DEAD_LETTER_QUEUE_OPTIONS;
   }
-  if (name === MAINTENANCE_QUEUE || name === PAYROLL_SCHEDULE_QUEUE) {
-    // The payroll cron is a maintenance-grade job: a cron re-run is cheap and
-    // idempotent, so it shares the maintenance retry policy rather than the
-    // outbox delivery policy (and never dead-letters to the outbox DLQ).
+  if (name === MAINTENANCE_QUEUE || name === PAYROLL_SCHEDULE_QUEUE || name === MONITOR_QUEUE) {
+    // The payroll and monitor crons are maintenance-grade jobs: a cron re-run is
+    // cheap and idempotent, so they share the maintenance retry policy rather
+    // than the outbox delivery policy (and never dead-letter to the outbox DLQ,
+    // which would otherwise trip the monitor's own dead-letter alert).
     return MAINTENANCE_QUEUE_OPTIONS;
   }
   return OUTBOX_QUEUE_OPTIONS;

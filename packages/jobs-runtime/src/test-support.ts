@@ -1,6 +1,20 @@
-import type { Queue, ScheduleOptions, SendOptions, UpdateQueueOptions, WorkHandler } from "pg-boss";
+import type {
+  JobWithMetadata,
+  Queue,
+  QueueResult,
+  ScheduleOptions,
+  SendOptions,
+  UpdateQueueOptions,
+  WorkHandler,
+} from "pg-boss";
 
-import type { BossQueueApi, BossScheduleApi, BossSendApi, BossWorkApi } from "./boss";
+import type {
+  BossMonitorApi,
+  BossQueueApi,
+  BossScheduleApi,
+  BossSendApi,
+  BossWorkApi,
+} from "./boss";
 
 /** A recorded `send` call. */
 export interface SentJob {
@@ -37,12 +51,18 @@ export type SendResult = (
  * In-memory pg-boss fake for the runtime unit suite (no database). It records the
  * calls the runtime makes and lets a test force a `send` result.
  */
-export class FakeBoss implements BossQueueApi, BossSendApi, BossWorkApi, BossScheduleApi {
+export class FakeBoss
+  implements BossQueueApi, BossSendApi, BossWorkApi, BossScheduleApi, BossMonitorApi
+{
   readonly sent: SentJob[] = [];
   readonly createdQueues: QueueCall[] = [];
   readonly updatedQueues: QueueCall[] = [];
   readonly worked: WorkCall[] = [];
   readonly scheduled: ScheduleCall[] = [];
+  /** The monitor's `getQueues`/`getQueue` source of truth (crafted by a test). */
+  readonly queues: QueueResult[] = [];
+  /** The monitor's `findJobs` source, keyed by queue name. */
+  readonly queuedJobs: Record<string, JobWithMetadata[]> = {};
   sendResult: SendResult = () => "job-id";
 
   send(name: string, data?: object | null, options?: SendOptions): Promise<string | null> {
@@ -76,5 +96,19 @@ export class FakeBoss implements BossQueueApi, BossSendApi, BossWorkApi, BossSch
   ): Promise<void> {
     this.scheduled.push({ name, cron, data, options });
     return Promise.resolve();
+  }
+
+  getQueues(names?: string[]): Promise<QueueResult[]> {
+    const rows =
+      names === undefined ? this.queues : this.queues.filter((queue) => names.includes(queue.name));
+    return Promise.resolve([...rows]);
+  }
+
+  getQueue(name: string): Promise<QueueResult | null> {
+    return Promise.resolve(this.queues.find((queue) => queue.name === name) ?? null);
+  }
+
+  findJobs<T = object>(name: string): Promise<JobWithMetadata<T>[]> {
+    return Promise.resolve((this.queuedJobs[name] ?? []) as unknown as JobWithMetadata<T>[]);
   }
 }

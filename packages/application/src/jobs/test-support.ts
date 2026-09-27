@@ -19,6 +19,10 @@ const RUNNING_FROM: readonly JobStatus[] = ["pending", "failed"];
 const SUCCEEDED_FROM: readonly JobStatus[] = ["running"];
 const FAILED_FROM: readonly JobStatus[] = ["running"];
 const DEAD_LETTERED_FROM: readonly JobStatus[] = ["running", "failed"];
+/** Terminal statuses eligible for the retention prune (never `pending`/`running`). */
+const PRUNABLE_STATUSES: readonly JobStatus[] = ["succeeded", "failed", "dead_lettered"];
+/** The non-terminal statuses an aged row is stuck in. */
+const NON_TERMINAL_STATUSES: readonly JobStatus[] = ["pending", "running"];
 
 /**
  * In-memory store for the jobs/outbox unit suite. It mirrors the observable
@@ -196,6 +200,34 @@ export class FakeJobStore implements OutboxJobStore, JobReadStore {
         updatedAt: new Date(),
       })),
     );
+  }
+
+  deleteExpiredJobs(organizationId: string, olderThan: Date, limit: number): Promise<number> {
+    const expired = this.jobs
+      .filter(
+        (job) =>
+          job.organizationId === organizationId &&
+          PRUNABLE_STATUSES.includes(job.status) &&
+          job.createdAt.getTime() < olderThan.getTime(),
+      )
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime() || a.id.localeCompare(b.id))
+      .slice(0, limit);
+    if (expired.length === 0) {
+      return Promise.resolve(0);
+    }
+    const ids = new Set(expired.map((job) => job.id));
+    this.jobs = this.jobs.filter((job) => !ids.has(job.id));
+    return Promise.resolve(ids.size);
+  }
+
+  countStuckJobs(organizationId: string, olderThan: Date): Promise<number> {
+    const count = this.jobs.filter(
+      (job) =>
+        job.organizationId === organizationId &&
+        NON_TERMINAL_STATUSES.includes(job.status) &&
+        job.createdAt.getTime() < olderThan.getTime(),
+    ).length;
+    return Promise.resolve(count);
   }
 
   private transition(

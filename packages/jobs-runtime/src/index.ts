@@ -1,5 +1,6 @@
 export { createBoss } from "./boss";
 export type {
+  BossMonitorApi,
   BossOptions,
   BossQueueApi,
   BossScheduleApi,
@@ -24,12 +25,31 @@ export {
   platformSmokeHandler,
 } from "./handlers";
 export type { RuntimeLogger } from "./logging";
-export { registerMaintenance, replayUnpublishedOutbox } from "./maintenance";
+export {
+  DEFAULT_RETENTION_DAYS,
+  DEFAULT_RETENTION_LIMIT,
+  DEFAULT_STUCK_AFTER_MINUTES,
+  registerMaintenance,
+  replayUnpublishedOutbox,
+  STUCK_PENDING_ALERT,
+} from "./maintenance";
 export type {
   MaintenanceJobData,
   MaintenanceRegistrationOptions,
   ReplayOptions,
 } from "./maintenance";
+export {
+  DEAD_LETTER_THRESHOLD,
+  MONITOR_ALERTS,
+  MONITOR_QUEUE,
+  OLDEST_QUEUED_AGE_SECONDS,
+  QUEUE_DEPTH_SCAN_LIMIT,
+  QUEUE_DEPTH_THRESHOLD,
+  registerMonitor,
+  runMonitorCheck,
+  WORKER_HEARTBEAT_ALERT_SECONDS,
+} from "./monitor";
+export type { MonitorAlert, MonitorCheckOptions, RegisterMonitorOptions } from "./monitor";
 export {
   DEAD_LETTER_QUEUE_OPTIONS,
   ensureQueues,

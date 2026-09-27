@@ -1,5 +1,6 @@
 import {
   createDb,
+  job,
   organization,
   type DatabaseTransaction,
   type DbClient,
@@ -160,6 +161,154 @@ describe.skipIf(!databaseUrl)("jobs/outbox store against PostgreSQL", () => {
       await store.recordAttempt(ok.outboxEventId);
       const replay = await store.listUnpublished(orgId, 10);
       expect(replay.map((event) => event.id)).not.toContain(ok.outboxEventId);
+    });
+  });
+
+  it("prunes only old terminal rows, org-scoped and batched", async () => {
+    await inRollback(client.db, async (tx) => {
+      const orgId = (
+        await tx
+          .insert(organization)
+          .values({ legalName: `job-prune-${suffix}` })
+          .returning()
+      )[0]!.id;
+      const otherOrgId = (
+        await tx
+          .insert(organization)
+          .values({ legalName: `job-prune-other-${suffix}` })
+          .returning()
+      )[0]!.id;
+      const now = Date.now();
+      const old = new Date(now - 10 * 24 * 60 * 60 * 1000);
+      const recent = new Date(now - 1 * 24 * 60 * 60 * 1000);
+      const cutoff = new Date(now - 5 * 24 * 60 * 60 * 1000);
+
+      await tx.insert(job).values([
+        {
+          organizationId: orgId,
+          queue: "outbox.platform.smoke",
+          kind: "k",
+          status: "succeeded",
+          createdAt: old,
+        },
+        {
+          organizationId: orgId,
+          queue: "outbox.platform.smoke",
+          kind: "k",
+          status: "failed",
+          createdAt: old,
+        },
+        {
+          organizationId: orgId,
+          queue: "outbox.platform.smoke",
+          kind: "k",
+          status: "dead_lettered",
+          createdAt: old,
+        },
+        {
+          organizationId: orgId,
+          queue: "outbox.platform.smoke",
+          kind: "k",
+          status: "succeeded",
+          createdAt: recent,
+        },
+        {
+          organizationId: orgId,
+          queue: "outbox.platform.smoke",
+          kind: "k",
+          status: "pending",
+          createdAt: old,
+        },
+        {
+          organizationId: otherOrgId,
+          queue: "outbox.platform.smoke",
+          kind: "k",
+          status: "succeeded",
+          createdAt: old,
+        },
+      ]);
+
+      const store = createPostgresJobStore(tx);
+
+      expect(await store.deleteExpiredJobs(orgId, cutoff, 2)).toBe(2);
+      expect(await store.deleteExpiredJobs(orgId, cutoff, 2)).toBe(1);
+      expect(await store.deleteExpiredJobs(orgId, cutoff, 2)).toBe(0);
+
+      const remaining = await store.listJobs({ organizationId: orgId, limit: 100, offset: 0 });
+      expect(remaining.map((row) => row.status).sort()).toEqual(["pending", "succeeded"]);
+      expect(remaining.find((row) => row.status === "pending")?.createdAt.getTime()).toBe(
+        old.getTime(),
+      );
+
+      const other = await store.listJobs({ organizationId: otherOrgId, limit: 100, offset: 0 });
+      expect(other).toHaveLength(1);
+      expect(other[0]!.status).toBe("succeeded");
+    });
+  });
+
+  it("counts only old non-terminal rows, org-scoped", async () => {
+    await inRollback(client.db, async (tx) => {
+      const orgId = (
+        await tx
+          .insert(organization)
+          .values({ legalName: `job-stuck-${suffix}` })
+          .returning()
+      )[0]!.id;
+      const otherOrgId = (
+        await tx
+          .insert(organization)
+          .values({ legalName: `job-stuck-other-${suffix}` })
+          .returning()
+      )[0]!.id;
+      const now = Date.now();
+      const old = new Date(now - 10 * 24 * 60 * 60 * 1000);
+      const recent = new Date(now - 1 * 24 * 60 * 60 * 1000);
+      const cutoff = new Date(now - 5 * 24 * 60 * 60 * 1000);
+
+      await tx.insert(job).values([
+        {
+          organizationId: orgId,
+          queue: "outbox.platform.smoke",
+          kind: "k",
+          status: "pending",
+          createdAt: old,
+        },
+        {
+          organizationId: orgId,
+          queue: "outbox.platform.smoke",
+          kind: "k",
+          status: "running",
+          createdAt: old,
+        },
+        {
+          organizationId: orgId,
+          queue: "outbox.platform.smoke",
+          kind: "k",
+          status: "pending",
+          createdAt: recent,
+        },
+        {
+          organizationId: orgId,
+          queue: "outbox.platform.smoke",
+          kind: "k",
+          status: "succeeded",
+          createdAt: old,
+        },
+        {
+          organizationId: otherOrgId,
+          queue: "outbox.platform.smoke",
+          kind: "k",
+          status: "pending",
+          createdAt: old,
+        },
+      ]);
+
+      const store = createPostgresJobStore(tx);
+
+      // Old pending + old running count; fresh pending and old terminal do not.
+      expect(await store.countStuckJobs(orgId, cutoff)).toBe(2);
+      // Org filter: the other organization's stuck row is invisible.
+      expect(await store.countStuckJobs(otherOrgId, cutoff)).toBe(1);
     });
   });
 });

@@ -138,6 +138,12 @@ export function createPostgresJobStore(db: Database): OutboxJobStore & JobReadSt
       const row = await repo.markJobDeadLettered(db, { organizationId, jobId, error });
       return row === undefined ? undefined : toJobRecord(row);
     },
+    deleteExpiredJobs: async (organizationId: string, olderThan: Date, limit: number) => {
+      return repo.deleteExpiredJobs(db, { organizationId, olderThan, limit });
+    },
+    countStuckJobs: async (organizationId: string, olderThan: Date) => {
+      return repo.countStuckJobs(db, { organizationId, olderThan });
+    },
     findJobById: async (organizationId: string, jobId: string) => {
       const row = await repo.findJobById(db, { organizationId, jobId });
       return row === undefined ? undefined : toJobRecord(row);

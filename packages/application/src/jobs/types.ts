@@ -146,6 +146,25 @@ export interface JobWriteStore {
     jobId: string,
     error: string,
   ): Promise<JobRecord | undefined>;
+  /**
+   * Retention prune: deletes **terminal** job projections whose `createdAt` is
+   * older than `olderThan`, organization-scoped (`DEC-061`) and capped at `limit`
+   * rows; returns the number deleted. Non-terminal rows (`pending`/`running`) are
+   * never deleted — an aged one is a stuck-delivery anomaly the maintenance handler
+   * surfaces via {@link countStuckJobs} (`jobs.stuck_pending`), not garbage. Org-scoped
+   * because the `job` table has no `created_at` index; a system-wide prune plus that
+   * index is the recorded follow-up.
+   */
+  deleteExpiredJobs(organizationId: string, olderThan: Date, limit: number): Promise<number>;
+  /**
+   * Counts **non-terminal** job projections (`pending`/`running`) whose `createdAt`
+   * is older than `olderThan`, organization-scoped (`DEC-061`). These are exactly
+   * the rows the prune keeps: an aged one is a stuck/lost-delivery divergence (a
+   * consumer crashed after claiming it, so its pg-boss job vanished) that the
+   * maintenance handler surfaces as `jobs.stuck_pending`. The monitor cannot — it
+   * reads only pg-boss.
+   */
+  countStuckJobs(organizationId: string, olderThan: Date): Promise<number>;
   writeAudit(input: AuditInput): Promise<void>;
 }
 

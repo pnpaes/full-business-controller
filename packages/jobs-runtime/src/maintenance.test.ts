@@ -16,11 +16,15 @@ const ORGANIZATION_ID = randomUUID();
 const OTHER_ORGANIZATION_ID = randomUUID();
 
 /** A logger that records its calls, for asserting the mismatch warning. */
-function recordingLogger(): { logger: RuntimeLogger; warn: ReturnType<typeof vi.fn> } {
+function recordingLogger(): {
+  logger: RuntimeLogger;
+  warn: ReturnType<typeof vi.fn>;
+  info: ReturnType<typeof vi.fn>;
+} {
   const warn = vi.fn();
   const info = vi.fn();
   const logger = { warn, info, error: vi.fn() } as unknown as RuntimeLogger;
-  return { logger, warn };
+  return { logger, warn, info };
 }
 
 async function seedUnpublished(store: FakeJobStore): Promise<string> {
@@ -165,6 +169,133 @@ describe("registerMaintenance", () => {
     await handler([fakeJob({ organizationId: ORGANIZATION_ID, limit: 50 })]);
 
     expect(boss.sent).toHaveLength(1);
+  });
+
+  it("prunes terminal projections with the configured retention window and batch size", async () => {
+    const store = new FakeJobStore();
+    const boss = new FakeBoss();
+    const prune = vi.spyOn(store, "deleteExpiredJobs").mockResolvedValue(4);
+    const now = new Date("2026-06-01T00:00:00.000Z");
+    vi.useFakeTimers();
+    vi.setSystemTime(now);
+
+    try {
+      await registerMaintenance(boss, store, {
+        organizationId: ORGANIZATION_ID,
+        cron: "*/15 * * * *",
+        limit: 50,
+        retentionDays: 30,
+        retentionLimit: 7,
+      });
+
+      const registered = boss.worked.find((call) => call.name === MAINTENANCE_QUEUE);
+      const handler = registered!.handler as (jobs: Job<MaintenanceJobData>[]) => Promise<void>;
+      await handler([fakeJob({ organizationId: ORGANIZATION_ID, limit: 50 })]);
+
+      expect(prune).toHaveBeenCalledTimes(1);
+      expect(prune).toHaveBeenCalledWith(
+        ORGANIZATION_ID,
+        new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000),
+        7,
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("defaults the retention window to 90 days and the batch to 1000", async () => {
+    const store = new FakeJobStore();
+    const boss = new FakeBoss();
+    const prune = vi.spyOn(store, "deleteExpiredJobs").mockResolvedValue(0);
+    const now = new Date("2026-06-01T00:00:00.000Z");
+    vi.useFakeTimers();
+    vi.setSystemTime(now);
+
+    try {
+      await registerMaintenance(boss, store, {
+        organizationId: ORGANIZATION_ID,
+        cron: "*/15 * * * *",
+        limit: 50,
+      });
+
+      const registered = boss.worked.find((call) => call.name === MAINTENANCE_QUEUE);
+      const handler = registered!.handler as (jobs: Job<MaintenanceJobData>[]) => Promise<void>;
+      await handler([fakeJob({ organizationId: ORGANIZATION_ID, limit: 50 })]);
+
+      expect(prune).toHaveBeenCalledWith(
+        ORGANIZATION_ID,
+        new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000),
+        1000,
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("surfaces aged non-terminal projections as jobs.stuck_pending", async () => {
+    const store = new FakeJobStore();
+    const boss = new FakeBoss();
+    const countStuck = vi.spyOn(store, "countStuckJobs").mockResolvedValue(2);
+    const { logger, warn, info } = recordingLogger();
+    const now = new Date("2026-06-01T00:00:00.000Z");
+    vi.useFakeTimers();
+    vi.setSystemTime(now);
+
+    try {
+      await registerMaintenance(boss, store, {
+        organizationId: ORGANIZATION_ID,
+        cron: "*/15 * * * *",
+        limit: 50,
+        logger,
+      });
+
+      const registered = boss.worked.find((call) => call.name === MAINTENANCE_QUEUE);
+      const handler = registered!.handler as (jobs: Job<MaintenanceJobData>[]) => Promise<void>;
+      await handler([fakeJob({ organizationId: ORGANIZATION_ID, limit: 50 })]);
+
+      // The default stuck cutoff is 60 minutes, org-scoped.
+      expect(countStuck).toHaveBeenCalledWith(
+        ORGANIZATION_ID,
+        new Date(now.getTime() - 60 * 60 * 1000),
+      );
+      expect(warn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          alert: "jobs.stuck_pending",
+          organizationId: ORGANIZATION_ID,
+          stuck: 2,
+        }),
+        expect.any(String),
+      );
+      expect(info).toHaveBeenCalledWith(
+        expect.objectContaining({ organizationId: ORGANIZATION_ID, stuck: 2 }),
+        expect.any(String),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not alert when no projection is stuck", async () => {
+    const store = new FakeJobStore();
+    const boss = new FakeBoss();
+    vi.spyOn(store, "countStuckJobs").mockResolvedValue(0);
+    const { logger, warn } = recordingLogger();
+
+    await registerMaintenance(boss, store, {
+      organizationId: ORGANIZATION_ID,
+      cron: "*/15 * * * *",
+      limit: 50,
+      logger,
+    });
+
+    const registered = boss.worked.find((call) => call.name === MAINTENANCE_QUEUE);
+    const handler = registered!.handler as (jobs: Job<MaintenanceJobData>[]) => Promise<void>;
+    await handler([fakeJob({ organizationId: ORGANIZATION_ID, limit: 50 })]);
+
+    expect(warn).not.toHaveBeenCalledWith(
+      expect.objectContaining({ alert: "jobs.stuck_pending" }),
+      expect.any(String),
+    );
   });
 
   it("uses the configured organization and warns when the stored job data differs", async () => {
