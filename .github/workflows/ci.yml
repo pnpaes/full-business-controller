@@ -32,6 +32,14 @@ jobs:
       - run: npm run db:migrate
         env:
           DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+      # Day-one smoke: migrate (no-op re-run) → bootstrap → SQL assertions.
+      - run: npm run ci:day-one
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+      # Rehearse the whole migration chain up → down → up on its own scratch DB.
+      - run: npx vitest run packages/persistence/src/migrations.chain.postgres.test.ts
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
       - run: npm run lint
       - run: npm run typecheck
       - run: npm run test
@@ -66,3 +74,59 @@ jobs:
         run: |
           terraform init -backend=false
           terraform validate
+
+  # End-to-end smoke (M1c) of the *running* system: boots the built `next start`
+  # server and drives a real browser (login → read /jobs → one competitor-source
+  # mutation → assert in the UI). Separate from `verify` so the fast job stays
+  # fast. No cloud credentials: postgres is the service, the owner comes from
+  # `npm run bootstrap`, and nothing external is called (both worker/scheduler
+  # kill switches are off). Playwright is installed here, not in package.json, so
+  # `verify` never downloads a browser.
+  e2e:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+      BOOTSTRAP_ORGANIZATION_NAME: Aquarela E2E
+      BOOTSTRAP_OWNER_EMAIL: owner@example.com
+      BOOTSTRAP_OWNER_USERNAME: owner
+      BOOTSTRAP_OWNER_PASSWORD: CiE2eSmokePassw0rd
+      E2E_OWNER_PASSWORD: CiE2eSmokePassw0rd
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm run db:migrate
+      - run: npm run bootstrap
+      - name: Install Playwright (library + chromium, ad hoc)
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+        run: |
+          npm install --no-save --no-package-lock playwright@1.63.0
+          npx playwright install --with-deps chromium
+      - name: Run the end-to-end smoke
+        run: node scripts/e2e-smoke.mjs
+      - name: Upload the failure screenshot
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-failure-screenshot
+          path: storage/tmp/e2e-failure.png
+          if-no-files-found: ignore
