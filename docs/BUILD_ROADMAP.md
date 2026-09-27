@@ -219,7 +219,7 @@ is delivered — migration `0070` — with accuracy honest on history I11);
 rows 17 and 18 remain blocked (`ADR-0009`–`0010`); the deployment rehearsal
 is parked on the owner inputs;
 the golden fixtures are unsigned.
-Next free decision id `DEC-140`.
+Next free decision id `DEC-141`.
 
 ## 2. The execution loop (per slice)
 

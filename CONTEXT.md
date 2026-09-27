@@ -38,7 +38,8 @@ stack** — facts stay in `public.outbox_event`; migrations `0072`'s and
 `0073`'s down files invert the index and the heartbeat table. **5075/5075
 tests (368 files)**; migrations through **`0073`** (99 public tables) plus
 the migrator-provisioned **`pgboss`** schema (pg-boss schemaVersion 42);
-`db:migrate` a no-op re-run. **Next free decision id `DEC-140`.** Know the
+`db:migrate` a no-op re-run. **Next free decision id `DEC-141`** (the last
+jobs follow-up was closed by decision `DEC-141`). Know the
 `packages/application/src/scheduling/scheduling.postgres.test.ts`
 same-instant ordering flake (passes on re-run).
 
@@ -209,7 +210,7 @@ created_at)` index landed in `0072`) or an owner decision to unblock a
    programme row** — the DLQ review automation and the DB-backed worker
    heartbeat (`jobs.worker_heartbeat_missing`, migration `0073`) landed
    2026-09-27 — exact scope, verification, acceptance criteria and honest
-   remainder in "Resume here" (next free decision id `DEC-140`).
+   remainder in "Resume here" (next free decision id `DEC-141`).
 2. **Then the honest-gap queue** (each recorded, not silently deferred):
    the remaining `DEC-139` follow-up (the system-wide prune) and the
    standing owner/data-gated items (reset-token
@@ -281,7 +282,7 @@ Per-slice detail, commits and reconciliation are in `docs/handoffs/`.
 - `00_README.md` … `13_AGENT_BUILD_BRIEF.md` — the specification package
   (inputs, rarely edited). Start with `00_README.md`.
 - **`12_OPEN_DECISIONS.md` — the accepted decisions (`DEC-001`…`DEC-139`);
-  the authority. New decisions are appended here (next free id `DEC-140`).**
+  the authority. New decisions are appended here (next free id `DEC-141`).**
 - `docs/phase0/` — close-out plan, calculation contract, data dictionary, golden
   fixtures, source-data request, notes. See
   `docs/phase0/CALCULATION_CONTRACT.md`.
@@ -656,7 +657,7 @@ findings from the W7 review` (5 files, all under `apps/web/app/(app)/**`;
   `docs/handoffs/080-2026-09-24-w7-ui-refinement-wave.md`). **Next:**
   the remaining `DEC-139` follow-ups or the next programme slice (see
   "Resume here"). Next free decision
-  id **`DEC-140`**.
+  id **`DEC-141`**.
   Lineage and full
   per-slice detail: `docs/handoffs/README.md` and the files it lists
   (newest handoffs: `085` (the payroll producer slice) and
@@ -926,7 +927,7 @@ persistence-migrations.md`); **99 public tables** (the `0071`
   `worker_heartbeat` table are additive and their
   down paths are untouched; the facts
   stay in `public.outbox_event` under the slice rollback). Next free
-  decision id **`DEC-140`** (`DEC-129`–`DEC-139` are recorded).
+  decision id **`DEC-141`** (`DEC-129`–`DEC-140` are recorded).
 - **Verification (2026-09-25, at `9842d81`):** `typecheck`, `lint`,
   `format:check`, `build` clean; **4735/4735 tests with `DATABASE_URL`**
   (335 files); `db:migrate` a no-op through `0068`; 93 public base tables.
@@ -984,7 +985,7 @@ open-point lists. Per-slice detail is in `docs/handoffs/`.
    worker heartbeat if cross-process detection is needed, and DLQ
    review automation. Exact scope,
    verified commands and the honest remainder in "Resume here" (next
-   free decision id `DEC-140`). Beyond that, the
+   free decision id `DEC-141`). Beyond that, the
    standing owner/data-gated items are the remainder (the exact list in
    "Resume here": reset-token delivery, the unsigned golden fixtures,
    the `task`↔`approval` link, `WF-003` self-assignment, the
