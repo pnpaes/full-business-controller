@@ -1,5 +1,16 @@
 # Reversibility log
 
+- **2026-09-27 Competitor sources, row 18 slice 18a (`ADR-0010`, `DEC-143`,
+  `DEC-149`; uncommitted authoring)**: migration `0076_competitor_source.sql`
+  (new `competitor_source` + nullable `competitor_observation` extensions) and
+  its down companion, plus the application commands and the sources routes.
+  **Migration rollback** = the down file (drops the five §4C columns and the
+  table; the `DEC-126` competitor/observation data stays intact), rehearsed on a
+  **scratch DB** (table + columns present → down → absent, 15 pre-existing
+  observation columns remained), never the dev DB. **Rollback** = `git revert`
+  — no collector or external write exists yet, and no posted money or stock fact
+  is touched. Details:
+  [handoff 094](094-2026-09-27-competitor-sources-row-18a.md).
 - **2026-09-27 AI advisory, row 17 (`ADR-0009`, `DEC-142`; uncommitted authoring)**: migration
   `0075_ai_advisory.sql` (two tables, append-only run + mutable suggestions) + its down companion,
   the application/HTTP review foundation and the `/ai` screen, plus the `LlmPort` adapter and the
