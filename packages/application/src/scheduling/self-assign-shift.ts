@@ -51,7 +51,9 @@ export function utcWeekBounds(instant: string): {
  * `self_assigned`/`approved` from another path) and overlap the shift's UTC week
  * are counted, and one more than the limit (default
  * `DEFAULT_SELF_ASSIGN_WEEKLY_LIMIT`, configurable) is refused with a
- * `DomainError`.
+ * `DomainError`. The employee row is locked between the shift lock and the
+ * count, so concurrent self-assigns by one employee serialise and the limit
+ * holds.
  *
  * The assignment is created **`pending_approval`** with `assigned_by = null`
  * (the self marker) and the shift is deliberately left in its current state —
@@ -96,6 +98,15 @@ export async function selfAssignShift(
     if (shift.roleCode !== null && employee.roleCode !== shift.roleCode) {
       throw new DomainError("the employee's role does not match the shift's role");
     }
+
+    // Serialise per employee. The shift lock above only serialises two requests
+    // for the *same* shift; two concurrent self-assigns by one employee on
+    // different shifts would both count before either inserts and each pass the
+    // weekly limit. Taking the employee row lock here (after the shift lock,
+    // before the count) makes the count-then-insert atomic per employee
+    // (`WF-003`, `DEC-146`). Acquisition order is always shift → employee, so
+    // two transactions cannot form a lock cycle.
+    await tx.lockEmployeeForSelfAssignment(employee.id);
 
     const existing = await tx.findShiftAssignmentByShiftEmployee({
       organizationId: input.organizationId,

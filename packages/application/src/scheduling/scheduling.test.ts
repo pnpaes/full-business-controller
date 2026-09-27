@@ -2137,6 +2137,25 @@ describe("selfAssignShift", () => {
       new DomainError("weekly self-assignment limit of 1 reached"),
     );
   });
+
+  it("locks the employee before counting and inserting, so concurrent self-assigns serialise", async () => {
+    const { store, fixture } = selfSetup();
+    const shift = await planAt(store, fixture, "2026-07-01T08:00:00.000Z");
+    const lock = vi.spyOn(store, "lockEmployeeForSelfAssignment");
+    const count = vi.spyOn(store, "countSelfAssignedShiftsInWeek");
+    const insert = vi.spyOn(store, "createShiftAssignment");
+
+    await selfAssign(store, fixture, shift.id);
+
+    expect(lock).toHaveBeenCalledWith(SELF_EMPLOYEE);
+    expect(lock).toHaveBeenCalledTimes(1);
+    const order = [
+      lock.mock.invocationCallOrder[0]!,
+      count.mock.invocationCallOrder[0]!,
+      insert.mock.invocationCallOrder[0]!,
+    ];
+    expect(order).toEqual([...order].sort((a, b) => a - b));
+  });
 });
 
 describe("decideSelfAssignment", () => {

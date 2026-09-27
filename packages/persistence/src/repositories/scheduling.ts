@@ -536,6 +536,26 @@ export async function countSelfAssignedShiftsInWeek(
   return rows[0]?.value ?? 0;
 }
 
+/**
+ * Takes the employee row's write lock (`SELECT … FOR UPDATE`) for the rest of
+ * the surrounding transaction. `selfAssignShift` calls this after locking the
+ * shift and before counting the weekly self-assignments (`WF-003`,
+ * `DEC-146`), so concurrent self-assignments by one employee serialise on the
+ * employee row and the second transaction counts the first's committed insert.
+ * The caller has already resolved the employee organization-scoped, so only
+ * `id` is matched; an id with no row locks nothing and returns silently.
+ */
+export async function lockEmployeeForSelfAssignment(
+  db: Database,
+  employeeId: string,
+): Promise<void> {
+  await db
+    .select({ id: employee.id })
+    .from(employee)
+    .where(eq(employee.id, employeeId))
+    .for("update");
+}
+
 export interface CreateShiftAdjustmentInput {
   readonly organizationId: string;
   /** NOT NULL FK to `shift_assignment.id`; guarded same-organization by `0054`. */

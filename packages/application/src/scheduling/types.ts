@@ -495,6 +495,15 @@ export interface SchedulingStore {
     readonly userId: string;
   }): Promise<readonly SchedulingEmployeeRecord[]>;
   /**
+   * Takes the employee row's write lock (`SELECT … FOR UPDATE`) for the rest of
+   * the surrounding transaction. `selfAssignShift` acquires it after the shift
+   * lock and before counting the weekly self-assignments, so two concurrent
+   * self-assigns by one employee serialise on the employee row: the second
+   * transaction counts the first's just-inserted row and the weekly limit
+   * holds (`WF-003`, `DEC-146`). A missing id locks nothing.
+   */
+  lockEmployeeForSelfAssignment(employeeId: string): Promise<void>;
+  /**
    * How many of the employee's self-originated (`assigned_by is null`)
    * assignments in a live state overlap the half-open week
    * `[weekStart, weekEnd)` — the weekly self-assignment maximum's counter.

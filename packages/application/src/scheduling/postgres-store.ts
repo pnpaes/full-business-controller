@@ -364,6 +364,9 @@ export function createPostgresSchedulingStore(db: Database): SchedulingStore {
         weekStart: new Date(query.weekStart),
         weekEnd: new Date(query.weekEnd),
       }),
+    lockEmployeeForSelfAssignment: async (employeeId) => {
+      await repo.lockEmployeeForSelfAssignment(db, employeeId);
+    },
     listMyShifts: async (query) => {
       const rows = await repo.listMyShifts(db, {
         organizationId: query.organizationId,

@@ -31,6 +31,7 @@ import { markPayrollReportExported } from "./mark-payroll-report-exported";
 import { createPostgresSchedulingStore } from "./postgres-store";
 import { publishShift } from "./publish-shift";
 import { selfAssignShift } from "./self-assign-shift";
+import type { SchedulingStore } from "./types";
 import { updateShift } from "./update-shift";
 import { withdrawShiftAssignment } from "./withdraw-shift-assignment";
 
@@ -100,6 +101,41 @@ async function seedUser(tx: DatabaseTransaction, orgId: string, username: string
         returning "id"`,
   )) as unknown as { readonly rows: readonly { readonly id: string }[] };
   return result.rows[0]!.id;
+}
+
+/**
+ * Wraps a scheduling store so a test can observe or pause a transaction's
+ * count/insert without touching the command under test. `withTransaction`
+ * re-wraps the transaction handle so the hooks survive into the callback.
+ */
+function hookStore(
+  base: SchedulingStore,
+  hooks: {
+    readonly beforeInsert?: () => Promise<void>;
+    readonly afterCount?: () => void;
+    readonly skipAudit?: boolean;
+  },
+): SchedulingStore {
+  const wrap = (store: SchedulingStore): SchedulingStore => {
+    const wrapped: SchedulingStore = {
+      ...store,
+      withTransaction: <T>(fn: (inner: SchedulingStore) => Promise<T>) =>
+        store.withTransaction((tx) => fn(wrap(tx))),
+      createShiftAssignment: async (input) => {
+        await hooks.beforeInsert?.();
+        return store.createShiftAssignment(input);
+      },
+      countSelfAssignedShiftsInWeek: async (query) => {
+        const value = await store.countSelfAssignedShiftsInWeek(query);
+        hooks.afterCount?.();
+        return value;
+      },
+    };
+    // `audit_event` is append-only, so a committed test audit cannot be
+    // cleaned up; skip it where the test does not exercise auditing.
+    return hooks.skipAudit === true ? { ...wrapped, writeAudit: async () => undefined } : wrapped;
+  };
+  return wrap(base);
 }
 
 describe.skipIf(!databaseUrl)("scheduling against PostgreSQL", () => {
@@ -784,5 +820,131 @@ describe.skipIf(!databaseUrl)("scheduling against PostgreSQL", () => {
         listMyShifts(store, { organizationId: orgId, actorUserId: userId }),
       ).rejects.toThrow(NotFoundError);
     });
+  });
+
+  it("serialises two concurrent self-assignments by one employee at the weekly limit", async () => {
+    let locationId = "";
+    let userId = "";
+    let employeeId = "";
+    const shiftIds: string[] = [];
+    let releaseFirst: (() => void) | undefined;
+    let first: Promise<unknown> | undefined;
+
+    try {
+      // Committed seed: the two transactions below run on separate pooled
+      // connections, so each must see the other's rows.
+      const seeded = await client.db.transaction(async (tx) => {
+        const loc = await seedLocation(tx, orgId, `self_race_${suffix}`);
+        const user = await seedUser(tx, orgId, `self_race_${suffix}`);
+        const emp = await seedEmployee(tx, orgId, loc, user);
+        return { loc, user, emp };
+      });
+      locationId = seeded.loc;
+      userId = seeded.user;
+      employeeId = seeded.emp;
+
+      // Created through the store (not the audit-writing command): the rows
+      // must commit, and a committed audit row would block the org cleanup.
+      const seedStore = createPostgresSchedulingStore(client.db);
+      const shiftA = await seedStore.createShift({
+        organizationId: orgId,
+        locationId,
+        roleCode: "barista",
+        startsAt: STARTS,
+        endsAt: ENDS,
+        breakMinutes: 0,
+        createdBy: null,
+      });
+      const shiftB = await seedStore.createShift({
+        organizationId: orgId,
+        locationId,
+        roleCode: "barista",
+        startsAt: "2026-07-02T08:00:00.000Z",
+        endsAt: "2026-07-02T16:00:00.000Z",
+        breakMinutes: 0,
+        createdBy: null,
+      });
+      shiftIds.push(shiftA.id, shiftB.id);
+
+      let firstAtInsert!: () => void;
+      const firstReachedInsert = new Promise<void>((resolve) => {
+        firstAtInsert = resolve;
+      });
+      const firstGate = new Promise<void>((resolve) => {
+        releaseFirst = resolve;
+      });
+      let secondCounted!: () => void;
+      const secondReachedCount = new Promise<void>((resolve) => {
+        secondCounted = resolve;
+      });
+
+      // Transaction one: a real self-assign that pauses at the insert, after
+      // its count — the moment the fixed command already holds the employee
+      // lock. It is held there until the second transaction has run.
+      first = selfAssignShift(
+        hookStore(createPostgresSchedulingStore(client.db), {
+          skipAudit: true,
+          beforeInsert: async () => {
+            firstAtInsert();
+            await firstGate;
+          },
+        }),
+        { organizationId: orgId, actorUserId: userId, shiftId: shiftA.id },
+      );
+
+      await firstReachedInsert;
+
+      // Transaction two: a concurrent self-assign by the same employee on a
+      // different shift. With the employee lock it blocks before its count, so
+      // once transaction one commits it counts 1 and refuses at a limit of 1.
+      // Without the lock it counts 0 and inserts here, both transactions
+      // succeed, and the weekly maximum is broken.
+      const second = selfAssignShift(
+        hookStore(createPostgresSchedulingStore(client.db), {
+          skipAudit: true,
+          afterCount: () => secondCounted(),
+        }),
+        { organizationId: orgId, actorUserId: userId, shiftId: shiftB.id, weeklyLimit: 1 },
+      );
+
+      // Let the second transaction reach its count when it can. It cannot while
+      // it is blocked on the employee lock, so this is a bounded wait.
+      await Promise.race([
+        secondReachedCount,
+        new Promise<void>((resolve) => setTimeout(resolve, 300)),
+      ]);
+
+      releaseFirst?.();
+      await first;
+
+      await expect(second).rejects.toThrow(
+        new DomainError("weekly self-assignment limit of 1 reached"),
+      );
+      expect(
+        await seedStore.findShiftAssignmentByShiftEmployee({
+          organizationId: orgId,
+          shiftId: shiftB.id,
+          employeeId,
+        }),
+      ).toBeUndefined();
+    } finally {
+      releaseFirst?.();
+      await first?.catch(() => undefined);
+      if (shiftIds.length > 0) {
+        await client.pool.query("delete from shift_assignment where shift_id = any($1::uuid[])", [
+          shiftIds,
+        ]);
+        await client.pool.query("delete from shift where id = any($1::uuid[])", [shiftIds]);
+      }
+      if (employeeId !== "") {
+        await client.pool.query("delete from employee where id = $1", [employeeId]);
+      }
+      if (userId !== "") {
+        await client.pool.query('delete from "app_user" where id = $1', [userId]);
+      }
+      if (locationId !== "") {
+        await client.pool.query("delete from location where id = $1", [locationId]);
+      }
+    }
   });
 });

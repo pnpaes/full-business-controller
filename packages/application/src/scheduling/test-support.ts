@@ -486,6 +486,9 @@ export class FakeSchedulingStore implements SchedulingStore {
       .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   }
 
+  /** The fake has no row locks, so the per-employee lock is a no-op. */
+  async lockEmployeeForSelfAssignment(): Promise<void> {}
+
   async countSelfAssignedShiftsInWeek(query: {
     readonly organizationId: string;
     readonly employeeId: string;
