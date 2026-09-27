@@ -87,16 +87,22 @@ session):**
   stops at `npm run build` and nothing proves the app runs; (d) an **env-drift**
   test asserting `env.ts` ⇄ `.env.example` ⇄ raw `process.env` reads ⇄
   Terraform `var.*`/`.tfvars` agree, plus a no-real-secret guard.
-- **M2 — staging rehearsal (owner-gated, `DEC-148`):** apply the deployment
-  runbook to a real staging environment (DO token, Spaces state bucket,
-  sanitized-data owner, legacy instance-slug check, domains), wire the real
-  secrets (`SENDGRID_API_KEY`, `LLM_*`) and turn on monitoring/alerts; fix what
-  only a real deploy reveals.
+- **M2 — deployment rehearsal (owner-gated, inputs reduced 2026-09-27 by the
+  single-VM pivot):** the **single-VM path is now primary** (`deploy/`, docker
+  compose + Caddy + Postgres on the box + local-volume file storage; ~$12/mo vs
+  ~$45-65 for App Platform), so the rehearsal needs only a droplet (or a similar
+  VM), the **SendGrid keys** and the **LLM keys** — no managed DB, no Spaces, no
+  DO App Platform token. App Platform stays as the documented alternative. The
+  procedure is `deploy/README.md` + `deploy/bootstrap-vm.sh`; verification is
+  the M1 gates plus the live health/login/upload checks; the honest caveats are
+  no HA, no managed backups (nightly `pg_dump`, RPO <= 24 h) and the 2 GB
+  memory ceiling with swap.
 - **M3 — the last gated feature (owner-gated, `I15`/`I18`):** INTG-002
   publishing (`publish_run`, idempotent publish jobs, confirmation read-back),
   behind the per-source write terms under `DEC-015`.
 
-**Next task: M2 — the staging rehearsal (owner-gated on the `DEC-148` inputs).**
+**Next task: M2 — the deployment rehearsal on a single VM (owner-gated on the
+SendGrid and LLM keys only).**
 M1 is delivered: CI now runs a migration-chain rehearsal (up → all 76 downs →
 up), a day-one bootstrap smoke, an E2E smoke (boot + browser flow) and an
 env-drift gate. Older context, still true — the owner-blocked fronts are now
@@ -346,6 +352,15 @@ Per-slice detail, commits and reconciliation are in `docs/handoffs/`.
 
 ## Current status
 
+- **2026-09-27 — deployment pivoted to a single VM (committed `c2dfa6b`, pushed):**
+  `deploy/` is the primary path (docker compose + Caddy + Postgres on the box +
+  local-volume file storage; ~$12/mo; nightly `pg_dump` + optional offsite copy;
+  RPO <= 24 h). Static file storage stays local (an S3 adapter was built and
+  deliberately **not adopted** — no object storage in this model), and the
+  App Platform assets remain as the documented alternative. The stack was booted
+  end to end locally (migrate + bootstrap + web healthy + Caddy 200 + worker and
+  scheduler started + a backup/restore rehearsal) and torn down. M2's inputs are
+  now just the SendGrid and LLM keys.
 - **2026-09-27 — M1 regression gates delivered (committed `d818583`, pushed):**
   the migration-chain rehearsal (up → all 76 downs newest-first → up on a
   scratch DB; no non-reversible migration found), the day-one bootstrap smoke in

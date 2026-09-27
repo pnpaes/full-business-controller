@@ -1,7 +1,35 @@
-# Runbook — Deployment (DigitalOcean App Platform)
+# Runbook — Deployment
 
 Operator-facing deployment guide. Architecture decision: `docs/adr/0012-deployment-topology-and-service-runtimes.md`.
 Migration discipline: ADR-0002 and `docs/runbooks/persistence-migrations.md`.
+
+## Deployment paths — single VM (primary) vs App Platform (alternative)
+
+**For this project's scale (one organization, low traffic) the primary path is a
+single DigitalOcean droplet** (`s-1vcpu-2gb`, ~$12/mo) running the whole stack in
+Docker: **Postgres on the box**, `web` (`next start`), `worker`, `scheduler`, and
+**Caddy** for automatic HTTPS. File storage is the existing **local adapter on a
+mounted volume** (no Spaces); backups are a nightly `pg_dump` to the volume with an
+optional, env-gated S3/Spaces offsite copy.
+
+| Path | Monthly cost | Postgres | File storage | TLS | Backups |
+| --- | --- | --- | --- | --- | --- |
+| **Single VM (primary)** | ~$12 (+$1 for a 10 GB volume) | Docker on the VM | local adapter on the volume | Caddy, automatic | nightly `pg_dump` (RPO ≤ 24 h, RTO ~30–60 min) |
+| App Platform (alternative) | ~$45–65 (web + worker + scheduler components, managed Postgres, Spaces) | managed, PITR | Spaces | App Platform | managed + PITR |
+
+- **Primary runbook:** [`deploy/README.md`](../../../deploy/README.md) (operator
+  quickstart), `deploy/bootstrap-vm.sh` (idempotent first run), `deploy/backup.sh`
+  + the systemd timer, and [`deploy/restore.md`](../../../deploy/restore.md)
+  (restore + RPO/RTO). `deploy/docker-compose.prod.yml`, `deploy/Caddyfile` and
+  `deploy/.env.prod.example` are the stack and its configuration surface.
+- **Inputs for the VM path:** SendGrid keys and LLM keys only — the database,
+  file storage and TLS are self-hosted. (The App Platform path additionally needs
+  a DO token, managed-DB credentials and a Spaces bucket.)
+- **Everything below** (`Topology` onwards, including the App Platform spec, the
+  managed-Postgres sections, the Spaces wiring and the `terraform` state
+  bootstrap) documents the **alternative** path. The single-VM section near the
+  end, `### Staging rehearsal — ordered runbook (M2)`, is likewise the
+  App Platform checklist; the VM equivalent is `deploy/README.md`.
 
 ## Topology
 
@@ -410,6 +438,62 @@ login**; until the ADR-0003 "admin-assisted password reset" procedure exists,
 running this command with `--force` is the operator fallback when the owner
 account is unusable. Creating the first owner here is an accepted implementation
 default pending that open item.
+
+### Staging rehearsal — ordered runbook (M2)
+
+Mechanical checklist for the first real staging apply once the owner supplies
+the inputs below. Every target named here is verified against the current tree
+(`infra/envs/staging/*`, `infra/modules/app-platform/main.tf`,
+`infra/modules/database/*`, `infra/bootstrap/*.sql`, `.env.example`,
+`apps/web/lib/mail.ts`, `apps/scheduler/src/main.ts`).
+
+#### Input inventory → where each goes
+
+| Owner input | Exact target |
+| --- | --- |
+| DO API token (scoped, not personal) | `DIGITALOCEAN_TOKEN` in the shell for every terraform command — `providers.tf` binds `token = var.digitalocean_token`, which defaults to `null` so the provider reads the env var; alternatively set `TF_VAR_digitalocean_token`. The same token goes into `doctl auth init` for account/console work. |
+| Spaces **state** bucket (create out of band, private, `ams3`) and Spaces state keys | `terraform init -backend-config="bucket=<state-bucket>" -backend-config="access_key=$SPACES_ACCESS_KEY_ID" -backend-config="secret_key=$SPACES_SECRET_KEY"` (or `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`) — `backend.tf` intentionally omits bucket and credentials; key is `staging/terraform.tfstate`. These keys are for **state only**, separate from the app-files key. |
+| Spaces app-files bucket + creds | **Nothing to supply**: `staging.tfvars` sets `bucket_name = "aquarela-staging-files"`; `infra/modules/spaces` creates the bucket and a scoped key (`key_name = "aquarela-staging-staging-app"`), and `app-platform` injects both as env vars `SPACES_ACCESS_KEY_ID` + `SPACES_SECRET_KEY` (RUN_TIME, `SECRET`) on `web`, `worker` and `scheduler`. Caveat: **no app code reads them yet** (`apps/web/lib/file-storage.ts` still selects the local adapter) — see "What could still bite". |
+| Managed PostgreSQL credentials | **Nothing to carry by hand for the runtime**: `infra/modules/database` creates the cluster, database, `app` and `migrator` users and the transaction-mode pool; `main.tf` (`envs/staging`) feeds `module.database.database_url` → pooled `DATABASE_URL` (PRIVATE pool host, `app` user) injected on `web`/`worker`/`scheduler`, and `module.database.database_migrations_url` → direct/session `DATABASE_MIGRATIONS_URL` (cluster host, `migrator`) injected only on the `migrate` PRE_DEPLOY job. What the owner must fetch post-apply: the **`doadmin`** connection URI (DO console → Connection Details, or `doctl databases connection <cluster-id> --format uri`) for the two grant files, and the pooled `DATABASE_URL` for `npm run bootstrap`. |
+| SendGrid | On the `web` service: `SENDGRID_API_KEY` (App Platform `SECRET`), `MAIL_FROM` (verified sender), `APP_BASE_URL` (public origin). All three or nothing sends (`apps/web/lib/mail.ts` fails closed; they also gate invite email). **Not yet an app-platform Terraform variable** — see "What could still bite". |
+| LLM keys (OpenAI-compatible gateway, e.g. the opencode API) | On the `scheduler`: `LLM_API_URL` (chat-completions endpoint), `LLM_API_KEY` (SECRET), `LLM_MODEL` — all raw `process.env` reads in `apps/scheduler/src/main.ts`; optional `LLM_PRICE_INPUT_PER_1M` / `LLM_PRICE_OUTPUT_PER_1M` (≤6 dp, one currency) so `AI_MONTHLY_COST_LIMIT` / `AI_PER_RUN_COST_LIMIT` (≤4 dp, same currency) can see a cost. All inert until `AI_ADVISORY_ENABLED=true`; both switches default off. Same not-yet-in-Terraform caveat. |
+| Already-known inputs | `ORGANIZATION_ID` → copied into `organization_id` in `staging.tfvars` **after** the first-owner bootstrap (empty adds no env var; a plan-time check warns until set). `TOTP_SECRET_ENCRYPTION_KEY` → `TF_VAR_totp_secret_encryption_key` (base64 32-byte key; generation one-liner in `.env.example`), never committed. Domains → `domain_name` (+ `manage_dns`, off by default). Alerts → `alert_email` list (+ optional `TF_VAR_slack_webhook_url`). Add operator IPs to `admin_ip_addresses` if psql/bootstrap must reach the cluster from outside the VPC. |
+
+#### Ordered steps
+
+1. **Pre-flight:** CI green on the commit being deployed (`verify` + `terraform` + `e2e` jobs, "CI"); Terraform 1.16.3 (`.terraform-version`); state bucket created out of band ("Terraform state bootstrap"); **staging holds sanitized/synthetic data only** (Prerequisites).
+2. **Delay auto-deploy for the first apply:** temporarily set `deploy_on_push = false` in `staging.tfvars`. The first auto-deploy would run the pre-deploy migrate job before `database-grants.sql` exists to unblock it — the documented grants order ("Database privilege bootstrap") makes the grants a **precondition of the first deploy**. Revert to `true`/re-trigger in step 6.
+3. **State bootstrap ("Terraform state bootstrap"):** `cd infra/envs/staging && terraform init` with the three `-backend-config` values from the table.
+4. **Credentialed plan:** `DIGITALOCEAN_TOKEN=… terraform plan -var-file=staging.tfvars`. Expected: the `check "organization_id_set"` warning (fine — no `ORGANIZATION_ID` until bootstrap) and the sizes `basic-xxs` matching a current, manually-scalable plan in `ams3` (pre-apply check under "CI"). The offline `fmt`/`validate` gates already ran in CI.
+5. **Apply:** `terraform apply` — one runner only (no native Spaces state locking). Creates project, VPC, cluster + db + `app`/`migrator` users + transaction pool, app-files bucket + scoped key, the App Platform app (`web`/`worker`/`scheduler` + `migrate` job) and monitoring alerts. Grant-file targets (`migrator`, `app`) now exist.
+6. **First deploy + migrate:** set `deploy_on_push = true` (or trigger a deployment manually), which runs the pre-deploy `migrate` job — applies all pending migrations **and provisions `pgboss`** under advisory lock `8675309`, then applies the pgboss runtime grants itself ("pgboss schema provisioning and grants"). A grants failure fails the deploy closed.
+7. **Grant files ("Database privilege bootstrap"), in documented order:** run `infra/bootstrap/database-grants.sql` **once as `doadmin` before the first deploy** — if step 6 ran before this, the migrate failed closed and re-triggering after this file is fine (it is idempotent, as is everything here). Then `infra/bootstrap/pgboss-grants.sql`: a first run before the migrate is a deliberate no-op (`pgboss` absent); **run it again after the first `db:migrate`** as the belt-and-braces recovery path the file header documents.
+8. **First-owner bootstrap ("First-owner bootstrap"):** `npm run bootstrap -- --dry-run`, then the real run with the pooled `DATABASE_URL`; `BOOTSTRAP_OWNER_PASSWORD` only via env. Store the password printed once; copy the printed organization id.
+9. **Close the org loop:** put the id into `organization_id` in `staging.tfvars`, set `TF_VAR_totp_secret_encryption_key`, re-plan (the plan-time warning must disappear) and re-apply. The scheduler now boots (it exits 1 without `ORGANIZATION_ID`, so it has been crash-looping since the first deploy) and login works.
+10. **Optional switches — both default off, enable only if intended:** AI advisory (`LLM_API_URL`/`LLM_API_KEY`/`LLM_MODEL` + `AI_ADVISORY_ENABLED=true`; pricing keys per "AI advisory pricing") and competitor collection (`COMPETITOR_COLLECTION_ENABLED=true`, `COMPETITOR_USER_AGENT`, `COMPETITOR_MIN_DELAY_MS >= 1000` — "AI advisory cron" section covers both). Wiring caveat below.
+11. **Verify** (next subsection), then re-point `deploy_on_push` and any temporary `admin_ip_addresses` to their steady-state values.
+
+#### Verification
+
+- **M1 gates already running in CI** (`.github/workflows/ci.yml`): `verify` (migrate, day-one bootstrap smoke, migration-chain rehearsal, lint/typecheck/test/build — `npm run test` includes the env-drift gate `packages/config/src/env-surface.test.ts`), `terraform` (`fmt -check -recursive` + `init -backend=false`/`validate` for both envs — plan deliberately excluded), and `e2e` (boots web, logs in as the bootstrapped owner, one read + one mutation in a real browser).
+- **Live checks** against `app_live_url` (a `terraform output`):
+  - `GET /api/health` → `{"status":"ok"}`.
+  - Log in as the bootstrapped owner (only possible once `ORGANIZATION_ID` is set and re-applied — step 9).
+  - One job: `POST /api/v1/workforce/payroll-reports?async=true` → `202` + `Location`, poll `GET /api/v1/jobs/<id>` ("Async job producer", "Job progress route") to a terminal state.
+  - Queue liveness from logs (worker/scheduler have **no** health check): `info "worker heartbeat"` every 30 s; the monitor's heartbeat each `MONITOR_CRON` tick; alert on the heartbeat's absence ("Monitoring").
+  - **One upload — honest status:** `apps/web/lib/file-storage.ts` selects the **local filesystem adapter** today (`FILE_STORAGE_ROOT` or `<cwd>/storage/files`); the Spaces adapter (`DEC-014`/`ADR-0006`) does **not exist** in the working tree. An upload therefore writes the container's ephemeral disk, not Spaces — treat it as a port-level smoke only.
+  - **`jobs.*` alert wiring:** all five keys from "Queue alerts" (depth / oldest-age / stuck / heartbeat / dead-letter) checked against a configured log alert, plus `DEPLOYMENT_FAILED` → the `alert_email`/Slack destination set in tfvars, and the DB alerts from the `monitoring` module.
+  - **DLQ review once at rehearsal start:** `GET /api/v1/jobs?status=dead_lettered` returns empty; the log alert on `jobs.dead_letter` is grouped/deduped as "Queue alerts" requires.
+
+#### What could still bite (honest, current tree)
+
+- **No Spaces file-storage adapter exists.** Verified in the working tree: `apps/web/lib/file-storage.ts` creates only `createLocalFileStorageAdapter`. The Terraform-injected `SPACES_ACCESS_KEY_ID`/`SPACES_SECRET_KEY` are **unread by any app code**; uploads survive only until the next container replace. Do not demo Spaces persistence tomorrow.
+- **`SENDGRID_*`/`LLM_*`/`AI_*`/`COMPETITOR_*` are not Terraform-wired.** `infra/modules/app-platform/main.tf` injects exactly: `DATABASE_URL`, `LOG_LEVEL`, `SPACES_ACCESS_KEY_ID`, `SPACES_SECRET_KEY` (shared runtime), `ORGANIZATION_ID`, `TOTP_SECRET_ENCRYPTION_KEY` (web), and `DATABASE_MIGRATIONS_URL` + `LOG_LEVEL` (migrate job). There is **no module variable or env entry** for SendGrid or any AI/collection knob — either extend the module (new sensitive variables + `web_env`/`scheduler_env`) before the rehearsal, or set them in the DO console and accept that Terraform's spec no longer describes the app fully (drift).
+- **Transactional pooler constraints, already handled but easy to break:** `DATABASE_URL` is the transaction-mode pool; the migrate advisory lock (`8675309`) is **session-scoped**, so `DATABASE_MIGRATIONS_URL` must remain the direct/session URL — it does (migrate job only). pg-boss runs with **LISTEN/NOTIFY off** (`packages/jobs-runtime/src/boss.ts` — a pooler cannot carry a session-pinned listener), so queue pickup is bound to the poll cadence, not instant.
+- **Grants ordering.** `database-grants.sql` before the first deploy or the migrator cannot create schema objects; `pgboss-grants.sql` run 1 is a no-op until the first migrate creates `pgboss`; a runtime role created later needs the manual re-run. A pgboss schema downgrade is refused — never bump pg-boss and roll back the deploy.
+- **`app` is DML-only by design** (no DDL, default privileges on `migrator`-owned objects only); `pgcrypto`/`btree_gist` must come from the grants file, not migration 0000.
+- **Terraform is offline-validated only.** CI now machine-checks `fmt` + `init -backend=false`/`validate` on every push, but nothing has ever been applied and no credentialed plan has run — first `apply` may surface provider drift (pinned `~> 2.101`), the legacy `basic-xxs` slug check, Spaces name collisions, or the missing `SCHEDULED` job kind (scheduler stays a long-lived worker, and **exits 1 at boot until `ORGANIZATION_ID` is set** — expected between steps 5 and 9).
+- **Cluster is not publicly reachable.** Trusted sources are the app + `admin_ip_addresses` (empty by default); without an entry, `psql`, the grant files and `npm run bootstrap` fail to connect from a laptop. Plan the access path before step 5.
 
 ## App Platform specification
 
