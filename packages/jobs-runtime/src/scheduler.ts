@@ -5,6 +5,7 @@ import { createBoss } from "./boss";
 import type { JobsRuntimeHandle } from "./boss";
 import type { OutboxHandlerRegistry } from "./consumer";
 import { defaultOutboxHandlers } from "./handlers";
+import { startHeartbeat } from "./heartbeat";
 import type { RuntimeLogger } from "./logging";
 import { registerMaintenance } from "./maintenance";
 import { registerMonitor } from "./monitor";
@@ -53,14 +54,17 @@ export async function startScheduler(options: SchedulerOptions): Promise<JobsRun
     MONITOR_QUEUE,
   ];
 
+  // `DEC-139` item 8: DB heartbeat so the in-app monitor can detect a dead worker.
+  const heartbeat = startHeartbeat({ db: client.db, role: "scheduler", logger });
+
   let stopped = false;
   const stop = async (): Promise<void> => {
     if (stopped) return;
     stopped = true;
+    clearInterval(heartbeat);
     await boss.stop();
     await client.close();
   };
-
   try {
     await boss.start();
     await ensureQueues(boss, queues);
@@ -78,6 +82,7 @@ export async function startScheduler(options: SchedulerOptions): Promise<JobsRun
     await registerMonitor(boss, {
       queues,
       cron: options.monitorCron ?? "*/5 * * * *",
+      db: client.db,
       logger,
     });
     logger.info(

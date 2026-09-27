@@ -24,6 +24,12 @@ export {
   PLATFORM_SMOKE_EVENT_TYPE,
   platformSmokeHandler,
 } from "./handlers";
+export {
+  DEFAULT_HEARTBEAT_INTERVAL_MS,
+  defaultWorkerHeartbeatId,
+  startHeartbeat,
+} from "./heartbeat";
+export type { HeartbeatOptions, HeartbeatRole } from "./heartbeat";
 export type { RuntimeLogger } from "./logging";
 export {
   DEFAULT_RETENTION_DAYS,
@@ -49,7 +55,12 @@ export {
   runMonitorCheck,
   WORKER_HEARTBEAT_ALERT_SECONDS,
 } from "./monitor";
-export type { MonitorAlert, MonitorCheckOptions, RegisterMonitorOptions } from "./monitor";
+export type {
+  MonitorAlert,
+  MonitorCheckOptions,
+  ReadWorkerHeartbeats,
+  RegisterMonitorOptions,
+} from "./monitor";
 export {
   DEAD_LETTER_QUEUE_OPTIONS,
   ensureQueues,

@@ -6,6 +6,7 @@ import type { JobsRuntimeHandle } from "./boss";
 import { createOutboxConsumer } from "./consumer";
 import type { OutboxHandlerRegistry } from "./consumer";
 import { defaultOutboxHandlers } from "./handlers";
+import { startHeartbeat } from "./heartbeat";
 import type { RuntimeLogger } from "./logging";
 import { ensureQueues, outboxQueueName } from "./queues";
 import { installShutdownHandlers } from "./shutdown";
@@ -31,10 +32,14 @@ export async function startWorker(options: WorkerOptions): Promise<JobsRuntimeHa
   boss.on("warning", (warning) => logger.warn({ warning }, "pg-boss warning"));
   const queues = Object.keys(handlers).map((eventType) => outboxQueueName(eventType));
 
+  // `DEC-139` item 8: DB heartbeat so the in-app monitor can detect a dead worker.
+  const heartbeat = startHeartbeat({ db: client.db, role: "worker", logger });
+
   let stopped = false;
   const stop = async (): Promise<void> => {
     if (stopped) return;
     stopped = true;
+    clearInterval(heartbeat);
     await boss.stop();
     await client.close();
   };

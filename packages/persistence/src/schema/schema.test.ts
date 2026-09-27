@@ -60,7 +60,9 @@ const tables = Object.values(schema).filter((value) => is(value, PgTable));
  * tracking slice adds the `forecast_snapshot` and `forecast_override` tables,
  * taking the count to 97. The `ADR-0004` (accepted 2026-09-26) job-projection
  * slice adds the `job` table, taking the count to 98 (`publish_run` and the
- * runner queue stay deferred to the worker/scheduler wave). */
+ * runner queue stay deferred to the worker/scheduler wave). The `DEC-139` item-8
+ * DB-backed worker heartbeat adds the `worker_heartbeat` operational table,
+ * taking the count to 99. */
 const EXPECTED_TABLES = [
   "addon_applicability",
   "adjustment_period",
@@ -160,6 +162,7 @@ const EXPECTED_TABLES = [
   "user_role",
   "user_totp",
   "waste_event",
+  "worker_heartbeat",
 ];
 
 /** Deferred to later slices: present in `schemas/phase1_2_draft.sql`'s coverage
@@ -269,6 +272,9 @@ describe("phase 1-2 schema metadata", () => {
     // - `recipe_allergen`: join table keyed by (recipe_version_id, allergen_id).
     const COMPOSITE_PK_TABLES = ["user_location_scope", "recipe_allergen"];
     const NON_ID_PK_TABLES: Record<string, string> = { user_totp: "user_id" };
+    // Text primary keys: the natural key is the process identity, not a uuid
+    // (`worker_heartbeat.worker_id`, the `DEC-139` item-8 operational table).
+    const TEXT_PK_TABLES: Record<string, string> = { worker_heartbeat: "worker_id" };
     const COMPOSITE_PK_COLUMNS: Record<string, string[]> = {
       user_location_scope: ["location_id", "user_id"],
       recipe_allergen: ["allergen_id", "recipe_version_id"],
@@ -292,12 +298,16 @@ describe("phase 1-2 schema metadata", () => {
         continue;
       }
 
-      const pkName = NON_ID_PK_TABLES[name] ?? "id";
+      const pkName = NON_ID_PK_TABLES[name] ?? TEXT_PK_TABLES[name] ?? "id";
       // `getTableColumns` is keyed by the TS property name (e.g. `userId`), so
       // look the column up by its database name instead.
       const id = Object.values(columns).find((column) => column.name === pkName);
       expect(id, `${name} has no ${pkName} column`).toBeDefined();
-      expect(id?.columnType, `${name}.${pkName} must be uuid`).toBe("PgUUID");
+      if (TEXT_PK_TABLES[name] === undefined) {
+        expect(id?.columnType, `${name}.${pkName} must be uuid`).toBe("PgUUID");
+      } else {
+        expect(id?.columnType, `${name}.${pkName} must be text`).toBe("PgText");
+      }
       expect(id?.primary, `${name}.${pkName} must be the primary key`).toBe(true);
     }
   });

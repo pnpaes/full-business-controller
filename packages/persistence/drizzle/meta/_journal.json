@@ -512,6 +512,13 @@
       "when": 1790496122421,
       "tag": "0072_job_org_created_at_idx",
       "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1790499229781,
+      "tag": "0073_worker_heartbeat",
+      "breakpoints": true
     }
   ]
 }

@@ -1,4 +1,5 @@
 import type { JobWithMetadata, QueueResult } from "pg-boss";
+import type { NodeDatabase } from "@aquarela/persistence";
 import { randomUUID } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 
@@ -11,6 +12,7 @@ import {
   QUEUE_DEPTH_THRESHOLD,
   registerMonitor,
   runMonitorCheck,
+  WORKER_HEARTBEAT_ALERT_SECONDS,
 } from "./monitor";
 import { OUTBOX_DEAD_LETTER_QUEUE } from "./queues";
 import { FakeBoss } from "./test-support";
@@ -243,6 +245,113 @@ describe("runMonitorCheck", () => {
     expect(alertKeys(error)).toEqual([MONITOR_ALERTS.queueDepth]);
     expect(findJobs).not.toHaveBeenCalled();
   });
+
+  it("emits no heartbeat alert when a fresh worker heartbeat exists", async () => {
+    const { logger, error } = recordingLogger();
+    const boss = bossWith([queueResult(OUTBOX_A, { queuedCount: 0 })]);
+    const readHeartbeats = vi.fn().mockResolvedValue([
+      { workerId: "worker:host:1", role: "worker", lastSeenAt: new Date() },
+      { workerId: "scheduler:host:2", role: "scheduler", lastSeenAt: new Date() },
+    ]);
+
+    await runMonitorCheck(boss, { queues: QUEUES, logger, readHeartbeats });
+
+    expect(readHeartbeats).toHaveBeenCalledTimes(1);
+    expect(alertKeys(error)).toEqual([]);
+  });
+
+  it("alerts jobs.worker_heartbeat_missing when there is no worker heartbeat", async () => {
+    const { logger, error } = recordingLogger();
+    const boss = bossWith([queueResult(OUTBOX_A, { queuedCount: 0 })]);
+    // Only a scheduler row: the alert is about job consumers, not the cron owner.
+    const readHeartbeats = vi
+      .fn()
+      .mockResolvedValue([
+        { workerId: "scheduler:host:2", role: "scheduler", lastSeenAt: new Date() },
+      ]);
+
+    await runMonitorCheck(boss, { queues: QUEUES, logger, readHeartbeats });
+
+    expect(alertKeys(error)).toEqual([MONITOR_ALERTS.workerHeartbeatMissing]);
+    expect(error).toHaveBeenCalledWith(
+      expect.objectContaining({
+        alert: MONITOR_ALERTS.workerHeartbeatMissing,
+        ageSeconds: null,
+        workers: 0,
+      }),
+      expect.any(String),
+    );
+  });
+
+  it("alerts jobs.worker_heartbeat_missing when the newest worker heartbeat is stale", async () => {
+    const { logger, error } = recordingLogger();
+    const boss = bossWith([queueResult(OUTBOX_A, { queuedCount: 0 })]);
+    const stale = new Date(Date.now() - (WORKER_HEARTBEAT_ALERT_SECONDS + 60) * 1000);
+    const readHeartbeats = vi
+      .fn()
+      .mockResolvedValue([{ workerId: "worker:host:1", role: "worker", lastSeenAt: stale }]);
+
+    await runMonitorCheck(boss, { queues: QUEUES, logger, readHeartbeats });
+
+    expect(alertKeys(error)).toEqual([MONITOR_ALERTS.workerHeartbeatMissing]);
+    expect(error).toHaveBeenCalledWith(
+      expect.objectContaining({
+        alert: MONITOR_ALERTS.workerHeartbeatMissing,
+        threshold: WORKER_HEARTBEAT_ALERT_SECONDS,
+        workers: 1,
+      }),
+      expect.any(String),
+    );
+  });
+
+  it("does not alert when the newest worker heartbeat is exactly at the threshold", async () => {
+    const { logger, error } = recordingLogger();
+    const now = new Date("2026-06-01T00:00:00.000Z");
+    vi.useFakeTimers();
+    vi.setSystemTime(now);
+
+    try {
+      const boss = bossWith([queueResult(OUTBOX_A, { queuedCount: 0 })]);
+      const atThreshold = new Date(now.getTime() - WORKER_HEARTBEAT_ALERT_SECONDS * 1000);
+      const readHeartbeats = vi
+        .fn()
+        .mockResolvedValue([
+          { workerId: "worker:host:1", role: "worker", lastSeenAt: atThreshold },
+        ]);
+
+      await runMonitorCheck(boss, { queues: QUEUES, logger, readHeartbeats });
+
+      expect(alertKeys(error)).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("logs the newest of several worker heartbeats, not an older one", async () => {
+    const { logger, error } = recordingLogger();
+    const boss = bossWith([queueResult(OUTBOX_A, { queuedCount: 0 })]);
+    const readHeartbeats = vi.fn().mockResolvedValue([
+      { workerId: "worker:host:1", role: "worker", lastSeenAt: new Date(Date.now() - 10_000) },
+      // A stale second worker must not drag the newest forward.
+      { workerId: "worker:host:2", role: "worker", lastSeenAt: new Date(Date.now() - 500_000) },
+    ]);
+
+    await runMonitorCheck(boss, { queues: QUEUES, logger, readHeartbeats });
+
+    expect(alertKeys(error)).toEqual([]);
+  });
+
+  it("skips the heartbeat check (warn only) when the heartbeat read fails", async () => {
+    const { logger, error } = recordingLogger();
+    const warn = logger.warn as ReturnType<typeof vi.fn>;
+    const boss = bossWith([queueResult(OUTBOX_A, { queuedCount: 0 })]);
+    const readHeartbeats = vi.fn().mockRejectedValue(new Error("db down"));
+
+    await runMonitorCheck(boss, { queues: QUEUES, logger, readHeartbeats });
+
+    expect(alertKeys(error)).toEqual([]);
+    expect(warn).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("registerMonitor", () => {
@@ -272,5 +381,21 @@ describe("registerMonitor", () => {
     await handler();
 
     expect(alertKeys(error)).toContain(MONITOR_ALERTS.deadLetter);
+  });
+
+  it("reads the heartbeat store when a db is provided and alerts when no worker is live", async () => {
+    const { logger, error } = recordingLogger();
+    const boss = bossWith([queueResult(OUTBOX_DEAD_LETTER_QUEUE, { queuedCount: 0 })]);
+    const db = {
+      select: () => ({ from: () => ({ orderBy: () => Promise.resolve([]) }) }),
+    } as unknown as NodeDatabase;
+
+    await registerMonitor(boss, { queues: QUEUES, cron: "*/5 * * * *", logger, db });
+
+    const handler = boss.worked.find((call) => call.name === MONITOR_QUEUE)!
+      .handler as () => Promise<void>;
+    await handler();
+
+    expect(alertKeys(error)).toContain(MONITOR_ALERTS.workerHeartbeatMissing);
   });
 });

@@ -37,10 +37,10 @@ logger.info({ nodeEnv: config.NODE_ENV }, "worker started; consuming outbox queu
 let tick = 0;
 const timer = setInterval(() => {
   tick += 1;
-  // The in-app monitor cannot see another process's WIP (pg-boss 12 keeps it in
-  // memory, no `wip` table), so worker liveness is observed out-of-band: DO
-  // Monitoring alerts when this `info` heartbeat is absent for more than
-  // WORKER_HEARTBEAT_ALERT_SECONDS (see @aquarela/jobs-runtime monitor).
+  // `DEC-139` item 8: the in-app monitor now detects a dead worker from the
+  // `worker_heartbeat` table (written by `startWorker`), so this `info` line is
+  // the secondary, out-of-band signal — DO Monitoring still alerts when it is
+  // absent for more than WORKER_HEARTBEAT_ALERT_SECONDS.
   logger.info({ tick }, "worker heartbeat");
   if (ticks !== undefined && tick >= ticks) {
     clearInterval(timer);
