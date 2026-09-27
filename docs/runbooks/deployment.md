@@ -103,6 +103,19 @@ with the switch off it makes **no** request. Rollback: set the flag false and re
 or `git revert` (no schema change). Hosts whose `robots.txt` 404/500 are skipped by design.
 Known follow-up: no content-hash dedupe, so repeated runs re-record pending observations.
 
+**AI advisory pricing (`LLM_PRICE_INPUT_PER_1M` / `LLM_PRICE_OUTPUT_PER_1M`).** The
+advisory cost caps need a per-run cost; no vendor price is hardcoded, the operator supplies it.
+Read the provider's current price per 1,000,000 tokens for the configured `LLM_MODEL`, separately
+for input and output, in **one currency**, and keep `AI_MONTHLY_COST_LIMIT` / `AI_PER_RUN_COST_LIMIT`
+in that same currency. Set both on the scheduler (decimal string, ≤ 6 dp, non-negative), then
+restart: a malformed value fails boot. **Set both** — one side only prices that side and understates
+the run; blank/absent counts as unset, and neither set leaves `cost_estimate` `null` (the caps stay
+inert). Verify: with advisory enabled, a run's `cost_estimate` is no longer null and the
+month-to-date sum (runs since the 1st, UTC) is non-zero. Rollback: unset both and redeploy (costs
+return to null; recorded spend history is retained). Caveat: a provider that omits the usage block,
+or uses token keys other than `prompt_tokens`/`completion_tokens`, records 0 tokens / `0.0000` —
+contributes nothing and will not trip the cap.
+
 ### Scheduler cron environment variables
 
 The `scheduler` component takes three cron expressions (the first two for

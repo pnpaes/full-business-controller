@@ -1,5 +1,12 @@
 # Reversibility log
 
+- **2026-09-27 Follow-ups: invite-accept page, self-assign race guard, AI cost
+  pricing (`38797a1`, `21f9687`, `17095cc`; pushed)**: the invite page is
+  additive; the race guard is a stricter concurrency behaviour with no schema or
+  data change; the pricing change makes `cost_estimate` real and is reverted by
+  the commit **plus** unsetting `LLM_PRICE_*` (which returns it to `null`).
+  **No migration** in any of the three. No posted money or stock fact is touched.
+  Details: [handoff 099](099-2026-09-27-invite-page-race-guard-ai-pricing.md).
 - **2026-09-27 WF-003 employee login + self-assignment, and competitor capture
   idempotency + source editing (`d5193d3`; pushed)**: two migrations and their
   downs in one commit — `0077_user_invite.sql` (new `user_invite` + nullable
