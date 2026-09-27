@@ -132,6 +132,12 @@ export async function POST(request: Request): Promise<Response> {
       throw error;
     }
 
+    if (observation === undefined) {
+      // Unreachable from this route (it never supplies a content hash, so the
+      // dedupe guard is inert); kept so the return-type contract stays honest.
+      return jsonError(409, "observation already recorded");
+    }
+
     return jsonOk({ observation: toObservationRow(organizationId, observation) });
   });
 }

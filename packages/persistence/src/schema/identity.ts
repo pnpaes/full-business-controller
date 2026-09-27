@@ -9,6 +9,7 @@ import {
   primaryKey,
   text,
   unique,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 
@@ -40,6 +41,12 @@ export const appUser = pgTable(
     lockedUntil: tstz("locked_until"),
     lastLoginAt: tstz("last_login_at"),
     totpEnabled: boolean("totp_enabled").notNull().default(false),
+    // Manager-provisioned invite (`DEC-146`): set when the account is created in
+    // the `invited` status, so the provisioning fact survives the transition to
+    // `active`. `invited_by` is a plain uuid (the repo-wide deferred `app_user`
+    // FK convention) and null when the actor was not recorded.
+    invitedAt: tstz("invited_at"),
+    invitedBy: uuid("invited_by"),
     ...auditColumns(),
   },
   (t) => [
@@ -174,3 +181,45 @@ export const passwordResetToken = pgTable("password_reset_token", {
   createdBy: uuid("created_by").references(() => appUser.id),
   createdAt: tstz("created_at").notNull().defaultNow(),
 });
+
+/*
+ * `DEC-146` (`WF-003`): a single-use, manager-issued employee account invite.
+ * Kept separate from `password_reset_token` because the lifecycle differs — an
+ * invite has an organization scope (so `acceptInvite` can pin the tenant), an
+ * explicit `revoked_at` (a superseded invite is revoked, never silently left
+ * live) and an `accepted_at` single-use stamp, and accepting one flips
+ * `app_user.status` `invited` → `active`. Only `hashInviteToken(token)` is
+ * stored (`generateInviteToken`); the plaintext is delivered out of band and is
+ * never stored, logged or placed in a URL (`ADR-0003`).
+ *
+ * `issued_by` is a plain uuid (the repo-wide deferred `app_user` FK convention).
+ * The partial unique index allows at most **one live invite per user** — live =
+ * neither accepted nor revoked — so a re-invite must revoke the prior row
+ * first; the invariant is a database backstop on top of the command's
+ * revoke-others step. The cross-organization guard for `user_id` is
+ * hand-written in migration `0077` (a single-column FK cannot express it).
+ */
+export const userInvite = pgTable(
+  "user_invite",
+  {
+    id: uuidPk(),
+    organizationId: orgId().references(() => organization.id),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => appUser.id, { onDelete: "cascade" }),
+    tokenHash: text("token_hash").notNull().unique(),
+    issuedAt: tstz("issued_at").notNull().defaultNow(),
+    /** Plain uuid; null when the issuing actor was not recorded. */
+    issuedBy: uuid("issued_by"),
+    expiresAt: tstz("expires_at").notNull(),
+    acceptedAt: tstz("accepted_at"),
+    revokedAt: tstz("revoked_at"),
+  },
+  (t) => [
+    check("user_invite_expiry_check", sql`${t.expiresAt} > ${t.issuedAt}`),
+    index("user_invite_org_user_idx").on(t.organizationId, t.userId),
+    uniqueIndex("user_invite_live_user_key")
+      .on(t.userId)
+      .where(sql`${t.acceptedAt} is null and ${t.revokedAt} is null`),
+  ],
+);

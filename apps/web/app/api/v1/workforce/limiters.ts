@@ -37,6 +37,8 @@ export const shiftLimiters = createSharedLimiters("shifts", {
   completeShift: { limit: 120, windowMs: FIFTEEN_MINUTES_MS },
   assignShift: { limit: 120, windowMs: FIFTEEN_MINUTES_MS },
   withdrawShiftAssignment: { limit: 120, windowMs: FIFTEEN_MINUTES_MS },
+  selfAssignShift: { limit: 120, windowMs: FIFTEEN_MINUTES_MS },
+  decideSelfAssignment: { limit: 120, windowMs: FIFTEEN_MINUTES_MS },
   createShiftAdjustment: { limit: 120, windowMs: FIFTEEN_MINUTES_MS },
   generatePayrollReport: { limit: 60, windowMs: FIFTEEN_MINUTES_MS },
   markPayrollReportExported: { limit: 120, windowMs: FIFTEEN_MINUTES_MS },

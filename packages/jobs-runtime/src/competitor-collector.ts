@@ -93,6 +93,17 @@ function sha256Hex(text: string): string {
   return createHash("sha256").update(text, "utf8").digest("hex");
 }
 
+/**
+ * The observation-level idempotency key (`DEC-149` follow-up). The page hash
+ * identifies the fetched body; a page yields several facts, so the key must
+ * distinguish them or the partial unique index would collapse a page to one
+ * observation. Mixing the page hash with the fact's name and price keeps the key
+ * stable for an unchanged capture and distinct per offer.
+ */
+export function observationContentHash(pageContentHash: string, fact: ExtractedFact): string {
+  return sha256Hex(`${pageContentHash}\u0000${fact.externalName}\u0000${fact.price ?? ""}`);
+}
+
 // ---------------------------------------------------------------------------
 // robots.txt
 // ---------------------------------------------------------------------------
@@ -728,6 +739,8 @@ export type CompetitorCollectionOutcome =
       readonly sources: number;
       readonly collected: number;
       readonly observations: number;
+      /** Facts skipped as duplicates of an already-recorded capture (`DEC-149`). */
+      readonly duplicates: number;
       readonly skipped: number;
       readonly failed: number;
     };
@@ -783,6 +796,7 @@ export async function runCompetitorCollection(
 
   let collected = 0;
   let observations = 0;
+  let duplicates = 0;
   let skipped = 0;
   let failed = 0;
 
@@ -833,7 +847,7 @@ export async function runCompetitorCollection(
     const competitorId = source.competitorId;
     for (const fact of outcome.facts) {
       try {
-        await recordCompetitorObservation(store, {
+        const created = await recordCompetitorObservation(store, {
           organizationId,
           actorId: null,
           competitorId,
@@ -855,7 +869,16 @@ export async function runCompetitorCollection(
             method: COMPETITOR_CAPTURE_METHOD,
             contentHash: outcome.contentHash,
           },
+          contentHash: observationContentHash(outcome.contentHash, fact),
         });
+        if (created === undefined) {
+          duplicates += 1;
+          logger?.info(
+            { organizationId, sourceId: source.id, externalName: fact.externalName },
+            "competitor collector: duplicate fact skipped (same source + content hash)",
+          );
+          continue;
+        }
         observations += 1;
       } catch (error) {
         logger?.warn(
@@ -871,6 +894,7 @@ export async function runCompetitorCollection(
     sources: eligible.length,
     collected,
     observations,
+    duplicates,
     skipped,
     failed,
   };

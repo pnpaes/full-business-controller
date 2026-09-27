@@ -16,6 +16,7 @@ import { registerCompetitor } from "./register-competitor";
 import { registerCompetitorSource } from "./register-competitor-source";
 import { reviewCompetitorObservation } from "./review-competitor-observation";
 import { FakeCompetitorStore } from "./test-support";
+import { updateCompetitorSource } from "./update-competitor-source";
 
 const ORG = "org-1";
 const OTHER_ORG = "org-2";
@@ -92,7 +93,7 @@ describe("recordCompetitorObservation", () => {
 
   it("records a pending observation, trims its text and audits it", async () => {
     const { store, competitorId } = await withCompetitor();
-    const observation = await recordCompetitorObservation(store, {
+    const observation = (await recordCompetitorObservation(store, {
       organizationId: ORG,
       actorId: ACTOR,
       competitorId,
@@ -101,7 +102,7 @@ describe("recordCompetitorObservation", () => {
       externalName: "  Flat White  ",
       price: "42.5",
       currency: "nok",
-    });
+    }))!;
 
     expect(observation.reviewStatus).toBe("pending");
     expect(observation.source).toBe("menu photo");
@@ -738,7 +739,7 @@ describe("recordCompetitorObservation with a source (ADR-0010)", () => {
 
   it("stores the source link, capture method, category, season and provenance", async () => {
     const { store, competitorId, sourceId } = await seeded();
-    const observation = await recordCompetitorObservation(store, {
+    const observation = (await recordCompetitorObservation(store, {
       organizationId: ORG,
       actorId: ACTOR,
       competitorId,
@@ -750,7 +751,7 @@ describe("recordCompetitorObservation with a source (ADR-0010)", () => {
       productCategory: "coffee",
       season: "autumn",
       provenance: { url: "https://rival.example/menu", captured_at: OBSERVED_AT },
-    });
+    }))!;
 
     expect(observation.competitorSourceId).toBe(sourceId);
     expect(observation.captureMethod).toBe("automated");
@@ -815,5 +816,211 @@ describe("recordCompetitorObservation with a source (ADR-0010)", () => {
         provenance: [] as unknown as Record<string, unknown>,
       }),
     ).rejects.toBeInstanceOf(DomainError);
+  });
+});
+
+describe("recordCompetitorObservation dedupe (DEC-149 follow-up)", () => {
+  async function seeded(): Promise<{
+    store: FakeCompetitorStore;
+    competitorId: string;
+    sourceId: string;
+  }> {
+    const store = new FakeCompetitorStore();
+    const competitor = store.seedCompetitor({ organizationId: ORG, name: "Rival Cafe" });
+    const source = store.seedCompetitorSource({
+      organizationId: ORG,
+      competitorName: "Rival Cafe",
+      competitorId: competitor.id,
+      urlOrIdentifier: "https://rival.example/menu",
+      collectionMode: "automated",
+      termsStatus: "approved",
+    });
+    return { store, competitorId: competitor.id, sourceId: source.id };
+  }
+
+  it("skips a re-captured automated fact and writes no second fact", async () => {
+    const { store, competitorId, sourceId } = await seeded();
+    const base = {
+      organizationId: ORG,
+      actorId: null,
+      competitorId,
+      observedAt: OBSERVED_AT,
+      source: "website",
+      externalName: "Flat White",
+      competitorSourceId: sourceId,
+      captureMethod: "automated",
+      contentHash: "hash-1",
+    } as const;
+
+    const first = await recordCompetitorObservation(store, base);
+    const second = await recordCompetitorObservation(store, base);
+
+    expect(first).toBeDefined();
+    expect(second).toBeUndefined();
+    expect(store.observations.size).toBe(1);
+    expect(
+      store.audits.filter((audit) => audit.action === "competitors.observation.recorded"),
+    ).toHaveLength(1);
+  });
+
+  it("records a different hash, and a manual capture ignores the hash (never deduped)", async () => {
+    const { store, competitorId, sourceId } = await seeded();
+    await recordCompetitorObservation(store, {
+      organizationId: ORG,
+      actorId: null,
+      competitorId,
+      observedAt: OBSERVED_AT,
+      source: "website",
+      externalName: "Flat White",
+      competitorSourceId: sourceId,
+      captureMethod: "automated",
+      contentHash: "hash-a",
+    });
+    const different = await recordCompetitorObservation(store, {
+      organizationId: ORG,
+      actorId: null,
+      competitorId,
+      observedAt: OBSERVED_AT,
+      source: "website",
+      externalName: "Flat White",
+      competitorSourceId: sourceId,
+      captureMethod: "automated",
+      contentHash: "hash-b",
+    });
+    expect(different).toBeDefined();
+
+    const manualBase = {
+      organizationId: ORG,
+      actorId: ACTOR,
+      competitorId,
+      observedAt: OBSERVED_AT,
+      source: "staff note",
+      externalName: "Flat White",
+      competitorSourceId: sourceId,
+      captureMethod: "manual",
+      contentHash: "same-page-hash",
+    } as const;
+    const manualFirst = await recordCompetitorObservation(store, manualBase);
+    const manualSecond = await recordCompetitorObservation(store, manualBase);
+
+    expect(manualFirst).toBeDefined();
+    expect(manualSecond).toBeDefined();
+    // A manual capture ignores the hash: the column stays null and it is never deduped.
+    expect(manualFirst?.contentHash).toBeNull();
+    expect(store.observations.size).toBe(4);
+  });
+});
+
+describe("updateCompetitorSource (DEC-149 follow-up)", () => {
+  it("switches a terms-approved source to automated and audits it", async () => {
+    const store = new FakeCompetitorStore();
+    const source = store.seedCompetitorSource({
+      organizationId: ORG,
+      competitorName: "Rival Cafe",
+      urlOrIdentifier: "https://rival.example/menu",
+      collectionMode: "manual",
+      termsStatus: "approved",
+      approvedBy: ACTOR,
+      approvedAt: OBSERVED_AT,
+    });
+
+    const updated = await updateCompetitorSource(store, {
+      organizationId: ORG,
+      actorId: ACTOR,
+      sourceId: source.id,
+      collectionMode: "automated",
+    });
+
+    expect(updated.collectionMode).toBe("automated");
+    expect(updated.termsStatus).toBe("approved");
+    expect(store.audits.at(-1)?.action).toBe("competitors.source.updated");
+  });
+
+  it("refuses automated while terms are pending or rejected", async () => {
+    for (const termsStatus of ["pending", "rejected"] as const) {
+      const store = new FakeCompetitorStore();
+      const source = store.seedCompetitorSource({
+        organizationId: ORG,
+        competitorName: "Rival Cafe",
+        urlOrIdentifier: "https://rival.example/menu",
+        collectionMode: "manual",
+        termsStatus,
+      });
+      await expect(
+        updateCompetitorSource(store, {
+          organizationId: ORG,
+          actorId: ACTOR,
+          sourceId: source.id,
+          collectionMode: "automated",
+        }),
+      ).rejects.toBeInstanceOf(DomainError);
+      expect(store.audits).toHaveLength(0);
+    }
+  });
+
+  it("allows a switch to manual and refuses a duplicate URL", async () => {
+    const store = new FakeCompetitorStore();
+    store.seedCompetitorSource({
+      organizationId: ORG,
+      competitorName: "A",
+      urlOrIdentifier: "https://a.example/menu",
+    });
+    const second = store.seedCompetitorSource({
+      organizationId: ORG,
+      competitorName: "B",
+      urlOrIdentifier: "https://b.example/menu",
+      collectionMode: "automated",
+      termsStatus: "approved",
+    });
+
+    const demoted = await updateCompetitorSource(store, {
+      organizationId: ORG,
+      actorId: ACTOR,
+      sourceId: second.id,
+      collectionMode: "manual",
+    });
+    expect(demoted.collectionMode).toBe("manual");
+
+    await expect(
+      updateCompetitorSource(store, {
+        organizationId: ORG,
+        actorId: ACTOR,
+        sourceId: second.id,
+        urlOrIdentifier: "https://a.example/menu",
+      }),
+    ).rejects.toBeInstanceOf(DomainError);
+  });
+
+  it("updates the URL and note, and rejects an empty edit or a missing source", async () => {
+    const store = new FakeCompetitorStore();
+    const source = store.seedCompetitorSource({
+      organizationId: ORG,
+      competitorName: "Rival Cafe",
+      urlOrIdentifier: "https://rival.example/menu",
+    });
+
+    const updated = await updateCompetitorSource(store, {
+      organizationId: ORG,
+      actorId: ACTOR,
+      sourceId: source.id,
+      urlOrIdentifier: "https://rival.example/updated",
+      rateLimitNote: "1 req/s",
+    });
+    expect(updated.urlOrIdentifier).toBe("https://rival.example/updated");
+    expect(updated.rateLimitNote).toBe("1 req/s");
+    expect(updated.updatedBy).toBe(ACTOR);
+
+    await expect(
+      updateCompetitorSource(store, { organizationId: ORG, actorId: ACTOR, sourceId: source.id }),
+    ).rejects.toBeInstanceOf(DomainError);
+
+    await expect(
+      updateCompetitorSource(store, {
+        organizationId: ORG,
+        actorId: ACTOR,
+        sourceId: "11111111-1111-4111-8111-111111111111",
+        rateLimitNote: "x",
+      }),
+    ).rejects.toBeInstanceOf(NotFoundError);
   });
 });

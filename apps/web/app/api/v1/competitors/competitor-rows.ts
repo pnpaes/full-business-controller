@@ -483,6 +483,78 @@ export function parseDeactivateCompetitorSourceBody(
   return activeTo === null ? { ok: false } : { ok: true, input: { activeTo } };
 }
 
+export interface UpdateCompetitorSourceBody {
+  readonly urlOrIdentifier?: string;
+  readonly rateLimitNote?: string | null;
+  readonly collectionMode?: string;
+}
+
+export type ParsedUpdateCompetitorSource =
+  { readonly ok: true; readonly input: UpdateCompetitorSourceBody } | { readonly ok: false };
+
+/**
+ * `PATCH /competitors/sources/[id]` body (`DEC-149` follow-up): any subset of
+ * `urlOrIdentifier`, `rateLimitNote` (a blank/`null` clears it) and
+ * `collectionMode`. An absent key means "leave unchanged"; a present-but-invalid
+ * key is a 400. An empty body is a 400 (nothing to update).
+ */
+export function parseUpdateCompetitorSourceBody(
+  body: Record<string, unknown> | undefined,
+): ParsedUpdateCompetitorSource {
+  if (body === undefined) {
+    return { ok: false };
+  }
+  const input: {
+    urlOrIdentifier?: string;
+    rateLimitNote?: string | null;
+    collectionMode?: string;
+  } = {};
+
+  if (Object.hasOwn(body, "urlOrIdentifier")) {
+    const value = body["urlOrIdentifier"];
+    if (typeof value !== "string") {
+      return { ok: false };
+    }
+    const trimmed = value.trim();
+    if (trimmed.length === 0 || trimmed.length > MAX_TEXT) {
+      return { ok: false };
+    }
+    input.urlOrIdentifier = trimmed;
+  }
+
+  if (Object.hasOwn(body, "rateLimitNote")) {
+    const value = body["rateLimitNote"];
+    if (value === null) {
+      input.rateLimitNote = null;
+    } else if (typeof value === "string" && value.length <= MAX_TEXT) {
+      const trimmed = value.trim();
+      input.rateLimitNote = trimmed.length === 0 ? null : trimmed;
+    } else {
+      return { ok: false };
+    }
+  }
+
+  if (Object.hasOwn(body, "collectionMode")) {
+    const value = body["collectionMode"];
+    if (
+      typeof value !== "string" ||
+      !(COMPETITOR_COLLECTION_MODES as readonly string[]).includes(value.trim())
+    ) {
+      return { ok: false };
+    }
+    input.collectionMode = value.trim();
+  }
+
+  if (
+    input.urlOrIdentifier === undefined &&
+    input.rateLimitNote === undefined &&
+    input.collectionMode === undefined
+  ) {
+    return { ok: false };
+  }
+  return { ok: true, input };
+}
+
 export interface RecordObservationBody {
   readonly competitorId: string;
   readonly observedAt: string;

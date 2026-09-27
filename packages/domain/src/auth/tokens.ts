@@ -14,6 +14,7 @@ const OPAQUE_TOKEN_HASH_PATTERN = /^[0-9a-f]{64}$/;
  */
 const SESSION_TOKEN_CONTEXT = "aquarela:session:";
 const PASSWORD_RESET_TOKEN_CONTEXT = "aquarela:password-reset:";
+const INVITE_TOKEN_CONTEXT = "aquarela:user-invite:";
 
 /** Generates an opaque, URL-safe token from the CSPRNG. */
 export function generateOpaqueToken(bytes = OPAQUE_TOKEN_BYTES): string {
@@ -74,4 +75,21 @@ export function hashPasswordResetToken(token: string): string {
 
 export function passwordResetTokenMatches(token: string, tokenHash: string): boolean {
   return opaqueTokenMatches(token, tokenHash, PASSWORD_RESET_TOKEN_CONTEXT);
+}
+
+/**
+ * Employee-invite tokens (`DEC-146`): one family for the manager-provisioned
+ * account invite, so a reset or session token can never redeem an invite (or
+ * vice versa) even though all three are 256-bit opaque strings.
+ */
+export function generateInviteToken(): string {
+  return generateOpaqueToken();
+}
+
+export function hashInviteToken(token: string): string {
+  return hashOpaqueToken(token, INVITE_TOKEN_CONTEXT);
+}
+
+export function inviteTokenMatches(token: string, tokenHash: string): boolean {
+  return opaqueTokenMatches(token, tokenHash, INVITE_TOKEN_CONTEXT);
 }

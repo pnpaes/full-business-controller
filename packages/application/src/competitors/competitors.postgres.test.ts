@@ -18,6 +18,7 @@ import { recordCompetitorObservation } from "./record-competitor-observation";
 import { registerCompetitor } from "./register-competitor";
 import { registerCompetitorSource } from "./register-competitor-source";
 import { reviewCompetitorObservation } from "./review-competitor-observation";
+import { updateCompetitorSource } from "./update-competitor-source";
 
 const databaseUrl = process.env.DATABASE_URL;
 const suffix = randomUUID().replace(/-/g, "").slice(0, 12);
@@ -110,7 +111,7 @@ describe.skipIf(!databaseUrl)("competitor observations against PostgreSQL", () =
         actorId,
         name: `Review Rival ${suffix}`,
       });
-      const observation = await recordCompetitorObservation(store, {
+      const observation = (await recordCompetitorObservation(store, {
         organizationId: orgId,
         actorId,
         competitorId: competitor.id,
@@ -119,7 +120,7 @@ describe.skipIf(!databaseUrl)("competitor observations against PostgreSQL", () =
         externalName: "Flat White",
         price: "42.5",
         currency: "NOK",
-      });
+      }))!;
       expect(observation.reviewStatus).toBe("pending");
       expect(observation.price).toBe("42.5000");
 
@@ -152,14 +153,14 @@ describe.skipIf(!databaseUrl)("competitor observations against PostgreSQL", () =
         actorId,
         name: `Scoped Rival ${suffix}`,
       });
-      const observation = await recordCompetitorObservation(store, {
+      const observation = (await recordCompetitorObservation(store, {
         organizationId: orgId,
         actorId,
         competitorId: competitor.id,
         observedAt: OBSERVED_AT,
         source: "note",
         externalName: "Flat White",
-      });
+      }))!;
 
       const rows = await store.listObservations({ organizationId: otherOrgId, status: "all" });
       expect(rows).toHaveLength(0);
@@ -418,7 +419,7 @@ describe.skipIf(!databaseUrl)("competitor observations against PostgreSQL", () =
         activeFrom: "2026-09-01",
       });
 
-      const observation = await recordCompetitorObservation(store, {
+      const observation = (await recordCompetitorObservation(store, {
         organizationId: orgId,
         actorId,
         competitorId: competitor.id,
@@ -430,7 +431,7 @@ describe.skipIf(!databaseUrl)("competitor observations against PostgreSQL", () =
         productCategory: "coffee",
         season: "autumn",
         provenance: { url: "https://sourced.example/menu" },
-      });
+      }))!;
       expect(observation.competitorSourceId).toBe(source.id);
       expect(observation.captureMethod).toBe("automated");
       expect(observation.provenance).toMatchObject({ url: "https://sourced.example/menu" });
@@ -452,6 +453,128 @@ describe.skipIf(!databaseUrl)("competitor observations against PostgreSQL", () =
           competitorSourceId: source.id,
         }),
       ).rejects.toBeInstanceOf(DomainError);
+    });
+  });
+
+  it("dedupes an automated capture on (organization, source, content hash)", async () => {
+    await inRollback(client.db, async (tx) => {
+      const store = createPostgresCompetitorStore(tx);
+      const competitor = await registerCompetitor(store, {
+        organizationId: orgId,
+        actorId,
+        name: `Dedupe Rival ${suffix}`,
+      });
+      const source = await registerCompetitorSource(store, {
+        organizationId: orgId,
+        actorId,
+        competitorName: `Dedupe Rival ${suffix}`,
+        competitorId: competitor.id,
+        sourceType: "website",
+        urlOrIdentifier: `https://dedupe.example/${suffix}`,
+        collectionMode: "automated",
+        activeFrom: "2026-09-01",
+      });
+      const base = {
+        organizationId: orgId,
+        actorId: null,
+        competitorId: competitor.id,
+        observedAt: OBSERVED_AT,
+        source: "website",
+        externalName: "Flat White",
+        competitorSourceId: source.id,
+        captureMethod: "automated",
+        contentHash: `hash-${suffix}`,
+      } as const;
+
+      const first = await recordCompetitorObservation(store, base);
+      const second = await recordCompetitorObservation(store, base);
+
+      expect(first).toBeDefined();
+      expect(second).toBeUndefined();
+      expect(await store.listObservations({ organizationId: orgId })).toHaveLength(1);
+
+      // A different content hash is a new fact.
+      const different = await recordCompetitorObservation(store, {
+        ...base,
+        contentHash: `hash2-${suffix}`,
+      });
+      expect(different).toBeDefined();
+      expect(await store.listObservations({ organizationId: orgId })).toHaveLength(2);
+    });
+  });
+
+  it("edits a source: terms gate, URL uniqueness and a manual switch", async () => {
+    await inRollback(client.db, async (tx) => {
+      const store = createPostgresCompetitorStore(tx);
+      const competitor = await registerCompetitor(store, {
+        organizationId: orgId,
+        actorId,
+        name: `Edit Rival ${suffix}`,
+      });
+      const manual = await registerCompetitorSource(store, {
+        organizationId: orgId,
+        actorId,
+        competitorName: `Edit Rival ${suffix}`,
+        competitorId: competitor.id,
+        sourceType: "website",
+        urlOrIdentifier: `https://edit-a.example/${suffix}`,
+        collectionMode: "manual",
+        activeFrom: "2026-09-01",
+      });
+      const other = await registerCompetitorSource(store, {
+        organizationId: orgId,
+        actorId,
+        competitorName: `Edit Rival ${suffix}`,
+        competitorId: competitor.id,
+        sourceType: "website",
+        urlOrIdentifier: `https://edit-b.example/${suffix}`,
+        collectionMode: "manual",
+        activeFrom: "2026-09-01",
+      });
+
+      // Automatic mode is refused while the terms are pending (the DB check is the backstop).
+      await expect(
+        updateCompetitorSource(store, {
+          organizationId: orgId,
+          actorId,
+          sourceId: manual.id,
+          collectionMode: "automated",
+        }),
+      ).rejects.toBeInstanceOf(DomainError);
+
+      await approveCompetitorSourceTerms(store, {
+        organizationId: orgId,
+        actorId,
+        sourceId: manual.id,
+      });
+      const automated = await updateCompetitorSource(store, {
+        organizationId: orgId,
+        actorId,
+        sourceId: manual.id,
+        collectionMode: "automated",
+      });
+      expect(automated.collectionMode).toBe("automated");
+
+      // A changing URL must stay unique per organization.
+      await expect(
+        updateCompetitorSource(store, {
+          organizationId: orgId,
+          actorId,
+          sourceId: other.id,
+          urlOrIdentifier: `https://edit-a.example/${suffix}`,
+        }),
+      ).rejects.toBeInstanceOf(DomainError);
+
+      // Switching back to manual is always allowed.
+      const demoted = await updateCompetitorSource(store, {
+        organizationId: orgId,
+        actorId,
+        sourceId: manual.id,
+        collectionMode: "manual",
+        rateLimitNote: "1 req/s",
+      });
+      expect(demoted.collectionMode).toBe("manual");
+      expect(demoted.rateLimitNote).toBe("1 req/s");
     });
   });
 });

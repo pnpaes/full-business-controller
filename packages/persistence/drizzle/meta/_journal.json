@@ -540,6 +540,20 @@
       "when": 1790510496827,
       "tag": "0076_competitor_source",
       "breakpoints": true
+    },
+    {
+      "idx": 77,
+      "version": "7",
+      "when": 1790534179948,
+      "tag": "0077_user_invite",
+      "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "7",
+      "when": 1790534979843,
+      "tag": "0078_competitor_observation_content_hash",
+      "breakpoints": true
     }
   ]
 }

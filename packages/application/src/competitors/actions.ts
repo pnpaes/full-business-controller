@@ -20,4 +20,6 @@ export const COMPETITOR_AUDIT_ACTIONS = {
   sourceTermsApproved: "competitors.source.terms_approved",
   sourceTermsRejected: "competitors.source.terms_rejected",
   sourceDeactivated: "competitors.source.deactivated",
+  // `DEC-149` follow-up: a source edit (url/rate-limit/collection-mode).
+  sourceUpdated: "competitors.source.updated",
 } as const;

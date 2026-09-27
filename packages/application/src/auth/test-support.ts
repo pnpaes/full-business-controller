@@ -8,6 +8,7 @@ import type {
   AuditEventRecord,
   AuditInput,
   AuthDeps,
+  AuthInviteRecord,
   AuthResetTokenRecord,
   AuthRoleAssignment,
   AuthRoleRecord,
@@ -17,8 +18,11 @@ import type {
   AuthUser,
   AuthUserListQuery,
   AuthUserSummary,
+  CreateAuthUserInput,
+  CreateInviteInput,
   CreateResetTokenInput,
   CreateSessionInput,
+  LinkEmployeeInput,
   RoleAssignmentInput,
   RoleRemovalInput,
 } from "./types";
@@ -35,6 +39,7 @@ export function authDeps(overrides: Partial<AuthDeps> = {}): AuthDeps {
     now: NOW,
     sessionTtlMinutes: 60,
     passwordResetTtlMinutes: 30,
+    inviteTtlMinutes: 7 * 24 * 60,
     passwordHashOptions: CHEAP,
     ...overrides,
   };
@@ -62,6 +67,22 @@ export class FakeAuthStore implements AuthStore {
     string,
     { id: string; userId: string; tokenHash: string; expiresAt: Date; usedAt: Date | null }
   >();
+  /** Live/settled `user_invite` rows (`DEC-146`). */
+  readonly invites = new Map<
+    string,
+    {
+      id: string;
+      organizationId: string;
+      userId: string;
+      tokenHash: string;
+      issuedBy: string | null;
+      expiresAt: Date;
+      acceptedAt: Date | null;
+      revokedAt: Date | null;
+    }
+  >();
+  /** The narrow `employee` link the invite command reads/writes. */
+  readonly employees = new Map<string, { organizationId: string; userId: string | null }>();
   readonly roleAssignments = new Map<string, AuthRoleAssignment[]>();
   readonly roleCodes = new Map<string, string>();
   readonly roleRecords = new Map<string, AuthRoleRecord & { organizationId: string }>();
@@ -85,6 +106,13 @@ export class FakeAuthStore implements AuthStore {
     };
     this.users.set(id, user);
     return user;
+  }
+
+  addEmployee(overrides: { id: string; organizationId?: string; userId?: string | null }): void {
+    this.employees.set(overrides.id, {
+      organizationId: overrides.organizationId ?? ORG,
+      userId: overrides.userId ?? null,
+    });
   }
 
   addRole(roleId: string, code: string, name = code, organizationId = ORG): void {
@@ -117,6 +145,41 @@ export class FakeAuthStore implements AuthStore {
           (value) => value !== null && value.toLowerCase() === normalized,
         ),
     );
+  }
+
+  async createUser(input: CreateAuthUserInput): Promise<AuthUser> {
+    return this.addUser({
+      organizationId: input.organizationId,
+      username: input.username,
+      email: input.email,
+      displayName: input.displayName,
+      status: input.status,
+      passwordHash: input.passwordHash,
+    });
+  }
+
+  async findEmployeeLink(query: {
+    readonly organizationId: string;
+    readonly employeeId: string;
+  }): Promise<{ userId: string | null } | undefined> {
+    const employee = this.employees.get(query.employeeId);
+    if (employee === undefined || employee.organizationId !== query.organizationId) {
+      return undefined;
+    }
+    return { userId: employee.userId };
+  }
+
+  async linkEmployeeToUser(input: LinkEmployeeInput): Promise<boolean> {
+    const employee = this.employees.get(input.employeeId);
+    if (
+      employee === undefined ||
+      employee.organizationId !== input.organizationId ||
+      (employee.userId !== null && employee.userId !== input.userId)
+    ) {
+      return false;
+    }
+    employee.userId = input.userId;
+    return true;
   }
 
   async recordLoginSuccess(userId: string): Promise<void> {
@@ -299,6 +362,68 @@ export class FakeAuthStore implements AuthStore {
     }
     token.usedAt = at;
     return true;
+  }
+
+  async createInvite(input: CreateInviteInput): Promise<{ id: string }> {
+    const id = randomUUID();
+    this.invites.set(id, {
+      id,
+      organizationId: input.organizationId,
+      userId: input.userId,
+      tokenHash: input.tokenHash,
+      issuedBy: input.issuedBy,
+      expiresAt: input.expiresAt,
+      acceptedAt: null,
+      revokedAt: null,
+    });
+    return { id };
+  }
+
+  async findActiveInviteByHash(
+    tokenHash: string,
+    now: Date,
+  ): Promise<AuthInviteRecord | undefined> {
+    const found = [...this.invites.values()].find(
+      (invite) =>
+        invite.tokenHash === tokenHash &&
+        invite.acceptedAt === null &&
+        invite.revokedAt === null &&
+        invite.expiresAt.getTime() > now.getTime(),
+    );
+    if (found === undefined) {
+      return undefined;
+    }
+    return {
+      id: found.id,
+      userId: found.userId,
+      organizationId: found.organizationId,
+      expiresAt: found.expiresAt,
+    };
+  }
+
+  async consumeInvite(inviteId: string, at: Date): Promise<boolean> {
+    const invite = this.invites.get(inviteId);
+    if (
+      invite === undefined ||
+      invite.acceptedAt !== null ||
+      invite.revokedAt !== null ||
+      invite.expiresAt.getTime() <= at.getTime()
+    ) {
+      return false;
+    }
+    invite.acceptedAt = at;
+    return true;
+  }
+
+  async revokeLiveInvitesForUser(userId: string, at: Date): Promise<number> {
+    let revoked = 0;
+    for (const invite of this.invites.values()) {
+      if (invite.userId === userId && invite.acceptedAt === null && invite.revokedAt === null) {
+        invite.revokedAt = at;
+        revoked += 1;
+      }
+    }
+    return revoked;
   }
 
   async listUserRoles(userId: string): Promise<readonly AuthRoleAssignment[]> {

@@ -8,6 +8,7 @@ import type { FormEvent } from "react";
 const REGISTER_FALLBACK = "Could not register the source. Please try again.";
 const TERMS_FALLBACK = "Could not record the terms decision. Please try again.";
 const DEACTIVATE_FALLBACK = "Could not deactivate the source. Please try again.";
+const EDIT_FALLBACK = "Could not update the source. Please try again.";
 
 interface ErrorBody {
   readonly error?: string;
@@ -164,7 +165,7 @@ export function RegisterSourceForm({
   );
 }
 
-type SourceAction = "approve-terms" | "reject-terms" | "deactivate";
+type SourceAction = "approve-terms" | "reject-terms" | "deactivate" | "edit";
 
 const ACTION_COPY: Record<SourceAction, { title: string; body: string; confirm: string }> = {
   "approve-terms": {
@@ -182,21 +183,34 @@ const ACTION_COPY: Record<SourceAction, { title: string; body: string; confirm: 
     body: "The source stops being active from the chosen date and is no longer collected or shown as active.",
     confirm: "Deactivate",
   },
+  edit: {
+    title: "Edit this source?",
+    body: "Change the URL, rate-limit note or collection mode. Switching to automated needs the source's terms approved (owner/admin).",
+    confirm: "Save changes",
+  },
 };
 
 /**
- * Per-row terms/deactivate controls (`ADR-0010`, `DEC-149`). Terms decisions
- * are a higher bar (`owner`/`admin`); deactivation follows the write roles. The
- * server is the authority, so a rejected action surfaces its message.
+ * Per-row terms/deactivate/**edit** controls (`ADR-0010`, `DEC-143`, `DEC-149`).
+ * Terms decisions are a higher bar (`owner`/`admin`); deactivation and a URL /
+ * rate-limit / mode→manual edit follow the write roles. A mode→automated edit is
+ * a terms decision and is offered only to the terms roles; the server and the DB
+ * check are the authority, so a rejected action surfaces its message.
  */
 export function CompetitorSourceActions({
   sourceId,
+  urlOrIdentifier,
+  collectionMode,
+  rateLimitNote,
   termsStatus,
   activeTo,
   canManageTerms,
   canWrite,
 }: {
   readonly sourceId: string;
+  readonly urlOrIdentifier: string;
+  readonly collectionMode: string;
+  readonly rateLimitNote: string | null;
   readonly termsStatus: string;
   readonly activeTo: string | null;
   readonly canManageTerms: boolean;
@@ -205,13 +219,17 @@ export function CompetitorSourceActions({
   const router = useRouter();
   const [pending, setPending] = useState<SourceAction | null>(null);
   const [activeToValue, setActiveToValue] = useState(today());
+  const [editUrl, setEditUrl] = useState(urlOrIdentifier);
+  const [editNote, setEditNote] = useState(rateLimitNote ?? "");
+  const [editMode, setEditMode] = useState(collectionMode);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  const canEdit = canWrite || canManageTerms;
   const showTerms = canManageTerms && termsStatus === "pending";
   const showDeactivate = canWrite && activeTo === null;
-  if (!showTerms && !showDeactivate) {
+  if (!showTerms && !showDeactivate && !canEdit) {
     return <span aria-hidden="true">—</span>;
   }
 
@@ -247,7 +265,62 @@ export function CompetitorSourceActions({
     }
   }
 
+  async function saveEdit(): Promise<void> {
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const body: Record<string, unknown> = {};
+      const nextUrl = editUrl.trim();
+      if (nextUrl !== urlOrIdentifier) {
+        if (nextUrl.length === 0) {
+          setError(EDIT_FALLBACK);
+          return;
+        }
+        body["urlOrIdentifier"] = nextUrl;
+      }
+      const nextNote = editNote.trim().length === 0 ? null : editNote.trim();
+      if (nextNote !== rateLimitNote) {
+        body["rateLimitNote"] = nextNote;
+      }
+      if (editMode !== collectionMode) {
+        body["collectionMode"] = editMode;
+      }
+      if (Object.keys(body).length === 0) {
+        setNotice("No changes to save.");
+        setPending(null);
+        return;
+      }
+      const response = await fetch(`/api/v1/competitors/sources/${sourceId}`, {
+        method: "PATCH",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!response.ok) {
+        setError(await errorMessage(response, EDIT_FALLBACK));
+        return;
+      }
+      setNotice("Source updated.");
+      setPending(null);
+      router.refresh();
+    } catch {
+      setError(EDIT_FALLBACK);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const copy = pending === null ? null : ACTION_COPY[pending];
+  const modeOptions = [
+    { value: "manual", label: "Manual" },
+    ...(canManageTerms
+      ? [{ value: "automated", label: "Automated (requires approved terms)" }]
+      : []),
+  ];
+  if (!modeOptions.some((option) => option.value === collectionMode)) {
+    modeOptions.push({ value: collectionMode, label: `${collectionMode} (current)` });
+  }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: spacing[2], minWidth: 200 }}>
@@ -261,6 +334,19 @@ export function CompetitorSourceActions({
               Reject terms
             </Button>
           </>
+        ) : null}
+        {canEdit ? (
+          <Button
+            variant="secondary"
+            onClick={() => {
+              setEditUrl(urlOrIdentifier);
+              setEditNote(rateLimitNote ?? "");
+              setEditMode(collectionMode);
+              setPending("edit");
+            }}
+          >
+            Edit
+          </Button>
         ) : null}
         {showDeactivate ? (
           <Button variant="secondary" onClick={() => setPending("deactivate")}>
@@ -287,11 +373,42 @@ export function CompetitorSourceActions({
                 help="ISO date (YYYY-MM-DD), after the source's active-from date."
               />
             ) : null}
+            {pending === "edit" ? (
+              <>
+                <TextField
+                  name={`source-url-${sourceId}`}
+                  label="URL or identifier"
+                  required
+                  value={editUrl}
+                  onChange={(event) => setEditUrl(event.target.value)}
+                  help="One source per URL in the organization."
+                />
+                <SelectField
+                  name={`source-mode-${sourceId}`}
+                  label="Collection mode"
+                  options={modeOptions}
+                  value={editMode}
+                  onChange={(event) => setEditMode(event.target.value)}
+                  help="Switching to automated needs the source's terms approved."
+                />
+                <TextField
+                  name={`source-note-${sourceId}`}
+                  label="Rate-limit note (optional)"
+                  value={editNote}
+                  onChange={(event) => setEditNote(event.target.value)}
+                  placeholder="e.g. robots allows /menu; 1 req/s"
+                />
+              </>
+            ) : null}
             <div style={{ display: "flex", gap: spacing[2], justifyContent: "flex-end" }}>
               <Button variant="secondary" onClick={() => setPending(null)} disabled={busy}>
                 Cancel
               </Button>
-              <Button onClick={() => void run(pending)} loading={busy} disabled={busy}>
+              <Button
+                onClick={() => void (pending === "edit" ? saveEdit() : run(pending))}
+                loading={busy}
+                disabled={busy}
+              >
                 {copy.confirm}
               </Button>
             </div>

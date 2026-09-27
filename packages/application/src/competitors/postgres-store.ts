@@ -12,6 +12,7 @@ import type {
   NewCompetitorSourceRecord,
   UpdateCompetitorObservationReviewRecord,
   UpdateCompetitorSourceActiveToRecord,
+  UpdateCompetitorSourceRecord,
   UpdateCompetitorSourceTermsRecord,
 } from "./types";
 
@@ -56,6 +57,7 @@ function toObservation(row: repo.CompetitorObservation): CompetitorObservationRe
     productCategory: row.productCategory,
     season: row.season,
     provenance: row.provenance,
+    contentHash: row.contentHash,
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -80,6 +82,31 @@ function toCompetitorSource(row: repo.CompetitorSource): CompetitorSourceRecord 
     updatedAt: toIso(row.updatedAt),
     updatedBy: row.updatedBy,
     version: row.version,
+  };
+}
+
+/**
+ * The observation adapter's write mapping, shared by the plain and the
+ * dedupe-guarded inserts so the two paths cannot drift.
+ */
+function toRepoObservationInput(input: NewCompetitorObservationRecord) {
+  return {
+    organizationId: input.organizationId,
+    competitorId: input.competitorId,
+    observedAt: new Date(input.observedAt),
+    source: input.source,
+    sourceUrl: input.sourceUrl,
+    itemId: input.itemId,
+    externalName: input.externalName,
+    price: input.price,
+    currency: input.currency,
+    offerNotes: input.offerNotes,
+    competitorSourceId: input.competitorSourceId,
+    captureMethod: input.captureMethod,
+    productCategory: input.productCategory,
+    season: input.season,
+    provenance: input.provenance,
+    contentHash: input.contentHash,
   };
 }
 
@@ -194,6 +221,17 @@ export function createPostgresCompetitorStore(db: Database): CompetitorStore {
       });
       return row === undefined ? undefined : toCompetitorSource(row);
     },
+    updateCompetitorSource: async (input: UpdateCompetitorSourceRecord) => {
+      const row = await repo.updateCompetitorSource(db, {
+        organizationId: input.organizationId,
+        sourceId: input.sourceId,
+        urlOrIdentifier: input.urlOrIdentifier,
+        rateLimitNote: input.rateLimitNote,
+        collectionMode: input.collectionMode,
+        updatedBy: input.updatedBy,
+      });
+      return row === undefined ? undefined : toCompetitorSource(row);
+    },
     listCompetitorSources: async (query) => {
       const rows = await repo.listCompetitorSources(db, {
         organizationId: query.organizationId,
@@ -204,25 +242,11 @@ export function createPostgresCompetitorStore(db: Database): CompetitorStore {
       return rows.map(toCompetitorSource);
     },
     createObservation: async (input: NewCompetitorObservationRecord) =>
-      toObservation(
-        await repo.createCompetitorObservation(db, {
-          organizationId: input.organizationId,
-          competitorId: input.competitorId,
-          observedAt: new Date(input.observedAt),
-          source: input.source,
-          sourceUrl: input.sourceUrl,
-          itemId: input.itemId,
-          externalName: input.externalName,
-          price: input.price,
-          currency: input.currency,
-          offerNotes: input.offerNotes,
-          competitorSourceId: input.competitorSourceId,
-          captureMethod: input.captureMethod,
-          productCategory: input.productCategory,
-          season: input.season,
-          provenance: input.provenance,
-        }),
-      ),
+      toObservation(await repo.createCompetitorObservation(db, toRepoObservationInput(input))),
+    createObservationIfNew: async (input: NewCompetitorObservationRecord) => {
+      const row = await repo.createCompetitorObservationIfNew(db, toRepoObservationInput(input));
+      return row === undefined ? undefined : toObservation(row);
+    },
     findObservation: async (query) => {
       const row = await repo.findCompetitorObservation(db, {
         organizationId: query.organizationId,

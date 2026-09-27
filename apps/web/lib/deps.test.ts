@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   sendPasswordResetEmail: vi.fn(),
+  sendInviteEmail: vi.fn(),
   warn: vi.fn(),
   error: vi.fn(),
 }));
@@ -10,6 +11,7 @@ vi.mock("./mail", () => ({
   createSendGridMailAdapter: vi.fn(() => ({
     configured: true,
     sendPasswordResetEmail: mocks.sendPasswordResetEmail,
+    sendInviteEmail: mocks.sendInviteEmail,
   })),
 }));
 
@@ -21,6 +23,7 @@ vi.mock("./config", () => ({
   getConfig: vi.fn(() => ({
     SESSION_TTL_MINUTES: 480,
     PASSWORD_RESET_TTL_MINUTES: 30,
+    INVITE_TTL_MINUTES: 10080,
     SENDGRID_API_KEY: "SG.test_key",
     MAIL_FROM: "Aquarela <no-reply@example.no>",
     APP_BASE_URL: "https://app.example.no",
@@ -29,7 +32,7 @@ vi.mock("./config", () => ({
 
 import { createSendGridMailAdapter } from "./mail";
 
-import { getAuthDeps } from "./deps";
+import { deliverInviteEmail, getAuthDeps } from "./deps";
 
 const TOKEN = "TOKEN-do-not-log-9f3a2b1c4d5e6f70";
 
@@ -40,6 +43,7 @@ function loggedText(): string {
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.sendPasswordResetEmail.mockResolvedValue(undefined);
+  mocks.sendInviteEmail.mockResolvedValue(undefined);
 });
 
 describe("getAuthDeps deliverResetToken", () => {
@@ -107,5 +111,61 @@ describe("getAuthDeps deliverResetToken", () => {
         baseUrl: "https://app.example.no",
       }),
     );
+  });
+});
+
+describe("deliverInviteEmail", () => {
+  it("hands the recipient and invite token to the mail port, and logs nothing", async () => {
+    getAuthDeps();
+
+    await deliverInviteEmail({
+      organizationId: "org-1",
+      userId: "user-1",
+      email: "employee@example.test",
+      token: TOKEN,
+    });
+
+    expect(mocks.sendInviteEmail).toHaveBeenCalledWith({
+      to: "employee@example.test",
+      token: TOKEN,
+      expiresInMinutes: 10080,
+    });
+    expect(mocks.warn).not.toHaveBeenCalled();
+    expect(mocks.error).not.toHaveBeenCalled();
+    expect(loggedText()).not.toContain(TOKEN);
+  });
+
+  it("swallows a transport failure and logs it without the token", async () => {
+    mocks.sendInviteEmail.mockRejectedValueOnce(
+      new Error("sendgrid email delivery failed with status 400"),
+    );
+    getAuthDeps();
+
+    await expect(
+      deliverInviteEmail({
+        organizationId: "org-1",
+        userId: "user-1",
+        email: "employee@example.test",
+        token: TOKEN,
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(mocks.error).toHaveBeenCalledTimes(1);
+    expect(loggedText()).not.toContain(TOKEN);
+  });
+
+  it("does not send for an account without an email address", async () => {
+    getAuthDeps();
+
+    await deliverInviteEmail({
+      organizationId: "org-1",
+      userId: "user-1",
+      email: null,
+      token: TOKEN,
+    });
+
+    expect(mocks.sendInviteEmail).not.toHaveBeenCalled();
+    expect(mocks.warn).toHaveBeenCalledTimes(1);
+    expect(loggedText()).not.toContain(TOKEN);
   });
 });

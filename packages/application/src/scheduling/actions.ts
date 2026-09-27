@@ -19,6 +19,12 @@ export const SCHEDULING_AUDIT_ACTIONS = {
   shiftCompleted: "workforce.shift.completed",
   shiftAssignmentCreated: "workforce.shift_assignment.created",
   shiftAssignmentWithdrawn: "workforce.shift_assignment.withdrawn",
+  /** A linked employee self-requested one of their own shifts (`DEC-146`). */
+  shiftAssignmentSelfRequested: "workforce.shift_assignment.self_requested",
+  /** A manager approved a pending self-assignment (`DEC-146`). */
+  shiftAssignmentApproved: "workforce.shift_assignment.approved",
+  /** A manager rejected a pending self-assignment (`DEC-146`). */
+  shiftAssignmentRejected: "workforce.shift_assignment.rejected",
   shiftAdjustmentCreated: "workforce.shift_adjustment.created",
   payrollReportGenerated: "workforce.payroll_report.generated",
   payrollReportExported: "workforce.payroll_report.exported",

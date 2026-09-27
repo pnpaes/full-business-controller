@@ -17,6 +17,8 @@ export {
 export type { DecideCompetitorSourceTermsInput } from "./decide-competitor-source-terms";
 export { deactivateCompetitorSource } from "./deactivate-competitor-source";
 export type { DeactivateCompetitorSourceInput } from "./deactivate-competitor-source";
+export { updateCompetitorSource } from "./update-competitor-source";
+export type { UpdateCompetitorSourceInput } from "./update-competitor-source";
 export { findCompetitorSource } from "./find-competitor-source";
 export type { FindCompetitorSourceQuery } from "./find-competitor-source";
 export { DEFAULT_COMPETITOR_LIMIT, listCompetitors } from "./list-competitors";
@@ -69,5 +71,6 @@ export type {
   NewCompetitorSourceRecord,
   UpdateCompetitorObservationReviewRecord,
   UpdateCompetitorSourceActiveToRecord,
+  UpdateCompetitorSourceRecord,
   UpdateCompetitorSourceTermsRecord,
 } from "./types";

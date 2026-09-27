@@ -1,5 +1,15 @@
 import { sql } from "drizzle-orm";
-import { char, check, date, index, pgTable, text, unique, uuid } from "drizzle-orm/pg-core";
+import {
+  char,
+  check,
+  date,
+  index,
+  pgTable,
+  text,
+  unique,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 
 import { item } from "./catalog";
 import {
@@ -54,6 +64,11 @@ import {
  * `competitor_source_automation_requires_approval_check` is the structural
  * backstop, and every terms decision records who decided and when. The §4C
  * `review_state` **is** the existing `review_status` (no second state column).
+ *
+ * `DEC-149` follow-up (migration `0078`): a nullable `content_hash` plus the
+ * partial unique index `(organization_id, competitor_source_id, content_hash)`
+ * `WHERE content_hash IS NOT NULL` makes automated capture idempotent — the
+ * collector re-recorded the same facts as new `pending` rows every run.
  */
 export const competitor = pgTable(
   "competitor",
@@ -166,6 +181,12 @@ export const competitorObservation = pgTable(
     season: text("season"),
     /** URL, capture time, method and any content hash (§4C); never personal data. */
     provenance: jsonObject("provenance").$type<Record<string, unknown>>(),
+    /**
+     * `DEC-149` follow-up: the idempotency key of an automated capture — the
+     * content fingerprint of the observation (not the raw page hash, which stays
+     * in `provenance.contentHash`), or `null` for a manual/pre-existing row.
+     */
+    contentHash: text("content_hash"),
     createdAt: tstz("created_at").notNull().defaultNow(),
   },
   (t) => [
@@ -185,5 +206,13 @@ export const competitorObservation = pgTable(
     index("competitor_observation_org_observed_idx").on(t.organizationId, t.observedAt),
     index("competitor_observation_competitor_observed_idx").on(t.competitorId, t.observedAt),
     index("competitor_observation_source_idx").on(t.competitorSourceId),
+    // The dedupe guard (`DEC-149` follow-up): a **partial** unique index, so a
+    // row without a hash (manual/pre-existing) is unaffected and never collides.
+    // A plain table UNIQUE constraint cannot express `WHERE content_hash IS NOT
+    // NULL` (and would let only one NULL on the source), so the partial index is
+    // the correct shape — and the arbiter the collector's ON CONFLICT targets.
+    uniqueIndex("competitor_observation_org_source_content_hash_key")
+      .on(t.organizationId, t.competitorSourceId, t.contentHash)
+      .where(sql`${t.contentHash} is not null`),
   ],
 );

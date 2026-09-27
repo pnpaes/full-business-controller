@@ -201,6 +201,7 @@ export function createPostgresSchedulingStore(db: Database): SchedulingStore {
         organizationId: input.organizationId,
         shiftAssignmentId: input.shiftAssignmentId,
         ...(input.state === undefined ? {} : { state: input.state }),
+        ...(input.assignedBy === undefined ? {} : { assignedBy: input.assignedBy }),
         ...(input.actorId === undefined ? {} : { actorId: input.actorId }),
       });
       return row === undefined ? undefined : toShiftAssignment(row);
@@ -334,11 +335,73 @@ export function createPostgresSchedulingStore(db: Database): SchedulingStore {
         : {
             id: row.id,
             organizationId: row.organizationId,
+            userId: row.userId,
             primaryLocationId: row.primaryLocationId,
             roleCode: row.roleCode,
             name: row.name,
             baseHourlyRate: row.baseHourlyRate,
           };
+    },
+    findEmployeesByUserId: async (query) => {
+      const rows = await repo.findEmployeesByUserId(db, {
+        organizationId: query.organizationId,
+        userId: query.userId,
+      });
+      return rows.map((row) => ({
+        id: row.id,
+        organizationId: row.organizationId,
+        userId: row.userId,
+        primaryLocationId: row.primaryLocationId,
+        roleCode: row.roleCode,
+        name: row.name,
+        baseHourlyRate: row.baseHourlyRate,
+      }));
+    },
+    countSelfAssignedShiftsInWeek: async (query) =>
+      repo.countSelfAssignedShiftsInWeek(db, {
+        organizationId: query.organizationId,
+        employeeId: query.employeeId,
+        weekStart: new Date(query.weekStart),
+        weekEnd: new Date(query.weekEnd),
+      }),
+    listMyShifts: async (query) => {
+      const rows = await repo.listMyShifts(db, {
+        organizationId: query.organizationId,
+        employeeId: query.employeeId,
+        ...(query.limit === undefined ? {} : { limit: query.limit }),
+        ...(query.offset === undefined ? {} : { offset: query.offset }),
+      });
+      return rows.map((row) => ({
+        assignmentId: row.assignmentId,
+        assignmentState: row.assignmentState,
+        assignedAt: row.assignedAt.toISOString(),
+        shiftId: row.shiftId,
+        locationId: row.locationId,
+        roleCode: row.roleCode,
+        startsAt: row.startsAt.toISOString(),
+        endsAt: row.endsAt.toISOString(),
+        breakMinutes: row.breakMinutes,
+        shiftState: row.shiftState,
+      }));
+    },
+    listPendingSelfAssignments: async (query) => {
+      const rows = await repo.listPendingSelfAssignments(db, {
+        organizationId: query.organizationId,
+        ...(query.limit === undefined ? {} : { limit: query.limit }),
+        ...(query.offset === undefined ? {} : { offset: query.offset }),
+      });
+      return rows.map((row) => ({
+        assignmentId: row.assignmentId,
+        assignedAt: row.assignedAt.toISOString(),
+        employeeId: row.employeeId,
+        employeeName: row.employeeName,
+        shiftId: row.shiftId,
+        locationId: row.locationId,
+        roleCode: row.roleCode,
+        startsAt: row.startsAt.toISOString(),
+        endsAt: row.endsAt.toISOString(),
+        breakMinutes: row.breakMinutes,
+      }));
     },
   };
 }

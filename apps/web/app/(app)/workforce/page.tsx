@@ -270,6 +270,11 @@ export default async function WorkforcePage({
         recorded without a file is metadata-only. Retention is not enforced and file contents are
         not scanned for malware.
       </Alert>
+
+      <p style={{ margin: 0, display: "flex", gap: spacing[4] }}>
+        <Link href="/workforce/shifts">Open the roster</Link>
+        <Link href="/workforce/my-shifts">My shifts (employee self-service)</Link>
+      </p>
     </div>
   );
 }

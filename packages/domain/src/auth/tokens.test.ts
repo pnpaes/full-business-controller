@@ -4,12 +4,15 @@ import { DomainError } from "../errors";
 import {
   OPAQUE_TOKEN_BYTES,
   SESSION_TOKEN_BYTES,
+  generateInviteToken,
   generateOpaqueToken,
   generatePasswordResetToken,
   generateSessionToken,
+  hashInviteToken,
   hashOpaqueToken,
   hashPasswordResetToken,
   hashSessionToken,
+  inviteTokenMatches,
   opaqueTokenMatches,
   passwordResetTokenMatches,
   sessionTokenMatches,
@@ -100,5 +103,26 @@ describe("password-reset tokens", () => {
     expect(hashSessionToken(session)).not.toBe(hashPasswordResetToken(reset));
     expect(sessionTokenMatches(reset, hashSessionToken(session))).toBe(false);
     expect(passwordResetTokenMatches(session, hashPasswordResetToken(reset))).toBe(false);
+  });
+});
+
+describe("employee-invite tokens", () => {
+  it("hashes deterministically and matches the right token", () => {
+    const token = generateInviteToken();
+    const hash = hashInviteToken(token);
+    expect(hash).toMatch(/^[0-9a-f]{64}$/);
+    expect(inviteTokenMatches(token, hash)).toBe(true);
+    expect(inviteTokenMatches(generateInviteToken(), hash)).toBe(false);
+    expect(inviteTokenMatches(token, "not-hex")).toBe(false);
+  });
+
+  it("cannot validate a reset or session token across families", () => {
+    const reset = generatePasswordResetToken();
+    const session = generateSessionToken();
+    const invite = generateInviteToken();
+    expect(inviteTokenMatches(reset, hashPasswordResetToken(reset))).toBe(false);
+    expect(inviteTokenMatches(session, hashSessionToken(session))).toBe(false);
+    expect(passwordResetTokenMatches(invite, hashInviteToken(invite))).toBe(false);
+    expect(sessionTokenMatches(invite, hashInviteToken(invite))).toBe(false);
   });
 });

@@ -1,7 +1,7 @@
 import * as repo from "@aquarela/persistence";
 import type { Database, NodeDatabase } from "@aquarela/persistence";
 
-import type { AuditEventRecord, AuthStore, CreateSessionInput } from "./types";
+import type { AuditEventRecord, AuthStore, CreateAuthUserInput, CreateSessionInput } from "./types";
 
 /** A transaction handle has no `transaction` method of its own. */
 function isNodeDatabase(db: Database): db is NodeDatabase {
@@ -44,6 +44,21 @@ export function createPostgresAuthStore(db: Database): AuthStore {
     findUserById: (userId) => repo.findUserById(db, userId),
     findUserByIdentifier: (organizationId, identifier) =>
       repo.findUserByIdentifier(db, organizationId, identifier),
+    createUser: (input: CreateAuthUserInput) =>
+      repo.createUser(db, {
+        organizationId: input.organizationId,
+        username: input.username,
+        email: input.email,
+        displayName: input.displayName,
+        passwordHash: input.passwordHash,
+        status: input.status,
+        ...(input.invitedAt === undefined || input.invitedAt === null
+          ? {}
+          : { invitedAt: input.invitedAt }),
+        ...(input.invitedBy === undefined || input.invitedBy === null
+          ? {}
+          : { invitedBy: input.invitedBy }),
+      }),
     recordLoginSuccess: async (userId, at) => {
       await repo.recordLoginSuccess(db, userId, at);
     },
@@ -102,6 +117,44 @@ export function createPostgresAuthStore(db: Database): AuthStore {
       repo.findActiveResetTokenByHash(db, tokenHash, now),
     consumeResetToken: async (tokenId, at) =>
       (await repo.consumeResetToken(db, tokenId, at)) !== undefined,
+    findActiveInviteByHash: async (tokenHash, now) => {
+      const row = await repo.findActiveInviteByHash(db, tokenHash, now);
+      return row === undefined
+        ? undefined
+        : {
+            id: row.id,
+            userId: row.userId,
+            organizationId: row.organizationId,
+            expiresAt: row.expiresAt,
+          };
+    },
+    consumeInvite: async (inviteId, at) =>
+      (await repo.consumeInvite(db, inviteId, at)) !== undefined,
+    revokeLiveInvitesForUser: (userId, at) => repo.revokeLiveInvitesForUser(db, userId, at),
+    createInvite: async (input) => {
+      const created = await repo.createInvite(db, {
+        organizationId: input.organizationId,
+        userId: input.userId,
+        tokenHash: input.tokenHash,
+        expiresAt: input.expiresAt,
+        issuedBy: input.issuedBy,
+      });
+      return { id: created.id };
+    },
+    findEmployeeLink: async (query) => {
+      const row = await repo.findEmployee(db, {
+        organizationId: query.organizationId,
+        employeeId: query.employeeId,
+      });
+      return row === undefined ? undefined : { userId: row.userId };
+    },
+    linkEmployeeToUser: async (input) =>
+      (await repo.linkEmployeeToUser(db, {
+        organizationId: input.organizationId,
+        employeeId: input.employeeId,
+        userId: input.userId,
+        actorId: input.actorId,
+      })) !== undefined,
     listUserRoles: (userId) => repo.listUserRoles(db, userId),
     listUserLocationScopes: async (userId) =>
       (await repo.listUserLocationScopes(db, userId)).map((row) => row.locationId),

@@ -4,6 +4,7 @@ import {
   employee,
   listAuditEventsForEntity,
   location,
+  sql,
   type DatabaseTransaction,
   type DbClient,
   type NodeDatabase,
@@ -16,10 +17,12 @@ import { completeShift } from "./complete-shift";
 import { computeWorkedHours } from "./compute-worked-hours";
 import { createShift } from "./create-shift";
 import { createShiftAdjustment } from "./create-shift-adjustment";
+import { decideSelfAssignment } from "./decide-self-assignment";
 import { findPayrollReport } from "./find-payroll-report";
 import { findShift } from "./find-shift";
 import { findShiftAdjustment } from "./find-shift-adjustment";
 import { generatePayrollReport } from "./generate-payroll-report";
+import { listMyShifts } from "./list-my-shifts";
 import { listPayrollReports } from "./list-payroll-reports";
 import { listShiftAdjustments } from "./list-shift-adjustments";
 import { listShiftAssignments } from "./list-shift-assignments";
@@ -27,6 +30,7 @@ import { listShifts } from "./list-shifts";
 import { markPayrollReportExported } from "./mark-payroll-report-exported";
 import { createPostgresSchedulingStore } from "./postgres-store";
 import { publishShift } from "./publish-shift";
+import { selfAssignShift } from "./self-assign-shift";
 import { updateShift } from "./update-shift";
 import { withdrawShiftAssignment } from "./withdraw-shift-assignment";
 
@@ -67,11 +71,13 @@ async function seedEmployee(
   tx: DatabaseTransaction,
   orgId: string,
   primaryLocationId: string | null,
+  userId: string | null = null,
 ): Promise<string> {
   const rows = await tx
     .insert(employee)
     .values({
       organizationId: orgId,
+      userId,
       name: "Nora Nordmann",
       roleCode: "barista",
       employmentType: "part_time",
@@ -81,6 +87,19 @@ async function seedEmployee(
     })
     .returning();
   return rows[0]!.id;
+}
+
+/** Seeds one `app_user` so an `employee.user_id` FK link can point at it. */
+async function seedUser(tx: DatabaseTransaction, orgId: string, username: string): Promise<string> {
+  // Raw SQL on the stable base columns: the invite slice (`DEC-146`) is adding
+  // `invited_at`/`invited_by` to `app_user` in parallel, and those columns may
+  // not be migrated in a given database yet. Only `id` is read back.
+  const result = (await tx.execute(
+    sql`insert into "app_user" ("organization_id", "display_name", "username", "password_hash")
+        values (${orgId}, ${"Self Assigner"}, ${username}, ${"not-a-real-hash"})
+        returning "id"`,
+  )) as unknown as { readonly rows: readonly { readonly id: string }[] };
+  return result.rows[0]!.id;
 }
 
 describe.skipIf(!databaseUrl)("scheduling against PostgreSQL", () => {
@@ -625,6 +644,145 @@ describe.skipIf(!databaseUrl)("scheduling against PostgreSQL", () => {
         "workforce.payroll_report.generated",
         "workforce.payroll_report.exported",
       ]);
+    });
+  });
+
+  it("self-assigns pending and a manager approves it against PostgreSQL", async () => {
+    await inRollback(client.db, async (tx) => {
+      const locationId = await seedLocation(tx, orgId, `self_approve_${suffix}`);
+      const userId = await seedUser(tx, orgId, `self_approve_${suffix}`);
+      const employeeId = await seedEmployee(tx, orgId, locationId, userId);
+      const store = createPostgresSchedulingStore(tx);
+      const actorId = randomUUID();
+
+      const shift = await createShift(store, {
+        organizationId: orgId,
+        actorId,
+        locationId,
+        roleCode: "barista",
+        startsAt: STARTS,
+        endsAt: ENDS,
+      });
+
+      const pending = await selfAssignShift(store, {
+        organizationId: orgId,
+        actorUserId: userId,
+        shiftId: shift.id,
+      });
+      expect(pending).toMatchObject({
+        organizationId: orgId,
+        shiftId: shift.id,
+        employeeId,
+        state: "pending_approval",
+        assignedBy: null,
+      });
+      expect(await findShift(store, { organizationId: orgId, shiftId: shift.id })).toMatchObject({
+        state: "open",
+      });
+
+      const managerId = randomUUID();
+      const approved = await decideSelfAssignment(store, {
+        organizationId: orgId,
+        actorId: managerId,
+        assignmentId: pending.id,
+        decision: "approved",
+      });
+      expect(approved).toMatchObject({ state: "approved", assignedBy: managerId });
+      expect(await findShift(store, { organizationId: orgId, shiftId: shift.id })).toMatchObject({
+        state: "assigned",
+      });
+
+      const audit = (await listAuditEventsForEntity(tx, "shift_assignment", pending.id)).map(
+        (row) => row.action,
+      );
+      expect(audit).toEqual([
+        "workforce.shift_assignment.self_requested",
+        "workforce.shift_assignment.approved",
+      ]);
+    });
+  });
+
+  it("rejects a pending self-assignment and leaves the shift open against PostgreSQL", async () => {
+    await inRollback(client.db, async (tx) => {
+      const locationId = await seedLocation(tx, orgId, `self_reject_${suffix}`);
+      const userId = await seedUser(tx, orgId, `self_reject_${suffix}`);
+      await seedEmployee(tx, orgId, locationId, userId);
+      const store = createPostgresSchedulingStore(tx);
+      const actorId = randomUUID();
+
+      const shift = await createShift(store, {
+        organizationId: orgId,
+        actorId,
+        locationId,
+        roleCode: "barista",
+        startsAt: STARTS,
+        endsAt: ENDS,
+      });
+      const pending = await selfAssignShift(store, {
+        organizationId: orgId,
+        actorUserId: userId,
+        shiftId: shift.id,
+      });
+
+      const rejected = await decideSelfAssignment(store, {
+        organizationId: orgId,
+        actorId: randomUUID(),
+        assignmentId: pending.id,
+        decision: "rejected",
+        reason: "Already covered by the rota",
+      });
+      expect(rejected).toMatchObject({ state: "rejected", assignedBy: null });
+      expect(await findShift(store, { organizationId: orgId, shiftId: shift.id })).toMatchObject({
+        state: "open",
+      });
+
+      // A rejection without a reason is refused.
+      const second = await createShift(store, {
+        organizationId: orgId,
+        actorId,
+        locationId,
+        roleCode: "barista",
+        startsAt: STARTS,
+        endsAt: ENDS,
+      });
+      const secondPending = await selfAssignShift(store, {
+        organizationId: orgId,
+        actorUserId: userId,
+        shiftId: second.id,
+      });
+      await expect(
+        decideSelfAssignment(store, {
+          organizationId: orgId,
+          actorId,
+          assignmentId: secondPending.id,
+          decision: "rejected",
+        }),
+      ).rejects.toThrow(/reason is required/);
+    });
+  });
+
+  it("fails closed when the account has no employee link against PostgreSQL", async () => {
+    await inRollback(client.db, async (tx) => {
+      const locationId = await seedLocation(tx, orgId, `self_nolink_${suffix}`);
+      const userId = await seedUser(tx, orgId, `self_nolink_${suffix}`);
+      const store = createPostgresSchedulingStore(tx);
+      const actorId = randomUUID();
+
+      const shift = await createShift(store, {
+        organizationId: orgId,
+        actorId,
+        locationId,
+        roleCode: "barista",
+        startsAt: STARTS,
+        endsAt: ENDS,
+      });
+
+      await expect(
+        selfAssignShift(store, { organizationId: orgId, actorUserId: userId, shiftId: shift.id }),
+      ).rejects.toThrow(NotFoundError);
+      await expect(
+        listMyShifts(store, { organizationId: orgId, actorUserId: userId }),
+      ).rejects.toThrow(NotFoundError);
     });
   });
 });

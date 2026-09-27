@@ -25,6 +25,7 @@ export * from "./repositories/forecast";
 export * from "./repositories/imports";
 export * from "./repositories/incidents";
 export * from "./repositories/integrations";
+export * from "./repositories/invite";
 export * from "./repositories/inventory";
 export * from "./repositories/jobs";
 export * from "./repositories/master-data";

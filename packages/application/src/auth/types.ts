@@ -126,6 +126,50 @@ export interface AuthResetTokenRecord {
   readonly expiresAt: Date;
 }
 
+/** One live `user_invite` row as the accept flow needs it (`DEC-146`). */
+export interface AuthInviteRecord {
+  readonly id: string;
+  readonly userId: string;
+  readonly organizationId: string;
+  readonly expiresAt: Date;
+}
+
+export interface CreateInviteInput {
+  readonly organizationId: string;
+  readonly userId: string;
+  readonly tokenHash: string;
+  readonly expiresAt: Date;
+  readonly issuedBy: string | null;
+}
+
+/** The narrow employee link the invite command reads and writes (`WF-003`). */
+export interface EmployeeLink {
+  readonly userId: string | null;
+}
+
+export interface LinkEmployeeInput {
+  readonly organizationId: string;
+  readonly employeeId: string;
+  readonly userId: string;
+  readonly actorId: string | null;
+}
+
+/**
+ * A user row the invite command creates for a manager-provisioned account
+ * (`DEC-146`). `status` is `invited` and the stored password hash is a
+ * non-verifying placeholder until `acceptInvite` sets a real one.
+ */
+export interface CreateAuthUserInput {
+  readonly organizationId: string;
+  readonly username: string | null;
+  readonly email: string | null;
+  readonly displayName: string;
+  readonly passwordHash: string;
+  readonly status: UserStatus;
+  readonly invitedAt?: Date | null;
+  readonly invitedBy?: string | null;
+}
+
 export interface CreateResetTokenInput {
   readonly userId: string;
   readonly tokenHash: string;
@@ -178,6 +222,8 @@ export interface AuthStore {
   withTransaction<T>(fn: (store: AuthStore) => Promise<T>): Promise<T>;
   findUserById(userId: string): Promise<AuthUser | undefined>;
   findUserByIdentifier(organizationId: string, identifier: string): Promise<AuthUser | undefined>;
+  /** Creates one `app_user` row and returns it (`DEC-146` invite provisioning). */
+  createUser(input: CreateAuthUserInput): Promise<AuthUser>;
   recordLoginSuccess(userId: string, at: Date): Promise<void>;
   recordLoginFailure(userId: string, input: { lockedUntil: Date | null; at: Date }): Promise<void>;
   updatePasswordHash(userId: string, passwordHash: string, at: Date): Promise<void>;
@@ -218,6 +264,24 @@ export interface AuthStore {
   ): Promise<AuthResetTokenRecord | undefined>;
   /** Atomic single-use claim; `false` when the token was already used or expired. */
   consumeResetToken(tokenId: string, at: Date): Promise<boolean>;
+  /** One live invite by token hash (`DEC-146`), or `undefined`. */
+  findActiveInviteByHash(tokenHash: string, now: Date): Promise<AuthInviteRecord | undefined>;
+  /** Atomic single-use claim; `false` when the invite was accepted, revoked or expired. */
+  consumeInvite(inviteId: string, at: Date): Promise<boolean>;
+  /** Revokes every live invite for a user; returns how many were revoked. */
+  revokeLiveInvitesForUser(userId: string, at: Date): Promise<number>;
+  /** Mints one invite token (hash only) and returns its id. */
+  createInvite(input: CreateInviteInput): Promise<{ id: string }>;
+  /** The narrow `employee.user_id` link, organization-scoped (`DEC-061`). */
+  findEmployeeLink(query: {
+    readonly organizationId: string;
+    readonly employeeId: string;
+  }): Promise<EmployeeLink | undefined>;
+  /**
+   * Links an employee to a login after creation. `false` when the employee is
+   * missing, in another organization, or already linked to a different user.
+   */
+  linkEmployeeToUser(input: LinkEmployeeInput): Promise<boolean>;
   listUserRoles(userId: string): Promise<readonly AuthRoleAssignment[]>;
   listUserLocationScopes(userId: string): Promise<readonly string[]>;
   /**
@@ -246,6 +310,8 @@ export interface AuthDeps {
   readonly now?: Date;
   readonly sessionTtlMinutes: number;
   readonly passwordResetTtlMinutes: number;
+  /** Employee-invite token lifetime (`INVITE_TTL_MINUTES`, default 7 days). */
+  readonly inviteTtlMinutes: number;
   /**
    * Argon2id cost override for password writes, so tests (and a future policy
    * tuning pass per ADR-0003's open item) can run cheaply. Absent = policy cost.

@@ -317,7 +317,7 @@ export default async function CompetitorsPage({
               { key: "active", header: "Active" },
               { key: "note", header: "Rate-limit note" },
               ...(canWrite || canManageTerms
-                ? [{ key: "actions", header: "Terms / active" } as DataTableColumn]
+                ? [{ key: "actions", header: "Actions" } as DataTableColumn]
                 : []),
             ]}
             rows={visibleSources.map((row) => {
@@ -339,6 +339,9 @@ export default async function CompetitorsPage({
                       actions: (
                         <CompetitorSourceActions
                           sourceId={row.id}
+                          urlOrIdentifier={row.urlOrIdentifier}
+                          collectionMode={row.collectionMode}
+                          rateLimitNote={row.rateLimitNote}
                           termsStatus={row.termsStatus}
                           activeTo={row.activeTo}
                           canManageTerms={canManageTerms}

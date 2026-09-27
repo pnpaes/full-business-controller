@@ -475,6 +475,37 @@ describe("runCompetitorCollection", () => {
     expect(store.audits).toHaveLength(1);
   });
 
+  it("records nothing new on a duplicate run (same source + content hash)", async () => {
+    const { store } = seedStore();
+    const collectorRun = new FakeCollector((url) => collectedOutcome(url));
+    const logger = recordingLogger();
+
+    const first = await runCompetitorCollection({
+      organizationId: ORG,
+      enabled: true,
+      store,
+      collector: collectorRun,
+      logger,
+    });
+    const second = await runCompetitorCollection({
+      organizationId: ORG,
+      enabled: true,
+      store,
+      collector: collectorRun,
+      logger,
+    });
+
+    expect(first).toMatchObject({ status: "completed", observations: 1, duplicates: 0 });
+    expect(second).toMatchObject({ status: "completed", observations: 0, duplicates: 1 });
+    expect(store.observations.size).toBe(1);
+    expect(store.audits).toHaveLength(1);
+    expect(
+      logger.info.mock.calls.some((call) =>
+        JSON.stringify(call).includes("duplicate fact skipped"),
+      ),
+    ).toBe(true);
+  });
+
   it("logs a fetch failure and never throws", async () => {
     const { store } = seedStore();
     const logger = recordingLogger();

@@ -54,6 +54,7 @@ describe.skipIf(!databaseUrl)("TOTP enrolment against PostgreSQL", () => {
     now,
     sessionTtlMinutes: 60,
     passwordResetTtlMinutes: 30,
+    inviteTtlMinutes: 7 * 24 * 60,
     passwordHashOptions: CHEAP,
     ...(key !== null ? { totpEncryptionKey: key } : {}),
   });

@@ -9,6 +9,7 @@ import { computeWorkedHours } from "./compute-worked-hours";
 import { createShift } from "./create-shift";
 import type { CreateShiftInput } from "./create-shift";
 import { createShiftAdjustment } from "./create-shift-adjustment";
+import { decideSelfAssignment } from "./decide-self-assignment";
 import { findPayrollReport } from "./find-payroll-report";
 import { findShift } from "./find-shift";
 import { findShiftAdjustment } from "./find-shift-adjustment";
@@ -20,7 +21,15 @@ import { markPayrollReportExported } from "./mark-payroll-report-exported";
 import { DEFAULT_SHIFT_ADJUSTMENT_LIMIT, listShiftAdjustments } from "./list-shift-adjustments";
 import { DEFAULT_SHIFT_ASSIGNMENT_LIMIT, listShiftAssignments } from "./list-shift-assignments";
 import { DEFAULT_SHIFT_LIMIT, listShifts } from "./list-shifts";
+import { listMyShifts } from "./list-my-shifts";
+import { listPendingSelfAssignments } from "./list-pending-self-assignments";
 import { publishShift } from "./publish-shift";
+import { resolveSelfEmployee } from "./resolve-self-employee";
+import {
+  DEFAULT_SELF_ASSIGN_WEEKLY_LIMIT,
+  selfAssignShift,
+  utcWeekBounds,
+} from "./self-assign-shift";
 import {
   FakeSchedulingStore,
   seedSchedulingEmployee,
@@ -28,6 +37,7 @@ import {
   type SchedulingFixture,
 } from "./test-support";
 import { SHIFT_ASSIGNMENT_STATES, SHIFT_STATES } from "./types";
+import type { SchedulingEmployeeRecord } from "./types";
 import { updateShift } from "./update-shift";
 import { withdrawShiftAssignment } from "./withdraw-shift-assignment";
 
@@ -1805,6 +1815,550 @@ describe("listPayrollReports", () => {
 
     expect(
       await listPayrollReports(store, { organizationId: fixture.otherOrganizationId }),
+    ).toEqual([]);
+  });
+});
+
+/* ---------------------- WF-003 self-assignment (DEC-146) ------------------ */
+
+const SELF_USER = "user-self";
+const SELF_EMPLOYEE = "employee-self";
+
+/** Seeds the fixture plus one employee linked to `SELF_USER` at the shift location. */
+function selfSetup(): { store: FakeSchedulingStore; fixture: SchedulingFixture } {
+  const { store, fixture } = setup();
+  seedSchedulingEmployee(store, {
+    id: SELF_EMPLOYEE,
+    organizationId: fixture.organizationId,
+    primaryLocationId: fixture.locationId,
+    roleCode: "barista",
+    userId: SELF_USER,
+  });
+  return { store, fixture };
+}
+
+function planAt(store: FakeSchedulingStore, fixture: SchedulingFixture, startsAt: string) {
+  return createShift(store, {
+    organizationId: fixture.organizationId,
+    actorId: fixture.actorId,
+    locationId: fixture.locationId,
+    roleCode: "barista",
+    startsAt,
+    endsAt: new Date(Date.parse(startsAt) + 8 * 3_600_000).toISOString(),
+  });
+}
+
+function selfAssign(
+  store: FakeSchedulingStore,
+  fixture: SchedulingFixture,
+  shiftId: string,
+  overrides: { readonly actorUserId?: string; readonly weeklyLimit?: number } = {},
+) {
+  return selfAssignShift(store, {
+    organizationId: fixture.organizationId,
+    actorUserId: overrides.actorUserId ?? SELF_USER,
+    shiftId,
+    ...(overrides.weeklyLimit === undefined ? {} : { weeklyLimit: overrides.weeklyLimit }),
+  });
+}
+
+describe("utcWeekBounds", () => {
+  it("bounds a mid-week instant to Monday 00:00 → next Monday (UTC)", () => {
+    expect(utcWeekBounds("2026-07-01T08:00:00.000Z")).toEqual({
+      weekStart: "2026-06-29T00:00:00.000Z",
+      weekEnd: "2026-07-06T00:00:00.000Z",
+    });
+  });
+
+  it("keeps Sunday in the week that started the previous Monday", () => {
+    expect(utcWeekBounds("2026-07-05T23:00:00.000Z")).toEqual({
+      weekStart: "2026-06-29T00:00:00.000Z",
+      weekEnd: "2026-07-06T00:00:00.000Z",
+    });
+  });
+
+  it("starts a new week exactly at Monday 00:00", () => {
+    expect(utcWeekBounds("2026-07-06T00:00:00.000Z")).toEqual({
+      weekStart: "2026-07-06T00:00:00.000Z",
+      weekEnd: "2026-07-13T00:00:00.000Z",
+    });
+  });
+});
+
+describe("resolveSelfEmployee", () => {
+  const employee: SchedulingEmployeeRecord = {
+    id: "employee-x",
+    organizationId: "org-1",
+    userId: "user-x",
+    primaryLocationId: "loc-1",
+    roleCode: "barista",
+    name: "Nora",
+    baseHourlyRate: "0.0000",
+  };
+
+  it("returns the one linked employee", () => {
+    expect(resolveSelfEmployee([employee])).toBe(employee);
+  });
+
+  it("fails closed when the account is not an employee", () => {
+    expect(() => resolveSelfEmployee([])).toThrow(
+      new NotFoundError("no employee record is linked to this account"),
+    );
+  });
+
+  it("fails closed when the link is ambiguous", () => {
+    expect(() => resolveSelfEmployee([employee, { ...employee, id: "employee-y" }])).toThrow(
+      new DomainError("multiple employee records are linked to this account"),
+    );
+  });
+});
+
+describe("selfAssignShift", () => {
+  it("creates a pending_approval assignment with no assigned_by and leaves the shift open", async () => {
+    const { store, fixture } = selfSetup();
+    const shift = await planAt(store, fixture, "2026-07-01T08:00:00.000Z");
+
+    const assignment = await selfAssign(store, fixture, shift.id);
+
+    expect(assignment).toMatchObject({
+      organizationId: fixture.organizationId,
+      shiftId: shift.id,
+      employeeId: SELF_EMPLOYEE,
+      state: "pending_approval",
+      assignedBy: null,
+    });
+    // The shift is not moved to assigned while pending.
+    expect(
+      (await store.findShift({ organizationId: fixture.organizationId, shiftId: shift.id }))?.state,
+    ).toBe("open");
+
+    const audit = store.audits.find(
+      (row) => row.action === "workforce.shift_assignment.self_requested",
+    );
+    expect(audit).toMatchObject({
+      actorId: SELF_USER,
+      entityType: "shift_assignment",
+      entityId: assignment.id,
+      after: { state: "pending_approval", assigned_by: null, shift_state: "open" },
+    });
+  });
+
+  it("refuses an account with no linked employee row", async () => {
+    const { store, fixture } = selfSetup();
+    const shift = await planAt(store, fixture, "2026-07-01T08:00:00.000Z");
+
+    await expect(
+      selfAssign(store, fixture, shift.id, { actorUserId: "user-nobody" }),
+    ).rejects.toThrow(new NotFoundError("no employee record is linked to this account"));
+    expect(store.shiftAssignments.size).toBe(0);
+  });
+
+  it("refuses an ambiguous link (two employee rows for one app_user)", async () => {
+    const { store, fixture } = selfSetup();
+    seedSchedulingEmployee(store, {
+      id: "employee-self-2",
+      organizationId: fixture.organizationId,
+      primaryLocationId: fixture.locationId,
+      roleCode: "barista",
+      userId: SELF_USER,
+    });
+    const shift = await planAt(store, fixture, "2026-07-01T08:00:00.000Z");
+
+    await expect(selfAssign(store, fixture, shift.id)).rejects.toThrow(
+      new DomainError("multiple employee records are linked to this account"),
+    );
+  });
+
+  it.each([["open"], ["published"]])("accepts a %s shift", async (state) => {
+    const { store, fixture } = selfSetup();
+    const shift = await planAt(store, fixture, "2026-07-01T08:00:00.000Z");
+    if (state === "published") {
+      await publishShift(store, {
+        organizationId: fixture.organizationId,
+        shiftId: shift.id,
+        actorId: fixture.actorId,
+      });
+    }
+
+    await expect(selfAssign(store, fixture, shift.id)).resolves.toMatchObject({
+      state: "pending_approval",
+    });
+  });
+
+  it("refuses a shift that is already assigned", async () => {
+    const { store, fixture } = selfSetup();
+    const shift = await planAt(store, fixture, "2026-07-01T08:00:00.000Z");
+    await assignShift(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      shiftId: shift.id,
+      employeeId: fixture.employeeId,
+    });
+
+    await expect(selfAssign(store, fixture, shift.id)).rejects.toThrow(
+      new DomainError("shift in state assigned cannot take an assignment"),
+    );
+  });
+
+  it("refuses a null primary location", async () => {
+    const { store, fixture } = selfSetup();
+    seedSchedulingEmployee(store, {
+      id: SELF_EMPLOYEE,
+      organizationId: fixture.organizationId,
+      primaryLocationId: null,
+      roleCode: "barista",
+      userId: SELF_USER,
+    });
+    const shift = await planAt(store, fixture, "2026-07-01T08:00:00.000Z");
+
+    await expect(selfAssign(store, fixture, shift.id)).rejects.toThrow(
+      new DomainError("employee must have a primary location matching the shift location"),
+    );
+  });
+
+  it("refuses a location mismatch", async () => {
+    const { store, fixture } = selfSetup();
+    const shift = await createShift(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      locationId: fixture.otherLocationId,
+      roleCode: "barista",
+      startsAt: "2026-07-01T08:00:00.000Z",
+      endsAt: "2026-07-01T16:00:00.000Z",
+    });
+
+    await expect(selfAssign(store, fixture, shift.id)).rejects.toThrow(
+      new DomainError("employee must have a primary location matching the shift location"),
+    );
+  });
+
+  it("refuses a role mismatch", async () => {
+    const { store, fixture } = selfSetup();
+    const shift = await planAt(store, fixture, "2026-07-01T08:00:00.000Z");
+    // Re-plan the same window for a different role.
+    store.shifts.delete(shift.id);
+    const roleShift = await createShift(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      locationId: fixture.locationId,
+      roleCode: "line_cook",
+      startsAt: "2026-07-01T08:00:00.000Z",
+      endsAt: "2026-07-01T16:00:00.000Z",
+    });
+
+    await expect(selfAssign(store, fixture, roleShift.id)).rejects.toThrow(
+      new DomainError("the employee's role does not match the shift's role"),
+    );
+  });
+
+  it("refuses a duplicate self-assignment", async () => {
+    const { store, fixture } = selfSetup();
+    const shift = await planAt(store, fixture, "2026-07-01T08:00:00.000Z");
+    await selfAssign(store, fixture, shift.id);
+
+    await expect(selfAssign(store, fixture, shift.id)).rejects.toThrow(
+      new DomainError("employee is already assigned to this shift"),
+    );
+  });
+
+  it("rejects a blank shiftId", async () => {
+    const { store, fixture } = selfSetup();
+    await expect(selfAssign(store, fixture, "  ")).rejects.toThrow(
+      new DomainError("shiftId is required"),
+    );
+  });
+
+  it("rejects a malformed weeklyLimit", async () => {
+    const { store, fixture } = selfSetup();
+    const shift = await planAt(store, fixture, "2026-07-01T08:00:00.000Z");
+    await expect(selfAssign(store, fixture, shift.id, { weeklyLimit: -1 })).rejects.toThrow(
+      new DomainError("weeklyLimit must be a non-negative integer"),
+    );
+  });
+
+  it("allows the second self-assignment and refuses the third at the default limit of 2", async () => {
+    const { store, fixture } = selfSetup();
+    const first = await planAt(store, fixture, "2026-07-01T08:00:00.000Z");
+    const second = await planAt(store, fixture, "2026-07-02T08:00:00.000Z");
+    const third = await planAt(store, fixture, "2026-07-03T08:00:00.000Z");
+
+    expect(DEFAULT_SELF_ASSIGN_WEEKLY_LIMIT).toBe(2);
+    await expect(selfAssign(store, fixture, first.id)).resolves.toMatchObject({
+      state: "pending_approval",
+    });
+    await expect(selfAssign(store, fixture, second.id)).resolves.toMatchObject({
+      state: "pending_approval",
+    });
+    await expect(selfAssign(store, fixture, third.id)).rejects.toThrow(
+      new DomainError("weekly self-assignment limit of 2 reached"),
+    );
+    expect(store.shiftAssignments.size).toBe(2);
+  });
+
+  it("counts the week only: a shift in the next week is not blocked", async () => {
+    const { store, fixture } = selfSetup();
+    const thisWeekA = await planAt(store, fixture, "2026-07-01T08:00:00.000Z");
+    const thisWeekB = await planAt(store, fixture, "2026-07-02T08:00:00.000Z");
+    const nextWeek = await planAt(store, fixture, "2026-07-08T08:00:00.000Z");
+    await selfAssign(store, fixture, thisWeekA.id);
+    await selfAssign(store, fixture, thisWeekB.id);
+
+    await expect(selfAssign(store, fixture, nextWeek.id)).resolves.toMatchObject({
+      state: "pending_approval",
+    });
+  });
+
+  it("does not count manager-created assignments toward the limit", async () => {
+    const { store, fixture } = selfSetup();
+    await assignShift(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      shiftId: (await planAt(store, fixture, "2026-07-01T08:00:00.000Z")).id,
+      employeeId: SELF_EMPLOYEE,
+    });
+    const a = await planAt(store, fixture, "2026-07-02T08:00:00.000Z");
+    const b = await planAt(store, fixture, "2026-07-03T08:00:00.000Z");
+    await selfAssign(store, fixture, a.id);
+
+    await expect(selfAssign(store, fixture, b.id)).resolves.toMatchObject({
+      state: "pending_approval",
+    });
+  });
+
+  it("honours an explicit weeklyLimit of 1", async () => {
+    const { store, fixture } = selfSetup();
+    const first = await planAt(store, fixture, "2026-07-01T08:00:00.000Z");
+    const second = await planAt(store, fixture, "2026-07-02T08:00:00.000Z");
+
+    await expect(selfAssign(store, fixture, first.id, { weeklyLimit: 1 })).resolves.toMatchObject({
+      state: "pending_approval",
+    });
+    await expect(selfAssign(store, fixture, second.id, { weeklyLimit: 1 })).rejects.toThrow(
+      new DomainError("weekly self-assignment limit of 1 reached"),
+    );
+  });
+});
+
+describe("decideSelfAssignment", () => {
+  it("approves a pending self-assignment, records the manager and assigns the shift", async () => {
+    const { store, fixture } = selfSetup();
+    const shift = await planAt(store, fixture, "2026-07-01T08:00:00.000Z");
+    const pending = await selfAssign(store, fixture, shift.id);
+
+    const decided = await decideSelfAssignment(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      assignmentId: pending.id,
+      decision: "approved",
+    });
+
+    expect(decided).toMatchObject({ state: "approved", assignedBy: fixture.actorId });
+    expect(
+      (await store.findShift({ organizationId: fixture.organizationId, shiftId: shift.id }))?.state,
+    ).toBe("assigned");
+    const audit = store.audits.find((row) => row.action === "workforce.shift_assignment.approved");
+    expect(audit).toMatchObject({
+      actorId: fixture.actorId,
+      after: { state: "approved", assigned_by: fixture.actorId, shift_state: "assigned" },
+    });
+  });
+
+  it("requires a non-blank reason to reject", async () => {
+    const { store, fixture } = selfSetup();
+    const shift = await planAt(store, fixture, "2026-07-01T08:00:00.000Z");
+    const pending = await selfAssign(store, fixture, shift.id);
+
+    await expect(
+      decideSelfAssignment(store, {
+        organizationId: fixture.organizationId,
+        actorId: fixture.actorId,
+        assignmentId: pending.id,
+        decision: "rejected",
+      }),
+    ).rejects.toThrow(new DomainError("reason is required to reject a self-assignment"));
+
+    await expect(
+      decideSelfAssignment(store, {
+        organizationId: fixture.organizationId,
+        actorId: fixture.actorId,
+        assignmentId: pending.id,
+        decision: "rejected",
+        reason: "   ",
+      }),
+    ).rejects.toThrow(new DomainError("reason is required to reject a self-assignment"));
+  });
+
+  it("rejects a pending self-assignment and leaves the shift as it was", async () => {
+    const { store, fixture } = selfSetup();
+    const shift = await planAt(store, fixture, "2026-07-01T08:00:00.000Z");
+    const pending = await selfAssign(store, fixture, shift.id);
+
+    const rejected = await decideSelfAssignment(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      assignmentId: pending.id,
+      decision: "rejected",
+      reason: "Already covered",
+    });
+
+    expect(rejected).toMatchObject({ state: "rejected", assignedBy: null });
+    expect(
+      (await store.findShift({ organizationId: fixture.organizationId, shiftId: shift.id }))?.state,
+    ).toBe("open");
+    const audit = store.audits.find((row) => row.action === "workforce.shift_assignment.rejected");
+    expect(audit).toMatchObject({ after: { state: "rejected", reason: "Already covered" } });
+  });
+
+  it("refuses an assignment that is not pending_approval", async () => {
+    const { store, fixture } = selfSetup();
+    const shift = await planAt(store, fixture, "2026-07-01T08:00:00.000Z");
+    const pending = await selfAssign(store, fixture, shift.id);
+    await decideSelfAssignment(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      assignmentId: pending.id,
+      decision: "approved",
+    });
+
+    await expect(
+      decideSelfAssignment(store, {
+        organizationId: fixture.organizationId,
+        actorId: fixture.actorId,
+        assignmentId: pending.id,
+        decision: "approved",
+      }),
+    ).rejects.toThrow(new DomainError("shift assignment in state approved cannot be decided"));
+  });
+
+  it("refuses to approve when the shift has been cancelled", async () => {
+    const { store, fixture } = selfSetup();
+    const shift = await planAt(store, fixture, "2026-07-01T08:00:00.000Z");
+    const pending = await selfAssign(store, fixture, shift.id);
+    await store.updateShift({
+      organizationId: fixture.organizationId,
+      shiftId: shift.id,
+      state: "cancelled",
+    });
+
+    await expect(
+      decideSelfAssignment(store, {
+        organizationId: fixture.organizationId,
+        actorId: fixture.actorId,
+        assignmentId: pending.id,
+        decision: "approved",
+      }),
+    ).rejects.toThrow(new DomainError("shift in state cancelled cannot take an assignment"));
+  });
+
+  it("rejects a blank assignmentId", async () => {
+    const { store, fixture } = selfSetup();
+    await expect(
+      decideSelfAssignment(store, {
+        organizationId: fixture.organizationId,
+        actorId: fixture.actorId,
+        assignmentId: " ",
+        decision: "approved",
+      }),
+    ).rejects.toThrow(new DomainError("assignmentId is required"));
+  });
+
+  it("returns NotFound for an unknown assignment", async () => {
+    const { store, fixture } = selfSetup();
+    await expect(
+      decideSelfAssignment(store, {
+        organizationId: fixture.organizationId,
+        actorId: fixture.actorId,
+        assignmentId: "assignment-missing",
+        decision: "approved",
+      }),
+    ).rejects.toThrow(new NotFoundError("shift assignment not found in organization"));
+  });
+});
+
+describe("listMyShifts", () => {
+  it("returns the linked employee's own assignments joined to their shifts", async () => {
+    const { store, fixture } = selfSetup();
+    const shift = await planAt(store, fixture, "2026-07-01T08:00:00.000Z");
+    await selfAssign(store, fixture, shift.id);
+
+    const rows = await listMyShifts(store, {
+      organizationId: fixture.organizationId,
+      actorUserId: SELF_USER,
+    });
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      shiftId: shift.id,
+      assignmentState: "pending_approval",
+      locationId: fixture.locationId,
+      shiftState: "open",
+    });
+  });
+
+  it("fails closed when the account has no employee link", async () => {
+    const { store, fixture } = selfSetup();
+    await expect(
+      listMyShifts(store, { organizationId: fixture.organizationId, actorUserId: "user-nobody" }),
+    ).rejects.toThrow(new NotFoundError("no employee record is linked to this account"));
+  });
+
+  it("fails closed on an ambiguous link", async () => {
+    const { store, fixture } = selfSetup();
+    seedSchedulingEmployee(store, {
+      id: "employee-self-2",
+      organizationId: fixture.organizationId,
+      primaryLocationId: fixture.locationId,
+      roleCode: "barista",
+      userId: SELF_USER,
+    });
+    await expect(
+      listMyShifts(store, { organizationId: fixture.organizationId, actorUserId: SELF_USER }),
+    ).rejects.toThrow(new DomainError("multiple employee records are linked to this account"));
+  });
+});
+
+describe("listPendingSelfAssignments", () => {
+  it("returns only self-originated pending assignments", async () => {
+    const { store, fixture } = selfSetup();
+    const pendingShift = await planAt(store, fixture, "2026-07-01T08:00:00.000Z");
+    const approvedShift = await planAt(store, fixture, "2026-07-02T08:00:00.000Z");
+    const managerShift = await planAt(store, fixture, "2026-07-03T08:00:00.000Z");
+
+    const pending = await selfAssign(store, fixture, pendingShift.id);
+    const toApprove = await selfAssign(store, fixture, approvedShift.id);
+    await decideSelfAssignment(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      assignmentId: toApprove.id,
+      decision: "approved",
+    });
+    // A manager-created assignment is never in the self-originated queue.
+    await assignShift(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      shiftId: managerShift.id,
+      employeeId: fixture.employeeId,
+    });
+
+    const rows = await listPendingSelfAssignments(store, {
+      organizationId: fixture.organizationId,
+    });
+
+    expect(rows.map((row) => row.assignmentId)).toEqual([pending.id]);
+    expect(rows[0]).toMatchObject({
+      employeeId: SELF_EMPLOYEE,
+      shiftId: pendingShift.id,
+      locationId: fixture.locationId,
+    });
+  });
+
+  it("scopes to the organization", async () => {
+    const { store, fixture } = selfSetup();
+    const shift = await planAt(store, fixture, "2026-07-01T08:00:00.000Z");
+    await selfAssign(store, fixture, shift.id);
+
+    expect(
+      await listPendingSelfAssignments(store, { organizationId: fixture.otherOrganizationId }),
     ).toEqual([]);
   });
 });

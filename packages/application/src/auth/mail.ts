@@ -19,6 +19,20 @@ export interface PasswordResetEmailMessage {
   readonly expiresInMinutes: number;
 }
 
+/**
+ * One manager-issued employee account invite (`DEC-146`). Same token discipline
+ * as the reset message: the plaintext invite token appears only in the body, the
+ * link is token-free and the recipient pastes the code into the accept form.
+ */
+export interface InviteEmailMessage {
+  /** The recipient address (the employee's email). */
+  readonly to: string;
+  /** The single-use plaintext invite token. Never log, persist or return it. */
+  readonly token: string;
+  /** Remaining validity, for the message body (from `INVITE_TTL_MINUTES`). */
+  readonly expiresInMinutes: number;
+}
+
 export interface MailPort {
   /**
    * Delivers one password-reset message. A "not configured" adapter resolves
@@ -26,4 +40,9 @@ export interface MailPort {
    * caller can log it without exposing the token.
    */
   sendPasswordResetEmail(message: PasswordResetEmailMessage): Promise<void>;
+  /**
+   * Delivers one employee account invite. Same contract: fail closed without
+   * configuration, throw on transport failure, never log the token.
+   */
+  sendInviteEmail(message: InviteEmailMessage): Promise<void>;
 }

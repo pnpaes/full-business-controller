@@ -21,6 +21,14 @@ export const envSchema = z.object({
   // windows; 1440 minutes (24 h) is well above any operational need.
   SESSION_TTL_MINUTES: z.coerce.number().int().positive().max(1440).default(480),
   PASSWORD_RESET_TTL_MINUTES: z.coerce.number().int().positive().max(1440).default(30),
+  // Employee account-invite lifetime (`DEC-146`): defaults to 7 days (10080
+  // minutes) and is capped at 30 days, since an unaccepted invite is a live
+  // credential path.
+  INVITE_TTL_MINUTES: z.coerce.number().int().positive().max(43200).default(10080),
+  // The weekly maximum of shifts a linked employee may self-assign (`WF-003`,
+  // `DEC-146`). Non-negative and bounded so a misconfiguration cannot disable
+  // the cap by accident or make it meaningless; the default is the accepted 2.
+  SELF_ASSIGN_WEEKLY_LIMIT: z.coerce.number().int().min(0).max(100).default(2),
   // Base64 32-byte key sealing TOTP secrets at rest (AES-256). Optional here so
   // worker and scheduler boot without it; the length is enforced at config load
   // so a wrong-size key fails fast instead of at the first MFA operation.

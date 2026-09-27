@@ -4,15 +4,19 @@ import type { AuditInput } from "../auth";
 
 import { DEFAULT_SHIFT_ADJUSTMENT_LIMIT } from "./list-shift-adjustments";
 import { DEFAULT_SHIFT_ASSIGNMENT_LIMIT } from "./list-shift-assignments";
+import { DEFAULT_MY_SHIFT_LIMIT } from "./list-my-shifts";
+import { DEFAULT_PENDING_SELF_ASSIGNMENT_LIMIT } from "./list-pending-self-assignments";
 import { DEFAULT_SHIFT_LIMIT } from "./list-shifts";
 import { DEFAULT_PAYROLL_REPORT_LIMIT } from "./list-payroll-reports";
 import type {
+  MyShiftRow,
   NewPayrollReportRecord,
   NewShiftAdjustmentRecord,
   NewShiftAssignmentRecord,
   NewShiftRecord,
   PayrollReportListQuery,
   PayrollReportRecord,
+  PendingSelfAssignmentRow,
   SchedulingEmployeeRecord,
   SchedulingStore,
   ShiftAdjustmentListQuery,
@@ -233,6 +237,7 @@ export class FakeSchedulingStore implements SchedulingStore {
     const record: ShiftAssignmentRecord = {
       ...existing,
       ...(input.state === undefined ? {} : { state: input.state }),
+      ...(input.assignedBy === undefined ? {} : { assignedBy: input.assignedBy }),
       updatedAt: new Date().toISOString(),
     };
     this.shiftAssignments.set(record.id, record);
@@ -468,6 +473,123 @@ export class FakeSchedulingStore implements SchedulingStore {
       ? employee
       : undefined;
   }
+
+  async findEmployeesByUserId(query: {
+    readonly organizationId: string;
+    readonly userId: string;
+  }): Promise<readonly SchedulingEmployeeRecord[]> {
+    return [...this.employees.values()]
+      .filter(
+        (employee) =>
+          employee.organizationId === query.organizationId && employee.userId === query.userId,
+      )
+      .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  }
+
+  async countSelfAssignedShiftsInWeek(query: {
+    readonly organizationId: string;
+    readonly employeeId: string;
+    readonly weekStart: string;
+    readonly weekEnd: string;
+  }): Promise<number> {
+    const weekStart = Date.parse(query.weekStart);
+    const weekEnd = Date.parse(query.weekEnd);
+    return [...this.shiftAssignments.values()].filter((assignment) => {
+      if (assignment.organizationId !== query.organizationId) return false;
+      if (assignment.employeeId !== query.employeeId) return false;
+      if (assignment.assignedBy !== null) return false;
+      if (
+        assignment.state !== "self_assigned" &&
+        assignment.state !== "pending_approval" &&
+        assignment.state !== "approved"
+      ) {
+        return false;
+      }
+      const shift = this.shifts.get(assignment.shiftId);
+      if (shift === undefined || shift.organizationId !== query.organizationId) return false;
+      return Date.parse(shift.startsAt) < weekEnd && Date.parse(shift.endsAt) > weekStart;
+    }).length;
+  }
+
+  async listMyShifts(query: {
+    readonly organizationId: string;
+    readonly employeeId: string;
+    readonly limit?: number;
+    readonly offset?: number;
+  }): Promise<readonly MyShiftRow[]> {
+    const rows = [...this.shiftAssignments.values()]
+      .filter(
+        (assignment) =>
+          assignment.organizationId === query.organizationId &&
+          assignment.employeeId === query.employeeId,
+      )
+      .flatMap((assignment): MyShiftRow[] => {
+        const shift = this.shifts.get(assignment.shiftId);
+        if (shift === undefined || shift.organizationId !== query.organizationId) return [];
+        return [
+          {
+            assignmentId: assignment.id,
+            assignmentState: assignment.state,
+            assignedAt: assignment.assignedAt,
+            shiftId: shift.id,
+            locationId: shift.locationId,
+            roleCode: shift.roleCode,
+            startsAt: shift.startsAt,
+            endsAt: shift.endsAt,
+            breakMinutes: shift.breakMinutes,
+            shiftState: shift.state,
+          },
+        ];
+      })
+      .sort((a, b) => {
+        if (a.startsAt !== b.startsAt) return a.startsAt < b.startsAt ? -1 : 1;
+        return a.assignmentId < b.assignmentId ? -1 : 1;
+      });
+    const offset = query.offset ?? 0;
+    const limit = query.limit ?? DEFAULT_MY_SHIFT_LIMIT;
+    return rows.slice(offset, offset + limit);
+  }
+
+  async listPendingSelfAssignments(query: {
+    readonly organizationId: string;
+    readonly limit?: number;
+    readonly offset?: number;
+  }): Promise<readonly PendingSelfAssignmentRow[]> {
+    const rows = [...this.shiftAssignments.values()]
+      .filter(
+        (assignment) =>
+          assignment.organizationId === query.organizationId &&
+          assignment.state === "pending_approval" &&
+          assignment.assignedBy === null,
+      )
+      .flatMap((assignment): PendingSelfAssignmentRow[] => {
+        const shift = this.shifts.get(assignment.shiftId);
+        if (shift === undefined || shift.organizationId !== query.organizationId) return [];
+        const person = this.employees.get(assignment.employeeId);
+        if (person === undefined) return [];
+        return [
+          {
+            assignmentId: assignment.id,
+            assignedAt: assignment.assignedAt,
+            employeeId: person.id,
+            employeeName: person.name,
+            shiftId: shift.id,
+            locationId: shift.locationId,
+            roleCode: shift.roleCode,
+            startsAt: shift.startsAt,
+            endsAt: shift.endsAt,
+            breakMinutes: shift.breakMinutes,
+          },
+        ];
+      })
+      .sort((a, b) => {
+        if (a.startsAt !== b.startsAt) return a.startsAt < b.startsAt ? -1 : 1;
+        return a.assignmentId < b.assignmentId ? -1 : 1;
+      });
+    const offset = query.offset ?? 0;
+    const limit = query.limit ?? DEFAULT_PENDING_SELF_ASSIGNMENT_LIMIT;
+    return rows.slice(offset, offset + limit);
+  }
 }
 
 export interface SchedulingFixture {
@@ -510,6 +632,7 @@ export function seedSchedulingEmployee(
     readonly organizationId: string;
     readonly primaryLocationId: string | null;
     readonly roleCode: string;
+    readonly userId?: string | null;
     readonly name?: string;
     readonly baseHourlyRate?: string;
   },
@@ -517,6 +640,7 @@ export function seedSchedulingEmployee(
   store.employees.set(employee.id, {
     id: employee.id,
     organizationId: employee.organizationId,
+    userId: employee.userId ?? null,
     primaryLocationId: employee.primaryLocationId,
     roleCode: employee.roleCode,
     name: employee.name ?? employee.id,

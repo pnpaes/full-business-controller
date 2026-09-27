@@ -30,6 +30,12 @@ export const AUTH_AUDIT_ACTIONS = {
   passwordResetRequested: "auth.password_reset.requested",
   passwordResetCompleted: "auth.password_reset.completed",
   passwordResetFailed: "auth.password_reset.failed",
+  /** A manager provisioned an employee account and issued an invite (`DEC-146`). */
+  userInvited: "auth.user.invited",
+  /** An invited employee set their own password and the account became active. */
+  inviteAccepted: "auth.user.invite_accepted",
+  /** An invite redemption failed (unknown, expired, revoked or already used). */
+  inviteFailed: "auth.user.invite_failed",
   accessRoleChanged: "auth.access.role_changed",
   accessScopesChanged: "auth.access.scopes_changed",
   userDisabled: "auth.user.disabled",

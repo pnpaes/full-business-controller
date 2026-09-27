@@ -59,6 +59,7 @@ function observationRecord(
     productCategory: null,
     season: null,
     provenance: {},
+    contentHash: null,
     createdAt: "2026-03-05T09:30:00.000Z",
     ...overrides,
   };

@@ -19,4 +19,6 @@ export const competitorLimiters = createSharedLimiters("competitors", {
   registerSource: { limit: 60, windowMs: FIFTEEN_MINUTES_MS },
   decideSourceTerms: { limit: 120, windowMs: FIFTEEN_MINUTES_MS },
   deactivateSource: { limit: 120, windowMs: FIFTEEN_MINUTES_MS },
+  // `DEC-149` follow-up: a source edit is an amendment write (120).
+  updateSource: { limit: 120, windowMs: FIFTEEN_MINUTES_MS },
 });

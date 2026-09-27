@@ -29,12 +29,12 @@ interface ErrorBody {
 }
 
 /**
- * The roster row actions (`WF-002`/`WF-003`, `DEC-037`, `DEC-102`): publish,
- * complete and cancel a shift, and **manager assignment only** — the
- * self-assignment path is deferred pending the WF-003 login model (DEC-102),
- * so there is deliberately no self-assign control here. The employee selector
- * is pre-filtered to the shift's location and role (the server enforces the
- * same rules and stays the authority).
+ * The roster row actions (`WF-002`/`WF-003`, `DEC-037`/`DEC-102`): publish,
+ * complete and cancel a shift, and **manager assignment** — employee
+ * self-assignment is the separate `My shifts` view (`DEC-146`), so there is no
+ * self-assign control here. The employee selector is pre-filtered to the shift's
+ * location and role (the server enforces the same rules and stays the
+ * authority).
  */
 export function ShiftActions({
   shiftId,

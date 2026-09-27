@@ -9,6 +9,8 @@ export { assertBreakMinutes, createShift } from "./create-shift";
 export type { CreateShiftInput } from "./create-shift";
 export { assertAdjustedHours, createShiftAdjustment } from "./create-shift-adjustment";
 export type { CreateShiftAdjustmentInput } from "./create-shift-adjustment";
+export { decideSelfAssignment } from "./decide-self-assignment";
+export type { DecideSelfAssignmentInput } from "./decide-self-assignment";
 export { computeWorkedHours } from "./compute-worked-hours";
 export type {
   ComputeWorkedHoursQuery,
@@ -33,11 +35,25 @@ export { DEFAULT_SHIFT_ADJUSTMENT_LIMIT, listShiftAdjustments } from "./list-shi
 export type { ListShiftAdjustmentsQuery } from "./list-shift-adjustments";
 export { DEFAULT_SHIFT_ASSIGNMENT_LIMIT, listShiftAssignments } from "./list-shift-assignments";
 export type { ListShiftAssignmentsQuery } from "./list-shift-assignments";
+export { DEFAULT_MY_SHIFT_LIMIT, listMyShifts } from "./list-my-shifts";
+export type { ListMyShiftsQuery } from "./list-my-shifts";
+export {
+  DEFAULT_PENDING_SELF_ASSIGNMENT_LIMIT,
+  listPendingSelfAssignments,
+} from "./list-pending-self-assignments";
+export type { ListPendingSelfAssignmentsQuery } from "./list-pending-self-assignments";
 export { DEFAULT_SHIFT_LIMIT, listShifts } from "./list-shifts";
 export type { ListShiftsQuery } from "./list-shifts";
 export { createPostgresSchedulingStore } from "./postgres-store";
 export { publishShift } from "./publish-shift";
 export type { PublishShiftInput } from "./publish-shift";
+export { findSelfEmployee, resolveSelfEmployee } from "./resolve-self-employee";
+export {
+  DEFAULT_SELF_ASSIGN_WEEKLY_LIMIT,
+  selfAssignShift,
+  utcWeekBounds,
+} from "./self-assign-shift";
+export type { SelfAssignShiftInput } from "./self-assign-shift";
 export { updateShift } from "./update-shift";
 export type { UpdateShiftInput } from "./update-shift";
 export { withdrawShiftAssignment } from "./withdraw-shift-assignment";
@@ -52,6 +68,8 @@ export type {
   PayrollReportRecord,
   SchedulingEmployeeRecord,
   SchedulingStore,
+  MyShiftRow,
+  PendingSelfAssignmentRow,
   ShiftAdjustmentListQuery,
   ShiftAdjustmentRecord,
   ShiftAssignmentListQuery,

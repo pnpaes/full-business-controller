@@ -143,12 +143,17 @@ export interface NewShiftAssignmentRecord {
   readonly createdBy: string | null;
 }
 
-/** The mutable fields of an assignment; only `state` moves (withdrawn). */
+/** The mutable fields of an assignment; only `state` and `assignedBy` move. */
 export interface UpdateShiftAssignmentRecord {
   readonly organizationId: string;
   readonly shiftAssignmentId: string;
   /** One of `SHIFT_ASSIGNMENT_STATES`. */
   readonly state?: string;
+  /**
+   * The assigning actor on the row. A manager approval sets it to the deciding
+   * actor (`WF-003`, `DEC-146`); omitted leaves it untouched.
+   */
+  readonly assignedBy?: string | null;
   /** The acting actor; recorded as `updated_by`. */
   readonly actorId?: string | null;
 }
@@ -313,11 +318,57 @@ export interface PayrollReportListQuery {
 export interface SchedulingEmployeeRecord {
   readonly id: string;
   readonly organizationId: string;
+  /** Optional `app_user` login link (`WF-001`, `DEC-146`); may be null. */
+  readonly userId: string | null;
   readonly primaryLocationId: string | null;
   readonly roleCode: string;
   readonly name: string;
   /** `numeric(19,4)` money — a decimal string, never a float. */
   readonly baseHourlyRate: string;
+}
+
+/**
+ * One of an employee's own assignments joined to its shift (`WF-003`,
+ * `DEC-146`): the "My shifts" read. `timestamptz` columns cross the port as ISO
+ * strings; `assignmentState` is one of `SHIFT_ASSIGNMENT_STATES` and
+ * `shiftState` one of `SHIFT_STATES`.
+ */
+export interface MyShiftRow {
+  readonly assignmentId: string;
+  /** One of `SHIFT_ASSIGNMENT_STATES`. */
+  readonly assignmentState: string;
+  /** `timestamptz`, ISO. */
+  readonly assignedAt: string;
+  readonly shiftId: string;
+  readonly locationId: string;
+  readonly roleCode: string | null;
+  /** `timestamptz`, ISO. */
+  readonly startsAt: string;
+  /** `timestamptz`, ISO. */
+  readonly endsAt: string;
+  readonly breakMinutes: number;
+  /** One of `SHIFT_STATES`. */
+  readonly shiftState: string;
+}
+
+/**
+ * One self-originated `pending_approval` assignment joined to its shift and
+ * employee (`WF-003`, `DEC-146`): the manager review queue row.
+ */
+export interface PendingSelfAssignmentRow {
+  readonly assignmentId: string;
+  /** `timestamptz`, ISO. */
+  readonly assignedAt: string;
+  readonly employeeId: string;
+  readonly employeeName: string;
+  readonly shiftId: string;
+  readonly locationId: string;
+  readonly roleCode: string | null;
+  /** `timestamptz`, ISO. */
+  readonly startsAt: string;
+  /** `timestamptz`, ISO. */
+  readonly endsAt: string;
+  readonly breakMinutes: number;
 }
 
 /**
@@ -433,4 +484,40 @@ export interface SchedulingStore {
     readonly organizationId: string;
     readonly employeeId: string;
   }): Promise<SchedulingEmployeeRecord | undefined>;
+  /**
+   * Every employee row linked to one `app_user` id, organization-scoped
+   * (`DEC-061`), ordered by id. `employee.user_id` has no unique constraint, so
+   * this is a list; the caller fails closed on zero or more than one row
+   * (`DEC-146`).
+   */
+  findEmployeesByUserId(query: {
+    readonly organizationId: string;
+    readonly userId: string;
+  }): Promise<readonly SchedulingEmployeeRecord[]>;
+  /**
+   * How many of the employee's self-originated (`assigned_by is null`)
+   * assignments in a live state overlap the half-open week
+   * `[weekStart, weekEnd)` — the weekly self-assignment maximum's counter.
+   */
+  countSelfAssignedShiftsInWeek(query: {
+    readonly organizationId: string;
+    readonly employeeId: string;
+    /** `timestamptz`, ISO. */
+    readonly weekStart: string;
+    /** `timestamptz`, ISO. */
+    readonly weekEnd: string;
+  }): Promise<number>;
+  /** One employee's own assignments joined to their shifts (`DEC-146`). */
+  listMyShifts(query: {
+    readonly organizationId: string;
+    readonly employeeId: string;
+    readonly limit?: number;
+    readonly offset?: number;
+  }): Promise<readonly MyShiftRow[]>;
+  /** The manager review queue of self-originated pending assignments. */
+  listPendingSelfAssignments(query: {
+    readonly organizationId: string;
+    readonly limit?: number;
+    readonly offset?: number;
+  }): Promise<readonly PendingSelfAssignmentRow[]>;
 }

@@ -22,6 +22,11 @@ export const limiters = createSharedLimiters(
     mfa: { limit: 10, windowMs: FIFTEEN_MINUTES_MS },
     passwordResetBegin: { limit: 5, windowMs: FIFTEEN_MINUTES_MS },
     passwordResetComplete: { limit: 10, windowMs: FIFTEEN_MINUTES_MS },
+    // Employee account invite (`DEC-146`): provisioning mints a credential path,
+    // so it is fail-closed like the other auth-surface throttles. Generous
+    // enough for a manager onboarding a team from one address.
+    inviteEmployee: { limit: 30, windowMs: FIFTEEN_MINUTES_MS },
+    inviteAccept: { limit: 10, windowMs: FIFTEEN_MINUTES_MS },
     logout: { limit: 30, windowMs: FIFTEEN_MINUTES_MS },
     // MFA enrolment management (authenticated). Per-IP, so a NAT'd café is not
     // locked out by one device; the per-account lockout is not involved here

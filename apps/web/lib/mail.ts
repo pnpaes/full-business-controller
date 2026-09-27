@@ -1,4 +1,8 @@
-import type { MailPort, PasswordResetEmailMessage } from "@aquarela/application";
+import type {
+  InviteEmailMessage,
+  MailPort,
+  PasswordResetEmailMessage,
+} from "@aquarela/application";
 import { createLogger } from "@aquarela/logger";
 
 /**
@@ -38,6 +42,16 @@ export interface SendGridMailAdapter extends MailPort {
   readonly configured: boolean;
 }
 
+/** Escapes the five HTML-significant characters so an interpolated value cannot break out of markup. */
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/gu, "&amp;")
+    .replace(/</gu, "&lt;")
+    .replace(/>/gu, "&gt;")
+    .replace(/"/gu, "&quot;")
+    .replace(/'/gu, "&#39;");
+}
+
 /** Trims a value and treats blank as absent, so `""` cannot enable the channel. */
 function present(value: string | undefined): string | undefined {
   const trimmed = value?.trim();
@@ -57,6 +71,11 @@ export function buildPasswordResetUrl(baseUrl: string): string {
   return `${baseUrl.replace(/\/+$/u, "")}/reset/complete`;
 }
 
+/** Absolute invite-acceptance URL; carries no token (ADR-0003). */
+export function buildInviteUrl(baseUrl: string): string {
+  return `${baseUrl.replace(/\/+$/u, "")}/invite/accept`;
+}
+
 export function createSendGridMailAdapter(
   options: SendGridMailAdapterOptions = {},
 ): SendGridMailAdapter {
@@ -67,6 +86,37 @@ export function createSendGridMailAdapter(
   const fetchImpl = options.fetchImpl ?? fetch;
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const configured = apiKey !== undefined && from !== undefined && baseUrl !== undefined;
+
+  /** One SendGrid send; the token lives only in the prepared text/html bodies. */
+  async function deliver(message: {
+    readonly to: string;
+    readonly subject: string;
+    readonly text: string;
+    readonly html: string;
+  }): Promise<void> {
+    const response = await fetchImpl(SENDGRID_ENDPOINT, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${apiKey}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        personalizations: [{ to: [{ email: message.to }] }],
+        from: parseMailFrom(from!),
+        subject: message.subject,
+        content: [
+          { type: "text/plain", value: message.text },
+          { type: "text/html", value: message.html },
+        ],
+      }),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+
+    // SendGrid accepts with 202 and an empty body; anything else is a failure.
+    if (response.status !== 202) {
+      throw new Error(`sendgrid email delivery failed with status ${response.status}`);
+    }
+  }
 
   return {
     configured,
@@ -79,8 +129,7 @@ export function createSendGridMailAdapter(
         return;
       }
 
-      const resetUrl = buildPasswordResetUrl(baseUrl);
-      const subject = "Reset your Aquarela password";
+      const resetUrl = buildPasswordResetUrl(baseUrl!);
       const text = [
         "A password reset was requested for this address.",
         "",
@@ -92,33 +141,50 @@ export function createSendGridMailAdapter(
       ].join("\n");
       const html = [
         "<p>A password reset was requested for this address.</p>",
-        `<p><a href="${resetUrl}">Open the reset page</a> and enter this reset code:</p>`,
-        `<p><code>${message.token}</code></p>`,
+        `<p><a href="${escapeHtml(resetUrl)}">Open the reset page</a> and enter this reset code:</p>`,
+        `<p><code>${escapeHtml(message.token)}</code></p>`,
         `<p>The code expires in ${message.expiresInMinutes} minutes. If you did not request it, ignore this email.</p>`,
       ].join("");
 
-      const response = await fetchImpl(SENDGRID_ENDPOINT, {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${apiKey}`,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          personalizations: [{ to: [{ email: message.to }] }],
-          from: parseMailFrom(from),
-          subject,
-          content: [
-            { type: "text/plain", value: text },
-            { type: "text/html", value: html },
-          ],
-        }),
-        signal: AbortSignal.timeout(timeoutMs),
+      await deliver({
+        to: message.to,
+        subject: "Reset your Aquarela password",
+        text,
+        html,
       });
-
-      // SendGrid accepts with 202 and an empty body; anything else is a failure.
-      if (response.status !== 202) {
-        throw new Error(`sendgrid email delivery failed with status ${response.status}`);
+    },
+    async sendInviteEmail(message: InviteEmailMessage): Promise<void> {
+      if (!configured) {
+        logger.warn(
+          {},
+          "invite email not sent: SENDGRID_API_KEY, MAIL_FROM and APP_BASE_URL must all be set; the account stays pending",
+        );
+        return;
       }
+
+      const inviteUrl = buildInviteUrl(baseUrl!);
+      const text = [
+        "You have been invited to an Aquarela account.",
+        "",
+        `Open ${inviteUrl} and enter this invite code:`,
+        "",
+        message.token,
+        "",
+        `The code expires in ${message.expiresInMinutes} minutes. If you did not expect this, ignore this email.`,
+      ].join("\n");
+      const html = [
+        "<p>You have been invited to an Aquarela account.</p>",
+        `<p><a href="${escapeHtml(inviteUrl)}">Open the invitation page</a> and enter this invite code:</p>`,
+        `<p><code>${escapeHtml(message.token)}</code></p>`,
+        `<p>The code expires in ${message.expiresInMinutes} minutes. If you did not expect this, ignore this email.</p>`,
+      ].join("");
+
+      await deliver({
+        to: message.to,
+        subject: "You are invited to Aquarela",
+        text,
+        html,
+      });
     },
   };
 }

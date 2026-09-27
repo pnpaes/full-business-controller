@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, inArray, lt, lte, ne, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, gt, gte, inArray, isNull, lt, lte, ne, sql } from "drizzle-orm";
 
 import type { Database } from "../client";
 import { employee, payrollReport, shift, shiftAdjustment, shiftAssignment } from "../schema";
@@ -281,6 +281,12 @@ export interface UpdateShiftAssignmentInput {
   readonly shiftAssignmentId: string;
   /** Checked against the `SHIFT_ASSIGNMENT_STATE` vocabulary. */
   readonly state?: string;
+  /**
+   * The assigning actor recorded on the row. `null` keeps the self-assignment
+   * marker; a manager approval sets it to the deciding actor. Omitted leaves it
+   * untouched.
+   */
+  readonly assignedBy?: string | null;
   /** Audit actor; recorded as `updated_by` (the `app_user` FK is deferred). */
   readonly actorId?: string | null;
 }
@@ -355,6 +361,179 @@ export async function listShiftAssignments(
     statement.offset(query.offset);
   }
   return statement;
+}
+
+/** One of `employee`'s own assignments, joined to its shift (`WF-003`). */
+export interface MyShiftRow {
+  readonly assignmentId: string;
+  /** One of `SHIFT_ASSIGNMENT_STATE`. */
+  readonly assignmentState: string;
+  readonly assignedAt: Date;
+  readonly shiftId: string;
+  readonly locationId: string;
+  readonly roleCode: string | null;
+  readonly startsAt: Date;
+  readonly endsAt: Date;
+  readonly breakMinutes: number;
+  /** One of `SHIFT_STATE`. */
+  readonly shiftState: string;
+}
+
+export interface ListMyShiftsQuery {
+  readonly organizationId: string;
+  readonly employeeId: string;
+  readonly limit?: number;
+  readonly offset?: number;
+}
+
+/**
+ * One employee's own assignments (`WF-003`, `DEC-146`), joined to their shift,
+ * organization-scoped on both sides (`DEC-061`) so the employee link is the
+ * only way in. Ordered by `shift.starts_at` then assignment id; paging is
+ * applied after the ordering.
+ */
+export async function listMyShifts(
+  db: Database,
+  query: ListMyShiftsQuery,
+): Promise<readonly MyShiftRow[]> {
+  const statement = db
+    .select({
+      assignmentId: shiftAssignment.id,
+      assignmentState: shiftAssignment.state,
+      assignedAt: shiftAssignment.assignedAt,
+      shiftId: shift.id,
+      locationId: shift.locationId,
+      roleCode: shift.roleCode,
+      startsAt: shift.startsAt,
+      endsAt: shift.endsAt,
+      breakMinutes: shift.breakMinutes,
+      shiftState: shift.state,
+    })
+    .from(shiftAssignment)
+    .innerJoin(shift, eq(shiftAssignment.shiftId, shift.id))
+    .where(
+      and(
+        eq(shiftAssignment.organizationId, query.organizationId),
+        eq(shift.organizationId, query.organizationId),
+        eq(shiftAssignment.employeeId, query.employeeId),
+      ),
+    )
+    .orderBy(asc(shift.startsAt), asc(shiftAssignment.id))
+    .$dynamic();
+  if (query.limit !== undefined) {
+    statement.limit(query.limit);
+  }
+  if (query.offset !== undefined) {
+    statement.offset(query.offset);
+  }
+  return statement;
+}
+
+/** One self-originated assignment awaiting a manager decision (`WF-003`). */
+export interface PendingSelfAssignmentRow {
+  readonly assignmentId: string;
+  readonly assignedAt: Date;
+  readonly employeeId: string;
+  readonly employeeName: string;
+  readonly shiftId: string;
+  readonly locationId: string;
+  readonly roleCode: string | null;
+  readonly startsAt: Date;
+  readonly endsAt: Date;
+  readonly breakMinutes: number;
+}
+
+export interface ListPendingSelfAssignmentsQuery {
+  readonly organizationId: string;
+  readonly limit?: number;
+  readonly offset?: number;
+}
+
+/**
+ * The manager review queue (`WF-003`, `DEC-146`): self-originated
+ * (`assigned_by is null`) `pending_approval` assignments joined to their shift
+ * and employee, organization-scoped on all three tables (`DEC-061`). Ordered by
+ * `shift.starts_at` then assignment id; paging is applied after the ordering.
+ */
+export async function listPendingSelfAssignments(
+  db: Database,
+  query: ListPendingSelfAssignmentsQuery,
+): Promise<readonly PendingSelfAssignmentRow[]> {
+  const statement = db
+    .select({
+      assignmentId: shiftAssignment.id,
+      assignedAt: shiftAssignment.assignedAt,
+      employeeId: employee.id,
+      employeeName: employee.name,
+      shiftId: shift.id,
+      locationId: shift.locationId,
+      roleCode: shift.roleCode,
+      startsAt: shift.startsAt,
+      endsAt: shift.endsAt,
+      breakMinutes: shift.breakMinutes,
+    })
+    .from(shiftAssignment)
+    .innerJoin(shift, eq(shiftAssignment.shiftId, shift.id))
+    .innerJoin(employee, eq(shiftAssignment.employeeId, employee.id))
+    .where(
+      and(
+        eq(shiftAssignment.organizationId, query.organizationId),
+        eq(shift.organizationId, query.organizationId),
+        eq(employee.organizationId, query.organizationId),
+        eq(shiftAssignment.state, "pending_approval"),
+        isNull(shiftAssignment.assignedBy),
+      ),
+    )
+    .orderBy(asc(shift.startsAt), asc(shiftAssignment.id))
+    .$dynamic();
+  if (query.limit !== undefined) {
+    statement.limit(query.limit);
+  }
+  if (query.offset !== undefined) {
+    statement.offset(query.offset);
+  }
+  return statement;
+}
+
+export interface CountSelfAssignedShiftsInWeekQuery {
+  readonly organizationId: string;
+  readonly employeeId: string;
+  /** Exclusive upper bound on the shift start (`shift.starts_at < weekEnd`). */
+  readonly weekEnd: Date;
+  /** Inclusive lower bound on the shift end (`shift.ends_at > weekStart`). */
+  readonly weekStart: Date;
+}
+
+/**
+ * How many of one employee's **self-originated** assignments (`assigned_by is
+ * null`) in a live state (`self_assigned`/`pending_approval`/`approved`)
+ * overlap the half-open week `[weekStart, weekEnd)`. The weekly self-assignment
+ * maximum (`WF-003`, `DEC-146`) counts these. Overlap is
+ * `shift.starts_at < weekEnd and shift.ends_at > weekStart`, so a shift that
+ * straddles a week boundary counts in each week it touches; the shift and
+ * assignment are both organization-scoped (`DEC-061`). `withdrawn`/`rejected`
+ * rows are excluded — a reverted request frees its slot.
+ */
+export async function countSelfAssignedShiftsInWeek(
+  db: Database,
+  query: CountSelfAssignedShiftsInWeekQuery,
+): Promise<number> {
+  const rows = await db
+    .select({ value: count() })
+    .from(shiftAssignment)
+    .innerJoin(shift, eq(shiftAssignment.shiftId, shift.id))
+    .where(
+      and(
+        eq(shiftAssignment.organizationId, query.organizationId),
+        eq(shift.organizationId, query.organizationId),
+        eq(shiftAssignment.employeeId, query.employeeId),
+        isNull(shiftAssignment.assignedBy),
+        inArray(shiftAssignment.state, ["self_assigned", "pending_approval", "approved"]),
+        lt(shift.startsAt, query.weekEnd),
+        gt(shift.endsAt, query.weekStart),
+      ),
+    );
+  return rows[0]?.value ?? 0;
 }
 
 export interface CreateShiftAdjustmentInput {

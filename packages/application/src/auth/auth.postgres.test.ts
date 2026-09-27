@@ -1,9 +1,16 @@
 import { randomUUID } from "node:crypto";
 
-import { hashPassword, hashPasswordResetToken, verifyPassword } from "@aquarela/domain";
+import {
+  hashInviteToken,
+  hashPassword,
+  hashPasswordResetToken,
+  verifyPassword,
+} from "@aquarela/domain";
 import {
   createDb,
+  createEmployee,
   createUser,
+  organization,
   type DatabaseTransaction,
   type DbClient,
   type NodeDatabase,
@@ -11,6 +18,7 @@ import {
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { assignRole, loadUserAccess, replaceLocationScopes } from "./access";
+import { INVITE_PENDING_PASSWORD_HASH, acceptInvite, inviteEmployeeUser } from "./invite";
 import { beginPasswordReset, completePasswordReset } from "./password-reset";
 import { createPostgresAuthStore } from "./postgres-store";
 import { issueSession, verifySession } from "./session";
@@ -52,6 +60,7 @@ describe.skipIf(!databaseUrl)("auth commands against PostgreSQL", () => {
     now,
     sessionTtlMinutes: 60,
     passwordResetTtlMinutes: 30,
+    inviteTtlMinutes: 7 * 24 * 60,
     passwordHashOptions: CHEAP,
   });
 
@@ -211,6 +220,142 @@ describe.skipIf(!databaseUrl)("auth commands against PostgreSQL", () => {
       expect(await store.listUsers({ organizationId: randomUUID(), limit: 50, offset: 0 })).toEqual(
         [],
       );
+    });
+  });
+
+  it("provisions an invited employee, links the login and activates it on accept", async () => {
+    await inRollback(client.db, async (tx) => {
+      const store = createPostgresAuthStore(tx);
+      const now = new Date();
+      const employee = await createEmployee(tx, {
+        organizationId: orgId,
+        name: "Invited Employee",
+        roleCode: "kitchen",
+        employmentType: "full_time",
+        baseHourlyRate: "200.0000",
+        activeFrom: "2026-01-01",
+      });
+
+      const invited = await inviteEmployeeUser(store, deps(now), {
+        organizationId: orgId,
+        actorId: userId,
+        employeeId: employee.id,
+        email: `invite_${suffix}@example.test`,
+      });
+      expect(invited.employeeId).toBe(employee.id);
+
+      // Invited account: no usable password, employee linked, token stored hashed.
+      const invitedUser = await store.findUserById(invited.userId);
+      expect(invitedUser?.status).toBe("invited");
+      expect(invitedUser?.passwordHash).toBe(INVITE_PENDING_PASSWORD_HASH);
+      const linked = await store.findEmployeeLink({
+        organizationId: orgId,
+        employeeId: employee.id,
+      });
+      expect(linked?.userId).toBe(invited.userId);
+      expect(await store.findActiveInviteByHash(hashInviteToken(invited.token), now)).toBeDefined();
+
+      const accepted = await acceptInvite(store, deps(now), {
+        organizationId: orgId,
+        token: invited.token,
+        newPassword: "brand-new-password",
+      });
+      expect(accepted.ok).toBe(true);
+
+      const active = await store.findUserById(invited.userId);
+      expect(active?.status).toBe("active");
+      expect(await verifyPassword(active!.passwordHash, "brand-new-password")).toBe(true);
+      // Single use: the token no longer resolves and a second accept fails.
+      expect(
+        await store.findActiveInviteByHash(hashInviteToken(invited.token), now),
+      ).toBeUndefined();
+      const replay = await acceptInvite(store, deps(now), {
+        organizationId: orgId,
+        token: invited.token,
+        newPassword: "another-password",
+      });
+      expect(replay.ok).toBe(false);
+    });
+  });
+
+  it("refuses a weak password at invite acceptance without consuming the token", async () => {
+    await inRollback(client.db, async (tx) => {
+      const store = createPostgresAuthStore(tx);
+      const now = new Date();
+      const employee = await createEmployee(tx, {
+        organizationId: orgId,
+        name: "Weak Password Employee",
+        roleCode: "kitchen",
+        employmentType: "full_time",
+        baseHourlyRate: "200.0000",
+        activeFrom: "2026-01-01",
+      });
+      const invited = await inviteEmployeeUser(store, deps(now), {
+        organizationId: orgId,
+        actorId: userId,
+        employeeId: employee.id,
+        email: `weak_${suffix}@example.test`,
+      });
+
+      const refused = await acceptInvite(store, deps(now), {
+        organizationId: orgId,
+        token: invited.token,
+        newPassword: "short",
+      });
+      expect(refused.ok).toBe(false);
+
+      // Rejected before claiming: the invited account is untouched and the token
+      // still redeems a policy-compliant password.
+      expect((await store.findUserById(invited.userId))?.status).toBe("invited");
+      expect(await store.findActiveInviteByHash(hashInviteToken(invited.token), now)).toBeDefined();
+
+      const accepted = await acceptInvite(store, deps(now), {
+        organizationId: orgId,
+        token: invited.token,
+        newPassword: "brand-new-password",
+      });
+      expect(accepted.ok).toBe(true);
+    });
+  });
+
+  it("blocks linking an employee to a login in another organization (0077 guard)", async () => {
+    await inRollback(client.db, async (tx) => {
+      const store = createPostgresAuthStore(tx);
+      const employee = await createEmployee(tx, {
+        organizationId: orgId,
+        name: "Guarded Employee",
+        roleCode: "kitchen",
+        employmentType: "full_time",
+        baseHourlyRate: "200.0000",
+        activeFrom: "2026-01-01",
+      });
+      const otherOrg = await tx
+        .insert(organization)
+        .values({ legalName: `Auth IT other ${suffix}` })
+        .returning();
+      const foreignUser = await createUser(tx, {
+        organizationId: otherOrg[0]!.id,
+        username: `foreign_${suffix}`,
+        email: `foreign_${suffix}@example.test`,
+        displayName: "Foreign User",
+        passwordHash: INVITE_PENDING_PASSWORD_HASH,
+        status: "invited",
+      });
+
+      let code: string | undefined;
+      try {
+        await store.linkEmployeeToUser({
+          organizationId: orgId,
+          employeeId: employee.id,
+          userId: foreignUser.id,
+          actorId: null,
+        });
+      } catch (error) {
+        code =
+          (error as { cause?: { code?: string }; code?: string }).cause?.code ??
+          (error as { code?: string }).code;
+      }
+      expect(code).toBe("23514");
     });
   });
 });

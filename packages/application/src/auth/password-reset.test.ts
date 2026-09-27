@@ -142,6 +142,24 @@ describe("completePasswordReset", () => {
     expect(store.users.get(user.id)?.passwordHash).toBe(updated?.passwordHash);
   });
 
+  it("refuses a weak new password with the generic error and no change", async () => {
+    const store = new FakeAuthStore();
+    const user = await userWithPassword(store, "old-password");
+    const { deps, tokens } = delivery();
+    const before = store.users.get(user.id)?.passwordHash;
+    await beginPasswordReset(store, deps, { organizationId: ORG, identifier: user.email ?? "" });
+
+    const result = await completePasswordReset(store, deps, {
+      organizationId: ORG,
+      token: tokens[0] ?? "",
+      newPassword: "short",
+    });
+
+    expect(result).toEqual({ ok: false, error: AUTH_ERROR_GENERIC });
+    expect(store.users.get(user.id)?.passwordHash).toBe(before);
+    expect(store.passwordUpdates).toEqual([]);
+  });
+
   it("rejects a valid token presented in a different organization", async () => {
     const store = new FakeAuthStore();
     const user = await userWithPassword(store, "old-password");

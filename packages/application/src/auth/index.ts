@@ -74,7 +74,15 @@ export type {
   CompletePasswordResetResult,
 } from "./password-reset";
 
-export type { MailPort, PasswordResetEmailMessage } from "./mail";
+export { INVITE_PENDING_PASSWORD_HASH, acceptInvite, inviteEmployeeUser } from "./invite";
+export type {
+  AcceptInviteInput,
+  AcceptInviteResult,
+  InviteEmployeeUserInput,
+  InviteEmployeeUserResult,
+} from "./invite";
+
+export type { InviteEmailMessage, MailPort, PasswordResetEmailMessage } from "./mail";
 
 export { createPostgresAuthStore } from "./postgres-store";
 
@@ -99,6 +107,7 @@ export type {
   AuditEventRecord,
   AuditInput,
   AuthDeps,
+  AuthInviteRecord,
   AuthResetTokenRecord,
   AuthRoleAssignment,
   AuthRoleRecord,
@@ -108,9 +117,13 @@ export type {
   AuthUser,
   AuthUserListQuery,
   AuthUserSummary,
+  CreateAuthUserInput,
+  CreateInviteInput,
   CreateResetTokenInput,
   CreateSessionInput,
+  EmployeeLink,
   IssuedSession,
+  LinkEmployeeInput,
   RequestContext,
   RoleAssignmentInput,
   RoleRemovalInput,

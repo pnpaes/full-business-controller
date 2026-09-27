@@ -4,6 +4,7 @@ import {
   createPostgresWorkforceStore,
   listEmployees,
   listLocations,
+  listPendingSelfAssignments,
   listShiftAssignments,
   listShifts,
 } from "@aquarela/application";
@@ -42,6 +43,7 @@ import {
   todayUtcDay,
 } from "../workforce-labels";
 import { CreateShiftForm } from "./create-shift-form";
+import { PendingApprovalActions } from "./pending-approval-actions";
 import { RosterFilter } from "./roster-filter";
 import { ShiftActions, type AssignableEmployeeOption } from "./shift-actions";
 import { WithdrawAssignmentButton } from "./withdraw-assignment-button";
@@ -92,10 +94,10 @@ const filterChipActiveStyle = {
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
- * The roster board (`WF-002`, `DEC-037`/`DEC-102`): shifts by date and
- * location with status, the lifecycle actions (publish/complete/cancel) and
- **manager assignment only** — self-assignment is deferred pending the WF-003
- * login model (DEC-102), stated on the page rather than implied.
+ * The roster board (`WF-002`, `DEC-037`/`DEC-102`/`DEC-146`): shifts by date and
+ * location with status, the lifecycle actions (publish/complete/cancel), manager
+ * assignment, and the pending self-assignment queue with approve/reject controls
+ * (employees self-assign from their own `My shifts` view).
  *
  * Reads the same application services and row shapes as
  * `GET /api/v1/workforce/shifts`. Access is the shift matrix row (owner, GM,
@@ -205,6 +207,19 @@ export default async function RosterPage({
     ),
   );
 
+  // The manager review queue (DEC-146): self-originated pending_approval rows.
+  // A location-scoped manager sees only their own locations (fail-closed).
+  const pendingQueue = canWrite
+    ? (
+        await listPendingSelfAssignments(schedulingStore, {
+          organizationId,
+          limit: PAGE_LIMIT,
+        })
+      ).filter(
+        (row) => access.locationIds.length === 0 || access.locationIds.includes(row.locationId),
+      )
+    : [];
+
   const writableLocations =
     access.locationIds.length === 0
       ? allLocations
@@ -228,11 +243,42 @@ export default async function RosterPage({
         description="Shifts by date and location: plan, publish, assign, complete and cancel (WF-002, WF-003)."
       />
 
-      <Alert tone="info" title="Manager assignment only">
-        Assignment is a manager action (owner, general manager, location manager, admin).
-        Self-assignment is <strong>deferred</strong> pending the WF-003 login-model owner input
-        (DEC-102) — there is no self-assign control anywhere in this screen.
+      <Alert tone="info" title="Assigning and self-assignment">
+        Manager assignment (owner, general manager, location manager, admin) assigns an employee
+        directly. A linked employee self-assigns their own shifts from <strong>My shifts</strong>;
+        each request opens as <strong>pending approval</strong> and is approved or rejected here.
       </Alert>
+
+      {canWrite ? (
+        <SectionCard
+          title="Pending self-assignments"
+          meta={`${pendingQueue.length} awaiting a decision`}
+        >
+          <div style={tableWrap}>
+            <DataTable
+              caption="Self-assigned shifts awaiting a manager decision, with approve and reject controls"
+              columns={[
+                { key: "employee", header: "Employee" },
+                { key: "shift", header: "Shift (UTC)" },
+                { key: "location", header: "Location" },
+                { key: "role", header: "Role" },
+                { key: "requested", header: "Requested" },
+                { key: "actions", header: "Decision" },
+              ]}
+              rows={pendingQueue.map((row) => ({
+                id: row.assignmentId,
+                employee: row.employeeName,
+                shift: formatShiftWindow(row.startsAt, row.endsAt),
+                location: locationLabelById.get(row.locationId) ?? row.locationId,
+                role: row.roleCode ?? "Any role",
+                requested: row.assignedAt,
+                actions: <PendingApprovalActions assignmentId={row.assignmentId} />,
+              }))}
+              emptyMessage="No self-assignments are awaiting a decision."
+            />
+          </div>
+        </SectionCard>
+      ) : null}
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: spacing[2], alignItems: "center" }}>
         {writableLocations.length > 1 ? (

@@ -1,4 +1,4 @@
-import { and, asc, eq, isNotNull, isNull } from "drizzle-orm";
+import { and, asc, eq, isNotNull, isNull, or } from "drizzle-orm";
 
 import type { Database } from "../client";
 import { employee, employeeDocument } from "../schema";
@@ -95,6 +95,32 @@ export async function findEmployee(
   return rows[0];
 }
 
+export interface FindEmployeesByUserIdQuery {
+  readonly organizationId: string;
+  readonly userId: string;
+}
+
+/**
+ * Every employee row linked to one `app_user` id, organization-scoped
+ * (`DEC-061`), ordered by id. `employee.user_id` has **no unique constraint**
+ * (an employee may exist without a login and the link is nullable), so this
+ * returns a list rather than one row: the caller distinguishes zero rows (no
+ * link) from more than one (ambiguous) and fails closed on both. There is no
+ * `retired_at` filter — the read is the raw link lookup and the caller decides.
+ */
+export async function findEmployeesByUserId(
+  db: Database,
+  query: FindEmployeesByUserIdQuery,
+): Promise<Employee[]> {
+  return db
+    .select()
+    .from(employee)
+    .where(
+      and(eq(employee.organizationId, query.organizationId), eq(employee.userId, query.userId)),
+    )
+    .orderBy(asc(employee.id));
+}
+
 export interface UpdateEmployeePatch {
   readonly name?: string;
   readonly roleCode?: string;
@@ -138,6 +164,47 @@ export async function updateEmployee(
       ...(actorId === undefined ? {} : { updatedBy: actorId }),
     })
     .where(and(eq(employee.id, employeeId), eq(employee.organizationId, organizationId)))
+    .returning();
+  return rows[0];
+}
+
+export interface LinkEmployeeToUserInput {
+  readonly organizationId: string;
+  readonly employeeId: string;
+  /** The `app_user` to link; must belong to the same organization (0047 guard). */
+  readonly userId: string;
+  /** Audit actor; recorded as `updated_by` (the `app_user` FK is deferred). */
+  readonly actorId?: string | null;
+}
+
+/**
+ * Links an employee to a login **after** creation (`DEC-146`, `WF-003`).
+ * `employee.user_id` is immutable through `updateEmployee` (the frozen API), so
+ * this is the one sanctioned write: it matches the employee in its own
+ * organization and only when the link is free (`user_id is null`) or already the
+ * target user (idempotent). A row already linked to a *different* user, an
+ * unknown id or a cross-organization id returns `undefined`, exactly like
+ * `findEmployee`. The `0047` `employee_user_org_guard` trigger still validates
+ * the same-organization reference on this update.
+ */
+export async function linkEmployeeToUser(
+  db: Database,
+  input: LinkEmployeeToUserInput,
+): Promise<Employee | undefined> {
+  const rows = await db
+    .update(employee)
+    .set({
+      userId: input.userId,
+      updatedAt: new Date(),
+      ...(input.actorId === undefined ? {} : { updatedBy: input.actorId }),
+    })
+    .where(
+      and(
+        eq(employee.id, input.employeeId),
+        eq(employee.organizationId, input.organizationId),
+        or(isNull(employee.userId), eq(employee.userId, input.userId)),
+      ),
+    )
     .returning();
   return rows[0];
 }

@@ -90,6 +90,11 @@ export interface CompetitorObservationRecord {
   readonly season: string | null;
   /** URL/capture time/method/content hash; `{}` when unknown. */
   readonly provenance: Record<string, unknown>;
+  /**
+   * `DEC-149` follow-up: the automated-capture idempotency key, or `null` for a
+   * manual/pre-existing row (a row without a hash is never deduped).
+   */
+  readonly contentHash: string | null;
   /** `timestamptz`, ISO. */
   readonly createdAt: string;
 }
@@ -115,6 +120,8 @@ export interface NewCompetitorObservationRecord {
   readonly season: string | null;
   /** URL/capture time/method/content hash; `{}` when unknown. */
   readonly provenance: Record<string, unknown>;
+  /** `DEC-149` follow-up: the idempotency key for an automated capture, or null. */
+  readonly contentHash: string | null;
 }
 
 /** One `competitor_source` row (`ADR-0010`/`DEC-143`, `COMP-001`). */
@@ -184,6 +191,17 @@ export interface UpdateCompetitorSourceActiveToRecord {
   readonly sourceId: string;
   /** ISO date (`YYYY-MM-DD`). */
   readonly activeTo: string;
+  readonly updatedBy: string;
+}
+
+/** The source edit the port writes (`ADR-0010`, `DEC-149` follow-up). */
+export interface UpdateCompetitorSourceRecord {
+  readonly organizationId: string;
+  readonly sourceId: string;
+  readonly urlOrIdentifier: string;
+  readonly rateLimitNote: string | null;
+  /** One of `COMPETITOR_COLLECTION_MODES`. */
+  readonly collectionMode: string;
   readonly updatedBy: string;
 }
 
@@ -305,11 +323,27 @@ export interface CompetitorStore {
   updateCompetitorSourceActiveTo(
     input: UpdateCompetitorSourceActiveToRecord,
   ): Promise<CompetitorSourceRecord | undefined>;
+  /**
+   * Edits one org-scoped source's mutable fields (`url_or_identifier`,
+   * `rate_limit_note`, `collection_mode`) — the `DEC-149` follow-up source edit.
+   */
+  updateCompetitorSource(
+    input: UpdateCompetitorSourceRecord,
+  ): Promise<CompetitorSourceRecord | undefined>;
   listCompetitorSources(
     query: CompetitorSourceListQuery,
   ): Promise<readonly CompetitorSourceRecord[]>;
   /** Creates one observation; it opens `pending`. */
   createObservation(input: NewCompetitorObservationRecord): Promise<CompetitorObservationRecord>;
+  /**
+   * The dedupe-guarded insert for an automated capture (`DEC-149` follow-up):
+   * inserts one observation, or returns `undefined` when a row with the same
+   * `(organizationId, competitorSourceId, contentHash)` already exists. The
+   * `contentHash` is non-null for this path.
+   */
+  createObservationIfNew(
+    input: NewCompetitorObservationRecord,
+  ): Promise<CompetitorObservationRecord | undefined>;
   /** One observation by id, organization-scoped (`DEC-061`), or `undefined`. */
   findObservation(query: {
     readonly organizationId: string;

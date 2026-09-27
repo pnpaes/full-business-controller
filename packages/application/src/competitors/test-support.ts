@@ -17,6 +17,7 @@ import type {
   NewCompetitorSourceRecord,
   UpdateCompetitorObservationReviewRecord,
   UpdateCompetitorSourceActiveToRecord,
+  UpdateCompetitorSourceRecord,
   UpdateCompetitorSourceTermsRecord,
 } from "./types";
 
@@ -265,6 +266,29 @@ export class FakeCompetitorStore implements CompetitorStore {
     return record;
   }
 
+  async updateCompetitorSource(
+    input: UpdateCompetitorSourceRecord,
+  ): Promise<CompetitorSourceRecord | undefined> {
+    const existing = await this.findCompetitorSource({
+      organizationId: input.organizationId,
+      sourceId: input.sourceId,
+    });
+    if (existing === undefined) {
+      return undefined;
+    }
+    const record: CompetitorSourceRecord = {
+      ...existing,
+      urlOrIdentifier: input.urlOrIdentifier,
+      rateLimitNote: input.rateLimitNote,
+      collectionMode: input.collectionMode,
+      updatedAt: new Date().toISOString(),
+      updatedBy: input.updatedBy,
+      version: existing.version + 1,
+    };
+    this.sources.set(record.id, record);
+    return record;
+  }
+
   async listCompetitorSources(
     query: CompetitorSourceListQuery,
   ): Promise<readonly CompetitorSourceRecord[]> {
@@ -319,10 +343,33 @@ export class FakeCompetitorStore implements CompetitorStore {
       productCategory: input.productCategory,
       season: input.season,
       provenance: input.provenance,
+      contentHash: input.contentHash,
       createdAt: new Date().toISOString(),
     };
     this.observations.set(record.id, record);
     return record;
+  }
+
+  /**
+   * Mirrors the partial unique index `(organizationId, competitorSourceId,
+   * contentHash) WHERE contentHash IS NOT NULL`: an existing hashed row for the
+   * same source means nothing is inserted (`undefined`).
+   */
+  async createObservationIfNew(
+    input: NewCompetitorObservationRecord,
+  ): Promise<CompetitorObservationRecord | undefined> {
+    if (input.contentHash !== null) {
+      const duplicate = [...this.observations.values()].some(
+        (row) =>
+          row.organizationId === input.organizationId &&
+          row.competitorSourceId === input.competitorSourceId &&
+          row.contentHash === input.contentHash,
+      );
+      if (duplicate) {
+        return undefined;
+      }
+    }
+    return this.createObservation(input);
   }
 
   async findObservation(query: {
@@ -500,6 +547,7 @@ export class FakeCompetitorStore implements CompetitorStore {
     readonly productCategory?: string | null;
     readonly season?: string | null;
     readonly provenance?: Record<string, unknown>;
+    readonly contentHash?: string | null;
   }): CompetitorObservationRecord {
     const record: CompetitorObservationRecord = {
       id: input.id ?? this.nextObservationId(),
@@ -519,6 +567,7 @@ export class FakeCompetitorStore implements CompetitorStore {
       productCategory: input.productCategory ?? null,
       season: input.season ?? null,
       provenance: input.provenance ?? {},
+      contentHash: input.contentHash ?? null,
       reviewedBy:
         input.reviewStatus === "pending" || input.reviewStatus === undefined
           ? null

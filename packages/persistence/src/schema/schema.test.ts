@@ -66,7 +66,10 @@ const tables = Object.values(schema).filter((value) => is(value, PgTable));
  * append-only `ai_analysis_run` and the mutable, human-reviewed `ai_suggestion`
  * tables, taking the count to 101. The `ADR-0010`/`DEC-143` competitor-source
  * slice (row 18a) adds the `competitor_source` table and the nullable §4C
- * `competitor_observation` columns, taking the count to 102. */
+ * `competitor_observation` columns, taking the count to 102. The `DEC-146`
+ * (`WF-003`) employee-invite slice adds the `user_invite` table plus the
+ * nullable `app_user.invited_at`/`invited_by` columns, taking the count to
+ * 103. */
 const EXPECTED_TABLES = [
   "addon_applicability",
   "adjustment_period",
@@ -165,6 +168,7 @@ const EXPECTED_TABLES = [
   "tax_rule",
   "unit",
   "unit_conversion",
+  "user_invite",
   "user_location_scope",
   "user_role",
   "user_totp",

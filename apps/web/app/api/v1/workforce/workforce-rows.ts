@@ -11,7 +11,9 @@ import {
   SHIFT_STATES,
   type EmployeeDocumentRecord,
   type EmployeeRecord,
+  type MyShiftRow as SchedulingMyShiftRow,
   type PayrollReportRecord,
+  type PendingSelfAssignmentRow as SchedulingPendingSelfAssignmentRow,
   type ShiftAdjustmentRecord,
   type ShiftAssignmentRecord,
   type ShiftRecord,
@@ -82,6 +84,8 @@ const ADJUSTED_HOURS = /^\d+(?:\.\d{1,2})?$/;
 const MAX_ADJUSTED_HOURS_VALUE = 10_000_000n;
 const MAX_LIMIT = 200;
 const MAX_TEXT = 200;
+/** A rejection reason may be a sentence or two; bounded like the others. */
+const MAX_REASON = 500;
 const MAX_VOCAB = 32;
 const MAX_MONEY = 64;
 const MAX_ADJUSTED_HOURS = 32;
@@ -965,6 +969,45 @@ export function parseCreateShiftAssignmentBody(
   return { ok: true, input: { employeeId } };
 }
 
+export interface DecideSelfAssignmentBody {
+  readonly decision: "approved" | "rejected";
+  /** Non-blank rejection reason; omitted when the body has none. */
+  readonly reason?: string;
+}
+
+export type ParsedDecideSelfAssignment =
+  { readonly ok: true; readonly input: DecideSelfAssignmentBody } | { readonly ok: false };
+
+/**
+ * `POST /shift-assignments/[id]/decide` body: the manager's
+ * `approved`/`rejected` decision and, for a rejection, a reason. A missing or
+ * non-member `decision` is a 400; the reason is optional here and a rejection
+ * without one is refused by the command (`DomainError`, 400). A blank reason is
+ * omitted rather than passed through.
+ */
+export function parseDecideSelfAssignmentBody(
+  body: Record<string, unknown> | undefined,
+): ParsedDecideSelfAssignment {
+  if (body === undefined) {
+    return { ok: false };
+  }
+  const decision = body["decision"];
+  if (decision !== "approved" && decision !== "rejected") {
+    return { ok: false };
+  }
+  const reason = readOptionalNullableText(body, "reason", MAX_REASON);
+  if (!reason.ok) {
+    return { ok: false };
+  }
+  return {
+    ok: true,
+    input: {
+      decision,
+      ...(reason.value === null ? {} : { reason: reason.value }),
+    },
+  };
+}
+
 export interface CreateShiftAdjustmentBody {
   readonly adjustedHours: string;
   readonly reason: string;
@@ -1157,6 +1200,85 @@ export function toShiftAssignmentRows(
     }
   }
   return rows;
+}
+
+/**
+ * One of the signed-in employee's own shifts (`WF-003`, `DEC-146`). The
+ * application read is already scoped to the resolved employee and organization
+ * (`DEC-061`), so the mapper is a straight projection with no organization field
+ * to drop.
+ */
+export interface MyShiftRow {
+  readonly assignmentId: string;
+  readonly assignmentState: string;
+  readonly assignedAt: string;
+  readonly shiftId: string;
+  readonly locationId: string;
+  readonly roleCode: string | null;
+  readonly startsAt: string;
+  readonly endsAt: string;
+  readonly breakMinutes: number;
+  readonly shiftState: string;
+}
+
+/** Maps one `My shifts` row to the wire shape. */
+export function toMyShiftRow(row: SchedulingMyShiftRow): MyShiftRow {
+  return {
+    assignmentId: row.assignmentId,
+    assignmentState: row.assignmentState,
+    assignedAt: row.assignedAt,
+    shiftId: row.shiftId,
+    locationId: row.locationId,
+    roleCode: row.roleCode,
+    startsAt: row.startsAt,
+    endsAt: row.endsAt,
+    breakMinutes: row.breakMinutes,
+    shiftState: row.shiftState,
+  };
+}
+
+/** Maps `My shifts` rows to the wire shape. */
+export function toMyShiftRows(rows: readonly SchedulingMyShiftRow[]): readonly MyShiftRow[] {
+  return rows.map(toMyShiftRow);
+}
+
+/** One self-originated pending assignment in the manager review queue (`DEC-146`). */
+export interface PendingSelfAssignmentRow {
+  readonly assignmentId: string;
+  readonly assignedAt: string;
+  readonly employeeId: string;
+  readonly employeeName: string;
+  readonly shiftId: string;
+  readonly locationId: string;
+  readonly roleCode: string | null;
+  readonly startsAt: string;
+  readonly endsAt: string;
+  readonly breakMinutes: number;
+}
+
+/** Maps one pending self-assignment row to the wire shape. */
+export function toPendingSelfAssignmentRow(
+  row: SchedulingPendingSelfAssignmentRow,
+): PendingSelfAssignmentRow {
+  return {
+    assignmentId: row.assignmentId,
+    assignedAt: row.assignedAt,
+    employeeId: row.employeeId,
+    employeeName: row.employeeName,
+    shiftId: row.shiftId,
+    locationId: row.locationId,
+    roleCode: row.roleCode,
+    startsAt: row.startsAt,
+    endsAt: row.endsAt,
+    breakMinutes: row.breakMinutes,
+  };
+}
+
+/** Maps pending self-assignment rows to the wire shape. */
+export function toPendingSelfAssignmentRows(
+  rows: readonly SchedulingPendingSelfAssignmentRow[],
+): readonly PendingSelfAssignmentRow[] {
+  return rows.map(toPendingSelfAssignmentRow);
 }
 
 export interface ShiftAdjustmentRow {

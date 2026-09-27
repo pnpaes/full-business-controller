@@ -1,5 +1,7 @@
 import {
   AUTH_ERROR_GENERIC,
+  DomainError,
+  assertPasswordPolicy,
   generatePasswordResetToken,
   hashPassword,
   hashPasswordResetToken,
@@ -116,6 +118,18 @@ export async function completePasswordReset(
     const now = deps.now ?? new Date();
     const generic: CompletePasswordResetResult = { ok: false, error: AUTH_ERROR_GENERIC };
     const request = input.request !== undefined ? { request: input.request } : {};
+
+    // One policy for every credential-setting path (shared with invite accept),
+    // checked before the token is claimed so a weak password does not consume a
+    // still-valid reset and the generic result leaks nothing.
+    try {
+      assertPasswordPolicy(input.newPassword);
+    } catch (error) {
+      if (error instanceof DomainError) {
+        return generic;
+      }
+      throw error;
+    }
 
     const record =
       input.token.length === 0

@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, isNotNull, isNull, lt } from "drizzle-orm";
+import { and, asc, desc, eq, gte, isNotNull, isNull, lt, sql } from "drizzle-orm";
 
 import type { Database } from "../client";
 import {
@@ -148,6 +148,8 @@ export interface CreateCompetitorObservationInput {
   readonly season?: string | null;
   /** URL/capture time/method/content hash; defaults to `{}`. */
   readonly provenance?: Record<string, unknown>;
+  /** `DEC-149` follow-up: the observation's idempotency key, or null. */
+  readonly contentHash?: string | null;
   /** `pending` at capture (the column default); the review command sets the rest. */
   readonly reviewStatus?: string;
 }
@@ -175,10 +177,57 @@ export async function createCompetitorObservation(
       productCategory: input.productCategory ?? null,
       season: input.season ?? null,
       ...(input.provenance === undefined ? {} : { provenance: input.provenance }),
+      ...(input.contentHash === undefined ? {} : { contentHash: input.contentHash }),
       ...(input.reviewStatus === undefined ? {} : { reviewStatus: input.reviewStatus }),
     })
     .returning();
   return rows[0]!;
+}
+
+/**
+ * The dedupe-guarded insert for an automated capture (`DEC-149` follow-up):
+ * `INSERT … ON CONFLICT DO NOTHING` on the partial unique index
+ * `competitor_observation_org_source_content_hash_key`. A re-captured
+ * `(organization_id, competitor_source_id, content_hash)` inserts nothing and
+ * returns `undefined`, so a concurrent duplicate cannot race a read-then-write
+ * and no audit fact is written for the skip. The `contentHash` must be non-null
+ * (the partial index only arbitrates hashed rows).
+ */
+export async function createCompetitorObservationIfNew(
+  db: Database,
+  input: CreateCompetitorObservationInput,
+): Promise<CompetitorObservation | undefined> {
+  const rows = await db
+    .insert(competitorObservation)
+    .values({
+      organizationId: input.organizationId,
+      competitorId: input.competitorId,
+      observedAt: input.observedAt,
+      source: input.source,
+      sourceUrl: input.sourceUrl,
+      itemId: input.itemId,
+      externalName: input.externalName,
+      price: input.price,
+      currency: input.currency,
+      offerNotes: input.offerNotes,
+      competitorSourceId: input.competitorSourceId ?? null,
+      captureMethod: input.captureMethod ?? null,
+      productCategory: input.productCategory ?? null,
+      season: input.season ?? null,
+      ...(input.provenance === undefined ? {} : { provenance: input.provenance }),
+      contentHash: input.contentHash ?? null,
+      ...(input.reviewStatus === undefined ? {} : { reviewStatus: input.reviewStatus }),
+    })
+    .onConflictDoNothing({
+      target: [
+        competitorObservation.organizationId,
+        competitorObservation.competitorSourceId,
+        competitorObservation.contentHash,
+      ],
+      where: sql`${competitorObservation.contentHash} is not null`,
+    })
+    .returning();
+  return rows[0];
 }
 
 export interface FindCompetitorObservationQuery {
@@ -527,6 +576,47 @@ export async function deactivateCompetitorSource(
     .update(competitorSource)
     .set({
       activeTo: input.activeTo,
+      updatedAt: new Date(),
+      updatedBy: input.updatedBy,
+    })
+    .where(
+      and(
+        eq(competitorSource.id, input.sourceId),
+        eq(competitorSource.organizationId, input.organizationId),
+      ),
+    )
+    .returning();
+  return rows[0];
+}
+
+export interface UpdateCompetitorSourceInput {
+  readonly organizationId: string;
+  readonly sourceId: string;
+  readonly urlOrIdentifier: string;
+  readonly rateLimitNote: string | null;
+  /** One of `COMPETITOR_COLLECTION_MODE`; the application checks the terms gate. */
+  readonly collectionMode: string;
+  readonly updatedBy: string;
+}
+
+/**
+ * Edits one org-scoped source's mutable fields (`ADR-0010`, `DEC-149`
+ * follow-up): `url_or_identifier`, `rate_limit_note` and `collection_mode`. The
+ * `(organization_id, url_or_identifier)` unique constraint is the backstop for a
+ * concurrent URL claim; `(collection_mode = 'automated' ⇒ terms_status =
+ * 'approved')` is also database-backed. Both are checked in the application
+ * first so a caller sees a `DomainError`.
+ */
+export async function updateCompetitorSource(
+  db: Database,
+  input: UpdateCompetitorSourceInput,
+): Promise<CompetitorSource | undefined> {
+  const rows = await db
+    .update(competitorSource)
+    .set({
+      urlOrIdentifier: input.urlOrIdentifier,
+      rateLimitNote: input.rateLimitNote,
+      collectionMode: input.collectionMode,
       updatedAt: new Date(),
       updatedBy: input.updatedBy,
     })

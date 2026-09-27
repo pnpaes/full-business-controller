@@ -5,6 +5,7 @@ import {
   COMPETITOR_COLLECTION_MODES,
   type CompetitorObservationRecord,
   type CompetitorStore,
+  type NewCompetitorObservationRecord,
 } from "./types";
 import {
   assertEnumValue,
@@ -43,6 +44,12 @@ export interface RecordCompetitorObservationInput {
   readonly season?: string | null;
   /** URL/capture time/method/content hash; `{}` when unknown. */
   readonly provenance?: Record<string, unknown> | null;
+  /**
+   * `DEC-149` follow-up: the automated-capture idempotency key. It is meaningful
+   * only for an `automated` capture; a manual capture ignores it (the column
+   * stays `null`, so a manual row is never deduped).
+   */
+  readonly contentHash?: string | null;
 }
 
 /**
@@ -58,13 +65,21 @@ export interface RecordCompetitorObservationInput {
  * code (upper-cased). Text fields are trimmed; a blank optional text becomes
  * `null`.
  *
+ * **Idempotent automated capture** (`DEC-149` follow-up): when the capture is
+ * `automated` and a `contentHash` is supplied, the insert is
+ * `INSERT … ON CONFLICT DO NOTHING` on the partial unique
+ * `(organization_id, competitor_source_id, content_hash)`. A re-captured fact
+ * inserts nothing, writes **no** audit fact and returns `undefined` — the
+ * collector counts that as a skipped duplicate. A manual capture (or one without
+ * a hash) always inserts; its `content_hash` is stored `null`.
+ *
  * The row and its `competitors.observation.recorded` audit fact commit or roll
  * back together.
  */
 export async function recordCompetitorObservation(
   store: CompetitorStore,
   input: RecordCompetitorObservationInput,
-): Promise<CompetitorObservationRecord> {
+): Promise<CompetitorObservationRecord | undefined> {
   assertUuid(input.competitorId, "competitorId");
   assertIsoInstant(input.observedAt, "observedAt");
   const source = requiredText(input.source, "source");
@@ -82,6 +97,11 @@ export async function recordCompetitorObservation(
   const productCategory = optionalText(input.productCategory);
   const season = optionalText(input.season);
   const provenance = optionalRecord(input.provenance, "provenance");
+  const requestedHash = optionalText(input.contentHash);
+  // The dedupe guard keys on an automated capture; a manual capture ignores the
+  // hash so its row stays unconstrained by the partial unique index.
+  const dedupe = captureMethod === "automated" && requestedHash !== null;
+  const contentHash = dedupe ? requestedHash : null;
 
   return store.withTransaction(async (tx) => {
     const competitor = await tx.findCompetitor({
@@ -108,7 +128,7 @@ export async function recordCompetitorObservation(
       }
     }
 
-    const created = await tx.createObservation({
+    const record: NewCompetitorObservationRecord = {
       organizationId: input.organizationId,
       competitorId: input.competitorId,
       observedAt: input.observedAt,
@@ -124,7 +144,16 @@ export async function recordCompetitorObservation(
       productCategory,
       season,
       provenance,
-    });
+      contentHash,
+    };
+
+    const created = dedupe
+      ? await tx.createObservationIfNew(record)
+      : await tx.createObservation(record);
+    if (created === undefined) {
+      // A duplicate automated capture: nothing recorded, nothing audited.
+      return undefined;
+    }
 
     await tx.writeAudit({
       organizationId: input.organizationId,

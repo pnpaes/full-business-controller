@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { buildPasswordResetUrl, createSendGridMailAdapter, parseMailFrom } from "./mail";
+import {
+  buildInviteUrl,
+  buildPasswordResetUrl,
+  createSendGridMailAdapter,
+  parseMailFrom,
+} from "./mail";
 import type { MailLogger } from "./mail";
 
 const TOKEN = "TOKEN-do-not-log-9f3a2b1c4d5e6f70";
@@ -146,6 +151,105 @@ describe("createSendGridMailAdapter", () => {
     expect(logger.warn).not.toHaveBeenCalled();
     expect(logger.error).not.toHaveBeenCalled();
     expect(loggedText(logger)).not.toContain(TOKEN);
+  });
+});
+
+describe("sendInviteEmail", () => {
+  it("posts the invite with a token-free link and the code only in the body", async () => {
+    const logger = logSpy();
+    const fetchImpl = fetchAccepted();
+    const adapter = createSendGridMailAdapter({
+      apiKey: API_KEY,
+      from: FROM,
+      baseUrl: BASE_URL,
+      fetchImpl,
+      logger,
+    });
+
+    await adapter.sendInviteEmail({
+      to: "employee@example.test",
+      token: TOKEN,
+      expiresInMinutes: 10080,
+    });
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    const body = sentBody(fetchImpl.mock.calls[0]?.[1] as RequestInit);
+    expect(body.personalizations[0]?.to[0]?.email).toBe("employee@example.test");
+    const plain = body.content.find((part) => part.type === "text/plain")?.value ?? "";
+    const html = body.content.find((part) => part.type === "text/html")?.value ?? "";
+    // The code is in the body; the link carries no token (ADR-0003).
+    expect(plain).toContain(TOKEN);
+    expect(html).toContain(TOKEN);
+    expect(plain).toContain("https://app.example.no/invite/accept");
+    expect(plain).not.toContain("invite/accept?token");
+    expect(html).not.toContain("token=");
+
+    // The invite token is never logged.
+    expect(logger.warn).not.toHaveBeenCalled();
+    expect(logger.error).not.toHaveBeenCalled();
+    expect(loggedText(logger)).not.toContain(TOKEN);
+  });
+
+  it("is not configured and sends nothing (no fetch) when the key is absent", async () => {
+    const logger = logSpy();
+    const fetchImpl = fetchAccepted();
+    const adapter = createSendGridMailAdapter({ fetchImpl, logger });
+
+    await adapter.sendInviteEmail({
+      to: "employee@example.test",
+      token: TOKEN,
+      expiresInMinutes: 10080,
+    });
+
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+    expect(loggedText(logger)).not.toContain(TOKEN);
+  });
+});
+
+describe("html escaping", () => {
+  it("escapes an HTML-dangerous token and URL in both bodies", async () => {
+    const logger = logSpy();
+    const fetchImpl = fetchAccepted();
+    const adapter = createSendGridMailAdapter({
+      apiKey: API_KEY,
+      from: FROM,
+      baseUrl: 'https://app.example.no/"onmouseover="x',
+      fetchImpl,
+      logger,
+    });
+    const dangerous = '<script>alert("x")</script>&';
+
+    await adapter.sendPasswordResetEmail({
+      to: "user@example.test",
+      token: dangerous,
+      expiresInMinutes: 30,
+    });
+    await adapter.sendInviteEmail({
+      to: "employee@example.test",
+      token: dangerous,
+      expiresInMinutes: 10080,
+    });
+
+    for (const call of fetchImpl.mock.calls) {
+      const body = sentBody(call[1] as RequestInit);
+      const html = body.content.find((part) => part.type === "text/html")?.value ?? "";
+      expect(html).not.toContain("<script>");
+      expect(html).not.toContain('href="https://app.example.no/"onmouseover="x"');
+      expect(html).toContain("&lt;script&gt;");
+      expect(html).toContain("&amp;");
+      expect(html).toContain("&quot;");
+      // The plain-text part stays verbatim; escaping is an HTML concern only.
+      const plain = body.content.find((part) => part.type === "text/plain")?.value ?? "";
+      expect(plain).toContain(dangerous);
+    }
+  });
+});
+
+describe("buildInviteUrl", () => {
+  it("appends the invite path and normalises a trailing slash", () => {
+    expect(buildInviteUrl("https://app.example.no/")).toBe("https://app.example.no/invite/accept");
+    expect(buildInviteUrl("https://app.example.no")).toBe("https://app.example.no/invite/accept");
   });
 });
 
