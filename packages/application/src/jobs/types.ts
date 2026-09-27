@@ -116,6 +116,12 @@ export interface OutboxWriteStore {
   recordAttempt(outboxEventId: string): Promise<void>;
   /** Stamps `dead_lettered_at`; throws `DomainError` if the id is unknown. */
   deadLetter(outboxEventId: string): Promise<void>;
+  /**
+   * DLQ retry: clears `dead_lettered_at` **and** `published_at` on one
+   * organization-owned event so it is re-sendable. Returns `false` on a
+   * scoped/unknown miss (not an error — the job can still be reset).
+   */
+  clearDeadLetter(organizationId: string, outboxEventId: string): Promise<boolean>;
   /** The oldest unpublished events for one organization, bounded by `limit`. */
   listUnpublished(organizationId: string, limit: number): Promise<readonly OutboxEventRecord[]>;
   /** Append-only audit fact; the caller must not pass secrets (ADR-0003 convention). */
@@ -146,6 +152,10 @@ export interface JobWriteStore {
     jobId: string,
     error: string,
   ): Promise<JobRecord | undefined>;
+  /** DLQ retry: moves a `dead_lettered` job to `pending` (attempts reset); `undefined` on a scoped/illegal miss. */
+  resetDeadLetteredJob(organizationId: string, jobId: string): Promise<JobRecord | undefined>;
+  /** DLQ discard: moves a `dead_lettered` job to terminal `failed`; `undefined` on a scoped/illegal miss. */
+  discardDeadLetteredJob(organizationId: string, jobId: string): Promise<JobRecord | undefined>;
   /**
    * Retention prune: deletes **terminal** job projections whose `createdAt` is
    * older than `olderThan`, organization-scoped (`DEC-061`) and capped at `limit`

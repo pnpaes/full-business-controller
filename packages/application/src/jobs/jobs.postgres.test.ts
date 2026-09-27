@@ -1,5 +1,7 @@
+import { NotFoundError } from "@aquarela/domain";
 import {
   createDb,
+  findOutboxEventById,
   job,
   organization,
   type DatabaseTransaction,
@@ -9,6 +11,7 @@ import {
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import { discardDeadLetteredJob, retryDeadLetteredJob } from "./dead-letter";
 import type { EnqueueOutboxEventInput } from "./enqueue-outbox-event";
 import { enqueueOutboxEvent } from "./enqueue-outbox-event";
 import { markJobFailed, markJobRunning, markJobSucceeded } from "./job-projection";
@@ -309,6 +312,95 @@ describe.skipIf(!databaseUrl)("jobs/outbox store against PostgreSQL", () => {
       expect(await store.countStuckJobs(orgId, cutoff)).toBe(2);
       // Org filter: the other organization's stuck row is invisible.
       expect(await store.countStuckJobs(otherOrgId, cutoff)).toBe(1);
+    });
+  });
+
+  it("retries and discards dead-lettered jobs, org-scoped, clearing the outbox on retry", async () => {
+    await inRollback(client.db, async (tx) => {
+      const orgId = (
+        await tx
+          .insert(organization)
+          .values({ legalName: `job-dlq-${suffix}` })
+          .returning()
+      )[0]!.id;
+      const otherOrgId = (
+        await tx
+          .insert(organization)
+          .values({ legalName: `job-dlq-other-${suffix}` })
+          .returning()
+      )[0]!.id;
+      const store = createPostgresJobStore(tx);
+      const dispatcher = new FakeOutboxJobDispatcher();
+
+      // Retry path: dead-letter a job and simulate the consumer's terminal outbox marks.
+      const retryTarget = await enqueueOutboxEvent(store, enqueueInput(orgId), dispatcher);
+      await markJobRunning(store, retryTarget.jobId, 1, { organizationId: orgId });
+      await markJobFailed(store, retryTarget.jobId, "gave up", {
+        deadLetter: true,
+        organizationId: orgId,
+      });
+      await store.markPublished(retryTarget.outboxEventId);
+      await store.deadLetter(retryTarget.outboxEventId);
+
+      // Org scoping: another organization cannot retry it.
+      await expect(
+        retryDeadLetteredJob(store, { organizationId: otherOrgId, jobId: retryTarget.jobId }),
+      ).rejects.toThrow(NotFoundError);
+
+      const retried = await retryDeadLetteredJob(store, {
+        organizationId: orgId,
+        jobId: retryTarget.jobId,
+      });
+      expect(retried).toMatchObject({
+        status: "pending",
+        attempts: 0,
+        error: null,
+        startedAt: null,
+        finishedAt: null,
+      });
+
+      const cleared = await findOutboxEventById(tx, {
+        organizationId: orgId,
+        outboxEventId: retryTarget.outboxEventId,
+      });
+      expect(cleared?.deadLetteredAt).toBeNull();
+      expect(cleared?.publishedAt).toBeNull();
+      // The event is replayable again, so the maintenance replay is the safety net.
+      expect((await store.listUnpublished(orgId, 10)).map((event) => event.id)).toContain(
+        retryTarget.outboxEventId,
+      );
+      // Org filter: another organization's clear is a no-op.
+      expect(await store.clearDeadLetter(otherOrgId, retryTarget.outboxEventId)).toBe(false);
+
+      // Discard path: keeps the outbox dead-letter marker, stamps it published.
+      const discardTarget = await enqueueOutboxEvent(
+        store,
+        { ...enqueueInput(orgId), payload: { runId: randomUUID() } },
+        dispatcher,
+      );
+      await markJobRunning(store, discardTarget.jobId, 1, { organizationId: orgId });
+      await markJobFailed(store, discardTarget.jobId, "gave up", {
+        deadLetter: true,
+        organizationId: orgId,
+      });
+      await store.deadLetter(discardTarget.outboxEventId);
+
+      await expect(
+        discardDeadLetteredJob(store, { organizationId: otherOrgId, jobId: discardTarget.jobId }),
+      ).rejects.toThrow(NotFoundError);
+
+      const discarded = await discardDeadLetteredJob(store, {
+        organizationId: orgId,
+        jobId: discardTarget.jobId,
+      });
+      expect(discarded.status).toBe("failed");
+
+      const kept = await findOutboxEventById(tx, {
+        organizationId: orgId,
+        outboxEventId: discardTarget.outboxEventId,
+      });
+      expect(kept?.deadLetteredAt).not.toBeNull();
+      expect(kept?.publishedAt).not.toBeNull();
     });
   });
 });

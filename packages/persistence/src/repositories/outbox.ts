@@ -27,6 +27,52 @@ export async function insertOutboxEvent(db: Database, input: NewOutboxEvent): Pr
   return rows[0]!;
 }
 
+export interface OutboxEventKey {
+  readonly organizationId: string;
+  readonly outboxEventId: string;
+}
+
+/** One outbox event by id, organization-scoped (`DEC-061`), or `undefined`. */
+export async function findOutboxEventById(
+  db: Database,
+  query: OutboxEventKey,
+): Promise<OutboxEvent | undefined> {
+  const rows = await db
+    .select()
+    .from(outboxEvent)
+    .where(
+      and(
+        eq(outboxEvent.id, query.outboxEventId),
+        eq(outboxEvent.organizationId, query.organizationId),
+      ),
+    )
+    .limit(1);
+  return rows[0];
+}
+
+/**
+ * Operator DLQ review, **retry**: clears the dead-letter mark on one
+ * organization-owned outbox event so the event can be re-sent. Both
+ * `dead_lettered_at` (the review marker) and `published_at` are cleared, because
+ * the maintenance replay selects `published_at IS NULL` and the consumer stamps a
+ * settled dead-lettered row published — either alone would keep the row out of
+ * the replay. Returns whether a row matched (org-scoped, `DEC-061`); a miss is not
+ * an error, so a job whose outbox row is already gone still resets.
+ */
+export async function clearOutboxDeadLetter(db: Database, query: OutboxEventKey): Promise<boolean> {
+  const rows = await db
+    .update(outboxEvent)
+    .set({ deadLetteredAt: null, publishedAt: null })
+    .where(
+      and(
+        eq(outboxEvent.id, query.outboxEventId),
+        eq(outboxEvent.organizationId, query.organizationId),
+      ),
+    )
+    .returning({ id: outboxEvent.id });
+  return rows.length > 0;
+}
+
 export interface UnpublishedOutboxEventKey {
   readonly organizationId: string;
   readonly aggregateType: string;

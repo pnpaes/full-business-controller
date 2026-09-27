@@ -114,6 +114,9 @@ export function createPostgresJobStore(db: Database): OutboxJobStore & JobReadSt
         throw new DomainError(`outbox event ${outboxEventId} not found`);
       }
     },
+    clearDeadLetter: async (organizationId: string, outboxEventId: string) => {
+      return repo.clearOutboxDeadLetter(db, { organizationId, outboxEventId });
+    },
     listUnpublished: async (organizationId: string, limit: number) => {
       const rows = await repo.listUnpublishedOutboxEvents(db, organizationId, limit);
       return rows.map(toOutboxRecord);
@@ -136,6 +139,14 @@ export function createPostgresJobStore(db: Database): OutboxJobStore & JobReadSt
     },
     markDeadLettered: async (organizationId: string, jobId: string, error: string) => {
       const row = await repo.markJobDeadLettered(db, { organizationId, jobId, error });
+      return row === undefined ? undefined : toJobRecord(row);
+    },
+    resetDeadLetteredJob: async (organizationId: string, jobId: string) => {
+      const row = await repo.resetDeadLetteredJob(db, { organizationId, jobId });
+      return row === undefined ? undefined : toJobRecord(row);
+    },
+    discardDeadLetteredJob: async (organizationId: string, jobId: string) => {
+      const row = await repo.discardDeadLetteredJob(db, { organizationId, jobId });
       return row === undefined ? undefined : toJobRecord(row);
     },
     deleteExpiredJobs: async (organizationId: string, olderThan: Date, limit: number) => {

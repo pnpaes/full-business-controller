@@ -29,6 +29,8 @@ const SUCCEEDED_FROM = ["running"];
 const FAILED_FROM = ["running"];
 /** A dead-letter follows a failed attempt, whether or not the failure was recorded first. */
 const DEAD_LETTERED_FROM = ["running", "failed"];
+/** The only status an operator DLQ review may retry or discard from. */
+const DEAD_LETTERED_ONLY = ["dead_lettered"];
 /** The terminal statuses eligible for retention pruning; non-terminal rows are never deleted. */
 const PRUNABLE_STATUSES = ["succeeded", "failed", "dead_lettered"] as const;
 /** The non-terminal statuses an aged row is stuck in (a lost delivery, not garbage). */
@@ -216,6 +218,71 @@ export async function markJobDeadLettered(
         eq(job.id, input.jobId),
         eq(job.organizationId, input.organizationId),
         inArray(job.status, DEAD_LETTERED_FROM),
+      ),
+    )
+    .returning();
+  return rows[0];
+}
+
+export interface ResetDeadLetteredJobInput {
+  readonly organizationId: string;
+  readonly jobId: string;
+}
+
+/**
+ * Operator DLQ review, **retry**: moves a `dead_lettered` job back to `pending`
+ * for a fresh delivery, resetting the attempt count and clearing the terminal
+ * `started_at`/`finished_at`/`error`. The status guard lives in the `UPDATE`
+ * predicate, so only a currently `dead_lettered` row moves — a concurrent
+ * transition (or a second retry) matches nothing and returns `undefined`, which
+ * the command maps to a `DomainError`. Organization-scoped (`DEC-061`).
+ */
+export async function resetDeadLetteredJob(
+  db: Database,
+  input: ResetDeadLetteredJobInput,
+): Promise<Job | undefined> {
+  const rows = await db
+    .update(job)
+    .set({
+      status: "pending",
+      attempts: 0,
+      error: null,
+      startedAt: null,
+      finishedAt: null,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(job.id, input.jobId),
+        eq(job.organizationId, input.organizationId),
+        inArray(job.status, DEAD_LETTERED_ONLY),
+      ),
+    )
+    .returning();
+  return rows[0];
+}
+
+/**
+ * Operator DLQ review, **discard**: moves a `dead_lettered` job to the terminal
+ * `failed` status. `markJobFailed` cannot do this — it only moves a `running`
+ * row — so this is a dedicated guarded transition; the recorded `error` and
+ * `finished_at` are kept as the review evidence. The outbox row is left for the
+ * caller (the command stamps it published so the replay cannot resurrect the
+ * discarded job, while `dead_lettered_at` stays as the review marker). Only a
+ * currently `dead_lettered` row moves; org-scoped (`DEC-061`).
+ */
+export async function discardDeadLetteredJob(
+  db: Database,
+  input: ResetDeadLetteredJobInput,
+): Promise<Job | undefined> {
+  const rows = await db
+    .update(job)
+    .set({ status: "failed", updatedAt: new Date() })
+    .where(
+      and(
+        eq(job.id, input.jobId),
+        eq(job.organizationId, input.organizationId),
+        inArray(job.status, DEAD_LETTERED_ONLY),
       ),
     )
     .returning();

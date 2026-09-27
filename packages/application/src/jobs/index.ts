@@ -2,6 +2,8 @@ export { JOB_AUDIT_ACTIONS, JOB_ENTITY_TYPE, OUTBOX_EVENT_ENTITY_TYPE } from "./
 export type { OutboxDispatchEvent, OutboxJobDispatcher } from "./dispatch";
 export { enqueueOutboxEvent } from "./enqueue-outbox-event";
 export type { EnqueueOutboxEventInput, EnqueueOutboxEventResult } from "./enqueue-outbox-event";
+export { discardDeadLetteredJob, retryDeadLetteredJob } from "./dead-letter";
+export type { ReviewDeadLetteredJobInput } from "./dead-letter";
 export { markJobFailed, markJobRunning, markJobSucceeded } from "./job-projection";
 export type { JobCommandContext, MarkJobFailedOptions } from "./job-projection";
 export { createPostgresJobStore } from "./postgres-store";

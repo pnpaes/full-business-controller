@@ -9,6 +9,10 @@ export const JOB_AUDIT_ACTIONS = {
   jobSucceeded: "jobs.job.succeeded",
   jobFailed: "jobs.job.failed",
   jobDeadLettered: "jobs.job.dead_lettered",
+  /** Operator DLQ review: a dead-lettered job was reset to pending for a fresh delivery. */
+  jobRetried: "jobs.job.retried",
+  /** Operator DLQ review: a dead-lettered job was discarded into terminal `failed`. */
+  jobDiscarded: "jobs.job.discarded",
   jobConsumed: "jobs.job.consumed",
 } as const;
 

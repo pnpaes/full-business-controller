@@ -2,10 +2,12 @@ import {
   createBoss,
   enqueueJobWithDispatch,
   ensureQueues,
+  outboxJobPayload,
   outboxQueueName,
   PAYROLL_REPORT_GENERATE_EVENT_TYPE,
 } from "@aquarela/jobs-runtime";
 import { createLogger } from "@aquarela/logger";
+import { findOutboxEventById } from "@aquarela/persistence";
 
 import { getConfig } from "./config";
 import { getDb } from "./db";
@@ -114,4 +116,51 @@ export async function enqueuePayrollReportGeneration(
     queue: eventType,
   });
   return { jobId };
+}
+
+export interface RedispatchJobInput {
+  readonly organizationId: string;
+  readonly outboxEventId: string | null;
+}
+
+/**
+ * Re-sends a retried job's event through the web boss, reusing the outbox row id
+ * as the pg-boss job id (so a duplicate send is a no-op). This is the **second**
+ * step of a retry: the projection reset + the outbox dead-letter clear commit in
+ * their own transaction first, then this send runs on the boss's own connection
+ * (there is no business transaction to bind `createPgBossDispatcher` to).
+ *
+ * The two steps are deliberately not atomic. If the send fails, the outbox row is
+ * unpublished again, so the scheduled **maintenance replay** re-sends it — the
+ * safety net; if the send succeeds and a replay also picks it up, the shared id
+ * deduplicates it. Returns `false` when there is no outbox event to send (a
+ * legacy projection without `outbox_event_id`), which is not an error.
+ */
+export async function redispatchJob(job: RedispatchJobInput): Promise<boolean> {
+  if (job.outboxEventId === null) {
+    return false;
+  }
+  const event = await findOutboxEventById(getDb().db, {
+    organizationId: job.organizationId,
+    outboxEventId: job.outboxEventId,
+  });
+  if (event === undefined) {
+    return false;
+  }
+
+  const boss = await startBoss(getBoss());
+  const queue = outboxQueueName(event.eventType);
+  await ensureOutboxQueue(boss, queue);
+  await boss.send(
+    queue,
+    outboxJobPayload({
+      id: event.id,
+      organizationId: event.organizationId,
+      eventType: event.eventType,
+      aggregateType: event.aggregateType,
+      aggregateId: event.aggregateId,
+    }),
+    { id: event.id },
+  );
+  return true;
 }

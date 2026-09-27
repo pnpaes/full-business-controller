@@ -19,6 +19,8 @@ const RUNNING_FROM: readonly JobStatus[] = ["pending", "failed"];
 const SUCCEEDED_FROM: readonly JobStatus[] = ["running"];
 const FAILED_FROM: readonly JobStatus[] = ["running"];
 const DEAD_LETTERED_FROM: readonly JobStatus[] = ["running", "failed"];
+/** The only status an operator DLQ review may retry or discard from. */
+const DEAD_LETTERED_ONLY: readonly JobStatus[] = ["dead_lettered"];
 /** Terminal statuses eligible for the retention prune (never `pending`/`running`). */
 const PRUNABLE_STATUSES: readonly JobStatus[] = ["succeeded", "failed", "dead_lettered"];
 /** The non-terminal statuses an aged row is stuck in. */
@@ -104,6 +106,21 @@ export class FakeJobStore implements OutboxJobStore, JobReadStore {
   deadLetter(outboxEventId: string): Promise<void> {
     this.updateOutbox(outboxEventId, { deadLetteredAt: new Date() });
     return Promise.resolve();
+  }
+
+  clearDeadLetter(organizationId: string, outboxEventId: string): Promise<boolean> {
+    const index = this.outboxEvents.findIndex(
+      (event) => event.id === outboxEventId && event.organizationId === organizationId,
+    );
+    if (index === -1) {
+      return Promise.resolve(false);
+    }
+    this.outboxEvents[index] = {
+      ...this.outboxEvents[index]!,
+      deadLetteredAt: null,
+      publishedAt: null,
+    };
+    return Promise.resolve(true);
   }
 
   private updateOutbox(outboxEventId: string, patch: Partial<OutboxEventRecord>): void {
@@ -197,6 +214,30 @@ export class FakeJobStore implements OutboxJobStore, JobReadStore {
         status: "dead_lettered",
         finishedAt: new Date(),
         error,
+        updatedAt: new Date(),
+      })),
+    );
+  }
+
+  resetDeadLetteredJob(organizationId: string, jobId: string): Promise<JobRecord | undefined> {
+    return Promise.resolve(
+      this.transition(organizationId, jobId, DEAD_LETTERED_ONLY, (job) => ({
+        ...job,
+        status: "pending",
+        attempts: 0,
+        startedAt: null,
+        finishedAt: null,
+        error: null,
+        updatedAt: new Date(),
+      })),
+    );
+  }
+
+  discardDeadLetteredJob(organizationId: string, jobId: string): Promise<JobRecord | undefined> {
+    return Promise.resolve(
+      this.transition(organizationId, jobId, DEAD_LETTERED_ONLY, (job) => ({
+        ...job,
+        status: "failed",
         updatedAt: new Date(),
       })),
     );

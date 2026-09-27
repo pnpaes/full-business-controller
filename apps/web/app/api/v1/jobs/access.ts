@@ -14,6 +14,17 @@ import { getAuthStore } from "../../../../lib/auth";
  */
 export const JOBS_READ_ROLES = ["owner", "general_manager", "finance", "admin"] as const;
 
+/**
+ * Role set for the DLQ-review mutations (`POST /api/v1/jobs/[id]/retry|discard`).
+ *
+ * Read is finance-inclusive (`JOBS_READ_ROLES`, a progress-poll concern);
+ * retry/discard are **admin-level operational actions** on the queue, so
+ * `finance` is deliberately excluded and only the administrative roles may act.
+ * Like the read set this is provisional pending `DEC-101`; narrow or widen it only
+ * against a recorded decision. `admin` is an explicit grant (no implicit bypass).
+ */
+export const JOBS_ADMIN_ROLES = ["owner", "general_manager", "admin"] as const;
+
 /** Loads the caller's roles and location scope live from server data (ADR-0003). */
 export async function loadJobsAccess(userId: string): Promise<UserAccess> {
   return loadUserAccess(getAuthStore(), userId);
