@@ -1,5 +1,50 @@
 # Reversibility log
 
+- **2026-09-26 Payroll-schedule slice (the first real async
+  producer/consumer + the job-progress route; ADR-0004/`DEC-139` item 5 +
+  `DEC-104`; whole slice uncommitted at HEAD `3348e78`, on top of the
+  uncommitted 084 jobs-runtime slice; nothing pushed)**: file set —
+  `packages/jobs-runtime/src/{payroll-schedule.ts,handlers.ts,queues.ts,consumer.ts,worker.ts,scheduler.ts,index.ts}`
+  (+ tests), `packages/application/src/scheduling/generate-payroll-report.ts`
+  (`actorId` widened to `string | null`),
+  `packages/domain/src/{period-close.ts,index.ts}` (`lastDayOfUtcMonth`
+  export only), `apps/web/app/api/v1/jobs/{access.ts,[id]/route.ts,
+  [id]/route.test.ts}`, `apps/scheduler/src/main.ts` (`PAYROLL_CRON`) and
+  `infra/modules/app-platform/main.tf` (scheduler `ORGANIZATION_ID` env).
+  **No migration** — the report writes ride the existing `payroll_report`
+  table and its lock; migrations and the `pgboss` schema are untouched, and
+  the `0700`-style down paths are untouched. **Rollback:** revert the
+  commits (or `git checkout .` the uncommitted tree — noting it reverts the
+  084 slice with it unless that is committed first); **no posted money or
+  stock fact** — the slice only creates `payroll_report` rows through the
+  existing system command, queued jobs and audit rows, all ordinary
+  operator-grade appends. Suggested layering: `feat(jobs)` (producer +
+  consumer + route + terraform) then `docs`. Nothing pushed; nothing
+  applied to DigitalOcean. Details and the review reconciliation:
+  [handoff 085](085-2026-09-26-payroll-schedule-producer-consumer.md).
+- **2026-09-26 Jobs-runtime slice (pg-boss worker wiring + scheduler cron;
+  ADR-0004/DEC-139; whole slice uncommitted at HEAD `3348e78`; nothing
+  pushed)**: the file set groups by the four suggested commits — (1)
+  `feat(jobs)` — `packages/jobs-runtime/**`, the additive
+  `packages/application/src/jobs/**` change, `apps/worker` + `apps/scheduler`,
+  root
+  `package.json`/`tsconfig.json`/`vitest.config.ts`/`package-lock.json`;
+  (2) `feat(persistence)` — `packages/persistence/scripts/migrate.mjs`,
+  `infra/bootstrap/pgboss-grants.sql`, `packages/persistence/package.json`;
+  (3) `test(jobs)` — `packages/jobs-runtime/src/jobs-runtime.postgres.test.ts`
+  (or folded into 1); (4) `docs` — this handoff/`CONTEXT.md` update.
+  **Migration rollback:** migration `0071_job` is unchanged (landed in
+  `c66eb27`) and its own down file is untouched, so the only new runtime
+  artifact is the migrator-owned `pgboss` schema — run
+  `DROP SCHEMA pgboss CASCADE` (destructive **only to the disposable queue
+  metadata**: the facts are retained in `public.outbox_event`), rehearsed on
+  a **scratch DB** (`public.job`/`public.outbox_event` and the 98 public
+  tables survived intact; never rehearsed on the dev DB).
+  **Rollback statement:** revert the commits (or `git checkout` the
+  uncommitted tree), then drop the schema; no posted money or stock fact is
+  touched. Nothing pushed; nothing applied to DigitalOcean. Details and the
+  review reconciliation: [handoff
+  084](084-2026-09-26-jobs-runtime-pgboss-wiring.md).
 - **2026-09-25 Forecast-vs-actual tracking slice (DEC-138, the row-15
   owner-authorized override; nothing pushed)**: in chronological order
   `e52f4e5` (`feat(forecast)` — migration

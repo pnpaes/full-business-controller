@@ -56,8 +56,37 @@ Environment/secret inventory (per environment, never committed): `DATABASE_URL`,
   env var via `TF_VAR_totp_secret_encryption_key`, never commit it. Generate with
   `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"` (see `.env.example`).
 
-`worker` and `scheduler` read neither variable (their shared config keeps `TOTP_SECRET_ENCRYPTION_KEY`
-optional and they do not call `resolveOrganization`), so both are wired to the `web` service only.
+**The `scheduler` component now requires `ORGANIZATION_ID`** (its
+maintenance replay and the scheduled payroll cron are
+organization-scoped; it **exits 1** without it), and `worker` still does
+not read it — the worker keeps neither variable. `TOTP_SECRET_ENCRYPTION_KEY`
+stays optional and unused for both (wire it to `web` only), and
+`ORGANIZATION_ID` is wired to `web` and `scheduler`.
+
+### Scheduler cron environment variables
+
+The `scheduler` component takes two cron expressions (both for jobs it ran
+before the pg-boss runtime arrived; the payroll cron is a **daily** job
+whose date guard fires generation only in the month's lead window):
+
+- `MAINTENANCE_CRON` — default `*/15 * * * *`; the scheduled maintenance
+  job replays unpublished outbox rows (P2 recovery).
+- `PAYROLL_CRON` — default `0 5 * * *` (`missed: 'once'`); the nightly
+  producer for the monthly payroll-input report. The **date guard**
+  decides the candidate period: current UTC month when the day is at
+  least `lastDay - 3` (the lead window), previous UTC month when the day
+  is ≤ 5 (outage catch-up), otherwise skip; skips too when a live report
+  for the candidate period already exists.
+
+### Job progress route
+
+`GET /api/v1/jobs/[id]` exposes a job's progress from the durable `job`
+projection — org-scoped, role-gated (`owner`/`general_manager`/`finance`
+/`admin`, provisional per `DEC-101`), omitting `payload`/`error`.
+**No endpoint returns `202` yet** — the jobs route is the progress
+endpoint; a real `202 + Location` producer follows. The report generated
+in the lead window is **provisional** (it under-counts the remaining days
+of the in-progress period, `DEC-104`).
 
 ### Rehearsing against a production clone
 
@@ -87,8 +116,9 @@ Outstanding inputs before the first real `apply` (tracker: `docs/BUILD_ROADMAP.m
   (see "First-owner bootstrap"); `../phase0/MULTITENANCY_POSTURE.md` fed this decision and is no
   longer an open gate.
 - **Jobs runtime — decided (`DEC-062`, 2026-09-20):** pg-boss selected for the
-  `worker` / `scheduler` runtime. `ADR-0004` acceptance itself is **still open**, tracked with the
-  remaining `Proposed` ADRs in `docs/BUILD_ROADMAP.md` §5 (not `§3`).
+  `worker` / `scheduler` runtime. `ADR-0004` is **Accepted (2026-09-26,
+  `DEC-139`)**, so no acceptance gate remains; INTG-002 publishing alone still
+  requires the per-source write terms (I15/I18) under `DEC-015`.
 
 ## Terraform layout
 
@@ -205,6 +235,57 @@ psql "postgresql://doadmin:<password>@<host>:25060/<db>?sslmode=require" \
   -f infra/bootstrap/database-grants.sql
 ```
 
+### pgboss schema provisioning and grants
+
+The pre-deploy migration job (owned by `web`) now also provisions the
+**`pgboss`** schema: `packages/persistence/scripts/migrate.mjs` runs
+`drizzle-kit migrate` and then provisions/migrates `pgboss` (pg-boss
+`12.33.2`, expected `schemaVersion` 42) under the same advisory lock `8675309` —
+see `docs/runbooks/persistence-migrations.md` for the provisioning mechanics.
+
+The pre-deploy migrator now applies the **pgboss runtime grants itself**:
+immediately after provisioning and still under the same advisory lock, it
+grants the runtime role (`PGBOSS_APP_ROLE`, default `app`) `USAGE ON SCHEMA
+pgboss`, `SELECT/INSERT/UPDATE/DELETE ON ALL TABLES IN SCHEMA pgboss`,
+`USAGE,SELECT ON ALL SEQUENCES` and `EXECUTE ON ALL FUNCTIONS`, plus matching
+`ALTER DEFAULT PRIVILEGES FOR ROLE <current_user>` default grants — applied
+**only when that role exists** (local dev, with no `app` role, no-ops and logs
+`migrate: runtime role "app" absent; pgboss grants skipped (no-op)`). Set
+`PGBOSS_APP_ROLE` in the migrate component's env alongside
+`DATABASE_MIGRATIONS_URL` only when the runtime role is not the default `app`.
+A grants failure **throws** — the pre-deploy job fails closed instead of
+reporting green while the runtime cannot reach the queue.
+
+`infra/bootstrap/pgboss-grants.sql` therefore becomes a **belt-and-braces /
+recovery** step, not a required post-migrate manual re-run (its header says so).
+Keep it for manual fix-ups, e.g. a runtime role created after the migrate ran.
+It is **idempotent** and no-ops while the schema is absent:
+
+```bash
+psql "postgresql://doadmin:<password>@<host>:25060/<db>?sslmode=require" \
+  -f infra/bootstrap/pgboss-grants.sql
+```
+
+**pg-boss schema downgrade is refused, and redeploy does not undo it:** if the
+database's `pgboss.schema_version` is newer than the pinned pg-boss expects,
+the migrator refuses and its error names the recovery command:
+`DROP SCHEMA pgboss CASCADE;`. A pg-boss schema bump **cannot** be rolled back
+by re-deploying the previous commit until that schema is dropped (the facts
+survive in `public.outbox_event`; the queue metadata is disposable). The
+`migrate.mjs` header documents the same restriction.
+
+### Terraform plan-time `organization_id` warning
+
+`infra/modules/app-platform/main.tf` carries a **non-blocking** `check
+"organization_id_set"` that warns at **plan time** when `organization_id` is
+empty: without it the `scheduler` component **exits 1 at boot** (its
+org-scoped outbox replay and the payroll cron are organization-scoped) and the
+`web` auth layer throws `ConfigError("ORGANIZATION_ID is not set")`. It is
+deliberately a warning, not a `validation`/`precondition`, because both env
+tfvars keep `organization_id = ""` and the documented offline `plan` with
+empty inputs must keep working. The offline plan (above) now also prints this
+warning, which is expected until the first-owner bootstrap supplies the id.
+
 ### First-owner bootstrap
 
 Run **once per environment, after migrations have applied and before the app is
@@ -285,8 +366,9 @@ default pending that open item.
   bootstrap; `GENERAL`) and, for MFA, `TOTP_SECRET_ENCRYPTION_KEY` (base64 32-byte secret;
   App Platform `SECRET`). Both are optional `app-platform` inputs that add no env entry when empty;
   `ORGANIZATION_ID` is non-secret and may be committed in the env's `tfvars` once known, while the
-  TOTP key stays in `TF_VAR_totp_secret_encryption_key` and is never committed. `worker` and
-  `scheduler` do not read either.
+  TOTP key stays in `TF_VAR_totp_secret_encryption_key` and is never committed. The
+  `scheduler` also gets `ORGANIZATION_ID` (required — exit 1 without it);
+  `worker` reads neither.
 - **Proxy headers and the per-IP rate limiter (required):** the App Platform proxy — and any CDN/WAF
   or load balancer in front of it — **must overwrite/strip `x-forwarded-for`** before the request
   reaches the app. `apps/web/lib/client-ip.ts` reads the first `x-forwarded-for` entry (falling back
@@ -298,12 +380,20 @@ default pending that open item.
   component owns it — `web`**; the other components must never run it. `npm run db:migrate` is
   `packages/persistence/scripts/migrate.mjs`, which resolves
   `DATABASE_MIGRATIONS_URL ?? DATABASE_URL`, takes the Postgres **session advisory lock `8675309`**,
-  then runs `drizzle-kit migrate` and always releases the lock. The lock serialises overlapping App
+  then runs `drizzle-kit migrate` and provisions/migrates the **`pgboss`**
+  schema (pg-boss `12.33.2`, expected `schemaVersion` 42, downgrades refused)
+  under the same lock before releasing it. The lock serialises overlapping App
   Platform pre-deploy jobs (Spaces has no Terraform state locking), and because it is
   **session-scoped**, `DATABASE_MIGRATIONS_URL` MUST be a **direct/session** connection — never the
   transaction pool. Every up migration requires a matching down-migration file; **never**
   `drizzle-kit push`. The runtime `drizzle-orm` pin is governed by **DEC-049** (upgrade to
   `>=0.45.2` before production — a pre-production gate).
+- **Worker/scheduler boot ordering:** the `worker` and `scheduler` components
+  must boot **and create their queues before any producing process enqueues** —
+  a producer that enqueues before the queues exist fails loudly, not silently.
+  Their boot now requires a reachable database with the **migrated `pgboss`
+  schema** (`DEC-139`). Neither component has a health check, so a boot failure
+  exits **non-zero** and must be caught from logs, not from a health endpoint.
 - Spec lives in `infra/envs/<env>/` managed by Terraform (preferred); a committed `.do/app.yaml`
   snapshot is acceptable for review/clarity but Terraform remains authoritative.
 
@@ -332,8 +422,8 @@ default pending that open item.
    and builds the image.
 2. **Merge/deploy:** Terraform or App Platform auto-deploy picks up the merged commit.
 3. **Migrate:** the `web` pre-deploy job (advisory-locked, `DATABASE_MIGRATIONS_URL`) applies
-   pending migrations; expand → migrate → contract staged across releases, each with a tested
-   down path.
+   pending migrations and provisions `pgboss`; expand → migrate → contract staged across releases,
+   each with a tested down path.
 4. **Release/verify:** components roll to the new revision; verify health endpoints, queue
    consumption, import freshness and error/latency alerts.
 

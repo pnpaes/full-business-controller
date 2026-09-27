@@ -190,9 +190,13 @@ are **intentional**.
 **Remaining gated roadmap:** the
 first platform-core slice (the `job` projection, migration `0071`; the outbox
 write path; the P2 transactional enqueue helper; the pg-boss worker wiring and
-the `scheduler` cron) is **in progress** — `ADR-0004` is **Accepted**
+the `scheduler` cron) is **delivered (2026-09-26)** — `ADR-0004` is **Accepted**
 (2026-09-26, `DEC-139`), so `DEC-094`'s job/worker/outbox gate is satisfied and
-row 20 can proceed; the first real consumer/producer follows the platform core.
+row 20 can proceed; the first real producer/consumer is **also delivered
+(2026-09-26, uncommitted)** — the scheduled monthly payroll-report generation
+plus the `GET /api/v1/jobs/[id]` progress route — and the remaining
+jobs-platform items (the real HTTP `202` producer, the 90-day `job` retention
+prune, the `DEC-139` alert wiring) follow.
 The **WF-003 self-assignment
 login model** (must a self-assigning employee hold an `app_user` login?)
 and the **privacy-review retention periods per file class** remain open
@@ -206,7 +210,7 @@ is delivered — migration `0070` — with accuracy honest on history I11);
 rows 17 and 18 remain blocked (`ADR-0009`–`0010`); the deployment rehearsal
 is parked on the owner inputs;
 the golden fixtures are unsigned.
-Next free decision id `DEC-112`.
+Next free decision id `DEC-140`.
 
 ## 2. The execution loop (per slice)
 
@@ -334,7 +338,7 @@ denied; no partial bundle) and exactly one `hms.compliance_export.generated` aud
 generation; no persisted artifact, storage client or signed URL; verified 1861/1861 with
 `DATABASE_URL`). **The HMS epic is complete** — all of `HMS-001`…`HMS-007` are delivered across
 19a–19e; the programme continues at row 20 (20a, 20b and 20c delivered). |
-| 20 | Task/approval platform + programme candidate gater (contracts, staff document library, personnel documents) | P6 / epics 21 | `WF-007`, `DOC-001`–`004`; `DEC-087`–`DEC-094`; `ADR-0004` (**Accepted** 2026-09-26 — job/worker/outbox layer only, `DEC-139`) | 19a; row 14 for `employee` | `task`/`approval` built (`DEC-094`); the `job`/worker/outbox layer is **no longer gated — `ADR-0004` Accepted 2026-09-26 (`DEC-139`)** and the first platform-core slice is in progress: the `job` projection table (migration `0071`), the outbox write path, the P2 transactional enqueue helper, the pg-boss `12.33.2` worker wiring and the `scheduler` cron, proven with a non-external consumer and a scheduled maintenance job; the first real consumer/producer follows | **20a: done** — `employee` + personnel documents (`DEC-087`/`DEC-099`, requirement `WF-007`) delivered 2026-09-22 (migrations `0046`/`0047`, **78 tables**; the `employee` parent — a real nullable `user_id` FK to the org-scoped `app_user`, `name`, free-text `role_code`, CHECK-backed `employment_type`, `base_hourly_rate numeric(19,4)`, a plain-uuid `cost_center_id`, `primary_location_id`, `active_from`/`active_to`, `retired_at`, retired-never-deleted — and `employee_document` — `employee_id` FK, `employee_document_kind` vocabulary, `title`, a nullable real `file_object_id` FK, nullable `issued_at`/`expires_at` calendar dates; org-scoped with four cross-org coherence guards; employees follow the `Employee records` matrix row, personnel documents the `Employee personnel documents` row — owner/general_manager/admin only, finance excluded; a location-scoped caller cannot see a NULL-`primary_location_id` employee; `/api/v1/workforce/**`; committed `246c735`…`5b932a8`; verified 2057/2057 with `DATABASE_URL`). **20b: done** — the staff document library (`DEC-088`/`DEC-100`, requirements `DOC-001`…`DOC-004`) delivered 2026-09-22 (migrations `0048`/`0049`, **81 tables**; `document`, `document_version`, `document_acknowledgement`; all-staff read published `all_staff` docs, managers publish, superseded versions retrievable to managers only, optional audited acknowledgement; the first versioned entity in the programme; `/api/v1/documents/**` and `/api/v1/document-versions/**`; `DEC-100` provisional clarifications recorded), **20c: done** — the `task`/`approval` platform tables (`DEC-094`) delivered 2026-09-22 (migration `0050`, **83 tables**; `task`/`approval` schema-only, org-scoped, no `job`/worker/outbox — `ADR-0004` still `Proposed`; provisional clarifications `DEC-101`); **next: row 14** workforce/scheduling (`WF-001`–`WF-007` — shifts/worked-hours/payroll-input; the `employee` entity has landed), subject to the **WF-003 self-assignment login model** and the privacy-review retention periods per file class |
+| 20 | Task/approval platform + programme candidate gater (contracts, staff document library, personnel documents) | P6 / epics 21 | `WF-007`, `DOC-001`–`004`; `DEC-087`–`DEC-094`; `ADR-0004` (**Accepted** 2026-09-26 — job/worker/outbox layer only, `DEC-139`) | 19a; row 14 for `employee` | `task`/`approval` built (`DEC-094`); the `job`/worker/outbox layer is **no longer gated — `ADR-0004` Accepted 2026-09-26 (`DEC-139`)** and the first platform-core slice is **delivered (2026-09-26)**: the pg-boss `12.33.2` worker wiring, the `scheduler` cron, the `job` projection table (migration `0071`), the outbox write path, the P2 transactional enqueue helper, proven with the non-external `platform.smoke` consumer and the unpublished-outbox replay maintenance job (verified 4913/4913) — and the **first real producer/consumer is delivered (2026-09-26, uncommitted)**: the scheduled monthly payroll-report generation (the `payroll-schedule` cron producer + the `payrollReportGenerateHandler` consumer, `DEC-104`) plus the org-scoped role-gated `GET /api/v1/jobs/[id]` job-progress route (no migration; verified 4957/4957); still remaining: the real HTTP `202` producer (a `202 + Location` trigger), the 90-day `job` retention prune and the `DEC-139` alert wiring — external publishing stays INTG-002, gated on the per-source write terms I15/I18 under `DEC-015` | **20a: done** — `employee` + personnel documents (`DEC-087`/`DEC-099`, requirement `WF-007`) delivered 2026-09-22 (migrations `0046`/`0047`, **78 tables**; the `employee` parent — a real nullable `user_id` FK to the org-scoped `app_user`, `name`, free-text `role_code`, CHECK-backed `employment_type`, `base_hourly_rate numeric(19,4)`, a plain-uuid `cost_center_id`, `primary_location_id`, `active_from`/`active_to`, `retired_at`, retired-never-deleted — and `employee_document` — `employee_id` FK, `employee_document_kind` vocabulary, `title`, a nullable real `file_object_id` FK, nullable `issued_at`/`expires_at` calendar dates; org-scoped with four cross-org coherence guards; employees follow the `Employee records` matrix row, personnel documents the `Employee personnel documents` row — owner/general_manager/admin only, finance excluded; a location-scoped caller cannot see a NULL-`primary_location_id` employee; `/api/v1/workforce/**`; committed `246c735`…`5b932a8`; verified 2057/2057 with `DATABASE_URL`). **20b: done** — the staff document library (`DEC-088`/`DEC-100`, requirements `DOC-001`…`DOC-004`) delivered 2026-09-22 (migrations `0048`/`0049`, **81 tables**; `document`, `document_version`, `document_acknowledgement`; all-staff read published `all_staff` docs, managers publish, superseded versions retrievable to managers only, optional audited acknowledgement; the first versioned entity in the programme; `/api/v1/documents/**` and `/api/v1/document-versions/**`; `DEC-100` provisional clarifications recorded), **20c: done** — the `task`/`approval` platform tables (`DEC-094`) delivered 2026-09-22 (migration `0050`, **83 tables**; `task`/`approval` schema-only, org-scoped, no `job`/worker/outbox — `ADR-0004` still `Proposed`; provisional clarifications `DEC-101`); **next: row 14** workforce/scheduling (`WF-001`–`WF-007` — shifts/worked-hours/payroll-input; the `employee` entity has landed), subject to the **WF-003 self-assignment login model** and the privacy-review retention periods per file class |
 
 Convention: `blocked (owner)` means an owner/tech acceptance or approval named in the gate
 is required before the slice can be implemented or relied on; `blocked (data)` means a
@@ -396,7 +400,18 @@ dates assigned):
 - **~~`ADR-0004` jobs runtime~~ resolved (2026-09-20, `DEC-062`)** — pg-boss selected as
   the jobs runtime (`3505aa8` comparison); **`ADR-0004` itself is now Accepted
   (2026-09-26, `DEC-139`)**, so no acceptance gate remains tracked with the
-  remaining `Proposed` ADRs below.
+  remaining `Proposed` ADRs below. The first platform-core slice is delivered
+  (2026-09-26): the pg-boss worker wiring, the `scheduler` cron, the `job` projection
+  (migration `0071`), the outbox write path, the P2 enqueue helper, proven with the
+  non-external `platform.smoke` consumer and the unpublished-outbox replay maintenance
+   job; the **first real producer/consumer is delivered (2026-09-26,
+   uncommitted)** — the scheduled monthly payroll-report generation plus
+   the `GET /api/v1/jobs/[id]` org-scoped job-progress route; still
+   remaining: the real HTTP `202` producer (a `202 + Location` trigger),
+   the 90-day `job` retention prune and the `DEC-139` alert wiring —
+   external publishing stays INTG-002, gated on the per-source write
+   terms I15/I18
+   under `DEC-015`.
 - **`ADR-0005` accepted (2026-09-20); `ADR-0007` + `ADR-0008` accepted (2026-09-20);
   `ADR-0006` accepted (2026-09-21); `ADR-0009`/`0010`/`0011` acceptance** —
   `ADR-0005`, `ADR-0007` and `ADR-0008` are
@@ -419,7 +434,8 @@ dates assigned):
   (Deployment readiness, 2026-09-20: the env-var wiring is **done** —
   `ORGANIZATION_ID` (general) and `TOTP_SECRET_ENCRYPTION_KEY` (secret) are wired
   conditionally into the app-platform module and both env roots (unset adds no env
-  var), web-only; `terraform fmt -check -recursive` clean, `init -backend=false` +
+  var), wired to `web` and `scheduler` as of 2026-09-26 (scheduler exits 1 without
+  `ORGANIZATION_ID`; `worker` excluded); `terraform fmt -check -recursive` clean, `init -backend=false` +
   `validate` green in both envs, offline plan still **16 to add / 0 change / 0
    destroy** per env. What still gates a real `apply`: ~~`ADR-0004`
    acceptance~~ resolved 2026-09-26 (`DEC-139`), a real

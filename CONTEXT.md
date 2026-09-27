@@ -12,102 +12,170 @@ orientation and the next step. See "Handover archive" and "Update protocol".
 ## Resume here (next session)
 
 **Say "resume the work" and start here.** A fresh session must be able to
-continue from this section alone. (Rewritten by the 2026-09-25
-Integrations-close-out session; the INTG-001 slice is per-slice documented
-in `docs/handoffs/082-2026-09-25-integrations-registry-intg-001.md`, and
-the earlier 081 design-system/storage wave in
-`docs/handoffs/081-2026-09-25-design-system-and-storage-port-wave.md`.)
+continue from this section alone. (Rewritten by the 2026-09-26
+jobs-runtime docs session, after the payroll producer/consumer slice.
+Per-slice detail: `docs/handoffs/084-2026-09-26-jobs-runtime-pgboss-wiring.md`
+and the handoff `085` file for the payroll slice — both listed in
+`docs/handoffs/README.md`; this file does not restate them.)
 
-**State:** branch `main`; HEAD **`4ba3ced`** (the DEC-138 docs commit sits
-on top of it), working tree clean. All commits are **unpushed**; nothing
-applied to DigitalOcean. **4873/4873 tests (349 files)**. Migrations
-through **`0070`**; **97 public tables** (the `0070` slice added
-`forecast_snapshot` + `forecast_override`); `db:migrate` a no-op on
-re-run. Decision ids recorded through **`DEC-138`**; the **next free id
-is `DEC-139`**. The forecast-vs-actual tracking slice is **delivered**
-(`DEC-138`, owner-authorized override of row 15's data gate; accuracy
-stays honest on history — `insufficient_history`/`no_snapshot` are
-first-class results, never a fabricated figure), and the Integrations
-registry (**INTG-001**) is **delivered** — `ADR-0011` Accepted
-(2026-09-25, owner + tech lead), `DEC-137` recorded — while INTG-002
-publishing stays **gated on `ADR-0004`** (still Proposed). Verification
-at HEAD: `typecheck`, `lint`, `format:check`, `next build` clean;
-`DATABASE_URL=postgres://aquarela:aquarela@localhost:
-5432/aquarela npm run test` → **4873/4873 (349 files)**; the `0070` down
-path was rehearsed on a scratch DB (never the dev DB). Note
-`packages/application/src/scheduling/scheduling.postgres.test.ts` has a
-known same-instant ordering flake (passes on re-run).
+**State:** branch `main`; HEAD **`3348e78`** (the `ADR-0004`/`DEC-139` docs
+commit; the P2 platform core is `c66eb27`). **Two slices are UNCOMMITTED in
+the working tree:** (i) the **jobs-runtime pg-boss wiring** (file set:
+`packages/jobs-runtime/**`; the additive `packages/application/src/jobs/**`
+queue-field/audit change; `apps/worker` + `apps/scheduler`; root
+`package.json`/`tsconfig.json`/`vitest.config.ts`/`package-lock.json`;
+`packages/persistence/scripts/migrate.mjs` +
+`packages/persistence/package.json`; `infra/bootstrap/pgboss-grants.sql`;
+docs), and (ii) the **first real producer/consumer** on top of it — the
+scheduled monthly payroll-report generation + the HTTP job-progress route
+(`ADR-0004`/`DEC-139` item 5 + `DEC-104`; per-slice detail: handoff `085`).
+Rollback: `git checkout` the tree (or `git revert` each commit once
+committed), then `DROP SCHEMA pgboss CASCADE` **only when unwinding the
+whole jobs stack** — facts stay in `public.outbox_event`. **4957/4957 tests
+(361 files)**; migrations through **`0071`** plus the migrator-provisioned
+**`pgboss`** schema (pg-boss schemaVersion 42); `db:migrate` a no-op re-run.
+**No migration in the payroll slice.** Nothing pushed; nothing applied to
+DigitalOcean. **Next free decision id `DEC-140`.**
+Know the `packages/application/src/scheduling/scheduling.postgres.test.ts`
+same-instant ordering flake (passes on re-run).
 
-**Complete since the last rewrite.** Per handoff
-`docs/handoffs/083-2026-09-25-forecast-tracking-dec-138.md` and the top
-of `docs/handoffs/reversibility-log.md` — do not restate per-slice
-history here. In brief: the forecast-vs-actual tracking slice — migration
-`0070` (`forecast_snapshot` + `forecast_override`, expand-only) +
-persistence + application + routes + the tracking screen, committed as
-`e52f4e5`, `7c06fdd`, `4ba3ced`, with the docs commit on top; `DEC-138`
-accepted (2026-09-25, owner). The insights honest-gap card is replaced by
-the live tracking screen.
+**Review-fix pass (`/review uncommitted`, 2026-09-26) folded into the
+uncommitted tree:** five of six findings fixed, one declined with evidence
+(full detail in handoff `085`'s "Review-fix pass" section). The migrator
+(`packages/persistence/scripts/migrate.mjs`) now applies the pgboss runtime
+grants itself after provisioning, under advisory lock `8675309`, to the
+`PGBOSS_APP_ROLE` (default `app`; no-op when the role is absent; fail-closed
+on a grants error), so `infra/bootstrap/pgboss-grants.sql` is
+belt-and-braces/recovery only; the pgboss downgrade refusal names the
+recovery command (`DROP SCHEMA pgboss CASCADE;`) and a pg-boss schema bump
+blocks revert-by-redeploy until the drop; `infra/modules/app-platform/
+main.tf` carries a non-blocking Terraform `check "organization_id_set"`
+plan-time warning (both tfvars keep `organization_id = ""`; HCL unvalidated
+here); and the `packages/jobs-runtime` cron handlers no longer trust
+pg-boss-stored `job.data` (configured `organizationId`/`limit` win; a
+mismatch logs a warning). Declined: narrowing `GRANT EXECUTE ON ALL
+FUNCTIONS` — pinned pg-boss 12.33.2 defines only `create_queue`,
+`delete_queue`, `job_now`, `job_table_format`, `job_table_run`,
+`job_table_run_async` in `pgboss`, so the blanket grant covers exactly
+those. Post-fix verification: **4957/4957 tests (361 files)**;
+typecheck/lint/format:check clean; `next build` exit 0; `db:migrate` a
+no-op.
 
-**Durable facts worth carrying forward:**
+**Next task (buildable now — no owner input needed): the HTTP `202`
+producer, plus the remaining `DEC-139` items.** The first real
+producer/consumer is delivered (the `payroll-schedule` cron producer +
+the `payrollReportGenerateHandler` consumer + `GET /api/v1/jobs/[id]`
+org-scoped progress), but nothing returns `202` yet — the jobs route is
+the progress endpoint, a real `202 + Location` trigger follows.
 
-1. `npm run build` must be in every verification pass — typecheck/lint/
-   tests do not catch client-bundle breakage (the `@aquarela/domain` barrel
-   case, fixed by `3054512`).
-2. `0070` is expand-only with the down companion
-   `0070_forecast_snapshot_forecast_override_down.sql` (destructive only
-   to forecast snapshots/overrides); its down path was rehearsed on a
-   scratch DB and carries a runbook row.
+- **Scope (do):** a trigger endpoint/command that enqueues a job inside
+  its business transaction (routed through the `createPgBossDispatcher`
+  transaction binding) and returns **`202` +
+  `Location: /api/v1/jobs/<id>`** (the progress endpoint already exists,
+  org-scoped, role-gated `JOBS_READ_ROLES`); plus the remaining `DEC-139`
+  items — the **90-day `job` retention prune**, the **item-8 alert
+  wiring** (any dead-letter; oldest queued age > 10 min; queue depth >
+  100; worker heartbeat missing > 2 min), and a **DLQ weekly-review
+  runbook** (dead-letters kept 30 days).
+- **Scope (do not):** no external publishing (INTG-002 stays gated on the
+  per-source write terms I15/I18 under `DEC-015`); do not weaken any test
+  assertion; do not resolve other recorded inputs silently; do not
+  implement `scheduledAt`/`startAfter` delayed delivery as part of the
+  `202` trigger (recorded deferred, see remainder).
+- **Authoritative docs to read first:** `docs/adr/0004-jobs-and-outbox.md`;
+  `DEC-139` in `12_OPEN_DECISIONS.md`;
+  `docs/handoffs/084-2026-09-26-jobs-runtime-pgboss-wiring.md` + handoff
+  `085` (the payroll slice); `docs/runbooks/deployment.md`.
+- **Verification (exact):** `export NVM_DIR="$HOME/.nvm"; .
+"$NVM_DIR/nvm.sh"; nvm use 22`; `npm run typecheck`; `npm run lint`;
+  `npm run format:check`; `npm run build`;
+  `DATABASE_URL=postgres://aquarela:aquarela@localhost:5432/aquarela npm
+run test` (≥ **4957/4957**, 361 files); `npm run db:migrate` a no-op
+  re-run. Normalise the generated `apps/web/next-env.d.ts`/
+  `apps/web/tsconfig.json` with `git checkout --` before staging (see the
+  durable fact below). Expect the
+  `packages/application/src/scheduling/scheduling.postgres.test.ts`
+  same-instant ordering flake to occasionally fail (passes on re-run).
+  Commit in layers with the rollback approach in each body (Rule 2).
+- **Acceptance criteria:** the trigger enqueues atomically with its
+  business change (a rolled-back transaction leaves no outbox row, no
+  projection and no queue row) and answers `202 + Location` pointing at
+  the existing progress route; the read path stays org-scoped and
+  fail-closed on authorization; the full verification set is green
+  (≥ 4957/4957, 361 files) with `build` included.
+- **Rollback:** revert each commit (or `git checkout` the tree
+  pre-commit); a schema change is not expected — if one lands, follow
+  expand → migrate → contract with a rehearsed down path and a runbook
+  row before finishing.
 
-**Next task:** `DEC-138` is delivered; nothing is buildable without an
-owner input. The remaining work is the standing **owner/data-gated**
-items: the reset-token delivery (the email slice — see `DEC-131`), the
-unsigned golden fixtures (owner signature — the "verified" gate), the
-`task`↔`approval` link, `WF-003` self-assignment (the login model,
-`DEC-102`), the `ADR-0004` worker/outbox layer (which also gates INTG-002
-publishing and an automated snapshot cadence for `DEC-138`), the
-deployment prerequisite inputs, and the receipt→ledger
-`storage_area_id` policy. **Do not start any of them without the
-owner input named for it** — see "Open decisions / inputs" below (next
-free decision id `DEC-139`).
+**Honest remainder / open items (recorded, do not silently defer):**
 
-**Process note — one worktree, one writer:** a **second session was found
-running concurrently in this same worktree** earlier (orphaned background
+1. The payroll report generated in the month's lead window is
+   **provisional** — it under-counts the remaining days of the
+   in-progress period (`DEC-104`); `DEC-104` items 5/9/10 stay open and
+   the handler's conservative refusal to supersede an `exported` report
+   is **deliberate** (it throws inside the same `FOR UPDATE`-locked
+   transaction that generates, so the posture holds under redelivery).
+2. `scheduledAt`/`startAfter` delayed delivery is unimplemented — the
+   current-month candidate fires on the daily cron's lead-window guard,
+   not at a scheduled instant.
+3. The jobs access set `JOBS_READ_ROLES`
+   (owner/general_manager/finance/admin) is **provisional** per
+   `DEC-101`.
+4. The **scheduler now requires `ORGANIZATION_ID`** (the maintenance
+   replay and the payroll cron are organization-scoped) and exits 1
+   without it; `web` and `scheduler` both carry it.
+5. Terraform is unvalidated here (the binary is absent in the session
+   environment); `infra/modules/app-platform/main.tf` now gives the
+   scheduler component `ORGANIZATION_ID` and carries a **non-blocking**
+   plan-time `check "organization_id_set"` warning when `organization_id`
+   is empty (deliberately not a `validation`/`precondition`: both env
+   tfvars keep `organization_id = ""` and the offline `plan` must keep
+   working).
+6. A post-success projection-write failure causes an extra supersede
+   cycle on the next delivery — audit churn only, settled state wins.
+7. The 90-day `job` retention prune (`DEC-139` item 5) is not
+   implemented.
+8. The `DEC-139` item-8 alert wiring (any dead-letter; oldest queued age
+   > 10 min; queue depth > 100; worker heartbeat missing > 2 min) is not
+   > implemented — the runtime exposes the pg-boss surfaces, but there is
+   > no alert transport.
+9. No DLQ weekly-review runbook yet (dead-letters are kept 30 days per
+   `DEC-139` item 8).
+10. Queue-existence deploy ordering: a producing process must not enqueue
+    before the worker/scheduler has created the queues.
+11. `retryLimit 5` vs `maxAttempts 5`: the 6th delivery of a failed event
+    is a settled no-op — documented in `packages/jobs-runtime` code
+    (the `reviewer-glm` item).
+12. Partitioned queues would need migrator pre-creation, because `app`
+    lacks DDL.
+13. INTG-002/external publishing is now gated **only** on the per-source
+    write terms I15/I18 under `DEC-015` (`ADR-0004` is no longer a gate).
+
+**Process note — one worktree, one writer:** a second session was found
+running concurrently in this same worktree before (orphaned background
 tasks from a previous session), editing and committing the same files; git
 mutations collided and one edit briefly broke the build. Two sessions must
 not drive one worktree. **At session start, check for a concurrent writer**
 (recent file mtimes, `git reflog`, unexpected new commits) **before
 editing**.
 
-**Scope (do not), whole task:** do not weaken any assertion in
-`packages/ui/src/tokens.test.ts` (add or extend only); do not add a
-dependency, a Tailwind config or a CSS file; do not change a workflow,
-business rule or component behaviour; do not rewrite posted money or stock
-facts; do not resolve other recorded open inputs silently; do not push; do
-not deploy or write externally (`DEC-015`). Forecast overrides are
-advisory only and never auto-applied (`DEC-138`).
+**Durable facts:**
 
-**Verification set (exact):** `export NVM_DIR="$HOME/.nvm"; .
-"$NVM_DIR/nvm.sh"; nvm use 22`; `npm run typecheck`; `npm run lint`; `npm
-run format:check`; `npm run build` — noting that `apps/web/next-env.d.ts`
-and `apps/web/tsconfig.json` are **generated artifacts** rewritten by
-every `next build`/`next dev` for the active `NEXT_DIST_DIR`; normalise
-with `git checkout -- apps/web/next-env.d.ts apps/web/tsconfig.json`
-before staging. Full suite:
-`DATABASE_URL=postgres://aquarela:aquarela@localhost:5432/aquarela npm run
-test` (≥ **4873/4873**, 349 files) — note
-`packages/application/src/scheduling/scheduling.postgres.test.ts` has a
-known same-instant ordering flake (passes on re-run). **Visual work
-additionally requires the browser check:** drive the changed screens with
-the `playwright-cli` wrapper (`~/.bun/bin/playwright-cli`; call it by
-name, do not bypass it with a raw `node`), screenshot at laptop, tablet
-and mobile widths into the gitignored `storage/tmp/`, **read the PNGs back
-with the Read tool** before claiming a layout is correct, then delete
-them; concurrent browser work must use per-agent named sessions
-(`playwright-cli -s=<name>` — agents share one session by default, and a
-mid-check navigation silently invalidates another agent's verification).
-`npm run db:migrate` a no-op re-run (or, if a migration landed: the
-rehearsed down path plus a runbook row before finishing). Commit in layers
-with the rollback approach in each body (Rule 2).
+1. `npm run build` must be in every verification pass — typecheck/lint/
+   tests do not catch client-bundle breakage (the `@aquarela/domain` barrel
+   case, fixed by `3054512`).
+2. `apps/web/next-env.d.ts` and `apps/web/tsconfig.json` are **generated
+   artifacts** rewritten by every `next build`/`next dev` for the active
+   `NEXT_DIST_DIR`; normalise with `git checkout -- apps/web/next-env.d.ts
+apps/web/tsconfig.json` before staging.
+3. The scheduling same-instant ordering flake (above) passes on re-run.
+4. Dev server (session-scoped, still current):
+   `DATABASE_URL=postgres://aquarela:aquarela@localhost:5432/aquarela`,
+   `ORGANIZATION_ID=1448a476-32f2-426f-b153-11a851011e48`; sign in
+   `owner` / `LocalDevPass123`; MFA disabled for `owner`; demo data
+   seeded including the `zettle-legacy` `import_profile`. A fresh session
+   must restart the server.
 
 ## Next up (prioritised)
 
@@ -115,20 +183,52 @@ with the rollback approach in each body (Rule 2).
 open-point lists. Per-slice detail is in `docs/handoffs/`. The detailed list
 lives in the second "Next up" section below.
 
-1. **The DEC-138 forecast-vs-actual tracking slice is
-   **delivered** (migration `0070`; accuracy honest on history I11); the
-   Integrations Administration backend is **delivered**
-   (INTG-001, `DEC-137`; INTG-002 stays gated on `ADR-0004`); the
-   standing items remain owner/data-gated and are the remainder (see
-   "Resume here" for the exact list — the wave work W1–W7, the HMS
-   blockade, the Administration backends including Integrations and
-   Tax/rules, the storage port and the rate-limiter shared store
-   `DEC-135` are all delivered).
-2. **The operations-completion waves W1–W7 are all delivered** (W7 per
-   `docs/handoffs/080-…md`); the HMS blockade, the Administration reads /
-   users-scopes work and the tax-rule authoring are delivered since
-   (`DEC-130`–`DEC-132`, `DEC-136`); what remains is the honest-gap list,
-   not a wave.
+1. **The pg-boss wiring AND the first real producer/consumer are both
+   delivered but UNCOMMITTED (HEAD `3348e78`; `ADR-0004` Accepted
+   2026-09-26, `DEC-139`).** Next task: the **HTTP `202` producer**
+   (a `202 + Location: /api/v1/jobs/<id>` trigger) plus the remaining
+   `DEC-139` items (the 90-day `job` retention prune, the item-8 alert
+   wiring, the DLQ weekly-review runbook) — exact scope, verification,
+   acceptance criteria and honest remainder in "Resume here" (next free
+   decision id `DEC-140`).
+2. **Then the honest-gap queue** (each recorded, not silently deferred):
+   the items in the "Resume here" remainder list (queue-existence deploy
+   ordering) and the standing owner/data-gated items (reset-token
+   delivery, the unsigned golden fixtures, the `task`↔`approval` link,
+   `WF-003` self-assignment, the deployment prerequisite inputs, the
+   receipt→ledger `storage_area_id` policy).
+3. **Rows 13/12/11 and the close-outs delivered — COMPLETE.** Row 13 (close
+   13a/13b + reporting 13c/13d/13e-f), the cost-card composition chain
+   (`DEC-111`/`DEC-112`), the row-11 import mapping writer (`DEC-113`), the
+   volume denominators + recurrence normalisation (`DEC-114`/`DEC-115`), the
+   correction/reversal wiring (`DEC-116`), the reversal gate (`DEC-117`),
+   the settlement netting (`DEC-118`) and the operator-driven daily close
+   (`DEC-119`) — all delivered, per their decision rows and handoffs. The
+   recorded follow-ups (posture gaps listed above) remain open, not silently
+   deferred.
+4. **Receipt→ledger wiring — the lead item, gated:** on the **OPS receipt
+   destination `storage_area_id` policy** (a recorded owner input). If it has
+   not landed it stays blocked; do not resolve the policy silently
+   (`post-stock-movement.ts`; `docs/BUILD_ROADMAP.md` §5 slice-8 entry).
+5. **Owner/OPS/data inputs** (gate the remaining roadmap items): the OPS
+   `storage_area_id` policy; the FIN variance-tolerance thresholds; the
+   privacy-review retention periods per file class; history/grain quality (I11);
+   the deployment prerequisite inputs; the six golden-fixture signatures; the
+   **WF-003 self-assignment login model**; the **`DEC-102`/`DEC-103`/`DEC-104`
+   provisional items**.
+6. **Test-deployment rehearsal** (`docs/runbooks/deployment.md`) — staging first
+   with sanitized/synthetic data only; parked on the deployment prerequisite
+   inputs.
+7. **Golden-fixture sign-off** — the six fixtures are prepared as machine-readable
+   JSON under `tests/fixtures/` (`DEC-065`); finance + product owner sign (the
+   "verified" gate); `I8`/`I9` still gate the real rates behind them.
+8. **Rows 15–18 and the competitor/planning waves** — competitor manual
+   observations landed in the completion programme (see the decisions rows);
+   row 15's forecast-tracking slice is **delivered** (`DEC-138`,
+   owner-authorized), rows 17–18 remain blocked
+   (`ADR-0009`–`0010`; row 16's registry slice INTG-001 is
+   delivered, INTG-002 now gated only on I15/I18 under `DEC-015` — `ADR-0004`
+   is no longer a gate since its 2026-09-26 acceptance).
 
 ## What this is
 
@@ -161,8 +261,8 @@ Per-slice detail, commits and reconciliation are in `docs/handoffs/`.
 
 - `00_README.md` … `13_AGENT_BUILD_BRIEF.md` — the specification package
   (inputs, rarely edited). Start with `00_README.md`.
-- **`12_OPEN_DECISIONS.md` — the accepted decisions (`DEC-001`…`DEC-138`);
-  the authority. New decisions are appended here (next free id `DEC-139`).**
+- **`12_OPEN_DECISIONS.md` — the accepted decisions (`DEC-001`…`DEC-139`);
+  the authority. New decisions are appended here (next free id `DEC-140`).**
 - `docs/phase0/` — close-out plan, calculation contract, data dictionary, golden
   fixtures, source-data request, notes. See
   `docs/phase0/CALCULATION_CONTRACT.md`.
@@ -182,6 +282,77 @@ Per-slice detail, commits and reconciliation are in `docs/handoffs/`.
 - `CONTEXT.md` — this file.
 
 ## Current status
+
+- **2026-09-26 — the first real async producer/consumer delivered and
+  UNCOMMITTED on top of the also-uncommitted pg-boss wiring (HEAD
+  `3348e78`):** the scheduled monthly payroll-report generation
+  (`ADR-0004`/`DEC-139` item 5 + `DEC-104`) + the HTTP job-progress
+  route. **What landed (uncommitted, no migration):** the
+  `payroll-schedule` cron producer in `packages/jobs-runtime` (daily,
+  default `0 5 * * *`, `missed:'once'`; candidate period = current UTC
+  month when `day >= lastDay-3`, else previous UTC month when `day <= 5`
+  (outage catch-up), else skip; skip when a live report exists; enqueue
+  is atomic with the outbox+job+queue+audit in one transaction via
+  `fromDrizzle`); the real `payrollReportGenerateHandler` (reads the
+  period from the durable `job` projection; refuses to supersede an
+  `exported` report — throwing inside the same `FOR UPDATE`-locked
+  transaction that generates, so `DEC-104` items 5/9/10 stay open; calls
+  `generatePayrollReport(..., actorId: null)`); `apps/scheduler` passes
+  `PAYROLL_CRON`; `packages/application` `generatePayrollReport`
+  `actorId` widened to `string | null`; `lastDayOfUtcMonth` exported
+  from `@aquarela/domain`; new `GET /api/v1/jobs/[id]` (org-scoped
+  job-progress read; `JOBS_READ_ROLES = owner/general_manager/finance/
+admin` provisional per `DEC-101`; omits `payload`/`error`;
+  400/401/403/404); `infra/modules/app-platform/main.tf` gives the
+  scheduler component `ORGANIZATION_ID`. **Verification:**
+  typecheck/lint/format:check clean, `next build` exit 0,
+  **4957/4957 tests (361 files)** with `DATABASE_URL`; `db:migrate` a
+  no-op (`pgboss` schema up to date, pg-boss 42); nothing pushed,
+  nothing applied to DigitalOcean. **Review-fix pass** (`/review
+ uncommitted`): 5 findings fixed (migrator-applied pgboss grants +
+  `PGBOSS_APP_ROLE`; the downgrade refusal names
+  `DROP SCHEMA pgboss CASCADE;`; the Terraform plan-time `check
+ "organization_id_set"` warning; the cron handlers no longer trust
+  pg-boss-stored `job.data`), 1 declined with evidence (narrowing
+  `GRANT EXECUTE ON ALL FUNCTIONS` — pg-boss 12.33.2 defines only the six
+  queue/partition functions, so the blanket grant covers exactly those);
+  post-fix **4957/4957 tests (361 files)**, `db:migrate` a no-op — detail
+  in handoff `085`'s "Review-fix pass" section. **Rollback:** `git checkout` the
+  tree (or `git revert` each commit once committed); `DROP SCHEMA
+pgboss CASCADE` only when unwinding the whole jobs stack. **Next:**
+  the HTTP `202` producer + the remaining `DEC-139` items (see
+  "Resume here").
+
+- **2026-09-26 — the jobs-runtime pg-boss slice delivered and
+  UNCOMMITTED (HEAD `3348e78`; the P2 platform core is `c66eb27):**
+`ADR-0004` **Accepted** (2026-09-26, owner/tech lead) per
+**`DEC-139`** — runner pg-boss pinned `12.33.2`, delivery shape P2
+(`outbox_event`durable, consumers dedup on`outbox_event.id`, the
+runner's queue disposable/replayable). **Objective (item 9):** the
+pg-boss worker wiring and scheduler cron, proven with a non-external
+consumer and a scheduled maintenance job. **What landed
+(uncommitted):** `packages/jobs-runtime` — the boss factory
+(`schema:"pgboss"`, `migrate:false`, `createSchema:false`,
+`useListenNotify:false`), per-event-type queues `outbox.<eventType>`with DLQ`outbox-dead-letter`and retry/backoff,`createPgBossDispatcher`(binds`send`to the caller's transaction via`fromDrizzle(tx, sql)`, `id = outboxEvent.id`, duplicate → `null`no-op), the idempotent`createOutboxConsumer`, the non-external
+`platform.smoke`consumer (append-only audit), and the scheduled
+maintenance job **replaying unpublished outbox rows** (P2 recovery);`apps/worker|scheduler` thin wrappers; the pre-deploy migrator
+(`packages/persistence/scripts/migrate.mjs`) provisions/migrates
+`pgboss`under advisory lock`8675309`(no`_journal.json`entry, no
+numbered migration) with the idempotent`infra/bootstrap/pgboss-grants.sql` (`app`DML-only). **Verification:**
+typecheck/lint/format:check clean,`build`exit 0,
+**4913/4913 tests (357 files)** with`DATABASE_URL`; migrations
+through `0071`plus the migrator-provisioned`pgboss`schema
+(pg-boss 42);`db:migrate`a no-op re-run; the`DROP SCHEMA pgboss
+  CASCADE`down rehearsal kept`public.job`/`public.outbox_event`and
+the 98 public tables intact (scratch DB, never the dev DB). **Review
+reconciliation:**`reviewer-qwen`two blockers fixed (the`pgboss`GRANTs gap; no runtime DDL);`reviewer-minimax`endorsed the dedicated
+migrator step;`reviewer-glm`fixes applied (listeners,`batchSize: 1`,
+dead-code removal, `retryLimit`vs`maxAttempts`arithmetic
+documented);`qa-verifier`**ACCEPT** on all ten criteria. **Rollback:**`git checkout`the tree (or`git revert`each commit once committed),
+then`DROP SCHEMA pgboss CASCADE`— facts stay in`public.outbox_event`;
+migration `0071_job`untouched. **Next:** the first real
+producer/consumer + the HTTP`202` job URL/progress route (see
+  "Resume here").
 
 - **2026-09-25 — the forecast-vs-actual tracking slice delivered
   (`DEC-138`, the row-15 override owner-authorized; HEAD `4ba3ced` +
@@ -394,22 +565,30 @@ findings from the W7 review` (5 files, all under `apps/web/app/(app)/**`;
   and the `security`-agent dead-pin fact are recorded in
   `docs/handoffs/080-2026-09-24-w7-ui-refinement-wave.md`. Reverts
   independently with `git revert f3adeb8`.
-- **As of:** 2026-09-25 — branch `main`; HEAD **`4ba3ced`**, working tree
-  clean. **4873/4873 tests (349
-  files)**; migrations through **`0070`**
-  (**97 tables**); nothing pushed; nothing applied to DigitalOcean.
-  **Delivered:** the `DEC-129` design-system completion, the `DEC-132`
+- **As of:** 2026-09-26 — branch `main`; HEAD **`3348e78`**, working tree
+  carries **two uncommitted slices**: the jobs-runtime pg-boss wiring
+  (handoff `084`) and the first real producer/consumer + the
+  `GET /api/v1/jobs/[id]` progress route (handoff `085`; see "Resume
+  here" for rollback). **4957/4957 tests (361 files)**; migrations
+  through **`0071`** plus the migrator-provisioned **`pgboss`** schema
+  (pg-boss 42); nothing pushed; nothing applied to DigitalOcean.
+  **Delivered:** the jobs-runtime pg-boss slice (**`DEC-139`**,
+  `ADR-0004` Accepted 2026-09-26), the `DEC-129` design-system completion, the `DEC-132`
   storage port, the 2026-09-25 close-out wave, the docs-only concurrency
   audit (`2da9ba5`), the Integrations registry (**INTG-001**,
   `DEC-137`, `9508f1e`…`64415db`) and the forecast-vs-actual tracking
   slice (**`DEC-138`**, `e52f4e5`…`4ba3ced`); W7 and the HMS +
   Administration entries above (the verbatim W7 list is in
   `docs/handoffs/080-2026-09-24-w7-ui-refinement-wave.md`). **In
-  flight: nothing**; the next step (the standing owner/data-gated
-  items) is in "Resume here". Next free decision id
-  **`DEC-139`**.
+  flight: the two uncommitted slices (pg-boss wiring + the payroll
+  schedule producer/consumer + jobs progress route) await their commit
+  layering (see "Resume here"); the next step (the HTTP `202` producer +
+  the remaining `DEC-139` items) is in "Resume here". Next free decision
+  id **`DEC-140`**.
   Lineage and full
-  per-slice detail: `docs/handoffs/README.md` and the files it lists.
+  per-slice detail: `docs/handoffs/README.md` and the files it lists
+  (newest handoffs: `085` (the payroll producer slice) and
+  `084-2026-09-26-jobs-runtime-pgboss-wiring.md`).
 - **The operations-completion waves W1–W7 are delivered** (`DEC-120` redesign
   through `DEC-128` recorded and implemented; per-wave detail lives in the
   decisions rows and the handoff archive — not restated here). The prior
@@ -665,12 +844,16 @@ sales_units}` in `schemas/domain-enums.yaml` and
   compliance/evidence export; the `employee` + personnel-documents slice
   (`DEC-087`/`DEC-099`); the staff document library (`DEC-088`/`DEC-100`, the
   first versioned entity); the workflow platform (`DEC-094`/`DEC-101`,
-  schema-only). The `job`/worker/outbox layer stays gated on `ADR-0004`.
-- **Schema:** migrations through **`0070`**; **97 tables** (all additive,
-  tested down paths; `0070` added the `forecast_snapshot` and
-  `forecast_override` tables and its down path was rehearsed on a
-  scratch DB — see the durable fact in "Resume here"). Next free
-  decision id **`DEC-139`** (`DEC-129`–`DEC-138` are recorded).
+  schema-only). The `job`/worker/outbox layer's gate is satisfied —
+  `ADR-0004` Accepted 2026-09-26 (`DEC-139`), the first slice delivered
+  (uncommitted).
+- **Schema:** migrations through **`0071`** plus the migrator-provisioned
+  **`pgboss`** schema (pg-boss schemaVersion 42; owned by the pre-deploy
+  migrator, not a numbered migration — see `docs/runbooks/
+persistence-migrations.md`); **98 public tables** (the `0071`
+  `job` projection is additive and its down path is untouched; the facts
+  stay in `public.outbox_event` under the slice rollback). Next free
+  decision id **`DEC-140`** (`DEC-129`–`DEC-139` are recorded).
 - **Verification (2026-09-25, at `9842d81`):** `typecheck`, `lint`,
   `format:check`, `build` clean; **4735/4735 tests with `DATABASE_URL`**
   (335 files); `db:migrate` a no-op through `0068`; 93 public base tables.
@@ -678,21 +861,23 @@ sales_units}` in `schemas/domain-enums.yaml` and
   `packages/application/src/scheduling/scheduling.postgres.test.ts` can fail
   on an audit same-instant ordering assertion and passes on re-run.)
 - **Not yet built (the honest-gap list — do not imply the programme is
-  finished):** the **Integrations** Administration backend is
-  **delivered** (INTG-001, `DEC-137` — the registry only; INTG-002
-  publishing stays gated on `ADR-0004`); planning/forecast **tracking**
-  is **delivered** (`DEC-138`, migration `0070` — accuracy honest on
-  history; the category/product grains and an automated cadence stay
-  deferred). The `file_object` storage port is **delivered** (`DEC-132`,
+  finished):** the **jobs-runtime pg-boss wiring AND the first real
+  producer/consumer are both delivered but UNCOMMITTED**
+  (`ADR-0004`/`DEC-139`); the **HTTP `202` producer** (a `202 + Location`
+  trigger) and the remaining `DEC-139` items (the 90-day `job` retention
+  prune, the item-8 alert wiring, the DLQ weekly-review runbook) are the
+  next task (see "Resume here", which also carries the honest remainder:
+  the queue-existence deploy ordering and the standing owner/data-gated
+  items); INTG-002
+  publishing is gated **only** on the per-source write terms I15/I18
+  under `DEC-015`. The `file_object` storage port is **delivered**
+  (`DEC-132`,
   consumers wired per `DEC-133`/`DEC-134`; the remaining per-class
   retention/Spaces decisions are recorded in those rows), and the
   app-shell search/scope placeholders were resolved by removal (handoff
   `081`). Standing items: **reset-token delivery** is a no-op stub;
   `WF-003` self-assignment deferred (`DEC-102`); six golden fixtures
-  **unsigned**; the `task`↔`approval` link is open; the
-  worker/outbox layer is gated on `ADR-0004` (the per-process
-  rate-limiter shared store is **delivered**, `DEC-135` — not an open
-  item). The deferred `DEC-112` items
+  **unsigned**; the `task`↔`approval` link is open. The deferred `DEC-112` items
   (the `other_variable_cost` source, the `production_*`/time denominators, a
   `denominator_source` DB CHECK, per-channel packaging, the cost-card version
   chain, the per-item cost-selection override, partial-window proration,
@@ -708,8 +893,8 @@ sales_units}` in `schemas/domain-enums.yaml` and
 - **Nothing applied to DigitalOcean.**
 - **Open verification debt:** the shared rate-limit store is
   **delivered** (`DEC-135`, migration `0067`); only a growth sweep for
-  `rate_limit_counter` remains deferred (gated on the worker layer);
-  reset-token delivery is a no-op stub until the email slice; palette hex
+  `rate_limit_counter` remains deferred (less urgent now that the worker
+  layer exists uncommitted); reset-token delivery is a no-op stub until the email slice; palette hex
   values / data-viz palette semantics await owner sign-off; the six golden
   fixtures remain unsigned (the "verified" gate).
 
@@ -718,18 +903,24 @@ sales_units}` in `schemas/domain-enums.yaml` and
 `docs/BUILD_ROADMAP.md` is the ordered execution tracker; §5 carries the
 open-point lists. Per-slice detail is in `docs/handoffs/`.
 
-1. **Next: the standing owner/data-gated items are the remainder —
-   nothing is buildable without an owner input** (the exact list in
+1. **Next: the HTTP `202` producer (a `202 + Location` trigger) plus the
+   remaining `DEC-139` items — buildable now, no owner input needed.**
+   Exact scope,
+   verified commands and the honest remainder in "Resume here" (next
+   free decision id `DEC-140`). The pg-boss wiring slice AND the first
+   real producer/consumer (the scheduled payroll-report generation + the
+   job-progress route) are both **delivered but UNCOMMITTED** at HEAD
+   `3348e78`. Beyond that, the
+   standing owner/data-gated items are the remainder (the exact list in
    "Resume here": reset-token delivery, the unsigned golden fixtures,
    the `task`↔`approval` link, `WF-003` self-assignment, the
-   `ADR-0004` worker/outbox layer, the deployment prerequisite inputs,
-   the receipt→ledger `storage_area_id` policy; next free decision id
-   `DEC-139`). The forecast-tracking slice is
+   deployment prerequisite inputs, the receipt→ledger
+   `storage_area_id` policy). The forecast-tracking slice is
    **delivered** (`DEC-138`, row 15's data gate overridden by owner
    authorization); the Integrations registry is **delivered** (INTG-001,
-   `DEC-137`; INTG-002 gated on `ADR-0004`), and blocked rows 17–18 and
-   the standing items stay "blocked and stated" per the W6 acceptance
-   rule — see "Resume here" for the gates. The HMS
+   `DEC-137`; INTG-002 now gated only on I15/I18 under `DEC-015`), and
+   blocked rows 17–18 and the standing items stay "blocked and stated"
+   per the W6 acceptance rule. The HMS
    blockade, the Administration reads/users-scopes work, the `DEC-132`
    storage port (plus its `DEC-133`/`DEC-134` consumers), the Tax/rules
    authoring (`DEC-136`) and the Integrations registry are
@@ -737,9 +928,11 @@ open-point lists. Per-slice detail is in `docs/handoffs/`.
    delivered too, `DEC-135`), and user creation awaits the `DEC-131` owner
    decision.
 2. **Then the honest-gap queue** (see the "Not yet built" bullet in Current
-   status, each recorded not silently deferred): the standing items
+   status, each recorded not silently deferred): the jobs-runtime
+   remainder (the 90-day `job` retention prune, the `DEC-139` item-8
+   alert wiring, the DLQ weekly-review runbook), plus the standing items
    (reset-token delivery, unsigned golden fixtures, the `task`↔`approval`
-   link, `WF-003` self-assignment, `ADR-0004`). The previously listed
+   link, `WF-003` self-assignment). The previously listed
    unit-catalogue read, cost-centre list read, `calculatePriceScenario`
    HTTP route and incident owner assignment are **delivered** — see the
    stale-gap correction in "Resume here".
@@ -770,10 +963,11 @@ open-point lists. Per-slice detail is in `docs/handoffs/`.
    "verified" gate); `I8`/`I9` still gate the real rates behind them.
 8. **Rows 15–18 and the competitor/planning waves** — competitor manual
    observations landed in the completion programme (see the decisions rows);
-   row 15's data gate is **overridden** and the forecast-tracking slice is
-   **delivered** (`DEC-138`, owner-authorized), rows 17–18 remain blocked
+   row 15's forecast-tracking slice is **delivered** (`DEC-138`,
+   owner-authorized), rows 17–18 remain blocked
    (`ADR-0009`–`0011`; row 16's registry slice INTG-001 is
-   delivered, INTG-002 stays gated on `ADR-0004`).
+   delivered, INTG-002 stays gated on the per-source write terms
+   I15/I18 under `DEC-015`).
 
 ## Open decisions / inputs (do not block development)
 
@@ -835,7 +1029,9 @@ Full detail for each item lives in its slice's handoff file and in
   persisted reversal-effect record.
 - **Row 13c/13d reporting (provisional, awaiting owner/OPS):** `DEC-108` (13c) —
   reporting is **on-demand, not materialized** (`ADR-0007`'s MV-vs-incremental
-  and the 15-minute refresh stay open, the job layer gated on `ADR-0004`); net
+  and the 15-minute refresh stay open; the job layer is now unblocked —
+  `ADR-0004` Accepted 2026-09-26 — so a materialized refresh is
+  buildable on top of `DEC-139`); net
   sales prefers the imported `net_amount`; cost is **ingredient-only**
   (ledger-derived) so contribution is **before labour/fees** and **full cost is
   not reported** — the cost-card composition assembler is built (`DEC-111`) and
@@ -949,8 +1145,8 @@ cost` (the `DEC-067`/`DEC-008` valuation is asymmetric); the waste reasons axis
   `task.type`/`priority`; no `task_status` transition guard; nullable
   `approval.decision` while pending; decide-once; plain-uuid actors; polymorphic
   targets; no `task.location_id`; **access unset** (no `task`/`approval` matrix
-  row); no task↔approval link (`HMS-001` conflict); `job`/outbox gated on
-  `ADR-0004`.
+  row); no task↔approval link (`HMS-001` conflict); `job`/outbox
+  unblocked (`ADR-0004` Accepted 2026-09-26).
 - **Staff document library (`DEC-088`/`DEC-100`):** `document` has no location
   column, so `DOC-001`'s "at authorized locations" is unenforceable;
   acknowledgement retention period (privacy review); no un-archive; `file_object`
@@ -1016,7 +1212,7 @@ cost` (the `DEC-067`/`DEC-008` valuation is asymmetric); the waste reasons axis
   `yield_rate` derived never input; `recipe_version_no_overlap` ungated;
   `planned_output_qty` unused by the §6 formula.
 - **Deployment prerequisite inputs (owner; before any real `apply`):**
-  `ADR-0004` acceptance; a scoped `DIGITALOCEAN_TOKEN`; a provisioned private
+  a scoped `DIGITALOCEAN_TOKEN`; a provisioned private
   Spaces state bucket + credentials; the sanitized-data owner; the legacy
   instance-slug/manual-scaling check; domain names (optional). First real `apply`
   must be **staging** with sanitized/synthetic data only. Required pre-apply:
@@ -1094,7 +1290,7 @@ created out of band first (see `docs/runbooks/deployment.md`).
 - `README.md` — the index of all per-slice handovers, newest first.
 - `NNN-YYYY-MM-DD-*.md` — one verbatim work-log entry per slice (commits,
   verification, review reconciliation), numbered chronologically (`001` oldest).
-  Newest: `082-2026-09-25-integrations-registry-intg-001.md`.
+  Newest: `084-2026-09-26-jobs-runtime-pgboss-wiring.md`.
 - `reversibility-log.md` — the per-slice commit list, migration down paths and
   ledger-row rollback notes.
 - `context-sections-archive-2026-09-22.md` — the pre-refactor `Resume here`,
