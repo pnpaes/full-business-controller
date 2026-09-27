@@ -526,6 +526,13 @@
       "when": 1790503111114,
       "tag": "0074_receipt_stock_ledger_area",
       "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1790508077820,
+      "tag": "0075_ai_advisory",
+      "breakpoints": true
     }
   ]
 }

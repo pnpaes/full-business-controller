@@ -1,3 +1,38 @@
+export {
+  AI_ADVISORY_FORECAST_GRAIN,
+  AI_ADVISORY_METRIC,
+  AI_ADVISORY_PROMPT_VERSION,
+  AI_ADVISORY_RUN_KIND,
+  AI_ADVISORY_SCOPE_TYPE,
+  DEFAULT_AI_ADVISORY_CRON,
+  DEFAULT_AI_ADVISORY_MAX_TOKENS,
+  buildAiAdvisoryPrompt,
+  costExceedsLimit,
+  evaluateAiAdvisoryCostGuard,
+  gatherPostgresAiAdvisoryEvidence,
+  MAX_AI_ADVISORY_OUTPUT_CHARS,
+  MAX_AI_ADVISORY_PROMPT_CHARS,
+  MAX_AI_ADVISORY_SUGGESTIONS,
+  parseAiAdvisorySuggestions,
+  previousUtcMonthPeriod,
+  registerAiAdvisorySchedule,
+  runScheduledAiAdvisory,
+  startOfUtcMonth,
+} from "./ai-advisory";
+export type {
+  AiAdvisoryCostGuard,
+  AiAdvisoryEvidence,
+  AiAdvisoryLlm,
+  AiAdvisoryOutcome,
+  AiAdvisoryPrompt,
+  AiAdvisoryRunDeps,
+  AiAdvisoryScheduleJobData,
+  AiAdvisoryScheduleOptions,
+  AiAdvisorySkipReason,
+  GatherAiAdvisoryEvidence,
+  ParsedAiAdvisoryOutput,
+  ParsedAiSuggestion,
+} from "./ai-advisory";
 export { createBoss } from "./boss";
 export type {
   BossMonitorApi,
@@ -30,6 +65,12 @@ export {
   startHeartbeat,
 } from "./heartbeat";
 export type { HeartbeatOptions, HeartbeatRole } from "./heartbeat";
+export { createOpenAiCompatibleLlmAdapter, providerLabel } from "./llm-adapter";
+export type {
+  LlmLogger,
+  OpenAiCompatibleLlmAdapter,
+  OpenAiCompatibleLlmAdapterOptions,
+} from "./llm-adapter";
 export type { RuntimeLogger } from "./logging";
 export {
   DEFAULT_RETENTION_DAYS,
@@ -62,6 +103,7 @@ export type {
   RegisterMonitorOptions,
 } from "./monitor";
 export {
+  AI_ADVISORY_QUEUE,
   DEAD_LETTER_QUEUE_OPTIONS,
   ensureQueues,
   MAINTENANCE_QUEUE,
@@ -90,7 +132,7 @@ export type {
 } from "./payroll-schedule";
 export { enqueueJobWithDispatch } from "./producer";
 export { startScheduler } from "./scheduler";
-export type { SchedulerOptions } from "./scheduler";
+export type { SchedulerAiAdvisoryOptions, SchedulerOptions } from "./scheduler";
 export { installShutdownHandlers } from "./shutdown";
 export { startWorker } from "./worker";
 export type { WorkerOptions } from "./worker";

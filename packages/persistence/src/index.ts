@@ -8,6 +8,7 @@ export type { Database, DatabaseTransaction, DbClient, NodeDatabase } from "./cl
 
 export * from "./repositories/access";
 export * from "./repositories/adjustment-period";
+export * from "./repositories/ai-advisory";
 export * from "./repositories/audit";
 export * from "./repositories/bootstrap";
 export * from "./repositories/checklists";

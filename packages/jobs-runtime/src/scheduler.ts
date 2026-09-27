@@ -1,6 +1,8 @@
 import { createPostgresJobStore } from "@aquarela/application";
 import { createDb } from "@aquarela/persistence";
 
+import { registerAiAdvisorySchedule } from "./ai-advisory";
+import type { AiAdvisoryLlm } from "./ai-advisory";
 import { createBoss } from "./boss";
 import type { JobsRuntimeHandle } from "./boss";
 import type { OutboxHandlerRegistry } from "./consumer";
@@ -11,6 +13,7 @@ import { registerMaintenance } from "./maintenance";
 import { registerMonitor } from "./monitor";
 import { registerPayrollSchedule } from "./payroll-schedule";
 import {
+  AI_ADVISORY_QUEUE,
   ensureQueues,
   MAINTENANCE_QUEUE,
   MONITOR_QUEUE,
@@ -27,9 +30,23 @@ export interface SchedulerOptions {
   readonly payrollCron?: string;
   /** The alert-monitor cron (`MONITOR_CRON`); defaults to every five minutes. */
   readonly monitorCron?: string;
+  /** The AI-advisory cron and its kill switch (`ADR-0009`); omitted = not registered. */
+  readonly aiAdvisory?: SchedulerAiAdvisoryOptions;
   readonly limit?: number;
   readonly handlers?: OutboxHandlerRegistry;
   readonly logger: RuntimeLogger;
+}
+
+/** The AI-advisory cron configuration the scheduler registers. */
+export interface SchedulerAiAdvisoryOptions {
+  /** The kill switch; `false` keeps the cron registered but makes the handler skip. */
+  readonly enabled: boolean;
+  readonly cron: string;
+  readonly llm: AiAdvisoryLlm;
+  readonly monthlyCostLimit?: string | null;
+  readonly perRunCostLimit?: string | null;
+  readonly actorId?: string | null;
+  readonly maxTokens?: number;
 }
 
 /**
@@ -52,6 +69,7 @@ export async function startScheduler(options: SchedulerOptions): Promise<JobsRun
     MAINTENANCE_QUEUE,
     PAYROLL_SCHEDULE_QUEUE,
     MONITOR_QUEUE,
+    ...(options.aiAdvisory === undefined ? [] : [AI_ADVISORY_QUEUE]),
   ];
 
   // `DEC-139` item 8: DB heartbeat so the in-app monitor can detect a dead worker.
@@ -85,6 +103,19 @@ export async function startScheduler(options: SchedulerOptions): Promise<JobsRun
       db: client.db,
       logger,
     });
+    if (options.aiAdvisory !== undefined) {
+      await registerAiAdvisorySchedule(boss, client.db, {
+        organizationId: options.organizationId,
+        cron: options.aiAdvisory.cron,
+        logger,
+        enabled: options.aiAdvisory.enabled,
+        llm: options.aiAdvisory.llm,
+        monthlyCostLimit: options.aiAdvisory.monthlyCostLimit ?? null,
+        perRunCostLimit: options.aiAdvisory.perRunCostLimit ?? null,
+        actorId: options.aiAdvisory.actorId ?? null,
+        maxTokens: options.aiAdvisory.maxTokens,
+      });
+    }
     logger.info(
       {
         cron: options.cron,

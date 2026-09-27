@@ -185,6 +185,16 @@ const AREAS: readonly Area[] = [
     ),
   },
   {
+    href: "/ai",
+    label: "AI",
+    icon: (
+      <Glyph>
+        <path d="M12 4l1.6 4.4L18 10l-4.4 1.6L12 16l-1.6-4.4L6 10l4.4-1.6z" />
+        <path d="M18 16l.8 2.2L21 19l-2.2.8L18 22l-.8-2.2L15 19l2.2-.8z" />
+      </Glyph>
+    ),
+  },
+  {
     href: "/close",
     label: "Close",
     icon: (

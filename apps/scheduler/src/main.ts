@@ -1,5 +1,9 @@
 import { loadConfig } from "@aquarela/config";
-import { startScheduler } from "@aquarela/jobs-runtime";
+import {
+  createOpenAiCompatibleLlmAdapter,
+  DEFAULT_AI_ADVISORY_CRON,
+  startScheduler,
+} from "@aquarela/jobs-runtime";
 import { createLogger } from "@aquarela/logger";
 
 // The scheduler stays a long-lived App Platform component (ADR-0012) that owns
@@ -17,11 +21,45 @@ function positiveInt(name: string, value: string | undefined, fallback: number):
   return parsed;
 }
 
+/** `true`/`1`/`yes` (case-insensitive) enable; anything else, including unset, is off. */
+function flag(value: string | undefined): boolean {
+  if (value === undefined) return false;
+  const normalised = value.trim().toLowerCase();
+  return normalised === "true" || normalised === "1" || normalised === "yes";
+}
+
+/** A non-negative decimal string at up to 4 dp (the recorded cost scale). */
+function costLimit(name: string, value: string | undefined): string | undefined {
+  if (value === undefined) return undefined;
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return undefined;
+  if (!/^\d+(\.\d{1,4})?$/.test(trimmed)) {
+    throw new Error(
+      `${name} must be a non-negative decimal with at most 4 decimals, got "${value}"`,
+    );
+  }
+  return trimmed;
+}
+
 const organizationId = process.env.ORGANIZATION_ID?.trim();
 if (organizationId === undefined || organizationId.length === 0) {
   logger.error("ORGANIZATION_ID is required for the scheduler outbox replay");
   process.exit(1);
 }
+
+// AI advisory (`ADR-0009`, `DEC-142`): the kill switch defaults OFF. The adapter
+// fails closed without all three LLM_* values, and the per-run/monthly caps are
+// optional non-negative decimals.
+const llm = createOpenAiCompatibleLlmAdapter({
+  apiUrl: process.env.LLM_API_URL,
+  apiKey: process.env.LLM_API_KEY,
+  model: process.env.LLM_MODEL,
+  logger,
+});
+const aiAdvisoryEnabled = flag(process.env.AI_ADVISORY_ENABLED);
+const aiAdvisoryCron = process.env.AI_ADVISORY_CRON?.trim() || DEFAULT_AI_ADVISORY_CRON;
+const aiMonthlyCostLimit = costLimit("AI_MONTHLY_COST_LIMIT", process.env.AI_MONTHLY_COST_LIMIT);
+const aiPerRunCostLimit = costLimit("AI_PER_RUN_COST_LIMIT", process.env.AI_PER_RUN_COST_LIMIT);
 
 // Smoke semantics preserved: with SCHEDULER_TICKS set, emit that many ticks then
 // stop pg-boss and exit 0; otherwise run as a long-lived cron scheduler.
@@ -37,13 +75,27 @@ const scheduler = await startScheduler({
   cron: process.env.MAINTENANCE_CRON?.trim() || "*/15 * * * *",
   payrollCron: process.env.PAYROLL_CRON?.trim() || "0 5 * * *",
   monitorCron: process.env.MONITOR_CRON?.trim() || "*/5 * * * *",
+  aiAdvisory: {
+    enabled: aiAdvisoryEnabled,
+    cron: aiAdvisoryCron,
+    llm,
+    monthlyCostLimit: aiMonthlyCostLimit ?? null,
+    perRunCostLimit: aiPerRunCostLimit ?? null,
+  },
   logger,
 }).catch((error: unknown) => {
   logger.error({ err: error }, "scheduler failed to start");
   process.exit(1);
 });
 
-logger.info({ nodeEnv: config.NODE_ENV }, "scheduler started; outbox replay cron registered");
+logger.info(
+  {
+    nodeEnv: config.NODE_ENV,
+    aiAdvisoryEnabled,
+    aiAdvisoryConfigured: llm.configured,
+  },
+  "scheduler started; outbox replay cron registered",
+);
 
 let tick = 0;
 const timer = setInterval(() => {

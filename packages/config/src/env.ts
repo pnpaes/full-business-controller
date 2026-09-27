@@ -39,6 +39,17 @@ export const envSchema = z.object({
   SENDGRID_API_KEY: z.string().min(1).optional(),
   MAIL_FROM: z.string().min(1).optional(),
   APP_BASE_URL: z.string().url().optional(),
+  // AI advisory (`ADR-0009`, `DEC-142`). All optional and secret-free here:
+  // without an endpoint the scheduled advisory fails closed and makes no call.
+  // `LLM_API_KEY` is a secret supplied at deploy; the cost limits are decimal
+  // strings at the cost scale (`numeric(19,4)`). The other `AI_ADVISORY_*`
+  // values are read raw by the scheduler (the worker/scheduler convention) and
+  // validated there, so they are not constrained here.
+  LLM_API_URL: z.string().url().optional(),
+  LLM_API_KEY: z.string().min(1).optional(),
+  LLM_MODEL: z.string().min(1).optional(),
+  AI_MONTHLY_COST_LIMIT: z.string().min(1).optional(),
+  AI_PER_RUN_COST_LIMIT: z.string().min(1).optional(),
 });
 
 export type AppConfig = Readonly<z.infer<typeof envSchema>>;

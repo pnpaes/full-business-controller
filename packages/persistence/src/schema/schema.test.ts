@@ -62,10 +62,14 @@ const tables = Object.values(schema).filter((value) => is(value, PgTable));
  * slice adds the `job` table, taking the count to 98 (`publish_run` and the
  * runner queue stay deferred to the worker/scheduler wave). The `DEC-139` item-8
  * DB-backed worker heartbeat adds the `worker_heartbeat` operational table,
- * taking the count to 99. */
+ * taking the count to 99. The `ADR-0009`/`DEC-142` AI-advisory slice adds the
+ * append-only `ai_analysis_run` and the mutable, human-reviewed `ai_suggestion`
+ * tables, taking the count to 101. */
 const EXPECTED_TABLES = [
   "addon_applicability",
   "adjustment_period",
+  "ai_analysis_run",
+  "ai_suggestion",
   "allergen",
   "allocation_rule",
   "app_user",
@@ -173,8 +177,6 @@ const NOT_EXPECTED_TABLES = [
   // `integration_source` is now in scope (`DEC-137`).
   "publish_run",
   "competitor_source",
-  "ai_analysis_run",
-  "ai_suggestion",
   // Procurement/receiving companions left to a later slice (DEC-047 needs only
   // the goods receipt; purchasing and reordering stay deferred).
   "purchase_order",
