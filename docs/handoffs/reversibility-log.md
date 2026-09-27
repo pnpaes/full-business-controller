@@ -1,5 +1,11 @@
 # Reversibility log
 
+- **2026-09-27 Jobs operator screen (`2796411`; pushed)**: `feat(web)` — the
+  `/jobs` server page + client register + labels, and the nav entry. No
+  migration, no dependency. **Rollback** = `git revert 2796411`; the screen is
+  additive and every action stays gated by the API, so removing the page cannot
+  weaken the server. No business row and no posted money or stock fact is
+  touched. Details: [handoff 089](089-2026-09-27-jobs-operator-screen.md).
 - **2026-09-27 DLQ review automation + DB-backed worker heartbeat
   (`918b80a` + `d070983`; pushed)**: (1) `feat(jobs,web)` `918b80a` — the
   dead-letter commands (`retryDeadLetteredJob` / `discardDeadLetteredJob`),

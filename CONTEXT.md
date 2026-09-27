@@ -18,11 +18,12 @@ producer, the 90-day retention prune and the `DEC-139` item-8 alert
 surfaces are delivered. Per-slice detail lives in the handoff files
 under `docs/handoffs/`; this file does not restate them.)
 
-**State:** branch `main`; HEAD **`d070983`** (the P2 platform core is
+**State:** branch `main`; HEAD **`2796411`** (the P2 platform core is
 `c66eb27`; the `ADR-0004`/`DEC-139` docs commit is `3348e78`). The
 **jobs layer is complete** — `DEC-139` fully delivered, and the recorded
 follow-ups are now closed except the system-wide prune — committed across
-thirteen layered commits, newest first: `d070983` (the DB-backed worker
+fourteen layered commits, newest first: `2796411` (the jobs operator screen),
+`4c89702` (docs: `DEC-140`), `d070983` (the DB-backed worker
 heartbeat, migration `0073`), `918b80a` (DLQ review automation + the
 operator job list), `0aa54f3` (docs), `d3602d0` (honoured `scheduledAt`
 via pg-boss `startAfter`), `94bd965` (migration `0072`, the job retention
@@ -35,8 +36,8 @@ pgboss provisioning + grants), `ecbe35b` (the runtime + payroll changes).
 DigitalOcean.** Rollback: **`git revert` each commit**, then
 `DROP SCHEMA pgboss CASCADE` **only when unwinding the whole jobs
 stack** — facts stay in `public.outbox_event`; migrations `0072`'s and
-`0073`'s down files invert the index and the heartbeat table. **5075/5075
-tests (368 files)**; migrations through **`0073`** (99 public tables) plus
+`0073`'s down files invert the index and the heartbeat table. **5081/5081
+tests (369 files)**; migrations through **`0073`** (99 public tables) plus
 the migrator-provisioned **`pgboss`** schema (pg-boss schemaVersion 42);
 `db:migrate` a no-op re-run. **Next free decision id `DEC-141`** (the last
 jobs follow-up was closed by decision `DEC-141`). Know the
@@ -93,7 +94,7 @@ row (`docs/BUILD_ROADMAP.md` is the ordered tracker).
 "$NVM_DIR/nvm.sh"; nvm use 22`; `npm run typecheck`; `npm run lint`;
   `npm run format:check`; `npm run build`;
   `DATABASE_URL=postgres://aquarela:aquarela@localhost:5432/aquarela npm
-run test` (≥ **5075/5075**, 368 files); `npm run db:migrate` a no-op
+run test` (≥ **5081/5081**, 369 files); `npm run db:migrate` a no-op
   re-run. Normalise the generated `apps/web/next-env.d.ts`/
   `apps/web/tsconfig.json` with `git checkout --` before staging (see the
   durable fact below). Expect the
@@ -103,7 +104,7 @@ run test` (≥ **5075/5075**, 368 files); `npm run db:migrate` a no-op
 - **Acceptance criteria:** the picked slice/row is delivered per its
   decision rows and this section's rules; the read paths stay org-scoped
   and fail-closed on authorization; the full verification set is green
-  (≥ 5075/5075, 368 files) with `build` included. For the follow-up
+  (≥ 5081/5081, 369 files) with `build` included. For the follow-up
   option: the prune covers all organizations (the `(organization_id,
 created_at)` index landed in migration `0072`, rehearsed down
   path), the heartbeat divergence check is DB-backed or the log alert
@@ -303,6 +304,13 @@ Per-slice detail, commits and reconciliation are in `docs/handoffs/`.
 
 ## Current status
 
+- **2026-09-27 — the jobs operator screen delivered (committed `2796411`,
+  pushed):** a `/jobs` page (server, `JOBS_READ_ROLES`-gated, default
+  `dead_lettered` filter, offset pager, the same org-scoped `listJobs` the API
+  serves) plus a client register whose Retry/Discard actions are
+  `JOBS_ADMIN_ROLES`-only on dead-lettered rows, behind a confirmation modal,
+  never rendering `payload`/`error`; a nav entry; pure labels helpers + a test.
+  Browser-verified as owner. **5081/5081 tests (369 files)**; no migration.
 - **2026-09-27 — jobs operator tooling delivered (committed `918b80a` +
   `d070983`, pushed):** DLQ review automation (`GET /api/v1/jobs`, `POST
 /api/v1/jobs/[id]/retry|discard` under `JOBS_ADMIN_ROLES`; retry
@@ -633,12 +641,13 @@ findings from the W7 review` (5 files, all under `apps/web/app/(app)/**`;
   and the `security`-agent dead-pin fact are recorded in
   `docs/handoffs/080-2026-09-24-w7-ui-refinement-wave.md`. Reverts
   independently with `git revert f3adeb8`.
-- **As of:** 2026-09-27 — branch `main`; HEAD **`d070983`**, working tree
+- **As of:** 2026-09-27 — branch `main`; HEAD **`2796411`**, working tree
   **clean**; the jobs stack is committed across `ecbe35b`, `8572510`,
   `0da0593`, `67e932d`, `a84ce82`, `ba27b79`, `054355f`, `911ced6`,
-  `94bd965`, `d3602d0`, `0aa54f3`, `918b80a` and `d070983`; **pushed to
+  `94bd965`, `d3602d0`, `0aa54f3`, `918b80a`, `d070983`, `4c89702` and
+  `2796411`; **pushed to
   `origin/main`**; nothing applied to
-  DigitalOcean. **5075/5075 tests (368 files)**; migrations through
+  DigitalOcean. **5081/5081 tests (369 files)**; migrations through
   **`0072`** plus the migrator-provisioned **`pgboss`** schema
   (pg-boss 42) — migration `0072` (`0072_job_org_created_at_idx`, the
   `DEC-139` retention index; committed `94bd965`; dev `db:migrate`
