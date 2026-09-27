@@ -1,5 +1,12 @@
 # Reversibility log
 
+- **2026-09-27 Password reset via SendGrid (`DEC-147`; uncommitted authoring)**:
+  the `MailPort` seam, the SendGrid v3 adapter (`apps/web/lib/mail.ts`), the
+  `deps.ts` wiring and the three optional env vars. **No migration.** Rollback =
+  `git revert` the slice — the request then mints and stores the token but sends
+  nothing (the pre-slice deferred behaviour). No schema change; no posted money
+  or stock fact is touched; the token is never logged and never placed in a URL.
+  Details: [handoff 091](091-2026-09-27-password-reset-sendgrid-dec-147.md).
 - **2026-09-27 Receipt → stock ledger (`50b231e`; pushed)**: `feat(inventory,receiving)`
   + migration `0074_receipt_stock_ledger_area.sql` (two expand-only nullable FKs
   plus two cross-location coherence guards) and its down companion. **Migration

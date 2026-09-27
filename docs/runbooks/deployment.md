@@ -55,6 +55,15 @@ Environment/secret inventory (per environment, never committed): `DATABASE_URL`,
   (AES-256), required for MFA. It is a **secret**: supply it as an App Platform `SECRET`/encrypted
   env var via `TF_VAR_totp_secret_encryption_key`, never commit it. Generate with
   `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"` (see `.env.example`).
+- `SENDGRID_API_KEY` — SendGrid API key for self-service password-reset delivery (`DEC-147`). A
+  **secret**: App Platform `SECRET`/encrypted env var, never committed.
+- `MAIL_FROM` — the verified SendGrid sender, e.g. `Aquarela <no-reply@aquarela.no>`.
+- `APP_BASE_URL` — the public origin of the `web` install, e.g. `https://app.aquarela.no`, used to
+  build the **token-free** reset-page link; the reset code travels in the email **body**, never a URL
+  (`ADR-0003`).
+
+  All three must be set on the `web` service to enable reset email; without them the adapter fails
+  closed (nothing is sent) and the reset stays admin-issued. They are read only by `web`.
 
 **The `scheduler` component now requires `ORGANIZATION_ID`** (its
 maintenance replay and the scheduled payroll cron are

@@ -58,10 +58,34 @@ Changes must be revertible or carry a documented recovery path:
 
 ## Rule 3 — Decisions are the authority
 
-- The 65 accepted decisions in `12_OPEN_DECISIONS.md` govern. New decisions are
-  **appended there** (next id `DEC-066`) — never invented silently.
+- The accepted decisions in `12_OPEN_DECISIONS.md` govern. New decisions are
+  **appended there** (next free id is stated in `CONTEXT.md`; `DEC-149` as of
+  2026-09-27) — never invented silently.
 - Calculations follow `docs/phase0/CALCULATION_CONTRACT.md`: decimal only (never
   floats), HALF_UP, boundaries B0–B4, and the cost-source precedence.
+
+## Rule 4 — Supervise delegated agents (do not wait blindly)
+
+Background subagents stall, silently no-op, or hit step caps. A completion
+notification is not the only signal to act on; **monitor progress**:
+
+- After launching a background task, check its **file-write progress** at a
+  bounded interval (a cheap read-only `git status --short` / targeted `grep`).
+  A task that has made **no file change after a few minutes** on a task expected
+  to write is stalled — do not keep waiting.
+- **Intervene on stall or error:** redirect the same task (`task_id` resume) if
+  it is merely lost, or **supersede it** and take the change over directly (or
+  relaunch a tighter task with the reconnaissance already inlined). Prefer
+  finishing the work over re-launching a fresh reconnaissance cycle.
+- **Coordinate, do not collide:** if you take over files a live task may still
+  write, post a board `INFO` naming the task and the exact files, state the
+  expected end state, and reconcile after it reports (verify no stale variant
+  was left behind).
+- Recognise the two recurring failure modes seen here: a task that burns its
+  whole budget on reconnaissance and writes nothing, and a task that stalls with
+  zero edits. Both are intervention triggers.
+- After a wave, always re-read the actual tree state (not the agents' summaries)
+  before verifying, committing and pushing.
 
 ## Conventions
 
