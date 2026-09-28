@@ -45,8 +45,8 @@ receipt-area columns, the AI tables, the competitor-source additions, the employ
 migrations through
 **`0078`** (103 public tables) plus
 the migrator-provisioned **`pgboss`** schema (pg-boss schemaVersion 42);
-`db:migrate` a no-op re-run. **Next free decision id `DEC-150`**
-(`DEC-141`–`DEC-149` are the 2026-09-27 decision round). Know the
+`db:migrate` a no-op re-run. **Next free decision id `DEC-151`**
+(`DEC-141`–`DEC-150` are recorded; `DEC-150` is the 2026-09-28 stock-item purpose decision). Know the
 `packages/application/src/scheduling/scheduling.postgres.test.ts`
 same-instant ordering flake (passes on re-run).
 
@@ -130,10 +130,9 @@ areas await the owner's triage** before Wave 0 (InfoTip, Collapsible, plain
 EmptyState, MetricHero, money formatter, Modal/toast/FileField patterns, token
 refresh) and the area implementation waves. Two defects from the audit remain
 unfixed: the production screens leak internal references into user copy, and the
-app has no `error.tsx`/`not-found.tsx`/`loading.tsx` anywhere. A domain-vocabulary
-question is open for decision: naming the split inside stock items between those
-that back a sellable and those that are inputs/consumables (proposed:
-`item_role`/`purpose` — see the session reply).
+app has no `error.tsx`/`not-found.tsx`/`loading.tsx` anywhere. **Stock items now split by `purpose` (for_sale / for_use)** — decided in `DEC-150`
+(2026-09-28) and being implemented in migration `0079` with a variant edge guard
+and For sale / For use tabs.
 
 **Next task: M2 — the deployment rehearsal on a single VM (owner-gated on the
 SendGrid and LLM keys only).**
