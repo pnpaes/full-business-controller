@@ -45,8 +45,8 @@ receipt-area columns, the AI tables, the competitor-source additions, the employ
 migrations through
 **`0079`** (103 public tables) plus
 the migrator-provisioned **`pgboss`** schema (pg-boss schemaVersion 42);
-`db:migrate` a no-op re-run. **Next free decision id `DEC-151`**
-(`DEC-141`–`DEC-150` are recorded; `DEC-150` is the 2026-09-28 stock-item purpose decision). Know the
+`db:migrate` a no-op re-run. **Next free decision id `DEC-152`**
+(`DEC-141`–`DEC-151` are recorded; `DEC-150` is the stock-item purpose decision and `DEC-151` the employee role/position model). Know the
 `packages/application/src/scheduling/scheduling.postgres.test.ts`
 same-instant ordering flake (passes on re-run).
 
