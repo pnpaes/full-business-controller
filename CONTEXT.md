@@ -73,6 +73,23 @@ those. Post-fix verification: **4957/4957 tests (361 files)**;
 typecheck/lint/format:check clean; `next build` exit 0; `db:migrate` a
 no-op.
 
+**UX/UI programme (started 2026-09-28).** Owner-directed screen redesign: the
+screens are cluttered, so the work is **information architecture + interaction
+design + a visual refresh** with restraint/hierarchy borrowed from Apple (one
+idea per view, space as grouping, progressive disclosure, creation in modals) and
+Nike (one hero metric, editorial section bands, a single accent) — explicitly
+**not** marketing scale or reduced table density. The contract is
+`docs/ux/README.md` (screen recipe, (i) InfoTip policy, state coverage, triggers);
+the route list is `docs/ux/screen-inventory.md`; per-area reviews land in
+`docs/ux/reviews/<area>.md` with a per-screen **triage line** for the owner. The
+lens is the **`ux-screen-review`** skill (installed at
+`~/.kilo/skills/ux-screen-review/`, outside the repo) driven by the
+**`ux-designer`** agent (defined in `~/.config/kilo/kilo.jsonc`). Sequence:
+audit all 71 screens (in progress, audit-only) → owner triage → Wave 0
+primitives/tokens (`Collapsible`, `InfoTip`, type scale + spacing/radius/accent
+refresh, shown in `/styleguide`) → implementation waves, one area each, browser
+verified with before/after screenshots.
+
 **Roadmap from here (the project plan, 2026-09-27 — recorded so it survives the
 session):**
 
