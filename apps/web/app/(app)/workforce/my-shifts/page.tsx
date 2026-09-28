@@ -2,9 +2,9 @@ import {
   createPostgresInventoryStore,
   createPostgresSchedulingStore,
   findSelfEmployee,
+  listAvailableShifts,
   listLocations,
   listMyShifts,
-  listShifts,
 } from "@aquarela/application";
 import {
   Alert,
@@ -23,7 +23,7 @@ import { redirect } from "next/navigation";
 import { getDb } from "../../../../lib/db";
 import { resolveOrganization } from "../../../../lib/organization";
 import { getServerSession } from "../../../../lib/server-session";
-import { assignmentStateView, formatShiftWindow, todayUtcDay } from "../workforce-labels";
+import { assignmentStateView, formatShiftWindow } from "../workforce-labels";
 import { SelfAssignButton } from "./self-assign-button";
 
 export const dynamic = "force-dynamic";
@@ -31,7 +31,6 @@ export const metadata = { title: "My shifts — Aquarela Business Control" };
 
 /** The view shows a bounded working set. */
 const PAGE_LIMIT = 200;
-const WINDOW_DAYS = 14;
 
 const contentColumn = {
   display: "flex",
@@ -43,10 +42,6 @@ const contentColumn = {
 } as const;
 
 const tableWrap = { overflowX: "auto", minWidth: 0 } as const;
-
-function nextUtcDayN(day: string, n: number): string {
-  return new Date(Date.parse(`${day}T00:00:00.000Z`) + n * 86_400_000).toISOString().slice(0, 10);
-}
 
 /**
  * The employee self-service view (`WF-003`, `DEC-146`): a linked employee sees
@@ -86,24 +81,14 @@ export default async function MyShiftsPage() {
     actorUserId: session.userId,
   });
 
-  const today = todayUtcDay();
-  const windowTo = nextUtcDayN(today, WINDOW_DAYS - 1);
-  const shifts = await listShifts(schedulingStore, {
+  // `DEC-151`: the server offers only `open`/`published` shifts at the
+  // employee's primary location whose position they hold (or with no position),
+  // excluding shifts they already asked for.
+  const available = await listAvailableShifts(schedulingStore, {
     organizationId,
-    from: `${today}T00:00:00.000Z`,
-    to: `${windowTo}T23:59:59.999Z`,
+    actorUserId: session.userId,
     limit: PAGE_LIMIT,
   });
-
-  const ownShiftIds = new Set(own.map((row) => row.shiftId));
-  const available = shifts.filter(
-    (shift) =>
-      (shift.state === "open" || shift.state === "published") &&
-      !ownShiftIds.has(shift.id) &&
-      employee.primaryLocationId !== null &&
-      shift.locationId === employee.primaryLocationId &&
-      (shift.roleCode === null || shift.roleCode === employee.roleCode),
-  );
 
   const locations = await listLocations(createPostgresInventoryStore(getDb().db), {
     organizationId,
@@ -115,14 +100,14 @@ export default async function MyShiftsPage() {
   const ownColumns: readonly DataTableColumn[] = [
     { key: "shift", header: "Shift (UTC)" },
     { key: "location", header: "Location" },
-    { key: "role", header: "Role" },
+    { key: "position", header: "Position" },
     { key: "status", header: "Status" },
   ];
 
   const availableColumns: readonly DataTableColumn[] = [
     { key: "shift", header: "Shift (UTC)" },
     { key: "location", header: "Location" },
-    { key: "role", header: "Role" },
+    { key: "position", header: "Position" },
     { key: "actions", header: "Actions" },
   ];
 
@@ -153,7 +138,7 @@ export default async function MyShiftsPage() {
                 id: row.assignmentId,
                 shift: formatShiftWindow(row.startsAt, row.endsAt),
                 location: locationLabelById.get(row.locationId) ?? row.locationId,
-                role: row.roleCode ?? "Any role",
+                position: row.positionName ?? "Any position",
                 status: <StatusPill tone={state.tone}>{state.label}</StatusPill>,
               };
             })}
@@ -168,16 +153,16 @@ export default async function MyShiftsPage() {
       >
         <div style={tableWrap}>
           <DataTable
-            caption="Open shifts at your primary location and role that you may self-assign"
+            caption="Open shifts at your primary location whose position you hold, which you may self-assign"
             columns={availableColumns}
             rows={available.map((shift) => ({
-              id: shift.id,
+              id: shift.shiftId,
               shift: formatShiftWindow(shift.startsAt, shift.endsAt),
               location: locationLabelById.get(shift.locationId) ?? shift.locationId,
-              role: shift.roleCode ?? "Any role",
-              actions: <SelfAssignButton shiftId={shift.id} />,
+              position: shift.positionName ?? "Any position",
+              actions: <SelfAssignButton shiftId={shift.shiftId} />,
             }))}
-            emptyMessage="No open shifts at your location and role in the next two weeks."
+            emptyMessage="No open shifts for your positions at your location in the next two weeks."
           />
         </div>
       </SectionCard>

@@ -2,6 +2,7 @@ import { WORKED_HOURS_SCALE, formatDecimal, parseDecimal } from "@aquarela/domai
 
 import type { AuditInput } from "../auth";
 
+import { DEFAULT_AVAILABLE_SHIFT_LIMIT } from "./list-available-shifts";
 import { DEFAULT_SHIFT_ADJUSTMENT_LIMIT } from "./list-shift-adjustments";
 import { DEFAULT_SHIFT_ASSIGNMENT_LIMIT } from "./list-shift-assignments";
 import { DEFAULT_MY_SHIFT_LIMIT } from "./list-my-shifts";
@@ -9,6 +10,7 @@ import { DEFAULT_PENDING_SELF_ASSIGNMENT_LIMIT } from "./list-pending-self-assig
 import { DEFAULT_SHIFT_LIMIT } from "./list-shifts";
 import { DEFAULT_PAYROLL_REPORT_LIMIT } from "./list-payroll-reports";
 import type {
+  AvailableShiftRow,
   MyShiftRow,
   NewPayrollReportRecord,
   NewShiftAdjustmentRecord,
@@ -18,6 +20,7 @@ import type {
   PayrollReportRecord,
   PendingSelfAssignmentRow,
   SchedulingEmployeeRecord,
+  SchedulingPositionRecord,
   SchedulingStore,
   ShiftAdjustmentListQuery,
   ShiftAdjustmentRecord,
@@ -56,7 +59,25 @@ export class FakeSchedulingStore implements SchedulingStore {
   readonly shiftAdjustments = new Map<string, ShiftAdjustmentRecord>();
   readonly payrollReports = new Map<string, PayrollReportRecord>();
   readonly employees = new Map<string, SchedulingEmployeeRecord>();
+  readonly positions = new Map<string, SchedulingPositionRecord>();
+  readonly employeePositions = new Map<string, string[]>();
   readonly audits: AuditInput[] = [];
+
+  /** Seeds one position the shift commands can resolve (`DEC-151`). */
+  seedPosition(organizationId: string, id: string, name = id): SchedulingPositionRecord {
+    const record: SchedulingPositionRecord = { id, organizationId, name };
+    this.positions.set(id, record);
+    return record;
+  }
+
+  /** Grants one employee a position (`DEC-151`). */
+  grantPosition(employeeId: string, positionId: string): void {
+    const held = this.employeePositions.get(employeeId) ?? [];
+    if (!held.includes(positionId)) {
+      held.push(positionId);
+    }
+    this.employeePositions.set(employeeId, held);
+  }
 
   private sequence = 0;
 
@@ -110,6 +131,7 @@ export class FakeSchedulingStore implements SchedulingStore {
       id: this.nextId("shift"),
       organizationId: input.organizationId,
       locationId: input.locationId,
+      positionId: input.positionId,
       roleCode: input.roleCode,
       startsAt: input.startsAt,
       endsAt: input.endsAt,
@@ -156,6 +178,7 @@ export class FakeSchedulingStore implements SchedulingStore {
       ...(input.endsAt === undefined ? {} : { endsAt: input.endsAt }),
       ...(input.breakMinutes === undefined ? {} : { breakMinutes: input.breakMinutes }),
       ...(input.roleCode === undefined ? {} : { roleCode: input.roleCode }),
+      ...(input.positionId === undefined ? {} : { positionId: input.positionId }),
       ...(input.state === undefined ? {} : { state: input.state }),
       ...(input.publishedAt === undefined ? {} : { publishedAt: input.publishedAt }),
       updatedAt: new Date().toISOString(),
@@ -328,6 +351,12 @@ export class FakeSchedulingStore implements SchedulingStore {
         return 0;
       })[0];
     return latest === undefined ? null : latest.adjustedHours;
+  }
+
+  /** The display name of a shift's position, or null when it has none. */
+  private positionName(positionId: string | null): string | null {
+    if (positionId === null) return null;
+    return this.positions.get(positionId)?.name ?? null;
   }
 
   async listWorkedHoursAssignments(
@@ -537,6 +566,8 @@ export class FakeSchedulingStore implements SchedulingStore {
             shiftId: shift.id,
             locationId: shift.locationId,
             roleCode: shift.roleCode,
+            positionId: shift.positionId,
+            positionName: this.positionName(shift.positionId),
             startsAt: shift.startsAt,
             endsAt: shift.endsAt,
             breakMinutes: shift.breakMinutes,
@@ -579,6 +610,8 @@ export class FakeSchedulingStore implements SchedulingStore {
             shiftId: shift.id,
             locationId: shift.locationId,
             roleCode: shift.roleCode,
+            positionId: shift.positionId,
+            positionName: this.positionName(shift.positionId),
             startsAt: shift.startsAt,
             endsAt: shift.endsAt,
             breakMinutes: shift.breakMinutes,
@@ -591,6 +624,66 @@ export class FakeSchedulingStore implements SchedulingStore {
       });
     const offset = query.offset ?? 0;
     const limit = query.limit ?? DEFAULT_PENDING_SELF_ASSIGNMENT_LIMIT;
+    return rows.slice(offset, offset + limit);
+  }
+
+  async findPosition(query: {
+    readonly organizationId: string;
+    readonly positionId: string;
+  }): Promise<SchedulingPositionRecord | undefined> {
+    const position = this.positions.get(query.positionId);
+    return position !== undefined && position.organizationId === query.organizationId
+      ? position
+      : undefined;
+  }
+
+  async listEmployeePositionIds(query: {
+    readonly organizationId: string;
+    readonly employeeId: string;
+  }): Promise<readonly string[]> {
+    const employee = this.employees.get(query.employeeId);
+    if (employee === undefined || employee.organizationId !== query.organizationId) return [];
+    return [...(this.employeePositions.get(query.employeeId) ?? [])];
+  }
+
+  async listAvailableShifts(query: {
+    readonly organizationId: string;
+    readonly employeeId: string;
+    readonly locationId: string;
+    readonly positionIds: readonly string[];
+    readonly limit?: number;
+    readonly offset?: number;
+  }): Promise<readonly AvailableShiftRow[]> {
+    const rows = [...this.shifts.values()]
+      .filter((shift) => shift.organizationId === query.organizationId)
+      .filter((shift) => shift.locationId === query.locationId)
+      .filter((shift) => shift.state === "open" || shift.state === "published")
+      .filter((shift) => shift.positionId === null || query.positionIds.includes(shift.positionId))
+      .filter(
+        (shift) =>
+          ![...this.shiftAssignments.values()].some(
+            (assignment) =>
+              assignment.organizationId === query.organizationId &&
+              assignment.shiftId === shift.id &&
+              assignment.employeeId === query.employeeId,
+          ),
+      )
+      .map((shift) => ({
+        shiftId: shift.id,
+        locationId: shift.locationId,
+        positionId: shift.positionId,
+        positionName: this.positionName(shift.positionId),
+        startsAt: shift.startsAt,
+        endsAt: shift.endsAt,
+        breakMinutes: shift.breakMinutes,
+        shiftState: shift.state,
+      }))
+      .sort((a, b) => {
+        if (a.startsAt !== b.startsAt) return a.startsAt < b.startsAt ? -1 : 1;
+        return a.shiftId < b.shiftId ? -1 : 1;
+      });
+    const offset = query.offset ?? 0;
+    const limit = query.limit ?? DEFAULT_AVAILABLE_SHIFT_LIMIT;
     return rows.slice(offset, offset + limit);
   }
 }

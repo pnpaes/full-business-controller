@@ -132,6 +132,7 @@ export async function POST(request: Request): Promise<Response> {
         organizationId,
         actorId: session.userId,
         locationId: parsed.input.locationId,
+        positionId: parsed.input.positionId,
         roleCode: parsed.input.roleCode,
         startsAt: parsed.input.startsAt,
         endsAt: parsed.input.endsAt,

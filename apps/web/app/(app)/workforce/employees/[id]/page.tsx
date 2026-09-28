@@ -9,8 +9,10 @@ import {
   findShift,
   listEmployeeDocuments,
   listLocations,
+  listPositions,
   listShiftAssignments,
 } from "@aquarela/application";
+import { listRoles } from "@aquarela/persistence";
 import {
   Alert,
   DataTable,
@@ -223,6 +225,11 @@ export default async function EmployeeDetailPage({
       ? allLocations
       : allLocations.filter((location) => access.locationIds.includes(location.id));
 
+  // `DEC-151`: the fixed role select and the open position catalogue.
+  const roles = await listRoles(getDb().db, organizationId);
+  const catalogue = await listPositions(store, { organizationId });
+  const positionNameById = new Map(catalogue.map((position) => [position.id, position.name]));
+
   const assignmentColumns: readonly DataTableColumn[] = [
     { key: "shift", header: "Shift (UTC)" },
     { key: "location", header: "Location" },
@@ -251,6 +258,16 @@ export default async function EmployeeDetailPage({
       <SectionCard title="Profile" meta={employee.retiredAt === null ? "Active" : "Retired"}>
         <div style={profileStyle}>
           <ProfileItem label="Role" value={employee.roleCode} />
+          <ProfileItem
+            label="Positions"
+            value={
+              employee.positionIds.length === 0
+                ? "—"
+                : employee.positionIds
+                    .map((positionId) => positionNameById.get(positionId) ?? positionId)
+                    .join(", ")
+            }
+          />
           <ProfileItem label="Employment" value={employmentTypeLabel(employee.employmentType)} />
           <ProfileItem label="Base hourly rate" value={`${employee.baseHourlyRate} NOK`} />
           <ProfileItem
@@ -285,11 +302,18 @@ export default async function EmployeeDetailPage({
           baseHourlyRate={employee.baseHourlyRate}
           primaryLocationId={employee.primaryLocationId}
           activeTo={employee.activeTo}
+          positionIds={employee.positionIds}
           employmentTypes={EMPLOYMENT_TYPES}
           locations={writableLocations.map((location) => ({
             id: location.id,
             code: location.code,
             name: location.name,
+          }))}
+          roles={roles.map((role) => ({ code: role.code, name: role.name }))}
+          positions={catalogue.map((position) => ({
+            id: position.id,
+            code: position.code,
+            name: position.name,
           }))}
           canClearLocation={access.locationIds.length === 0}
         />

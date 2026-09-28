@@ -8,6 +8,7 @@ vi.mock("@aquarela/application", async (importOriginal) => {
     createPostgresSchedulingStore: vi.fn(() => ({})),
     findSelfEmployee: vi.fn(),
     listMyShifts: vi.fn(),
+    listAvailableShifts: vi.fn(),
   };
 });
 
@@ -50,6 +51,8 @@ function myShiftRow(): MyShiftRow {
     shiftId: SHIFT_ID,
     locationId: LOCATION,
     roleCode: "barista",
+    positionId: null,
+    positionName: null,
     startsAt: "2026-03-01T09:00:00.000Z",
     endsAt: "2026-03-01T17:00:00.000Z",
     breakMinutes: 30,
@@ -63,6 +66,7 @@ describe("GET /api/v1/workforce/my-shifts", () => {
     vi.mocked(application.createPostgresSchedulingStore).mockReturnValue({} as never);
     vi.mocked(application.findSelfEmployee).mockResolvedValue(employee());
     vi.mocked(application.listMyShifts).mockResolvedValue([myShiftRow()]);
+    vi.mocked(application.listAvailableShifts).mockResolvedValue([]);
     vi.mocked(getServerSession).mockResolvedValue({ userId: USER } as never);
   });
 

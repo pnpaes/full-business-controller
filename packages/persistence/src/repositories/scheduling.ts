@@ -1,7 +1,29 @@
-import { and, asc, count, desc, eq, gt, gte, inArray, isNull, lt, lte, ne, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  gt,
+  gte,
+  inArray,
+  isNull,
+  lt,
+  lte,
+  ne,
+  or,
+  sql,
+} from "drizzle-orm";
 
 import type { Database } from "../client";
-import { employee, payrollReport, shift, shiftAdjustment, shiftAssignment } from "../schema";
+import {
+  employee,
+  payrollReport,
+  position,
+  shift,
+  shiftAdjustment,
+  shiftAssignment,
+} from "../schema";
 
 export type Shift = typeof shift.$inferSelect;
 export type ShiftAssignment = typeof shiftAssignment.$inferSelect;
@@ -45,8 +67,10 @@ export interface CreateShiftInput {
   readonly organizationId: string;
   /** NOT NULL FK to `location.id`; guarded same-organization by `0052`. */
   readonly locationId: string;
-  /** Free text; `null` means any role (the draft has no CHECK). */
+  /** Free text; retained for now (`DEC-151` expand-only), superseded by `positionId`. */
   readonly roleCode?: string | null;
+  /** `DEC-151` staffing match; `null` means any position. */
+  readonly positionId?: string | null;
   readonly startsAt: Date;
   readonly endsAt: Date;
   /** Defaults to 0 at the database; must be `>= 0`. */
@@ -63,6 +87,7 @@ export async function createShift(db: Database, input: CreateShiftInput): Promis
       organizationId: input.organizationId,
       locationId: input.locationId,
       roleCode: input.roleCode ?? null,
+      positionId: input.positionId ?? null,
       startsAt: input.startsAt,
       endsAt: input.endsAt,
       ...(input.breakMinutes === undefined ? {} : { breakMinutes: input.breakMinutes }),
@@ -113,6 +138,8 @@ export interface UpdateShiftInput {
   readonly breakMinutes?: number;
   /** Explicit `null` clears the role (any role); an omitted field is untouched. */
   readonly roleCode?: string | null;
+  /** `DEC-151`: explicit `null` means any position; omitted leaves it untouched. */
+  readonly positionId?: string | null;
   /** Checked against the `SHIFT_STATE` vocabulary. */
   readonly state?: string;
   /** Set when published; an explicit `null` clears it. */
@@ -372,6 +399,9 @@ export interface MyShiftRow {
   readonly shiftId: string;
   readonly locationId: string;
   readonly roleCode: string | null;
+  /** `DEC-151` staffing match; `null` means any position. */
+  readonly positionId: string | null;
+  readonly positionName: string | null;
   readonly startsAt: Date;
   readonly endsAt: Date;
   readonly breakMinutes: number;
@@ -404,6 +434,8 @@ export async function listMyShifts(
       shiftId: shift.id,
       locationId: shift.locationId,
       roleCode: shift.roleCode,
+      positionId: shift.positionId,
+      positionName: position.name,
       startsAt: shift.startsAt,
       endsAt: shift.endsAt,
       breakMinutes: shift.breakMinutes,
@@ -411,6 +443,7 @@ export async function listMyShifts(
     })
     .from(shiftAssignment)
     .innerJoin(shift, eq(shiftAssignment.shiftId, shift.id))
+    .leftJoin(position, eq(shift.positionId, position.id))
     .where(
       and(
         eq(shiftAssignment.organizationId, query.organizationId),
@@ -438,6 +471,9 @@ export interface PendingSelfAssignmentRow {
   readonly shiftId: string;
   readonly locationId: string;
   readonly roleCode: string | null;
+  /** `DEC-151` staffing match; `null` means any position. */
+  readonly positionId: string | null;
+  readonly positionName: string | null;
   readonly startsAt: Date;
   readonly endsAt: Date;
   readonly breakMinutes: number;
@@ -468,6 +504,8 @@ export async function listPendingSelfAssignments(
       shiftId: shift.id,
       locationId: shift.locationId,
       roleCode: shift.roleCode,
+      positionId: shift.positionId,
+      positionName: position.name,
       startsAt: shift.startsAt,
       endsAt: shift.endsAt,
       breakMinutes: shift.breakMinutes,
@@ -475,6 +513,7 @@ export async function listPendingSelfAssignments(
     .from(shiftAssignment)
     .innerJoin(shift, eq(shiftAssignment.shiftId, shift.id))
     .innerJoin(employee, eq(shiftAssignment.employeeId, employee.id))
+    .leftJoin(position, eq(shift.positionId, position.id))
     .where(
       and(
         eq(shiftAssignment.organizationId, query.organizationId),
@@ -485,6 +524,81 @@ export async function listPendingSelfAssignments(
       ),
     )
     .orderBy(asc(shift.startsAt), asc(shiftAssignment.id))
+    .$dynamic();
+  if (query.limit !== undefined) {
+    statement.limit(query.limit);
+  }
+  if (query.offset !== undefined) {
+    statement.offset(query.offset);
+  }
+  return statement;
+}
+
+/** One `open`/`published` shift an employee may self-assign (`DEC-151`). */
+export interface AvailableShiftRow {
+  readonly shiftId: string;
+  readonly locationId: string;
+  readonly positionId: string | null;
+  readonly positionName: string | null;
+  readonly startsAt: Date;
+  readonly endsAt: Date;
+  readonly breakMinutes: number;
+  /** One of `SHIFT_STATE`. */
+  readonly shiftState: string;
+}
+
+export interface ListAvailableShiftsQuery {
+  readonly organizationId: string;
+  readonly employeeId: string;
+  readonly locationId: string;
+  /** The employee's held position ids; a shift with no position also matches. */
+  readonly positionIds: readonly string[];
+  readonly limit?: number;
+  readonly offset?: number;
+}
+
+/**
+ * The shifts one employee may self-assign (`DEC-151`): `open`/`published`, at
+ * the employee's location, whose position is null (any position) or one the
+ * employee holds, and with no assignment yet by that employee. Organization-
+ * scoped on the shift and the not-exists subquery (`DEC-061`); ordered by start.
+ */
+export async function listAvailableShifts(
+  db: Database,
+  query: ListAvailableShiftsQuery,
+): Promise<readonly AvailableShiftRow[]> {
+  const positionMatch =
+    query.positionIds.length === 0
+      ? isNull(shift.positionId)
+      : or(isNull(shift.positionId), inArray(shift.positionId, [...query.positionIds]));
+  const statement = db
+    .select({
+      shiftId: shift.id,
+      locationId: shift.locationId,
+      positionId: shift.positionId,
+      positionName: position.name,
+      startsAt: shift.startsAt,
+      endsAt: shift.endsAt,
+      breakMinutes: shift.breakMinutes,
+      shiftState: shift.state,
+    })
+    .from(shift)
+    .leftJoin(position, eq(shift.positionId, position.id))
+    .where(
+      and(
+        eq(shift.organizationId, query.organizationId),
+        eq(shift.locationId, query.locationId),
+        inArray(shift.state, ["open", "published"]),
+        positionMatch,
+        sql`not exists (
+          select 1 from "shift_assignment" sa
+          where sa."organization_id" = ${query.organizationId}
+            and sa."shift_id" = ${shift.id}
+            and sa."employee_id" = ${query.employeeId}
+        )`,
+      ),
+    )
+    .orderBy(asc(shift.startsAt), asc(shift.id))
     .$dynamic();
   if (query.limit !== undefined) {
     statement.limit(query.limit);

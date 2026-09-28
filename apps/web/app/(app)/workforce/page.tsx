@@ -4,7 +4,9 @@ import {
   EMPLOYMENT_TYPES,
   listEmployees,
   listLocations,
+  listPositions,
 } from "@aquarela/application";
+import { listRoles } from "@aquarela/persistence";
 import {
   Alert,
   DataTable,
@@ -142,6 +144,11 @@ export default async function WorkforcePage({
     allLocations.map((location) => [location.id, `${location.code} · ${location.name}`]),
   );
 
+  // `DEC-151`: the employee form's fixed role select (the organization's roles)
+  // and the open position catalogue it may grant from.
+  const roles = await listRoles(getDb().db, organizationId);
+  const positions = await listPositions(store, { organizationId, active: true });
+
   // Fail-closed, mirroring the GET route: a scoped caller never sees an
   // employee whose primary location is null or outside their scope.
   const scoped =
@@ -259,6 +266,12 @@ export default async function WorkforcePage({
           id: location.id,
           code: location.code,
           name: location.name,
+        }))}
+        roles={roles.map((role) => ({ code: role.code, name: role.name }))}
+        positions={positions.map((position) => ({
+          id: position.id,
+          code: position.code,
+          name: position.name,
         }))}
         canWrite={canWrite}
       />

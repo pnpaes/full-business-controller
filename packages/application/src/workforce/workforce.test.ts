@@ -31,7 +31,7 @@ function register(
     organizationId: fixture.organizationId,
     actorId: fixture.actorId,
     name: "Nora Nordmann",
-    roleCode: "barista",
+    roleCode: "front_of_house",
     employmentType: "part_time",
     baseHourlyRate: "215.5000",
     activeFrom: "2026-01-01",
@@ -89,7 +89,7 @@ describe("registerEmployee", () => {
 
     const employee = await register(store, fixture, {
       name: "  Nora Nordmann  ",
-      roleCode: "  barista  ",
+      roleCode: "  front_of_house  ",
       userId: "user-1",
       costCenterId: "cc-1",
       primaryLocationId: fixture.locationId,
@@ -101,7 +101,7 @@ describe("registerEmployee", () => {
       organizationId: fixture.organizationId,
       userId: "user-1",
       name: "Nora Nordmann",
-      roleCode: "barista",
+      roleCode: "front_of_house",
       employmentType: "part_time",
       baseHourlyRate: "215.5000",
       costCenterId: "cc-1",
@@ -123,7 +123,7 @@ describe("registerEmployee", () => {
       after: {
         user_id: "user-1",
         name: "Nora Nordmann",
-        role_code: "barista",
+        role_code: "front_of_house",
         employment_type: "part_time",
         base_hourly_rate: "215.5000",
         cost_center_id: "cc-1",

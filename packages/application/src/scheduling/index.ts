@@ -35,6 +35,8 @@ export { DEFAULT_SHIFT_ADJUSTMENT_LIMIT, listShiftAdjustments } from "./list-shi
 export type { ListShiftAdjustmentsQuery } from "./list-shift-adjustments";
 export { DEFAULT_SHIFT_ASSIGNMENT_LIMIT, listShiftAssignments } from "./list-shift-assignments";
 export type { ListShiftAssignmentsQuery } from "./list-shift-assignments";
+export { DEFAULT_AVAILABLE_SHIFT_LIMIT, listAvailableShifts } from "./list-available-shifts";
+export type { ListAvailableShiftsQuery } from "./list-available-shifts";
 export { DEFAULT_MY_SHIFT_LIMIT, listMyShifts } from "./list-my-shifts";
 export type { ListMyShiftsQuery } from "./list-my-shifts";
 export {
@@ -60,6 +62,7 @@ export { withdrawShiftAssignment } from "./withdraw-shift-assignment";
 export type { WithdrawShiftAssignmentInput } from "./withdraw-shift-assignment";
 export { SHIFT_ASSIGNMENT_STATES, SHIFT_STATES, PAYROLL_REPORT_STATUSES } from "./types";
 export type {
+  AvailableShiftRow,
   NewShiftAdjustmentRecord,
   NewShiftAssignmentRecord,
   NewShiftRecord,
@@ -67,6 +70,7 @@ export type {
   PayrollReportListQuery,
   PayrollReportRecord,
   SchedulingEmployeeRecord,
+  SchedulingPositionRecord,
   SchedulingStore,
   MyShiftRow,
   PendingSelfAssignmentRow,

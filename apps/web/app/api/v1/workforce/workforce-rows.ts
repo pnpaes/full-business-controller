@@ -2,6 +2,7 @@ import {
   DEFAULT_EMPLOYEE_DOCUMENT_LIMIT,
   DEFAULT_EMPLOYEE_LIMIT,
   DEFAULT_PAYROLL_REPORT_LIMIT,
+  DEFAULT_POSITION_LIMIT,
   DEFAULT_SHIFT_ADJUSTMENT_LIMIT,
   DEFAULT_SHIFT_ASSIGNMENT_LIMIT,
   DEFAULT_SHIFT_LIMIT,
@@ -9,11 +10,13 @@ import {
   EMPLOYMENT_TYPES,
   PAYROLL_REPORT_STATUSES,
   SHIFT_STATES,
+  type AvailableShiftRow as SchedulingAvailableShiftRow,
   type EmployeeDocumentRecord,
   type EmployeeRecord,
   type MyShiftRow as SchedulingMyShiftRow,
   type PayrollReportRecord,
   type PendingSelfAssignmentRow as SchedulingPendingSelfAssignmentRow,
+  type PositionRecord,
   type ShiftAdjustmentRecord,
   type ShiftAssignmentRecord,
   type ShiftRecord,
@@ -300,6 +303,38 @@ function readOptionalUuid(
   return isUuid(trimmed) ? { ok: true, present: true, value: trimmed } : { ok: false };
 }
 
+/**
+ * Optional array of UUIDs (`DEC-151`): absent → not present; an array whose every
+ * member is a UUID → the deduped trimmed list; a non-array, a non-string member
+ * or a non-UUID value → invalid. An empty array is a valid "clear".
+ */
+function readOptionalUuidArray(
+  body: Record<string, unknown>,
+  key: string,
+): OptionalField<readonly string[]> {
+  const value = body[key];
+  if (value === undefined) {
+    return { ok: true, present: false, value: [] };
+  }
+  if (!Array.isArray(value)) {
+    return { ok: false };
+  }
+  const ids: string[] = [];
+  for (const member of value) {
+    if (typeof member !== "string") {
+      return { ok: false };
+    }
+    const trimmed = member.trim();
+    if (!isUuid(trimmed)) {
+      return { ok: false };
+    }
+    if (!ids.includes(trimmed)) {
+      ids.push(trimmed);
+    }
+  }
+  return { ok: true, present: true, value: ids };
+}
+
 /** Optional `YYYY-MM-DD`: absent → not present; null/blank → `null`; malformed → invalid. */
 function readOptionalDate(
   body: Record<string, unknown>,
@@ -470,6 +505,8 @@ export interface CreateEmployeeBody {
   readonly primaryLocationId: string | null;
   readonly activeFrom: string;
   readonly activeTo: string | null;
+  /** `DEC-151`: the initial position set (deduped, validated by the command). */
+  readonly positionIds: readonly string[];
 }
 
 export type ParsedCreateEmployee =
@@ -503,7 +540,8 @@ export function parseCreateEmployeeBody(
   const costCenterId = readOptionalUuid(body, "costCenterId");
   const primaryLocationId = readOptionalUuid(body, "primaryLocationId");
   const activeTo = readOptionalDate(body, "activeTo");
-  if (!userId.ok || !costCenterId.ok || !primaryLocationId.ok || !activeTo.ok) {
+  const positionIds = readOptionalUuidArray(body, "positionIds");
+  if (!userId.ok || !costCenterId.ok || !primaryLocationId.ok || !activeTo.ok || !positionIds.ok) {
     return { ok: false };
   }
   if (activeTo.value !== null && activeTo.value <= activeFrom.value) {
@@ -522,6 +560,7 @@ export function parseCreateEmployeeBody(
       primaryLocationId: primaryLocationId.value,
       activeFrom: activeFrom.value,
       activeTo: activeTo.value,
+      positionIds: positionIds.value,
     },
   };
 }
@@ -534,6 +573,8 @@ export interface UpdateEmployeeBody {
   readonly costCenterId?: string | null;
   readonly primaryLocationId?: string | null;
   readonly activeTo?: string | null;
+  /** `DEC-151`: replaces the whole position set when present. */
+  readonly positionIds?: readonly string[];
 }
 
 export type ParsedUpdateEmployee =
@@ -557,6 +598,7 @@ export function parseUpdateEmployeeBody(
   const costCenterId = readOptionalUuid(body, "costCenterId");
   const primaryLocationId = readOptionalUuid(body, "primaryLocationId");
   const activeTo = readOptionalDate(body, "activeTo");
+  const positionIds = readOptionalUuidArray(body, "positionIds");
   if (
     !name.ok ||
     !roleCode.ok ||
@@ -564,7 +606,8 @@ export function parseUpdateEmployeeBody(
     !baseHourlyRate.ok ||
     !costCenterId.ok ||
     !primaryLocationId.ok ||
-    !activeTo.ok
+    !activeTo.ok ||
+    !positionIds.ok
   ) {
     return { ok: false };
   }
@@ -578,6 +621,7 @@ export function parseUpdateEmployeeBody(
       ...(costCenterId.present ? { costCenterId: costCenterId.value } : {}),
       ...(primaryLocationId.present ? { primaryLocationId: primaryLocationId.value } : {}),
       ...(activeTo.present ? { activeTo: activeTo.value } : {}),
+      ...(positionIds.present ? { positionIds: positionIds.value } : {}),
     },
   };
 }
@@ -681,6 +725,8 @@ export interface EmployeeRow {
   readonly primaryLocationId: string | null;
   readonly activeFrom: string;
   readonly activeTo: string | null;
+  /** `DEC-151`: the positions the employee holds. */
+  readonly positionIds: readonly string[];
   readonly retiredAt: string | null;
   readonly createdAt: string;
   readonly createdBy: string | null;
@@ -705,6 +751,7 @@ export function toEmployeeRow(
     primaryLocationId: employee.primaryLocationId,
     activeFrom: employee.activeFrom,
     activeTo: employee.activeTo,
+    positionIds: employee.positionIds,
     retiredAt: employee.retiredAt,
     createdAt: employee.createdAt,
     createdBy: employee.createdBy,
@@ -867,7 +914,9 @@ export function parseShiftAssignmentListQuery(
 
 export interface CreateShiftBody {
   readonly locationId: string;
-  /** Free-text role; blank/omitted becomes `null`. */
+  /** `DEC-151` staffing position; blank/omitted becomes `null` (any position). */
+  readonly positionId: string | null;
+  /** Legacy free-text role; blank/omitted becomes `null`. */
   readonly roleCode: string | null;
   readonly startsAt: string;
   readonly endsAt: string;
@@ -895,14 +944,16 @@ export function parseCreateShiftBody(body: Record<string, unknown> | undefined):
     return { ok: false };
   }
   const roleCode = readOptionalNullableText(body, "roleCode");
+  const positionId = readOptionalUuid(body, "positionId");
   const breakMinutes = readOptionalBreakMinutes(body);
-  if (!roleCode.ok || !breakMinutes.ok) {
+  if (!roleCode.ok || !positionId.ok || !breakMinutes.ok) {
     return { ok: false };
   }
   return {
     ok: true,
     input: {
       locationId,
+      positionId: positionId.value,
       roleCode: roleCode.value,
       startsAt: startsAt.value,
       endsAt: endsAt.value,
@@ -915,7 +966,9 @@ export interface UpdateShiftBody {
   readonly startsAt?: string;
   readonly endsAt?: string;
   readonly breakMinutes?: number;
-  /** Free text; blank/`null` clears it. */
+  /** `DEC-151`; blank/`null` clears it (any position). */
+  readonly positionId?: string | null;
+  /** Legacy free text; blank/`null` clears it. */
   readonly roleCode?: string | null;
 }
 
@@ -934,7 +987,8 @@ export function parseUpdateShiftBody(body: Record<string, unknown> | undefined):
   const endsAt = readOptionalInstant(body, "endsAt");
   const breakMinutes = readOptionalBreakMinutes(body);
   const roleCode = readOptionalNullableText(body, "roleCode");
-  if (!startsAt.ok || !endsAt.ok || !breakMinutes.ok || !roleCode.ok) {
+  const positionId = readOptionalUuid(body, "positionId");
+  if (!startsAt.ok || !endsAt.ok || !breakMinutes.ok || !roleCode.ok || !positionId.ok) {
     return { ok: false };
   }
   return {
@@ -944,18 +998,24 @@ export function parseUpdateShiftBody(body: Record<string, unknown> | undefined):
       ...(endsAt.present ? { endsAt: endsAt.value } : {}),
       ...(breakMinutes.present ? { breakMinutes: breakMinutes.value } : {}),
       ...(roleCode.present ? { roleCode: roleCode.value } : {}),
+      ...(positionId.present ? { positionId: positionId.value } : {}),
     },
   };
 }
 
 export interface CreateShiftAssignmentBody {
   readonly employeeId: string;
+  /** `DEC-151`: recorded manager override of the position match. */
+  readonly override: boolean;
 }
 
 export type ParsedCreateShiftAssignment =
   { readonly ok: true; readonly input: CreateShiftAssignmentBody } | { readonly ok: false };
 
-/** `POST /shifts/[id]/assignments` body; the shift link is the path id. */
+/**
+ * `POST /shifts/[id]/assignments` body; the shift link is the path id. `override`
+ * (`DEC-151`) is optional and defaults to false; a non-boolean is a 400.
+ */
 export function parseCreateShiftAssignmentBody(
   body: Record<string, unknown> | undefined,
 ): ParsedCreateShiftAssignment {
@@ -966,7 +1026,11 @@ export function parseCreateShiftAssignmentBody(
   if (employeeId === null || !isUuid(employeeId)) {
     return { ok: false };
   }
-  return { ok: true, input: { employeeId } };
+  const override = body["override"];
+  if (override !== undefined && typeof override !== "boolean") {
+    return { ok: false };
+  }
+  return { ok: true, input: { employeeId, override: override === true } };
 }
 
 export interface DecideSelfAssignmentBody {
@@ -1108,6 +1172,8 @@ export function parseWorkedHoursQuery(searchParams: URLSearchParams): ParsedWork
 export interface ShiftRow {
   readonly id: string;
   readonly locationId: string;
+  /** `DEC-151` staffing position; `null` means any position. */
+  readonly positionId: string | null;
   readonly roleCode: string | null;
   readonly startsAt: string;
   readonly endsAt: string;
@@ -1128,6 +1194,7 @@ export function toShiftRow(organizationId: string, shift: ShiftRecord): ShiftRow
   return {
     id: shift.id,
     locationId: shift.locationId,
+    positionId: shift.positionId,
     roleCode: shift.roleCode,
     startsAt: shift.startsAt,
     endsAt: shift.endsAt,
@@ -1215,6 +1282,8 @@ export interface MyShiftRow {
   readonly shiftId: string;
   readonly locationId: string;
   readonly roleCode: string | null;
+  readonly positionId: string | null;
+  readonly positionName: string | null;
   readonly startsAt: string;
   readonly endsAt: string;
   readonly breakMinutes: number;
@@ -1230,11 +1299,46 @@ export function toMyShiftRow(row: SchedulingMyShiftRow): MyShiftRow {
     shiftId: row.shiftId,
     locationId: row.locationId,
     roleCode: row.roleCode,
+    positionId: row.positionId,
+    positionName: row.positionName,
     startsAt: row.startsAt,
     endsAt: row.endsAt,
     breakMinutes: row.breakMinutes,
     shiftState: row.shiftState,
   };
+}
+
+/** One available shift for the signed-in employee (`DEC-151`). */
+export interface AvailableShiftRow {
+  readonly shiftId: string;
+  readonly locationId: string;
+  readonly positionId: string | null;
+  readonly positionName: string | null;
+  readonly startsAt: string;
+  readonly endsAt: string;
+  readonly breakMinutes: number;
+  readonly shiftState: string;
+}
+
+/** Maps one available shift to the wire shape. */
+export function toAvailableShiftRow(row: SchedulingAvailableShiftRow): AvailableShiftRow {
+  return {
+    shiftId: row.shiftId,
+    locationId: row.locationId,
+    positionId: row.positionId,
+    positionName: row.positionName,
+    startsAt: row.startsAt,
+    endsAt: row.endsAt,
+    breakMinutes: row.breakMinutes,
+    shiftState: row.shiftState,
+  };
+}
+
+/** Maps available shift rows to the wire shape. */
+export function toAvailableShiftRows(
+  rows: readonly SchedulingAvailableShiftRow[],
+): readonly AvailableShiftRow[] {
+  return rows.map(toAvailableShiftRow);
 }
 
 /** Maps `My shifts` rows to the wire shape. */
@@ -1251,6 +1355,8 @@ export interface PendingSelfAssignmentRow {
   readonly shiftId: string;
   readonly locationId: string;
   readonly roleCode: string | null;
+  readonly positionId: string | null;
+  readonly positionName: string | null;
   readonly startsAt: string;
   readonly endsAt: string;
   readonly breakMinutes: number;
@@ -1268,6 +1374,8 @@ export function toPendingSelfAssignmentRow(
     shiftId: row.shiftId,
     locationId: row.locationId,
     roleCode: row.roleCode,
+    positionId: row.positionId,
+    positionName: row.positionName,
     startsAt: row.startsAt,
     endsAt: row.endsAt,
     breakMinutes: row.breakMinutes,
@@ -1500,6 +1608,166 @@ export function toPayrollReportRows(
   const rows: PayrollReportRow[] = [];
   for (const report of reports) {
     const row = toPayrollReportRow(organizationId, report);
+    if (row !== undefined) {
+      rows.push(row);
+    }
+  }
+  return rows;
+}
+
+/* -------------------------------- positions ------------------------------- */
+
+/**
+ * Query/body parsing and row mapping for the position catalogue (`DEC-151`).
+ * `code`/`name` are bounded free text (the catalogue is open, unlike the role
+ * vocabulary); `activeFrom`/`activeTo` are `YYYY-MM-DD` days. The row mapper
+ * drops a foreign-organization row defensively, like the other slices.
+ */
+
+export interface PositionListQuery {
+  /** `true` = active now; `false` = expired; absent = all. */
+  readonly active?: boolean;
+  readonly limit: number;
+  readonly offset: number;
+}
+
+export type ParsedPositionListQuery =
+  { readonly ok: true; readonly query: PositionListQuery } | { readonly ok: false };
+
+/** Parses the optional `active` filter and `limit`/`offset` paging. */
+export function parsePositionListQuery(searchParams: URLSearchParams): ParsedPositionListQuery {
+  const active = readOptionalQueryBoolean(searchParams, "active");
+  if (active === "invalid") {
+    return { ok: false };
+  }
+  const paging = readPaging(searchParams, DEFAULT_POSITION_LIMIT);
+  if (!paging.ok) {
+    return { ok: false };
+  }
+  return {
+    ok: true,
+    query: {
+      ...(active === undefined ? {} : { active }),
+      limit: paging.limit,
+      offset: paging.offset,
+    },
+  };
+}
+
+export interface CreatePositionBody {
+  readonly code: string;
+  readonly name: string;
+  readonly activeFrom: string;
+  readonly activeTo: string | null;
+}
+
+export type ParsedCreatePosition =
+  { readonly ok: true; readonly input: CreatePositionBody } | { readonly ok: false };
+
+/** `POST /positions` body: the code, name and effective window. */
+export function parseCreatePositionBody(
+  body: Record<string, unknown> | undefined,
+): ParsedCreatePosition {
+  if (body === undefined) {
+    return { ok: false };
+  }
+  const code = readText(body, "code");
+  const name = readText(body, "name");
+  const activeFrom = readOptionalDate(body, "activeFrom");
+  if (
+    code === null ||
+    name === null ||
+    !activeFrom.ok ||
+    !activeFrom.present ||
+    activeFrom.value === null
+  ) {
+    return { ok: false };
+  }
+  const activeTo = readOptionalDate(body, "activeTo");
+  if (!activeTo.ok) {
+    return { ok: false };
+  }
+  if (activeTo.value !== null && activeTo.value <= activeFrom.value) {
+    return { ok: false };
+  }
+  return {
+    ok: true,
+    input: { code, name, activeFrom: activeFrom.value, activeTo: activeTo.value },
+  };
+}
+
+export interface UpdatePositionBody {
+  readonly code?: string;
+  readonly name?: string;
+  readonly activeFrom?: string;
+  readonly activeTo?: string | null;
+}
+
+export type ParsedUpdatePosition =
+  { readonly ok: true; readonly input: UpdatePositionBody } | { readonly ok: false };
+
+/** `PATCH /positions/[id]` body: any subset; `activeTo` deactivates/reactivates. */
+export function parseUpdatePositionBody(
+  body: Record<string, unknown> | undefined,
+): ParsedUpdatePosition {
+  if (body === undefined) {
+    return { ok: false };
+  }
+  const code = readOptionalRequiredText(body, "code");
+  const name = readOptionalRequiredText(body, "name");
+  const activeFrom = readOptionalDate(body, "activeFrom");
+  const activeTo = readOptionalDate(body, "activeTo");
+  if (!code.ok || !name.ok || !activeFrom.ok || !activeTo.ok) {
+    return { ok: false };
+  }
+  return {
+    ok: true,
+    input: {
+      ...(code.present ? { code: code.value } : {}),
+      ...(name.present ? { name: name.value } : {}),
+      ...(activeFrom.present && activeFrom.value !== null ? { activeFrom: activeFrom.value } : {}),
+      ...(activeTo.present ? { activeTo: activeTo.value } : {}),
+    },
+  };
+}
+
+export interface PositionRow {
+  readonly id: string;
+  readonly code: string;
+  readonly name: string;
+  readonly activeFrom: string;
+  readonly activeTo: string | null;
+  readonly createdAt: string;
+  readonly createdBy: string | null;
+}
+
+/** Maps one position to an HTTP row; `undefined` for a foreign-organization row. */
+export function toPositionRow(
+  organizationId: string,
+  position: PositionRecord,
+): PositionRow | undefined {
+  if (position.organizationId !== organizationId) {
+    return undefined;
+  }
+  return {
+    id: position.id,
+    code: position.code,
+    name: position.name,
+    activeFrom: position.activeFrom,
+    activeTo: position.activeTo,
+    createdAt: position.createdAt,
+    createdBy: position.createdBy,
+  };
+}
+
+/** Maps position records to HTTP rows, dropping any foreign-organization position. */
+export function toPositionRows(
+  organizationId: string,
+  positions: readonly PositionRecord[],
+): readonly PositionRow[] {
+  const rows: PositionRow[] = [];
+  for (const position of positions) {
+    const row = toPositionRow(organizationId, position);
     if (row !== undefined) {
       rows.push(row);
     }

@@ -23,7 +23,11 @@ export interface EmployeeRecord {
   /** Optional `app_user` login; an employee may exist without one (`WF-001`). */
   readonly userId: string | null;
   readonly name: string;
-  /** Free text: the draft declares no CHECK and no vocabulary for it. */
+  /**
+   * `DEC-151`: the employee's access level — a role code the organization holds
+   * (one of `ROLE_CODE`, an existing `role` row). The family is unchanged from
+   * the old free text, so costing/payroll reads keep working.
+   */
   readonly roleCode: string;
   /** One of `EMPLOYMENT_TYPE`. */
   readonly employmentType: string;
@@ -36,6 +40,8 @@ export interface EmployeeRecord {
   readonly activeFrom: string;
   /** `date`, `YYYY-MM-DD`, or null; strictly after `activeFrom` when set. */
   readonly activeTo: string | null;
+  /** `DEC-151`: the ids of the positions the employee holds (the `many`). */
+  readonly positionIds: readonly string[];
   /** `timestamptz`, ISO; the retirement tombstone (retired, never deleted). */
   readonly retiredAt: string | null;
   /** `timestamptz`, ISO. */
@@ -49,7 +55,7 @@ export interface NewEmployeeRecord {
   readonly organizationId: string;
   readonly userId: string | null;
   readonly name: string;
-  /** Free text. */
+  /** `DEC-151`: an existing organization role code (validated by the command). */
   readonly roleCode: string;
   /** One of `EMPLOYMENT_TYPE`. */
   readonly employmentType: string;
@@ -61,6 +67,8 @@ export interface NewEmployeeRecord {
   readonly activeFrom: string;
   /** `date`, `YYYY-MM-DD`, or null. */
   readonly activeTo: string | null;
+  /** `DEC-151`: the initial position set (deduped by the command). */
+  readonly positionIds: readonly string[];
   /** The acting actor; recorded as `created_by`. */
   readonly createdBy: string | null;
 }
@@ -81,6 +89,11 @@ export interface EmployeePatch {
   readonly primaryLocationId?: string | null;
   /** `date`, `YYYY-MM-DD`, or null to clear it. */
   readonly activeTo?: string | null;
+  /**
+   * `DEC-151`: replaces the whole position set when present (deduped by the
+   * command); an empty array clears every position.
+   */
+  readonly positionIds?: readonly string[];
   /** `timestamptz`, ISO: the retirement tombstone (never deleted). */
   readonly retiredAt?: string | null;
 }
@@ -175,10 +188,72 @@ export interface EmployeeDocumentListQuery {
   readonly offset?: number;
 }
 
+/** The minimal `role` projection the employee role validation needs (`DEC-151`). */
+export interface RoleRecord {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly code: string;
+}
+
+/** One `position` row (`DEC-151`): the open, org-scoped employment catalogue. */
+export interface PositionRecord {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly code: string;
+  readonly name: string;
+  /** `date`, `YYYY-MM-DD`. */
+  readonly activeFrom: string;
+  /** `date`, `YYYY-MM-DD`, or null. */
+  readonly activeTo: string | null;
+  /** `timestamptz`, ISO. */
+  readonly createdAt: string;
+  readonly createdBy: string | null;
+  /** `timestamptz`, ISO; null before any update. */
+  readonly updatedAt?: string | null;
+  readonly updatedBy?: string | null;
+}
+
+export interface NewPositionRecord {
+  readonly organizationId: string;
+  readonly code: string;
+  readonly name: string;
+  /** `date`, `YYYY-MM-DD`. */
+  readonly activeFrom: string;
+  /** `date`, `YYYY-MM-DD`, or null. */
+  readonly activeTo: string | null;
+  readonly createdBy: string | null;
+}
+
+/** The mutable fields of a position; omitted = unchanged, `null` clears. */
+export interface PositionPatch {
+  readonly code?: string;
+  readonly name?: string;
+  /** `date`, `YYYY-MM-DD`. */
+  readonly activeFrom?: string;
+  /** `date`, `YYYY-MM-DD`, or null to reactivate. */
+  readonly activeTo?: string | null;
+}
+
+export interface UpdatePositionRecord extends PositionPatch {
+  readonly organizationId: string;
+  readonly positionId: string;
+  readonly updatedBy?: string | null;
+}
+
+/** Position filters for the store read. */
+export interface PositionListQuery {
+  readonly organizationId: string;
+  /** `true` = active now; `false` = expired. */
+  readonly active?: boolean;
+  readonly limit?: number;
+  readonly offset?: number;
+}
+
 /**
  * The persistence port for the workforce personnel slice: the parent `employee`
- * entity plus its personnel documents. One port covers both tables (there is no
- * separate document store), mirroring the persistence repository module.
+ * entity plus its personnel documents, the fixed `role` lookup the employee role
+ * validation needs (`DEC-151`) and the open `position` catalogue. One port covers
+ * the tables, mirroring the persistence repository module.
  */
 export interface WorkforceStore {
   /**
@@ -217,4 +292,46 @@ export interface WorkforceStore {
   listEmployeeDocuments(
     query: EmployeeDocumentListQuery,
   ): Promise<readonly EmployeeDocumentRecord[]>;
+  /** The organization's role row for a code, or `undefined` (`DEC-151` validation). */
+  findRoleByCode(query: {
+    readonly organizationId: string;
+    readonly code: string;
+  }): Promise<RoleRecord | undefined>;
+  createPosition(input: NewPositionRecord): Promise<PositionRecord>;
+  /** One position by id, organization-scoped (`DEC-061`), or `undefined`. */
+  findPosition(query: {
+    readonly organizationId: string;
+    readonly positionId: string;
+  }): Promise<PositionRecord | undefined>;
+  /** One position by code, organization-scoped (`DEC-061`), or `undefined`. */
+  findPositionByCode(query: {
+    readonly organizationId: string;
+    readonly code: string;
+  }): Promise<PositionRecord | undefined>;
+  /**
+   * Applies a patch to one position, organization-scoped (`DEC-061`);
+   * `undefined` when no row matches in the organization.
+   */
+  updatePosition(input: UpdatePositionRecord): Promise<PositionRecord | undefined>;
+  listPositions(query: PositionListQuery): Promise<readonly PositionRecord[]>;
+  /**
+   * Replaces one employee's whole position set (`DEC-151`): deletes the existing
+   * grants and inserts `positionIds`, in the caller's transaction.
+   */
+  setEmployeePositions(input: {
+    readonly organizationId: string;
+    readonly employeeId: string;
+    readonly positionIds: readonly string[];
+    readonly actorId: string | null;
+  }): Promise<void>;
+  /** The positions one employee holds, ordered by name (`DEC-151`). */
+  listEmployeePositions(query: {
+    readonly organizationId: string;
+    readonly employeeId: string;
+  }): Promise<readonly PositionRecord[]>;
+  /** The position ids of many employees at once, keyed by employee id. */
+  listPositionIdsByEmployeeIds(query: {
+    readonly organizationId: string;
+    readonly employeeIds: readonly string[];
+  }): Promise<ReadonlyMap<string, readonly string[]>>;
 }

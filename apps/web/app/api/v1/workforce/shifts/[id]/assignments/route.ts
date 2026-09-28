@@ -143,6 +143,7 @@ export async function POST(
         organizationId,
         shiftId: id,
         employeeId: parsed.input.employeeId,
+        override: parsed.input.override,
         actorId: session.userId,
       });
     } catch (error) {

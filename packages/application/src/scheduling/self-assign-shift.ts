@@ -42,9 +42,9 @@ export function utcWeekBounds(instant: string): {
  * more than one row fails closed, `resolveSelfEmployee`); the shift is locked
  * and must be `open` or `published`; the employee's `primaryLocationId` must
  * equal the shift's location (a null location is rejected, the `assign-shift`
- * rule); and a shift planned for a role (`roleCode` set) only accepts an
- * employee whose `roleCode` matches. An existing assignment for the same
- * `(shift, employee)` is rejected.
+ * rule); and a shift with a position (`DEC-151`) only accepts an employee who
+ * **holds** that position — strict, with no override on the self path. An
+ * existing assignment for the same `(shift, employee)` is rejected.
  *
  * The weekly maximum then applies: the employee's own self-originated
  * assignments (`assigned_by` null) that are live (`pending_approval` here, or
@@ -95,8 +95,14 @@ export async function selfAssignShift(
     if (employee.primaryLocationId === null || employee.primaryLocationId !== shift.locationId) {
       throw new DomainError("employee must have a primary location matching the shift location");
     }
-    if (shift.roleCode !== null && employee.roleCode !== shift.roleCode) {
-      throw new DomainError("the employee's role does not match the shift's role");
+    if (shift.positionId !== null) {
+      const held = await tx.listEmployeePositionIds({
+        organizationId: input.organizationId,
+        employeeId: employee.id,
+      });
+      if (!held.includes(shift.positionId)) {
+        throw new DomainError("you do not hold the position this shift is staffed for");
+      }
     }
 
     // Serialise per employee. The shift lock above only serialises two requests
@@ -149,6 +155,7 @@ export async function selfAssignShift(
       after: {
         shift_id: assignment.shiftId,
         employee_id: assignment.employeeId,
+        shift_position_id: shift.positionId,
         state: assignment.state,
         assigned_by: assignment.assignedBy,
         assigned_at: assignment.assignedAt,

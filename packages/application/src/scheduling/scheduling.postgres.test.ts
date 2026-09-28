@@ -5,6 +5,7 @@ import {
   listAuditEventsForEntity,
   location,
   sql,
+  type Database,
   type DatabaseTransaction,
   type DbClient,
   type NodeDatabase,
@@ -74,20 +75,47 @@ async function seedEmployee(
   primaryLocationId: string | null,
   userId: string | null = null,
 ): Promise<string> {
+  // `DEC-151`: `employee.role_code` is a reference to a `role` row, so the
+  // fixture's role exists first (the fixed access vocabulary).
+  await tx.execute(
+    sql`insert into "role" ("organization_id", "code", "name")
+        values (${orgId}, ${"front_of_house"}, ${"Front of house"})
+        on conflict ("organization_id", "code") do nothing`,
+  );
   const rows = await tx
     .insert(employee)
     .values({
       organizationId: orgId,
       userId,
       name: "Nora Nordmann",
-      roleCode: "barista",
+      roleCode: "front_of_house",
       employmentType: "part_time",
       baseHourlyRate: "215.5000",
       primaryLocationId,
       activeFrom: "2026-01-01",
     })
     .returning();
-  return rows[0]!.id;
+  const employeeId = rows[0]!.id;
+  // `DEC-151`: the fixture employee holds the fixture shift position, so a
+  // published shift can be assigned to them.
+  const positionId = await seedShiftPosition(tx, orgId);
+  await tx.execute(
+    sql`insert into "employee_position" ("organization_id", "employee_id", "position_id")
+        values (${orgId}, ${employeeId}, ${positionId})
+        on conflict ("employee_id", "position_id") do nothing`,
+  );
+  return employeeId;
+}
+
+/** The one fixture position per organization (`DEC-151`), idempotent by code. */
+async function seedShiftPosition(tx: Database, orgId: string): Promise<string> {
+  const result = (await tx.execute(
+    sql`insert into "position" ("organization_id", "code", "name", "active_from")
+        values (${orgId}, ${"line"}, ${"Line"}, current_date)
+        on conflict ("organization_id", "code") do update set "name" = excluded."name"
+        returning "id"`,
+  )) as unknown as { readonly rows: readonly { readonly id: string }[] };
+  return result.rows[0]!.id;
 }
 
 /** Seeds one `app_user` so an `employee.user_id` FK link can point at it. */
@@ -154,7 +182,10 @@ describe.skipIf(!databaseUrl)("scheduling against PostgreSQL", () => {
   afterAll(async () => {
     if (client) {
       // Every shift, assignment, employee and location is created inside a
-      // rolled-back transaction, so only the organization is committed.
+      // rolled-back transaction (the committed self-assign race seed is unwound
+      // in its own `finally`), so the organization and the `DEC-151` role the
+      // seed leaves behind are what remain to unwind.
+      await client.pool.query("delete from role where organization_id = $1", [orgId]);
       await client.pool.query("delete from organization where id = $1", [orgId]);
       await client.close();
     }
@@ -167,10 +198,12 @@ describe.skipIf(!databaseUrl)("scheduling against PostgreSQL", () => {
       const store = createPostgresSchedulingStore(tx);
       const actorId = randomUUID();
 
+      const positionId = await seedShiftPosition(tx, orgId);
       const shift = await createShift(store, {
         organizationId: orgId,
         actorId,
         locationId,
+        positionId,
         roleCode: "barista",
         startsAt: STARTS,
         endsAt: ENDS,
@@ -179,6 +212,7 @@ describe.skipIf(!databaseUrl)("scheduling against PostgreSQL", () => {
       expect(shift).toMatchObject({
         organizationId: orgId,
         locationId,
+        positionId,
         roleCode: "barista",
         startsAt: "2026-07-01T08:00:00.000Z",
         endsAt: "2026-07-01T16:00:00.000Z",
@@ -278,6 +312,7 @@ describe.skipIf(!databaseUrl)("scheduling against PostgreSQL", () => {
         organizationId: orgId,
         actorId,
         locationId,
+        positionId: await seedShiftPosition(tx, orgId),
         startsAt: STARTS,
         endsAt: ENDS,
       });
@@ -329,6 +364,7 @@ describe.skipIf(!databaseUrl)("scheduling against PostgreSQL", () => {
         organizationId: orgId,
         actorId,
         locationId,
+        positionId: await seedShiftPosition(tx, orgId),
         startsAt: STARTS,
         endsAt: ENDS,
       });
@@ -354,6 +390,7 @@ describe.skipIf(!databaseUrl)("scheduling against PostgreSQL", () => {
         organizationId: orgId,
         actorId,
         locationId,
+        positionId: await seedShiftPosition(tx, orgId),
         startsAt: "2026-07-02T08:00:00.000Z",
         endsAt: "2026-07-02T16:00:00.000Z",
       });
@@ -361,6 +398,7 @@ describe.skipIf(!databaseUrl)("scheduling against PostgreSQL", () => {
         organizationId: orgId,
         actorId,
         locationId,
+        positionId: await seedShiftPosition(tx, orgId),
         startsAt: "2026-07-01T08:00:00.000Z",
         endsAt: "2026-07-01T16:00:00.000Z",
       });
@@ -413,6 +451,7 @@ describe.skipIf(!databaseUrl)("scheduling against PostgreSQL", () => {
         organizationId: orgId,
         actorId,
         locationId,
+        positionId: await seedShiftPosition(tx, orgId),
         startsAt: STARTS,
         endsAt: ENDS,
       });
@@ -436,6 +475,7 @@ describe.skipIf(!databaseUrl)("scheduling against PostgreSQL", () => {
         organizationId: orgId,
         actorId,
         locationId,
+        positionId: await seedShiftPosition(tx, orgId),
         startsAt: STARTS,
         endsAt: ENDS,
         breakMinutes: 30,
@@ -491,7 +531,7 @@ describe.skipIf(!databaseUrl)("scheduling against PostgreSQL", () => {
         {
           employeeId,
           employeeName: "Nora Nordmann",
-          roleCode: "barista",
+          roleCode: "front_of_house",
           hours: "6.50",
           hourlyRate: "215.5000",
         },
@@ -530,6 +570,7 @@ describe.skipIf(!databaseUrl)("scheduling against PostgreSQL", () => {
         organizationId: orgId,
         actorId,
         locationId,
+        positionId: await seedShiftPosition(tx, orgId),
         startsAt: STARTS,
         endsAt: ENDS,
       });
@@ -587,6 +628,7 @@ describe.skipIf(!databaseUrl)("scheduling against PostgreSQL", () => {
         organizationId: orgId,
         actorId,
         locationId,
+        positionId: await seedShiftPosition(tx, orgId),
         startsAt: STARTS,
         endsAt: ENDS,
         breakMinutes: 30,
@@ -616,7 +658,7 @@ describe.skipIf(!databaseUrl)("scheduling against PostgreSQL", () => {
           {
             employeeId,
             employeeName: "Nora Nordmann",
-            roleCode: "barista",
+            roleCode: "front_of_house",
             hours: "7.50",
             hourlyRate: "215.5000",
             expectedPay: "1616.2500",
@@ -695,6 +737,7 @@ describe.skipIf(!databaseUrl)("scheduling against PostgreSQL", () => {
         organizationId: orgId,
         actorId,
         locationId,
+        positionId: await seedShiftPosition(tx, orgId),
         roleCode: "barista",
         startsAt: STARTS,
         endsAt: ENDS,
@@ -750,6 +793,7 @@ describe.skipIf(!databaseUrl)("scheduling against PostgreSQL", () => {
         organizationId: orgId,
         actorId,
         locationId,
+        positionId: await seedShiftPosition(tx, orgId),
         roleCode: "barista",
         startsAt: STARTS,
         endsAt: ENDS,
@@ -777,6 +821,7 @@ describe.skipIf(!databaseUrl)("scheduling against PostgreSQL", () => {
         organizationId: orgId,
         actorId,
         locationId,
+        positionId: await seedShiftPosition(tx, orgId),
         roleCode: "barista",
         startsAt: STARTS,
         endsAt: ENDS,
@@ -808,6 +853,7 @@ describe.skipIf(!databaseUrl)("scheduling against PostgreSQL", () => {
         organizationId: orgId,
         actorId,
         locationId,
+        positionId: await seedShiftPosition(tx, orgId),
         roleCode: "barista",
         startsAt: STARTS,
         endsAt: ENDS,
@@ -846,9 +892,11 @@ describe.skipIf(!databaseUrl)("scheduling against PostgreSQL", () => {
       // Created through the store (not the audit-writing command): the rows
       // must commit, and a committed audit row would block the org cleanup.
       const seedStore = createPostgresSchedulingStore(client.db);
+      const committedPositionId = await seedShiftPosition(client.db, orgId);
       const shiftA = await seedStore.createShift({
         organizationId: orgId,
         locationId,
+        positionId: committedPositionId,
         roleCode: "barista",
         startsAt: STARTS,
         endsAt: ENDS,
@@ -858,6 +906,7 @@ describe.skipIf(!databaseUrl)("scheduling against PostgreSQL", () => {
       const shiftB = await seedStore.createShift({
         organizationId: orgId,
         locationId,
+        positionId: committedPositionId,
         roleCode: "barista",
         startsAt: "2026-07-02T08:00:00.000Z",
         endsAt: "2026-07-02T16:00:00.000Z",
@@ -937,8 +986,12 @@ describe.skipIf(!databaseUrl)("scheduling against PostgreSQL", () => {
         await client.pool.query("delete from shift where id = any($1::uuid[])", [shiftIds]);
       }
       if (employeeId !== "") {
+        await client.pool.query("delete from employee_position where employee_id = $1", [
+          employeeId,
+        ]);
         await client.pool.query("delete from employee where id = $1", [employeeId]);
       }
+      await client.pool.query("delete from position where organization_id = $1", [orgId]);
       if (userId !== "") {
         await client.pool.query('delete from "app_user" where id = $1', [userId]);
       }

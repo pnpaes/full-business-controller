@@ -13,10 +13,18 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { FormEvent } from "react";
 
+import { PositionPicker } from "../../position-picker";
+import type { PositionOption } from "../../position-picker";
+
 const FALLBACK_ERROR = "Could not save the employee. Please try again.";
 
 export interface EditLocationOption {
   readonly id: string;
+  readonly code: string;
+  readonly name: string;
+}
+
+export interface EditRoleOption {
   readonly code: string;
   readonly name: string;
 }
@@ -29,10 +37,16 @@ export interface EditEmployeeFormProps {
   readonly baseHourlyRate: string;
   readonly primaryLocationId: string | null;
   readonly activeTo: string | null;
+  /** `DEC-151`: the positions the employee currently holds. */
+  readonly positionIds: readonly string[];
   /** Employment types from the application vocabulary (`EMPLOYMENT_TYPES`). */
   readonly employmentTypes: readonly string[];
   /** Locations the caller may set as primary; already filtered to scope. */
   readonly locations: readonly EditLocationOption[];
+  /** The organization's roles (`DEC-151`). */
+  readonly roles: readonly EditRoleOption[];
+  /** The position catalogue (`DEC-151`). */
+  readonly positions: readonly PositionOption[];
   /** False for a location-scoped caller: clearing the primary location is denied (fail-closed). */
   readonly canClearLocation: boolean;
 }
@@ -62,13 +76,17 @@ export function EditEmployeeForm({
   baseHourlyRate: initialBaseHourlyRate,
   primaryLocationId: initialPrimaryLocationId,
   activeTo: initialActiveTo,
+  positionIds: initialPositionIds,
   employmentTypes,
   locations,
+  roles,
+  positions,
   canClearLocation,
 }: EditEmployeeFormProps) {
   const router = useRouter();
   const [name, setName] = useState(initialName);
   const [roleCode, setRoleCode] = useState(initialRoleCode);
+  const [positionIds, setPositionIds] = useState<readonly string[]>(initialPositionIds);
   const [employmentType, setEmploymentType] = useState(initialEmploymentType);
   const [baseHourlyRate, setBaseHourlyRate] = useState(initialBaseHourlyRate);
   const [primaryLocationId, setPrimaryLocationId] = useState(initialPrimaryLocationId ?? "");
@@ -97,6 +115,7 @@ export function EditEmployeeForm({
           employmentType,
           baseHourlyRate: baseHourlyRate.trim(),
           primaryLocationId: primaryLocationId.length === 0 ? null : primaryLocationId,
+          positionIds,
           activeTo: activeTo.trim().length === 0 ? null : activeTo.trim(),
         }),
       });
@@ -137,12 +156,14 @@ export function EditEmployeeForm({
           value={name}
           onChange={(event) => setName(event.target.value)}
         />
-        <TextField
+        <SelectField
           name="roleCode"
           label="Role"
           required
           value={roleCode}
           onChange={(event) => setRoleCode(event.target.value)}
+          options={roles.map((role) => ({ value: role.code, label: role.name }))}
+          help="The employee's access level (DEC-151) — one of the organization's fixed roles."
         />
         <SelectField
           name="employmentType"
@@ -176,6 +197,12 @@ export function EditEmployeeForm({
           value={activeTo}
           onChange={(event) => setActiveTo(event.target.value)}
           help="Optional; must stay after the immutable active-from date."
+        />
+        <PositionPicker
+          positions={positions}
+          selectedIds={positionIds}
+          onChange={setPositionIds}
+          canWrite
         />
 
         <div>

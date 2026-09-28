@@ -2,6 +2,7 @@ import * as repo from "@aquarela/persistence";
 import type { Database, NodeDatabase } from "@aquarela/persistence";
 
 import type {
+  AvailableShiftRow,
   NewPayrollReportRecord,
   NewShiftAdjustmentRecord,
   NewShiftAssignmentRecord,
@@ -9,6 +10,7 @@ import type {
   PayrollReportListQuery,
   PayrollReportRecord,
   SchedulingEmployeeRecord,
+  SchedulingPositionRecord,
   SchedulingStore,
   ShiftAdjustmentListQuery,
   ShiftAdjustmentRecord,
@@ -43,6 +45,7 @@ function toShift(row: repo.Shift): ShiftRecord {
     id: row.id,
     organizationId: row.organizationId,
     locationId: row.locationId,
+    positionId: row.positionId,
     roleCode: row.roleCode,
     startsAt: row.startsAt.toISOString(),
     endsAt: row.endsAt.toISOString(),
@@ -122,6 +125,7 @@ export function createPostgresSchedulingStore(db: Database): SchedulingStore {
         await repo.createShift(db, {
           organizationId: input.organizationId,
           locationId: input.locationId,
+          positionId: input.positionId,
           roleCode: input.roleCode,
           startsAt: new Date(input.startsAt),
           endsAt: new Date(input.endsAt),
@@ -151,6 +155,7 @@ export function createPostgresSchedulingStore(db: Database): SchedulingStore {
         ...(input.endsAt === undefined ? {} : { endsAt: new Date(input.endsAt) }),
         ...(input.breakMinutes === undefined ? {} : { breakMinutes: input.breakMinutes }),
         ...(input.roleCode === undefined ? {} : { roleCode: input.roleCode }),
+        ...(input.positionId === undefined ? {} : { positionId: input.positionId }),
         ...(input.state === undefined ? {} : { state: input.state }),
         ...(input.publishedAt === undefined ? {} : { publishedAt: toDate(input.publishedAt) }),
         ...(input.actorId === undefined ? {} : { actorId: input.actorId }),
@@ -381,6 +386,8 @@ export function createPostgresSchedulingStore(db: Database): SchedulingStore {
         shiftId: row.shiftId,
         locationId: row.locationId,
         roleCode: row.roleCode,
+        positionId: row.positionId,
+        positionName: row.positionName,
         startsAt: row.startsAt.toISOString(),
         endsAt: row.endsAt.toISOString(),
         breakMinutes: row.breakMinutes,
@@ -401,9 +408,45 @@ export function createPostgresSchedulingStore(db: Database): SchedulingStore {
         shiftId: row.shiftId,
         locationId: row.locationId,
         roleCode: row.roleCode,
+        positionId: row.positionId,
+        positionName: row.positionName,
         startsAt: row.startsAt.toISOString(),
         endsAt: row.endsAt.toISOString(),
         breakMinutes: row.breakMinutes,
+      }));
+    },
+    findPosition: async (query): Promise<SchedulingPositionRecord | undefined> => {
+      const row = await repo.findPosition(db, {
+        organizationId: query.organizationId,
+        positionId: query.positionId,
+      });
+      return row === undefined
+        ? undefined
+        : { id: row.id, organizationId: row.organizationId, name: row.name };
+    },
+    listEmployeePositionIds: async (query) =>
+      repo.listEmployeePositionIds(db, {
+        organizationId: query.organizationId,
+        employeeId: query.employeeId,
+      }),
+    listAvailableShifts: async (query): Promise<readonly AvailableShiftRow[]> => {
+      const rows = await repo.listAvailableShifts(db, {
+        organizationId: query.organizationId,
+        employeeId: query.employeeId,
+        locationId: query.locationId,
+        positionIds: query.positionIds,
+        ...(query.limit === undefined ? {} : { limit: query.limit }),
+        ...(query.offset === undefined ? {} : { offset: query.offset }),
+      });
+      return rows.map((row) => ({
+        shiftId: row.shiftId,
+        locationId: row.locationId,
+        positionId: row.positionId,
+        positionName: row.positionName,
+        startsAt: row.startsAt.toISOString(),
+        endsAt: row.endsAt.toISOString(),
+        breakMinutes: row.breakMinutes,
+        shiftState: row.shiftState,
       }));
     },
   };

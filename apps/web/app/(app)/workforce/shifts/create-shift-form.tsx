@@ -21,9 +21,18 @@ export interface ShiftLocationOption {
   readonly name: string;
 }
 
+/** One catalogue position the shift may be staffed for (`DEC-151`). */
+export interface ShiftPositionOption {
+  readonly id: string;
+  readonly code: string;
+  readonly name: string;
+}
+
 export interface CreateShiftFormProps {
   /** Locations the caller may plan a shift at; already filtered to scope. */
   readonly locations: readonly ShiftLocationOption[];
+  /** The position catalogue (`DEC-151`); a position is required to publish. */
+  readonly positions: readonly ShiftPositionOption[];
   readonly defaultLocationId: string;
 }
 
@@ -52,10 +61,10 @@ function toIsoInstant(local: string): string | null {
  * instants (the browser resolves the zone, the production batch form's
  * precedent).
  */
-export function CreateShiftForm({ locations, defaultLocationId }: CreateShiftFormProps) {
+export function CreateShiftForm({ locations, positions, defaultLocationId }: CreateShiftFormProps) {
   const router = useRouter();
   const [locationId, setLocationId] = useState(defaultLocationId);
-  const [roleCode, setRoleCode] = useState("");
+  const [positionId, setPositionId] = useState("");
   const [startsAt, setStartsAt] = useState("");
   const [endsAt, setEndsAt] = useState("");
   const [breakMinutes, setBreakMinutes] = useState("0");
@@ -105,7 +114,7 @@ export function CreateShiftForm({ locations, defaultLocationId }: CreateShiftFor
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           locationId,
-          roleCode: roleCode.trim().length === 0 ? null : roleCode.trim(),
+          positionId: positionId.length === 0 ? null : positionId,
           startsAt: start,
           endsAt: end,
           breakMinutes: breakValue,
@@ -116,6 +125,7 @@ export function CreateShiftForm({ locations, defaultLocationId }: CreateShiftFor
         return;
       }
       setSuccess("Shift planned (open). Publish it to make it assignable.");
+      setPositionId("");
       setStartsAt("");
       setEndsAt("");
       router.refresh();
@@ -146,12 +156,16 @@ export function CreateShiftForm({ locations, defaultLocationId }: CreateShiftFor
             label: `${location.code} · ${location.name}`,
           }))}
         />
-        <TextField
-          name="roleCode"
-          label="Role"
-          value={roleCode}
-          onChange={(event) => setRoleCode(event.target.value)}
-          help="Optional free text. When set, only employees with this exact role can be assigned (WF-003)."
+        <SelectField
+          name="positionId"
+          label="Position"
+          value={positionId}
+          onChange={(event) => setPositionId(event.target.value)}
+          options={[
+            { value: "", label: "Any position" },
+            ...positions.map((position) => ({ value: position.id, label: position.name })),
+          ]}
+          help="The position this shift is staffed for (DEC-151). Only employees who hold it can take the shift; a position is required before publishing."
         />
         <TextField
           name="startsAt"

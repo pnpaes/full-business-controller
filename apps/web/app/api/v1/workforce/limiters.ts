@@ -15,6 +15,10 @@ export const workforceLimiters = createSharedLimiters("workforce", {
   retireEmployee: { limit: 120, windowMs: FIFTEEN_MINUTES_MS },
   createEmployeeDocument: { limit: 60, windowMs: FIFTEEN_MINUTES_MS },
   updateEmployeeDocument: { limit: 120, windowMs: FIFTEEN_MINUTES_MS },
+  // `DEC-151` position catalogue: creating is the rarer write (60), amending or
+  // deactivating is an amendment (120).
+  registerPosition: { limit: 60, windowMs: FIFTEEN_MINUTES_MS },
+  updatePosition: { limit: 120, windowMs: FIFTEEN_MINUTES_MS },
 });
 
 /**

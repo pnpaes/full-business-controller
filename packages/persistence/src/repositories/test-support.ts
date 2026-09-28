@@ -93,6 +93,19 @@ export async function createTestOrganization(db: Database, suffix: string): Prom
   return rows[0]!.id;
 }
 
+/**
+ * `DEC-151`: an employee fixture's `role_code` must name a `role` row in the same
+ * organization, so the employee helper ensures it exists (idempotent). A test
+ * that writes the role explicitly gets the same row back.
+ */
+export async function ensureTestRole(
+  db: Database,
+  organizationId: string,
+  code: string,
+): Promise<void> {
+  await db.insert(role).values({ organizationId, code, name: code }).onConflictDoNothing();
+}
+
 export async function createTestUser(
   db: Database,
   organizationId: string,
@@ -997,6 +1010,7 @@ export async function createTestEmployee(
   organizationId: string,
   overrides: Partial<typeof employee.$inferInsert> = {},
 ): Promise<typeof employee.$inferSelect> {
+  await ensureTestRole(db, organizationId, overrides.roleCode ?? "kitchen");
   const rows = await db
     .insert(employee)
     .values({

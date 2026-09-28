@@ -8,8 +8,13 @@ import type {
   EmployeeRecord,
   NewEmployeeDocumentRecord,
   NewEmployeeRecord,
+  NewPositionRecord,
+  PositionListQuery,
+  PositionRecord,
+  RoleRecord,
   UpdateEmployeeDocumentRecord,
   UpdateEmployeeRecord,
+  UpdatePositionRecord,
   WorkforceStore,
 } from "./types";
 
@@ -28,7 +33,7 @@ function toDate(value: string | null): Date | null {
   return value === null ? null : new Date(value);
 }
 
-function toEmployee(row: repo.Employee): EmployeeRecord {
+function toEmployee(row: repo.Employee, positionIds: readonly string[]): EmployeeRecord {
   return {
     id: row.id,
     organizationId: row.organizationId,
@@ -43,9 +48,25 @@ function toEmployee(row: repo.Employee): EmployeeRecord {
     // `date` columns are already `YYYY-MM-DD` strings at the persistence layer.
     activeFrom: row.activeFrom,
     activeTo: row.activeTo,
+    positionIds,
     retiredAt: toIso(row.retiredAt),
     createdAt: row.createdAt.toISOString(),
     createdBy: row.createdBy,
+    updatedBy: row.updatedBy,
+  };
+}
+
+function toPosition(row: repo.Position): PositionRecord {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    code: row.code,
+    name: row.name,
+    activeFrom: row.activeFrom,
+    activeTo: row.activeTo,
+    createdAt: row.createdAt.toISOString(),
+    createdBy: row.createdBy,
+    updatedAt: toIso(row.updatedAt),
     updatedBy: row.updatedBy,
   };
 }
@@ -114,14 +135,31 @@ export function createPostgresWorkforceStore(db: Database): WorkforceStore {
     writeAudit: async (input) => {
       await repo.writeAuditEvent(db, input);
     },
-    createEmployee: async (input) =>
-      toEmployee(await repo.createEmployee(db, newEmployeeValues(input))),
+    createEmployee: async (input) => {
+      const row = await repo.createEmployee(db, newEmployeeValues(input));
+      await repo.replaceEmployeePositions(db, {
+        organizationId: input.organizationId,
+        employeeId: row.id,
+        positionIds: input.positionIds,
+        actorId: input.createdBy,
+      });
+      const positionIds = await repo.listEmployeePositionIds(db, {
+        organizationId: input.organizationId,
+        employeeId: row.id,
+      });
+      return toEmployee(row, positionIds);
+    },
     findEmployee: async (query) => {
       const row = await repo.findEmployee(db, {
         organizationId: query.organizationId,
         employeeId: query.employeeId,
       });
-      return row === undefined ? undefined : toEmployee(row);
+      if (row === undefined) return undefined;
+      const positionIds = await repo.listEmployeePositionIds(db, {
+        organizationId: query.organizationId,
+        employeeId: row.id,
+      });
+      return toEmployee(row, positionIds);
     },
     updateEmployee: async (input: UpdateEmployeeRecord) => {
       const row = await repo.updateEmployee(db, {
@@ -139,7 +177,20 @@ export function createPostgresWorkforceStore(db: Database): WorkforceStore {
         ...(input.retiredAt === undefined ? {} : { retiredAt: toDate(input.retiredAt) }),
         ...(input.updatedBy === undefined ? {} : { actorId: input.updatedBy }),
       });
-      return row === undefined ? undefined : toEmployee(row);
+      if (row === undefined) return undefined;
+      if (input.positionIds !== undefined) {
+        await repo.replaceEmployeePositions(db, {
+          organizationId: input.organizationId,
+          employeeId: row.id,
+          positionIds: input.positionIds,
+          actorId: input.updatedBy ?? null,
+        });
+      }
+      const positionIds = await repo.listEmployeePositionIds(db, {
+        organizationId: input.organizationId,
+        employeeId: row.id,
+      });
+      return toEmployee(row, positionIds);
     },
     listEmployees: async (query: EmployeeListQuery) => {
       const rows = await repo.listEmployees(db, {
@@ -152,7 +203,11 @@ export function createPostgresWorkforceStore(db: Database): WorkforceStore {
         ...(query.limit === undefined ? {} : { limit: query.limit }),
         ...(query.offset === undefined ? {} : { offset: query.offset }),
       });
-      return rows.map(toEmployee);
+      const positionIds = await repo.listEmployeePositionIdsByEmployeeIds(db, {
+        organizationId: query.organizationId,
+        employeeIds: rows.map((row) => row.id),
+      });
+      return rows.map((row) => toEmployee(row, positionIds.get(row.id) ?? []));
     },
     createEmployeeDocument: async (input) =>
       toEmployeeDocument(await repo.createEmployeeDocument(db, newEmployeeDocumentValues(input))),
@@ -186,5 +241,77 @@ export function createPostgresWorkforceStore(db: Database): WorkforceStore {
       });
       return rows.map(toEmployeeDocument);
     },
+    findRoleByCode: async (query): Promise<RoleRecord | undefined> => {
+      const row = await repo.findRoleByCode(db, query.organizationId, query.code);
+      return row === undefined
+        ? undefined
+        : { id: row.id, organizationId: row.organizationId, code: row.code };
+    },
+    createPosition: async (input: NewPositionRecord) =>
+      toPosition(
+        await repo.createPosition(db, {
+          organizationId: input.organizationId,
+          code: input.code,
+          name: input.name,
+          activeFrom: input.activeFrom,
+          activeTo: input.activeTo,
+          actorId: input.createdBy,
+        }),
+      ),
+    findPosition: async (query) => {
+      const row = await repo.findPosition(db, {
+        organizationId: query.organizationId,
+        positionId: query.positionId,
+      });
+      return row === undefined ? undefined : toPosition(row);
+    },
+    findPositionByCode: async (query) => {
+      const row = await repo.findPositionByCode(db, {
+        organizationId: query.organizationId,
+        code: query.code,
+      });
+      return row === undefined ? undefined : toPosition(row);
+    },
+    updatePosition: async (input: UpdatePositionRecord) => {
+      const row = await repo.updatePosition(db, {
+        organizationId: input.organizationId,
+        positionId: input.positionId,
+        ...(input.code === undefined ? {} : { code: input.code }),
+        ...(input.name === undefined ? {} : { name: input.name }),
+        ...(input.activeFrom === undefined ? {} : { activeFrom: input.activeFrom }),
+        ...(input.activeTo === undefined ? {} : { activeTo: input.activeTo }),
+        ...(input.updatedBy === undefined ? {} : { actorId: input.updatedBy }),
+      });
+      return row === undefined ? undefined : toPosition(row);
+    },
+    listPositions: async (query: PositionListQuery) => {
+      const rows = await repo.listPositions(db, {
+        organizationId: query.organizationId,
+        ...(query.active === undefined ? {} : { active: query.active }),
+        ...(query.limit === undefined ? {} : { limit: query.limit }),
+        ...(query.offset === undefined ? {} : { offset: query.offset }),
+      });
+      return rows.map(toPosition);
+    },
+    setEmployeePositions: async (input) => {
+      await repo.replaceEmployeePositions(db, {
+        organizationId: input.organizationId,
+        employeeId: input.employeeId,
+        positionIds: input.positionIds,
+        actorId: input.actorId,
+      });
+    },
+    listEmployeePositions: async (query) => {
+      const rows = await repo.listEmployeePositions(db, {
+        organizationId: query.organizationId,
+        employeeId: query.employeeId,
+      });
+      return rows.map(toPosition);
+    },
+    listPositionIdsByEmployeeIds: async (query) =>
+      repo.listEmployeePositionIdsByEmployeeIds(db, {
+        organizationId: query.organizationId,
+        employeeIds: query.employeeIds,
+      }),
   };
 }

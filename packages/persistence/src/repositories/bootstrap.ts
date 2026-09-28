@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 
 import type { Database } from "../client";
 import { organization, role, userRole } from "../schema";
@@ -38,6 +38,18 @@ export async function createOrganization(
 ): Promise<OrganizationRow> {
   const rows = await db.insert(organization).values({ legalName: input.legalName }).returning();
   return rows[0]!;
+}
+
+/**
+ * The organization's roles, ordered by code (`DEC-151`: the fixed access
+ * vocabulary the employee role select offers). Organization-scoped (`DEC-061`).
+ */
+export async function listRoles(db: Database, organizationId: string): Promise<readonly RoleRow[]> {
+  return db
+    .select()
+    .from(role)
+    .where(eq(role.organizationId, organizationId))
+    .orderBy(asc(role.code));
 }
 
 export async function findRoleByCode(

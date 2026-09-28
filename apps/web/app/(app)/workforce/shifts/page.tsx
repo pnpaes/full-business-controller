@@ -5,6 +5,7 @@ import {
   listEmployees,
   listLocations,
   listPendingSelfAssignments,
+  listPositions,
   listShiftAssignments,
   listShifts,
 } from "@aquarela/application";
@@ -155,6 +156,12 @@ export default async function RosterPage({
     allLocations.map((location) => [location.id, `${location.code} · ${location.name}`]),
   );
 
+  // `DEC-151`: the roster shows the shift's position, and planning selects one.
+  const catalogue = await listPositions(createPostgresWorkforceStore(getDb().db), {
+    organizationId,
+  });
+  const positionNameById = new Map(catalogue.map((position) => [position.id, position.name]));
+
   // Fail-closed, mirroring the GET route: a scoped caller never sees a shift
   // at another location.
   const scoped =
@@ -228,7 +235,7 @@ export default async function RosterPage({
   const columns: readonly DataTableColumn[] = [
     { key: "shift", header: "Shift (UTC)" },
     { key: "location", header: "Location" },
-    { key: "role", header: "Role" },
+    { key: "position", header: "Position" },
     { key: "break", header: "Break" },
     { key: "status", header: "Status" },
     { key: "assigned", header: "Assigned" },
@@ -323,7 +330,7 @@ export default async function RosterPage({
       >
         <div style={tableWrap}>
           <DataTable
-            caption="Shifts by start time with location, role, break, status, assignments and actions"
+            caption="Shifts by start time with location, position, break, status, assignments and actions"
             columns={columns}
             rows={visible.map((shift) => {
               const status = shiftStateView(shift.state);
@@ -335,7 +342,10 @@ export default async function RosterPage({
                 id: shift.id,
                 shift: formatShiftWindow(shift.startsAt, shift.endsAt),
                 location: locationLabelById.get(shift.locationId) ?? shift.locationId,
-                role: shift.roleCode ?? "Any role",
+                position:
+                  shift.positionId === null
+                    ? "Any position"
+                    : (positionNameById.get(shift.positionId) ?? shift.positionId),
                 break: `${shift.breakMinutes} min`,
                 status: <StatusPill tone={status.tone}>{status.label}</StatusPill>,
                 assigned:
@@ -389,6 +399,11 @@ export default async function RosterPage({
             id: location.id,
             code: location.code,
             name: location.name,
+          }))}
+          positions={catalogue.map((position) => ({
+            id: position.id,
+            code: position.code,
+            name: position.name,
           }))}
           defaultLocationId={
             rawLocationId !== undefined && writableLocations.some((l) => l.id === rawLocationId)

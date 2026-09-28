@@ -88,6 +88,14 @@ describe.skipIf(!databaseUrl)("auth commands against PostgreSQL", () => {
     );
     roleId = role.rows[0]!.id;
 
+    // `DEC-151`: the employee fixtures below name `role_code = 'kitchen'`, so the
+    // role row must exist for this organization before the employee insert.
+    await client.pool.query("insert into role (organization_id, code, name) values ($1, $2, $3)", [
+      orgId,
+      "kitchen",
+      "Kitchen",
+    ]);
+
     const location = await client.pool.query<{ id: string }>(
       "insert into location (organization_id, code, name) values ($1, $2, $3) returning id",
       [orgId, `loc_${suffix}`, "Test Location"],

@@ -20,6 +20,7 @@ import { DEFAULT_PAYROLL_REPORT_LIMIT, listPayrollReports } from "./list-payroll
 import { markPayrollReportExported } from "./mark-payroll-report-exported";
 import { DEFAULT_SHIFT_ADJUSTMENT_LIMIT, listShiftAdjustments } from "./list-shift-adjustments";
 import { DEFAULT_SHIFT_ASSIGNMENT_LIMIT, listShiftAssignments } from "./list-shift-assignments";
+import { listAvailableShifts } from "./list-available-shifts";
 import { DEFAULT_SHIFT_LIMIT, listShifts } from "./list-shifts";
 import { listMyShifts } from "./list-my-shifts";
 import { listPendingSelfAssignments } from "./list-pending-self-assignments";
@@ -44,20 +45,27 @@ import { withdrawShiftAssignment } from "./withdraw-shift-assignment";
 const STARTS = "2026-07-01T08:00:00.000Z";
 const ENDS = "2026-07-01T16:00:00.000Z";
 
+/** `DEC-151` positions the default employee holds / does not hold. */
+const POSITION_BARISTA = "position-barista";
+const POSITION_COOK = "position-cook";
+
 function setup(): { store: FakeSchedulingStore; fixture: SchedulingFixture } {
   const store = new FakeSchedulingStore();
   const fixture = seedSchedulingFixture();
+  store.seedPosition(fixture.organizationId, POSITION_BARISTA, "Barista");
+  store.seedPosition(fixture.organizationId, POSITION_COOK, "Cook");
   seedSchedulingEmployee(store, {
     id: fixture.employeeId,
     organizationId: fixture.organizationId,
     primaryLocationId: fixture.locationId,
-    roleCode: "barista",
+    roleCode: "front_of_house",
   });
+  store.grantPosition(fixture.employeeId, POSITION_BARISTA);
   seedSchedulingEmployee(store, {
     id: fixture.otherEmployeeId,
     organizationId: fixture.otherOrganizationId,
     primaryLocationId: fixture.otherLocationId,
-    roleCode: "barista",
+    roleCode: "front_of_house",
   });
   return { store, fixture };
 }
@@ -71,6 +79,9 @@ function plan(
     organizationId: fixture.organizationId,
     actorId: fixture.actorId,
     locationId: fixture.locationId,
+    // `DEC-151`: a shift offered to staff names a position (publishing requires
+    // one); a test that needs "any position" passes `positionId: null`.
+    positionId: POSITION_BARISTA,
     startsAt: STARTS,
     endsAt: ENDS,
     ...overrides,
@@ -358,6 +369,19 @@ describe("publishShift", () => {
     expect(audit?.after).toMatchObject({ state: "published" });
   });
 
+  it("requires a position before a shift can be published", async () => {
+    const { store, fixture } = setup();
+    const shift = await plan(store, fixture, { positionId: null });
+
+    await expect(
+      publishShift(store, {
+        organizationId: fixture.organizationId,
+        actorId: fixture.actorId,
+        shiftId: shift.id,
+      }),
+    ).rejects.toThrow(new DomainError("a shift must have a position before it can be published"));
+  });
+
   it("rejects publishing anything other than an open shift", async () => {
     const { store, fixture } = setup();
     const shift = await plan(store, fixture);
@@ -600,29 +624,45 @@ describe("assignShift", () => {
     ).rejects.toThrow(/primary location matching the shift location/);
   });
 
-  it("accepts any employee role when the shift declares no role", async () => {
+  it("accepts any employee when the shift declares no position", async () => {
     const { store, fixture } = setup();
-    const shift = await plan(store, fixture);
+    const shift = await plan(store, fixture, { positionId: null });
 
-    expect(shift.roleCode).toBeNull();
+    expect(shift.positionId).toBeNull();
     await expect(assign(store, fixture, shift.id)).resolves.toMatchObject({ state: "approved" });
   });
 
-  it("rejects an employee whose role differs from the shift's", async () => {
+  it("rejects an employee who does not hold the shift's position", async () => {
     const { store, fixture } = setup();
-    const shift = await plan(store, fixture, { roleCode: "cook" });
+    const shift = await plan(store, fixture, { positionId: POSITION_COOK });
 
     await expect(assign(store, fixture, shift.id)).rejects.toThrow(
-      new DomainError("the employee's role does not match the shift's role"),
+      new DomainError(
+        "the employee does not hold the shift's position; pass override to assign anyway",
+      ),
     );
     expect(
       await findShift(store, { organizationId: fixture.organizationId, shiftId: shift.id }),
     ).toMatchObject({ state: "open" });
   });
 
-  it("assigns an employee whose role matches the shift's", async () => {
+  it("assigns a manager override for an employee who lacks the position, recording it", async () => {
     const { store, fixture } = setup();
-    const shift = await plan(store, fixture, { roleCode: "barista" });
+    const shift = await plan(store, fixture, { positionId: POSITION_COOK });
+
+    await expect(assign(store, fixture, shift.id, { override: true })).resolves.toMatchObject({
+      state: "approved",
+    });
+    const audit = store.audits.at(-1);
+    expect(audit?.after).toMatchObject({
+      shift_position_id: POSITION_COOK,
+      position_override: true,
+    });
+  });
+
+  it("assigns an employee who holds the shift's position", async () => {
+    const { store, fixture } = setup();
+    const shift = await plan(store, fixture, { positionId: POSITION_BARISTA });
 
     await expect(assign(store, fixture, shift.id)).resolves.toMatchObject({ state: "approved" });
   });
@@ -1274,6 +1314,7 @@ describe("computeWorkedHours", () => {
       name: "Ana Andersen",
       baseHourlyRate: "200.0000",
     });
+    store.grantPosition("employee-3", POSITION_BARISTA);
 
     const shiftA = await plan(store, fixture, {
       startsAt: "2026-07-01T08:00:00.000Z",
@@ -1334,6 +1375,7 @@ describe("computeWorkedHours", () => {
       roleCode: "barista",
       name: "Ana Andersen",
     });
+    store.grantPosition("employee-3", POSITION_BARISTA);
     const shiftA = await plan(store, fixture, {
       startsAt: "2026-07-01T08:00:00.000Z",
       endsAt: "2026-07-01T16:00:00.000Z",
@@ -1831,9 +1873,10 @@ function selfSetup(): { store: FakeSchedulingStore; fixture: SchedulingFixture }
     id: SELF_EMPLOYEE,
     organizationId: fixture.organizationId,
     primaryLocationId: fixture.locationId,
-    roleCode: "barista",
+    roleCode: "front_of_house",
     userId: SELF_USER,
   });
+  store.grantPosition(SELF_EMPLOYEE, POSITION_BARISTA);
   return { store, fixture };
 }
 
@@ -1842,7 +1885,7 @@ function planAt(store: FakeSchedulingStore, fixture: SchedulingFixture, startsAt
     organizationId: fixture.organizationId,
     actorId: fixture.actorId,
     locationId: fixture.locationId,
-    roleCode: "barista",
+    positionId: POSITION_BARISTA,
     startsAt,
     endsAt: new Date(Date.parse(startsAt) + 8 * 3_600_000).toISOString(),
   });
@@ -2032,22 +2075,22 @@ describe("selfAssignShift", () => {
     );
   });
 
-  it("refuses a role mismatch", async () => {
+  it("refuses a position the employee does not hold", async () => {
     const { store, fixture } = selfSetup();
     const shift = await planAt(store, fixture, "2026-07-01T08:00:00.000Z");
-    // Re-plan the same window for a different role.
+    // Re-plan the same window for a position the employee does not hold.
     store.shifts.delete(shift.id);
-    const roleShift = await createShift(store, {
+    const cookShift = await createShift(store, {
       organizationId: fixture.organizationId,
       actorId: fixture.actorId,
       locationId: fixture.locationId,
-      roleCode: "line_cook",
+      positionId: POSITION_COOK,
       startsAt: "2026-07-01T08:00:00.000Z",
       endsAt: "2026-07-01T16:00:00.000Z",
     });
 
-    await expect(selfAssign(store, fixture, roleShift.id)).rejects.toThrow(
-      new DomainError("the employee's role does not match the shift's role"),
+    await expect(selfAssign(store, fixture, cookShift.id)).rejects.toThrow(
+      new DomainError("you do not hold the position this shift is staffed for"),
     );
   });
 
@@ -2378,6 +2421,72 @@ describe("listPendingSelfAssignments", () => {
 
     expect(
       await listPendingSelfAssignments(store, { organizationId: fixture.otherOrganizationId }),
+    ).toEqual([]);
+  });
+});
+
+describe("listAvailableShifts", () => {
+  it("offers only shifts at the employee's location whose position they hold", async () => {
+    const { store, fixture } = selfSetup();
+    const held = await planAt(store, fixture, "2026-07-01T08:00:00.000Z");
+    // A shift for a position the employee does not hold.
+    const cookShift = await createShift(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      locationId: fixture.locationId,
+      positionId: POSITION_COOK,
+      startsAt: "2026-07-02T08:00:00.000Z",
+      endsAt: "2026-07-02T16:00:00.000Z",
+    });
+    // A shift at another location.
+    await createShift(store, {
+      organizationId: fixture.organizationId,
+      actorId: fixture.actorId,
+      locationId: fixture.otherLocationId,
+      positionId: POSITION_BARISTA,
+      startsAt: "2026-07-03T08:00:00.000Z",
+      endsAt: "2026-07-03T16:00:00.000Z",
+    });
+
+    const available = await listAvailableShifts(store, {
+      organizationId: fixture.organizationId,
+      actorUserId: SELF_USER,
+    });
+
+    expect(available.map((row) => row.shiftId)).toEqual([held.id]);
+    expect(available[0]).toMatchObject({ positionId: POSITION_BARISTA, positionName: "Barista" });
+    expect(available.map((row) => row.shiftId)).not.toContain(cookShift.id);
+  });
+
+  it("drops a shift the employee already asked for", async () => {
+    const { store, fixture } = selfSetup();
+    const shift = await planAt(store, fixture, "2026-07-01T08:00:00.000Z");
+    await selfAssign(store, fixture, shift.id);
+
+    expect(
+      await listAvailableShifts(store, {
+        organizationId: fixture.organizationId,
+        actorUserId: SELF_USER,
+      }),
+    ).toEqual([]);
+  });
+
+  it("offers nothing to an employee with no primary location", async () => {
+    const { store, fixture } = selfSetup();
+    seedSchedulingEmployee(store, {
+      id: "employee-homeless",
+      organizationId: fixture.organizationId,
+      primaryLocationId: null,
+      roleCode: "front_of_house",
+      userId: "user-homeless",
+    });
+    await planAt(store, fixture, "2026-07-01T08:00:00.000Z");
+
+    expect(
+      await listAvailableShifts(store, {
+        organizationId: fixture.organizationId,
+        actorUserId: "user-homeless",
+      }),
     ).toEqual([]);
   });
 });

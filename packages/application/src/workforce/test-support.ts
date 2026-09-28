@@ -1,7 +1,10 @@
+import { ROLE_CODE } from "@aquarela/persistence";
+
 import type { AuditInput } from "../auth";
 
 import { DEFAULT_EMPLOYEE_DOCUMENT_LIMIT } from "./list-employee-documents";
 import { DEFAULT_EMPLOYEE_LIMIT } from "./list-employees";
+import { DEFAULT_POSITION_LIMIT } from "./list-positions";
 import type {
   EmployeeDocumentListQuery,
   EmployeeDocumentRecord,
@@ -9,8 +12,13 @@ import type {
   EmployeeRecord,
   NewEmployeeDocumentRecord,
   NewEmployeeRecord,
+  NewPositionRecord,
+  PositionListQuery,
+  PositionRecord,
+  RoleRecord,
   UpdateEmployeeDocumentRecord,
   UpdateEmployeeRecord,
+  UpdatePositionRecord,
   WorkforceStore,
 } from "./types";
 
@@ -21,6 +29,8 @@ import type {
 interface WorkforceSnapshot {
   readonly employees: Map<string, EmployeeRecord>;
   readonly employeeDocuments: Map<string, EmployeeDocumentRecord>;
+  readonly positions: Map<string, PositionRecord>;
+  readonly employeePositions: Map<string, string[]>;
   readonly audits: AuditInput[];
 }
 
@@ -33,6 +43,10 @@ interface WorkforceSnapshot {
 export class FakeWorkforceStore implements WorkforceStore {
   readonly employees = new Map<string, EmployeeRecord>();
   readonly employeeDocuments = new Map<string, EmployeeDocumentRecord>();
+  readonly positions = new Map<string, PositionRecord>();
+  readonly employeePositions = new Map<string, string[]>();
+  /** Explicit role rows; a `ROLE_CODE` code is also accepted as if seeded. */
+  readonly roles = new Map<string, RoleRecord>();
   readonly audits: AuditInput[] = [];
 
   private sequence = 0;
@@ -59,6 +73,10 @@ export class FakeWorkforceStore implements WorkforceStore {
     return {
       employees: new Map(this.employees),
       employeeDocuments: new Map(this.employeeDocuments),
+      positions: new Map(this.positions),
+      employeePositions: new Map(
+        [...this.employeePositions].map(([key, value]) => [key, [...value]]),
+      ),
       audits: [...this.audits],
     };
   }
@@ -68,8 +86,42 @@ export class FakeWorkforceStore implements WorkforceStore {
     for (const [key, value] of snapshot.employees) this.employees.set(key, value);
     this.employeeDocuments.clear();
     for (const [key, value] of snapshot.employeeDocuments) this.employeeDocuments.set(key, value);
+    this.positions.clear();
+    for (const [key, value] of snapshot.positions) this.positions.set(key, value);
+    this.employeePositions.clear();
+    for (const [key, value] of snapshot.employeePositions) this.employeePositions.set(key, value);
     this.audits.length = 0;
     this.audits.push(...snapshot.audits);
+  }
+
+  /** Seeds a role row explicitly (the fixed vocabulary is otherwise accepted). */
+  seedRole(organizationId: string, code: string): void {
+    this.roles.set(`${organizationId}:${code}`, {
+      id: this.nextId("role"),
+      organizationId,
+      code,
+    });
+  }
+
+  /** Seeds one position in the catalogue and returns it. */
+  seedPosition(
+    organizationId: string,
+    overrides: Partial<PositionRecord> & Pick<PositionRecord, "code" | "name">,
+  ): PositionRecord {
+    const record: PositionRecord = {
+      id: overrides.id ?? this.nextId("position"),
+      organizationId,
+      code: overrides.code,
+      name: overrides.name,
+      activeFrom: overrides.activeFrom ?? "2026-01-01",
+      activeTo: overrides.activeTo ?? null,
+      createdAt: new Date().toISOString(),
+      createdBy: overrides.createdBy ?? null,
+      updatedAt: null,
+      updatedBy: null,
+    };
+    this.positions.set(record.id, record);
+    return record;
   }
 
   async writeAudit(input: AuditInput): Promise<void> {
@@ -80,12 +132,14 @@ export class FakeWorkforceStore implements WorkforceStore {
     const record: EmployeeRecord = {
       id: this.nextId("employee"),
       ...input,
+      positionIds: [...input.positionIds],
       // A new employee is not retired until the `retireEmployee` command runs.
       retiredAt: null,
       createdAt: new Date().toISOString(),
       updatedBy: null,
     };
     this.employees.set(record.id, record);
+    this.employeePositions.set(record.id, [...input.positionIds]);
     return record;
   }
 
@@ -118,6 +172,7 @@ export class FakeWorkforceStore implements WorkforceStore {
         ? {}
         : { primaryLocationId: input.primaryLocationId }),
       ...(input.activeTo === undefined ? {} : { activeTo: input.activeTo }),
+      ...(input.positionIds === undefined ? {} : { positionIds: [...input.positionIds] }),
       ...(input.retiredAt === undefined
         ? {}
         : {
@@ -126,6 +181,9 @@ export class FakeWorkforceStore implements WorkforceStore {
       ...(input.updatedBy === undefined ? {} : { updatedBy: input.updatedBy }),
     };
     this.employees.set(record.id, record);
+    if (input.positionIds !== undefined) {
+      this.employeePositions.set(record.id, [...input.positionIds]);
+    }
     return record;
   }
 
@@ -223,6 +281,133 @@ export class FakeWorkforceStore implements WorkforceStore {
     // Mirror the document command's page cap: an omitted `limit` is bounded.
     const limit = query.limit ?? DEFAULT_EMPLOYEE_DOCUMENT_LIMIT;
     return rows.slice(offset, offset + limit);
+  }
+
+  async findRoleByCode(query: {
+    readonly organizationId: string;
+    readonly code: string;
+  }): Promise<RoleRecord | undefined> {
+    const seeded = this.roles.get(`${query.organizationId}:${query.code}`);
+    if (seeded !== undefined) return seeded;
+    // The fixed access vocabulary is present in every real organization
+    // (`bootstrap`/`role`), so the fake accepts a `ROLE_CODE` member as if seeded.
+    return (ROLE_CODE as readonly string[]).includes(query.code)
+      ? { id: `role-${query.code}`, organizationId: query.organizationId, code: query.code }
+      : undefined;
+  }
+
+  async createPosition(input: NewPositionRecord): Promise<PositionRecord> {
+    const record: PositionRecord = {
+      id: this.nextId("position"),
+      organizationId: input.organizationId,
+      code: input.code,
+      name: input.name,
+      activeFrom: input.activeFrom,
+      activeTo: input.activeTo,
+      createdAt: new Date().toISOString(),
+      createdBy: input.createdBy,
+      updatedAt: null,
+      updatedBy: null,
+    };
+    this.positions.set(record.id, record);
+    return record;
+  }
+
+  async findPosition(query: {
+    readonly organizationId: string;
+    readonly positionId: string;
+  }): Promise<PositionRecord | undefined> {
+    const position = this.positions.get(query.positionId);
+    return position !== undefined && position.organizationId === query.organizationId
+      ? position
+      : undefined;
+  }
+
+  async findPositionByCode(query: {
+    readonly organizationId: string;
+    readonly code: string;
+  }): Promise<PositionRecord | undefined> {
+    return [...this.positions.values()].find(
+      (position) =>
+        position.organizationId === query.organizationId && position.code === query.code,
+    );
+  }
+
+  async updatePosition(input: UpdatePositionRecord): Promise<PositionRecord | undefined> {
+    const existing = await this.findPosition({
+      organizationId: input.organizationId,
+      positionId: input.positionId,
+    });
+    if (existing === undefined) return undefined;
+    const record: PositionRecord = {
+      ...existing,
+      ...(input.code === undefined ? {} : { code: input.code }),
+      ...(input.name === undefined ? {} : { name: input.name }),
+      ...(input.activeFrom === undefined ? {} : { activeFrom: input.activeFrom }),
+      ...(input.activeTo === undefined ? {} : { activeTo: input.activeTo }),
+      updatedAt: new Date().toISOString(),
+      ...(input.updatedBy === undefined ? {} : { updatedBy: input.updatedBy }),
+    };
+    this.positions.set(record.id, record);
+    return record;
+  }
+
+  async listPositions(query: PositionListQuery): Promise<readonly PositionRecord[]> {
+    const today = new Date().toISOString().slice(0, 10);
+    const rows = [...this.positions.values()]
+      .filter((position) => position.organizationId === query.organizationId)
+      .filter((position) =>
+        query.active === undefined
+          ? true
+          : query.active
+            ? position.activeTo === null || position.activeTo > today
+            : position.activeTo !== null && position.activeTo <= today,
+      )
+      .sort((a, b) => {
+        if (a.name !== b.name) return a.name < b.name ? -1 : 1;
+        return a.id < b.id ? -1 : 1;
+      });
+    const offset = query.offset ?? 0;
+    const limit = query.limit ?? DEFAULT_POSITION_LIMIT;
+    return rows.slice(offset, offset + limit);
+  }
+
+  async setEmployeePositions(input: {
+    readonly organizationId: string;
+    readonly employeeId: string;
+    readonly positionIds: readonly string[];
+    readonly actorId: string | null;
+  }): Promise<void> {
+    this.employeePositions.set(input.employeeId, [...input.positionIds]);
+    const employee = this.employees.get(input.employeeId);
+    if (employee !== undefined) {
+      this.employees.set(employee.id, { ...employee, positionIds: [...input.positionIds] });
+    }
+  }
+
+  async listEmployeePositions(query: {
+    readonly organizationId: string;
+    readonly employeeId: string;
+  }): Promise<readonly PositionRecord[]> {
+    const ids = this.employeePositions.get(query.employeeId) ?? [];
+    return ids
+      .map((id) => this.positions.get(id))
+      .filter((position): position is PositionRecord => position !== undefined)
+      .sort((a, b) => {
+        if (a.name !== b.name) return a.name < b.name ? -1 : 1;
+        return a.id < b.id ? -1 : 1;
+      });
+  }
+
+  async listPositionIdsByEmployeeIds(query: {
+    readonly organizationId: string;
+    readonly employeeIds: readonly string[];
+  }): Promise<ReadonlyMap<string, readonly string[]>> {
+    const map = new Map<string, readonly string[]>();
+    for (const employeeId of query.employeeIds) {
+      map.set(employeeId, this.employeePositions.get(employeeId) ?? []);
+    }
+    return map;
   }
 }
 

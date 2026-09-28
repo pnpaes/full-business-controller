@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import {
   check,
   date,
+  foreignKey,
   index,
   integer,
   jsonb,
@@ -14,7 +15,7 @@ import {
 } from "drizzle-orm/pg-core";
 
 import { auditColumns, enumCheck, money, orgId, rangeCheck, tstz, uuidPk } from "./columns";
-import { appUser } from "./identity";
+import { appUser, role } from "./identity";
 import { location, organization } from "./organization";
 import { fileObject } from "./platform";
 import {
@@ -39,14 +40,22 @@ import {
  * (`03_DOMAIN_MODEL.md` §3.9, `WF-001`). `app_user` exists in this schema, so
  * the draft's real single-column FK is used rather than a plain uuid.
  *
- * `role_code` is deliberately **free text** (the draft has no CHECK): the shift
- * matching this column feeds is a later slice and the accepted `role_code`
- * vocabulary is a *platform role* list, not the employment role set. Constants:
- * `employment_type` is checked against the `employment_type` vocabulary;
- * `base_hourly_rate` is `numeric(19,4)` (money, decimal-only — never floats) and
- * must be non-negative; `cost_center_id` stays a **plain uuid** because the
- * cost-centre FK is a deferred slice (the draft's forward-reference note);
- * `active_to is null or active_to > active_from` is a database check.
+ * `role_code` (**`DEC-151`**, 2026-09-28) is the employee's **access level**: a
+ * validated reference to the organization's fixed, scoped `role` row
+ * (`role(organization_id, code)` — the same rows `user_role` grants access
+ * with). It is a **composite FK** `(organization_id, role_code)` because a
+ * single-column FK could not keep the referenced role in the employee's own
+ * organization. The column name and its values are unchanged, so the costing
+ * labour-rate paths and payroll/worked-hours reads that key on the role code keep
+ * working: the family of values is still the `ROLE_CODE` vocabulary, now enforced
+ * structurally instead of by convention. The free employment-language aliases
+ * (`kitchen staff`, `coffee shop staff`/`barista`, `manager`) are normalised to
+ * their role codes by migration `0080`. Constants: `employment_type` is checked
+ * against the `employment_type` vocabulary; `base_hourly_rate` is
+ * `numeric(19,4)` (money, decimal-only — never floats) and must be non-negative;
+ * `cost_center_id` stays a **plain uuid** because the cost-centre FK is a
+ * deferred slice (the draft's forward-reference note); `active_to is null or
+ * active_to > active_from` is a database check.
  */
 export const employee = pgTable(
   "employee",
@@ -69,9 +78,74 @@ export const employee = pgTable(
     check("employee_employment_type_check", enumCheck(t.employmentType, EMPLOYMENT_TYPE)),
     check("employee_base_hourly_rate_check", sql`${t.baseHourlyRate} >= 0`),
     check("employee_active_range_check", rangeCheck(t.activeFrom, t.activeTo)),
+    // `DEC-151`: the employee's role is their access level — a same-organization
+    // reference to the fixed, scoped `role` row. Composite because the target's
+    // key is `(organization_id, code)`.
+    foreignKey({
+      name: "employee_organization_id_role_code_fk",
+      columns: [t.organizationId, t.roleCode],
+      foreignColumns: [role.organizationId, role.code],
+    }),
     // `active` is the not-retired filter, so both list filters ride this index.
     index("employee_org_active_idx").on(t.organizationId, t.retiredAt),
     index("employee_org_primary_location_idx").on(t.organizationId, t.primaryLocationId),
+    index("employee_org_role_code_idx").on(t.organizationId, t.roleCode),
+  ],
+);
+
+/*
+ * `DEC-151` (2026-09-28): the **position** catalogue — a free, organization-scoped
+ * list of the jobs an employee may hold (`barista`, `cook`, `helper`, `cleaner`
+ * and any others the owner adds). Unlike the fixed `role` access vocabulary, the
+ * position list is open: `code` is unique **per organization** and there is no
+ * closed vocabulary. `active_from`/`active_to` are the effective window (the
+ * `rangeCheck` companion), so a position is deactivated rather than deleted and
+ * the historical assignments keep their meaning. Positions are the staffing
+ * match: a shift carries one and only an employee who holds it may take it.
+ */
+export const position = pgTable(
+  "position",
+  {
+    id: uuidPk(),
+    organizationId: orgId().references(() => organization.id),
+    code: text("code").notNull(),
+    name: text("name").notNull(),
+    activeFrom: date("active_from").notNull(),
+    activeTo: date("active_to"),
+    ...auditColumns(),
+  },
+  (t) => [
+    check("position_active_range_check", rangeCheck(t.activeFrom, t.activeTo)),
+    unique("position_organization_id_code_key").on(t.organizationId, t.code),
+    index("position_org_active_idx").on(t.organizationId, t.activeTo),
+  ],
+);
+
+/*
+ * `DEC-151`: the many-to-many between an employee and the positions they hold.
+ * Both references are weighted organization-scoped (the `0080` guard triggers
+ * mirror `0047`/`0052`); the unique pair keeps one grant, and the set is
+ * **replaced** by the employee commands (`setEmployeePositions`), so the join
+ * row carries only the audit pair. An employee with no positions may be
+ * scheduled for nothing and self-assign nothing.
+ */
+export const employeePosition = pgTable(
+  "employee_position",
+  {
+    id: uuidPk(),
+    organizationId: orgId().references(() => organization.id),
+    employeeId: uuid("employee_id")
+      .notNull()
+      .references(() => employee.id),
+    positionId: uuid("position_id")
+      .notNull()
+      .references(() => position.id),
+    ...auditColumns(),
+  },
+  (t) => [
+    unique("employee_position_employee_id_position_id_key").on(t.employeeId, t.positionId),
+    index("employee_position_org_employee_idx").on(t.organizationId, t.employeeId),
+    index("employee_position_org_position_idx").on(t.organizationId, t.positionId),
   ],
 );
 
@@ -152,6 +226,14 @@ export const shift = pgTable(
     locationId: uuid("location_id")
       .notNull()
       .references(() => location.id),
+    /**
+     * `DEC-151`: the position the shift is staffed for — the matching key for
+     * self-assignment and the manager's assign path. Nullable: `null` means "any
+     * position" (the pre-`DEC-151` null-role semantics). Expanded in `0080`;
+     * `role_code` is retained beside it for now (contract later).
+     */
+    positionId: uuid("position_id").references(() => position.id),
+    /** Legacy free-text employment role; superseded by `position_id` (`DEC-151`). */
     roleCode: text("role_code"),
     startsAt: tstz("starts_at").notNull(),
     endsAt: tstz("ends_at").notNull(),
@@ -172,6 +254,7 @@ export const shift = pgTable(
     ),
     index("shift_org_location_starts_idx").on(t.organizationId, t.locationId, t.startsAt),
     index("shift_org_state_idx").on(t.organizationId, t.state),
+    index("shift_org_position_idx").on(t.organizationId, t.positionId),
   ],
 );
 

@@ -13,4 +13,6 @@ export const WORKFORCE_AUDIT_ACTIONS = {
   employeeRetired: "workforce.employee.retired",
   employeeDocumentCreated: "workforce.employee_document.created",
   employeeDocumentUpdated: "workforce.employee_document.updated",
+  positionCreated: "workforce.position.created",
+  positionUpdated: "workforce.position.updated",
 } as const;

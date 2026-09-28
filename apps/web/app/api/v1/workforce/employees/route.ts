@@ -151,6 +151,7 @@ export async function POST(request: Request): Promise<Response> {
         primaryLocationId: parsed.input.primaryLocationId,
         activeFrom: parsed.input.activeFrom,
         activeTo: parsed.input.activeTo,
+        positionIds: parsed.input.positionIds,
       });
     } catch (error) {
       // `registerEmployee` creates a fresh row, so it has no `NotFoundError`

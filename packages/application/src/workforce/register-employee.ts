@@ -31,12 +31,15 @@ export function assertBaseHourlyRate(value: unknown): string {
   return trimmed;
 }
 
+/** The most positions one employee may hold in a single set (a sanity bound). */
+export const MAX_EMPLOYEE_POSITIONS = 50;
+
 export interface RegisterEmployeeInput {
   readonly organizationId: string;
   /** Optional `app_user` login; an employee may exist without one (`WF-001`). */
   readonly userId?: string | null;
   readonly name: string;
-  /** Free text (the draft declares no CHECK); must be non-blank. */
+  /** `DEC-151`: an existing organization role code (validated against `role`). */
   readonly roleCode: string;
   /** One of `EMPLOYMENT_TYPE`. */
   readonly employmentType: string;
@@ -50,7 +53,33 @@ export interface RegisterEmployeeInput {
   readonly activeFrom: string;
   /** `date`, `YYYY-MM-DD`, or null; strictly after `activeFrom` when set. */
   readonly activeTo?: string | null;
+  /** `DEC-151`: the initial positions (validated against the catalogue, deduped). */
+  readonly positionIds?: readonly string[];
   readonly actorId: string;
+}
+
+/**
+ * Normalises and validates an employee's position set (`DEC-151`): every id must
+ * be a position in the caller's organization, and the set is trimmed, deduped
+ * and bounded (`MAX_EMPLOYEE_POSITIONS`). Runs against the transaction store so
+ * the ids are read at the same scope the grant is written.
+ */
+export async function normalizeEmployeePositionIds(
+  store: WorkforceStore,
+  organizationId: string,
+  positionIds: readonly string[] | undefined,
+): Promise<readonly string[]> {
+  const unique = [...new Set((positionIds ?? []).map((id) => id.trim()).filter((id) => id !== ""))];
+  if (unique.length > MAX_EMPLOYEE_POSITIONS) {
+    throw new DomainError(`an employee may hold at most ${MAX_EMPLOYEE_POSITIONS} positions`);
+  }
+  for (const positionId of unique) {
+    const found = await store.findPosition({ organizationId, positionId });
+    if (found === undefined) {
+      throw new DomainError(`position ${positionId} not found in organization`);
+    }
+  }
+  return unique;
 }
 
 /**
@@ -61,8 +90,10 @@ export interface RegisterEmployeeInput {
  * transaction. The create is organization-scoped through `input.organizationId`
  * (`DEC-061`).
  *
- * `role_code` stays **free text** — the draft declares no CHECK — so nothing is
- * validated beyond non-blank. The employment type and active-range checks are
+ * `role_code` (`DEC-151`) is validated against the organization's `role` rows
+ * (the fixed access vocabulary) and the position set against the open catalogue;
+ * both are database-backed by the `0080` FK and guard triggers. The employment
+ * type and active-range checks are
  * database-backed (`employee_employment_type_check`,
  * `employee_active_range_check`), and `primary_location_id` has a same-organization
  * guard (`0047`), but they are mirrored here so the fake-store unit suite and the
@@ -104,18 +135,31 @@ export async function registerEmployee(
     throw new DomainError("activeTo must be after activeFrom");
   }
 
+  const roleCode = input.roleCode.trim();
+
   return store.withTransaction(async (tx) => {
+    const role = await tx.findRoleByCode({ organizationId: input.organizationId, code: roleCode });
+    if (role === undefined) {
+      throw new DomainError(`role ${roleCode} is not one of the organization's roles`);
+    }
+    const positionIds = await normalizeEmployeePositionIds(
+      tx,
+      input.organizationId,
+      input.positionIds,
+    );
+
     const employee = await tx.createEmployee({
       organizationId: input.organizationId,
       userId: input.userId ?? null,
       name: input.name.trim(),
-      roleCode: input.roleCode.trim(),
+      roleCode,
       employmentType,
       baseHourlyRate,
       costCenterId: input.costCenterId ?? null,
       primaryLocationId: input.primaryLocationId ?? null,
       activeFrom: input.activeFrom,
       activeTo: input.activeTo ?? null,
+      positionIds,
       createdBy: input.actorId,
     });
 
@@ -135,6 +179,7 @@ export async function registerEmployee(
         primary_location_id: employee.primaryLocationId,
         active_from: employee.activeFrom,
         active_to: employee.activeTo,
+        position_ids: employee.positionIds,
         retired_at: employee.retiredAt,
       },
     });

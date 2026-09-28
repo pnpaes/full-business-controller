@@ -1,6 +1,7 @@
 import {
   createPostgresSchedulingStore,
   findSelfEmployee,
+  listAvailableShifts,
   listMyShifts,
 } from "@aquarela/application";
 
@@ -9,7 +10,7 @@ import { jsonError, jsonOk, mapErrors } from "../../../../../lib/http";
 import { resolveOrganization } from "../../../../../lib/organization";
 import { getServerSession } from "../../../../../lib/server-session";
 
-import { toMyShiftRows } from "../workforce-rows";
+import { toAvailableShiftRows, toMyShiftRows } from "../workforce-rows";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -42,7 +43,15 @@ export async function GET(): Promise<Response> {
       organizationId,
       actorUserId: session.userId,
     });
+    // `DEC-151`: only shifts whose position the employee holds are offered.
+    const available = await listAvailableShifts(store, {
+      organizationId,
+      actorUserId: session.userId,
+    });
 
-    return jsonOk({ rows: toMyShiftRows(rows) });
+    return jsonOk({
+      rows: toMyShiftRows(rows),
+      available: toAvailableShiftRows(available),
+    });
   });
 }

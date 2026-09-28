@@ -46,6 +46,7 @@ function shiftRecord(overrides: Partial<ShiftRecord> = {}): ShiftRecord {
     organizationId: ORG,
     locationId: LOCATION,
     roleCode: "barista",
+    positionId: null,
     startsAt: "2026-03-01T09:00:00.000Z",
     endsAt: "2026-03-01T17:00:00.000Z",
     breakMinutes: 30,

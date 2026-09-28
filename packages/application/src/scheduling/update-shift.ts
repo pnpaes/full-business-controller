@@ -15,7 +15,9 @@ export interface UpdateShiftInput {
   readonly endsAt?: string;
   /** Whole minutes, non-negative. Omitted leaves the break unchanged. */
   readonly breakMinutes?: number;
-  /** Free text; blank/`null` clears it. Omitted leaves it unchanged. */
+  /** `DEC-151`: blank/`null` clears the position (any position). Omitted leaves it. */
+  readonly positionId?: string | null;
+  /** Legacy free-text role; blank/`null` clears it. Omitted leaves it unchanged. */
   readonly roleCode?: string | null;
   readonly actorId: string;
 }
@@ -26,6 +28,7 @@ const AUDIT_FIELDS = {
   endsAt: "ends_at",
   breakMinutes: "break_minutes",
   roleCode: "role_code",
+  positionId: "position_id",
 } as const;
 
 /**
@@ -66,6 +69,7 @@ export async function updateShift(
       endsAt?: string;
       breakMinutes?: number;
       roleCode?: string | null;
+      positionId?: string | null;
     } = {};
 
     if (input.startsAt !== undefined) {
@@ -82,6 +86,20 @@ export async function updateShift(
     if (input.roleCode !== undefined) {
       mutable.roleCode =
         input.roleCode === null || isBlank(input.roleCode) ? null : input.roleCode.trim();
+    }
+    if (input.positionId !== undefined) {
+      const positionId =
+        input.positionId === null || isBlank(input.positionId) ? null : input.positionId.trim();
+      if (positionId !== null && positionId !== shift.positionId) {
+        const position = await tx.findPosition({
+          organizationId: input.organizationId,
+          positionId,
+        });
+        if (position === undefined) {
+          throw new DomainError("position not found in organization");
+        }
+      }
+      mutable.positionId = positionId;
     }
 
     if (Object.keys(mutable).length === 0) {

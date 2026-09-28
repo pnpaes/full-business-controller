@@ -69,7 +69,9 @@ const tables = Object.values(schema).filter((value) => is(value, PgTable));
  * `competitor_observation` columns, taking the count to 102. The `DEC-146`
  * (`WF-003`) employee-invite slice adds the `user_invite` table plus the
  * nullable `app_user.invited_at`/`invited_by` columns, taking the count to
- * 103. */
+ * 103. The `DEC-151` role/position slice adds the `position` catalogue and the
+ * `employee_position` join table plus the nullable `shift.position_id` column
+ * and the `employee.role_code` composite FK, taking the count to 105. */
 const EXPECTED_TABLES = [
   "addon_applicability",
   "adjustment_period",
@@ -101,6 +103,7 @@ const EXPECTED_TABLES = [
   "document_version",
   "employee",
   "employee_document",
+  "employee_position",
   "equipment",
   "exchange_rate",
   "external_mapping",
@@ -128,6 +131,7 @@ const EXPECTED_TABLES = [
   "password_reset_token",
   "payroll_report",
   "period_close",
+  "position",
   "price_scenario",
   "price_version",
   "production_batch",

@@ -13,10 +13,19 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { FormEvent } from "react";
 
+import { PositionPicker } from "./position-picker";
+import type { PositionOption } from "./position-picker";
+
 const FALLBACK_ERROR = "Could not register the employee. Please try again.";
 
 export interface EmployeeLocationOption {
   readonly id: string;
+  readonly code: string;
+  readonly name: string;
+}
+
+/** One of the organization's fixed roles (`DEC-151`). */
+export interface EmployeeRoleOption {
   readonly code: string;
   readonly name: string;
 }
@@ -26,6 +35,10 @@ export interface RegisterEmployeeFormProps {
   readonly employmentTypes: readonly string[];
   /** Locations the caller may assign as primary; already filtered to scope. */
   readonly locations: readonly EmployeeLocationOption[];
+  /** The organization's roles (`DEC-151`) — the employee's access level. */
+  readonly roles: readonly EmployeeRoleOption[];
+  /** The position catalogue the employee may be granted from (`DEC-151`). */
+  readonly positions: readonly PositionOption[];
   /** True when the caller holds `WORKFORCE_EMPLOYEE_WRITE_ROLES`. */
   readonly canWrite: boolean;
 }
@@ -49,11 +62,14 @@ async function errorMessage(response: Response): Promise<string> {
 export function RegisterEmployeeForm({
   employmentTypes,
   locations,
+  roles,
+  positions,
   canWrite,
 }: RegisterEmployeeFormProps) {
   const router = useRouter();
   const [name, setName] = useState("");
   const [roleCode, setRoleCode] = useState("");
+  const [positionIds, setPositionIds] = useState<readonly string[]>([]);
   const [employmentType, setEmploymentType] = useState(employmentTypes[0] ?? "");
   const [baseHourlyRate, setBaseHourlyRate] = useState("");
   const [primaryLocationId, setPrimaryLocationId] = useState(
@@ -105,6 +121,7 @@ export function RegisterEmployeeForm({
           baseHourlyRate: baseHourlyRate.trim(),
           primaryLocationId: primaryLocationId.length === 0 ? null : primaryLocationId,
           activeFrom: activeFrom.trim(),
+          positionIds,
           ...(activeTo.trim().length === 0 ? {} : { activeTo: activeTo.trim() }),
         }),
       });
@@ -115,6 +132,7 @@ export function RegisterEmployeeForm({
       setSuccess("Employee registered.");
       setName("");
       setRoleCode("");
+      setPositionIds([]);
       setBaseHourlyRate("");
       setActiveFrom("");
       setActiveTo("");
@@ -142,13 +160,15 @@ export function RegisterEmployeeForm({
           value={name}
           onChange={(event) => setName(event.target.value)}
         />
-        <TextField
+        <SelectField
           name="roleCode"
           label="Role"
           required
           value={roleCode}
           onChange={(event) => setRoleCode(event.target.value)}
-          help="Free text (e.g. barista, baker) — the roster matches this role against shifts planned for it."
+          options={roles.map((role) => ({ value: role.code, label: role.name }))}
+          placeholder="Select a role"
+          help="The employee's access level (DEC-151): one of the organization's fixed roles, not free text."
         />
         <SelectField
           name="employmentType"
@@ -196,6 +216,12 @@ export function RegisterEmployeeForm({
           value={activeTo}
           onChange={(event) => setActiveTo(event.target.value)}
           help="Optional; must be after the active-from date."
+        />
+        <PositionPicker
+          positions={positions}
+          selectedIds={positionIds}
+          onChange={setPositionIds}
+          canWrite={canWrite}
         />
 
         <div>

@@ -44,6 +44,8 @@ function pendingRow(overrides: Partial<PendingSelfAssignmentRow> = {}): PendingS
     shiftId: SHIFT_ID,
     locationId: LOCATION,
     roleCode: "barista",
+    positionId: null,
+    positionName: null,
     startsAt: "2026-03-01T09:00:00.000Z",
     endsAt: "2026-03-01T17:00:00.000Z",
     breakMinutes: 30,

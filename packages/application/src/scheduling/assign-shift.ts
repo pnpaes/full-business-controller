@@ -9,6 +9,12 @@ export interface AssignShiftInput {
   readonly organizationId: string;
   readonly shiftId: string;
   readonly employeeId: string;
+  /**
+   * `DEC-151`: a manager may staff an exception — assign an employee who does
+   * not hold the shift's position — only with this explicit, recorded override.
+   * Omitted/false refuses the mismatch. (The self-assign path has no override.)
+   */
+  readonly override?: boolean;
   readonly actorId: string;
 }
 
@@ -22,9 +28,10 @@ export interface AssignShiftInput {
  * - **location rule** — the employee's `primaryLocationId` must equal the
  *   shift's location, and a null primary location is rejected (fail-closed, the
  *   `DEC-099` precedent);
- * - **role rule** (`WF-003`) — a shift planned for a role (`roleCode` set) only
- *   accepts an employee whose `roleCode` matches; a null shift role accepts any
- *   employee role;
+ * - **position rule** (`DEC-151`) — a shift with a position only accepts an
+ *   employee who holds it; a manager may override this with `override: true`,
+ *   which is recorded in the audit payload (managers staff exceptions). A shift
+ *   with no position accepts any employee;
  * - an existing assignment for the same `(shift, employee)` is rejected, so a
  *   retry cannot manufacture a duplicate fact.
  *
@@ -65,8 +72,20 @@ export async function assignShift(
     if (employee.primaryLocationId === null || employee.primaryLocationId !== shift.locationId) {
       throw new DomainError("employee must have a primary location matching the shift location");
     }
-    if (shift.roleCode !== null && employee.roleCode !== shift.roleCode) {
-      throw new DomainError("the employee's role does not match the shift's role");
+    let positionOverride = false;
+    if (shift.positionId !== null) {
+      const held = await tx.listEmployeePositionIds({
+        organizationId: input.organizationId,
+        employeeId: employee.id,
+      });
+      if (!held.includes(shift.positionId)) {
+        if (input.override !== true) {
+          throw new DomainError(
+            "the employee does not hold the shift's position; pass override to assign anyway",
+          );
+        }
+        positionOverride = true;
+      }
     }
 
     const existing = await tx.findShiftAssignmentByShiftEmployee({
@@ -109,6 +128,8 @@ export async function assignShift(
       after: {
         shift_id: assignment.shiftId,
         employee_id: assignment.employeeId,
+        shift_position_id: shift.positionId,
+        position_override: positionOverride,
         state: assignment.state,
         assigned_by: assignment.assignedBy,
         assigned_at: assignment.assignedAt,

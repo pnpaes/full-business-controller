@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createDb, type DbClient } from "../client";
-import { employee, employeeDocument, location, organization } from "../schema";
+import { employee, employeeDocument, location, organization, role } from "../schema";
 import {
   createEmployee,
   createEmployeeDocument,
@@ -20,6 +20,7 @@ import {
   createTestLocation,
   createTestOrganization,
   createTestUser,
+  ensureTestRole,
   inRollback,
   rejectionCause,
   uniqueSuffix,
@@ -40,14 +41,19 @@ describe.skipIf(!databaseUrl)("workforce repository", () => {
     client = createDb(databaseUrl!);
     orgId = await createTestOrganization(client.db, suffix);
     locationId = (await createTestLocation(client.db, orgId)).id;
+    // `DEC-151`: the roles the direct `createEmployee` fixtures name (the seeded
+    // `role` rows are committed, so they are unwound in `afterAll`).
+    await ensureTestRole(client.db, orgId, "kitchen");
+    await ensureTestRole(client.db, orgId, "front_of_house");
   });
 
   afterAll(async () => {
     if (client) {
       // Every employee and document is created inside a rolled-back transaction,
-      // so the committed fixtures to unwind are the location and the
-      // organization.
+      // so the committed fixtures to unwind are the location, the seeded roles
+      // (`DEC-151`) and the organization.
       await client.db.delete(location).where(eq(location.id, locationId));
+      await client.db.delete(role).where(eq(role.organizationId, orgId));
       await client.db.delete(organization).where(eq(organization.id, orgId));
       await client.close();
     }

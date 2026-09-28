@@ -39,6 +39,11 @@ export async function publishShift(
     if (shift.state !== "open") {
       throw new DomainError(`shift in state ${shift.state} cannot be published`);
     }
+    // `DEC-151`: a published shift is offered to self-assignment, and the offer
+    // is matched on the shift's position — so a position is required to publish.
+    if (shift.positionId === null) {
+      throw new DomainError("a shift must have a position before it can be published");
+    }
 
     const publishedAt = new Date().toISOString();
     const updated = await tx.updateShift({

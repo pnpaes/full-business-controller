@@ -4,7 +4,11 @@ import { assertOptionalCalendarDate } from "../hms/register-incident";
 import { isBlank } from "../inventory/validation";
 
 import { WORKFORCE_AUDIT_ACTIONS } from "./actions";
-import { assertBaseHourlyRate, EMPLOYMENT_TYPES } from "./register-employee";
+import {
+  assertBaseHourlyRate,
+  EMPLOYMENT_TYPES,
+  normalizeEmployeePositionIds,
+} from "./register-employee";
 import type { EmployeeRecord, WorkforceStore } from "./types";
 
 export interface UpdateEmployeeInput {
@@ -12,7 +16,7 @@ export interface UpdateEmployeeInput {
   readonly employeeId: string;
   /** Non-empty; trimmed. Omitted leaves the name unchanged. */
   readonly name?: string;
-  /** Free text; non-blank. Omitted leaves the role code unchanged. */
+  /** `DEC-151`: an existing organization role code. Omitted leaves it unchanged. */
   readonly roleCode?: string;
   /** One of `EMPLOYMENT_TYPE`. Omitted leaves it unchanged. */
   readonly employmentType?: string;
@@ -24,6 +28,8 @@ export interface UpdateEmployeeInput {
   readonly primaryLocationId?: string | null;
   /** `date`, `YYYY-MM-DD`, or null to clear it; strictly after `activeFrom`. */
   readonly activeTo?: string | null;
+  /** `DEC-151`: replaces the whole position set when present. */
+  readonly positionIds?: readonly string[];
   readonly actorId: string;
 }
 
@@ -76,6 +82,7 @@ export async function updateEmployee(
       costCenterId?: string | null;
       primaryLocationId?: string | null;
       activeTo?: string | null;
+      positionIds?: readonly string[];
     } = {};
 
     if (input.name !== undefined) {
@@ -88,7 +95,15 @@ export async function updateEmployee(
       if (isBlank(input.roleCode)) {
         throw new DomainError("roleCode is required");
       }
-      mutable.roleCode = input.roleCode.trim();
+      const roleCode = input.roleCode.trim();
+      const role = await tx.findRoleByCode({
+        organizationId: input.organizationId,
+        code: roleCode,
+      });
+      if (role === undefined) {
+        throw new DomainError(`role ${roleCode} is not one of the organization's roles`);
+      }
+      mutable.roleCode = roleCode;
     }
     if (input.employmentType !== undefined) {
       if (isBlank(input.employmentType)) {
@@ -116,6 +131,13 @@ export async function updateEmployee(
       }
       mutable.activeTo = input.activeTo;
     }
+    if (input.positionIds !== undefined) {
+      mutable.positionIds = await normalizeEmployeePositionIds(
+        tx,
+        input.organizationId,
+        input.positionIds,
+      );
+    }
 
     if (Object.keys(mutable).length === 0) {
       throw new DomainError("no updatable fields provided");
@@ -137,6 +159,10 @@ export async function updateEmployee(
       if (mutable[field] === undefined) continue;
       before[AUDIT_FIELDS[field]] = employee[field];
       after[AUDIT_FIELDS[field]] = updated[field];
+    }
+    if (mutable.positionIds !== undefined) {
+      before["position_ids"] = employee.positionIds;
+      after["position_ids"] = updated.positionIds;
     }
 
     await tx.writeAudit({

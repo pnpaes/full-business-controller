@@ -22,7 +22,9 @@ export interface CreateShiftInput {
   readonly organizationId: string;
   /** Required: a shift is always planned at one location (`WF-002`). */
   readonly locationId: string;
-  /** Free-text role the shift is planned for; blank/omitted becomes null. */
+  /** `DEC-151`: the position the shift is staffed for; blank/omitted becomes null. */
+  readonly positionId?: string | null;
+  /** Legacy free-text employment role; retained (expand-only) until contracted. */
   readonly roleCode?: string | null;
   /** ISO instant; must carry a time and zone. */
   readonly startsAt: string;
@@ -63,11 +65,22 @@ export async function createShift(
     input.roleCode === undefined || input.roleCode === null || isBlank(input.roleCode)
       ? null
       : input.roleCode.trim();
+  const positionId =
+    input.positionId === undefined || input.positionId === null || isBlank(input.positionId)
+      ? null
+      : input.positionId.trim();
 
   return store.withTransaction(async (tx) => {
+    if (positionId !== null) {
+      const position = await tx.findPosition({ organizationId: input.organizationId, positionId });
+      if (position === undefined) {
+        throw new DomainError("position not found in organization");
+      }
+    }
     const shift = await tx.createShift({
       organizationId: input.organizationId,
       locationId: input.locationId.trim(),
+      positionId,
       roleCode,
       startsAt: input.startsAt,
       endsAt: input.endsAt,
@@ -83,6 +96,7 @@ export async function createShift(
       entityId: shift.id,
       after: {
         location_id: shift.locationId,
+        position_id: shift.positionId,
         role_code: shift.roleCode,
         starts_at: shift.startsAt,
         ends_at: shift.endsAt,

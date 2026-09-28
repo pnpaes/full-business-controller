@@ -39,6 +39,8 @@ export interface ShiftRecord {
   readonly id: string;
   readonly organizationId: string;
   readonly locationId: string;
+  /** `DEC-151`: the staffed position; `null` means any position. */
+  readonly positionId: string | null;
   readonly roleCode: string | null;
   /** `timestamptz`, ISO. */
   readonly startsAt: string;
@@ -62,6 +64,8 @@ export interface ShiftRecord {
 export interface NewShiftRecord {
   readonly organizationId: string;
   readonly locationId: string;
+  /** `DEC-151` staffing match; `null` means any position. */
+  readonly positionId: string | null;
   readonly roleCode: string | null;
   /** `timestamptz`, ISO. */
   readonly startsAt: string;
@@ -87,6 +91,8 @@ export interface UpdateShiftRecord {
   readonly endsAt?: string;
   readonly breakMinutes?: number;
   readonly roleCode?: string | null;
+  /** `DEC-151`: explicit `null` means any position; omitted leaves it unchanged. */
+  readonly positionId?: string | null;
   /** One of `SHIFT_STATE`; set only by the lifecycle commands. */
   readonly state?: string;
   /** `timestamptz`, ISO, or null; set when the shift is published. */
@@ -342,6 +348,30 @@ export interface MyShiftRow {
   readonly shiftId: string;
   readonly locationId: string;
   readonly roleCode: string | null;
+  /** `DEC-151`: the shift's position; `null` means any position. */
+  readonly positionId: string | null;
+  readonly positionName: string | null;
+  /** `timestamptz`, ISO. */
+  readonly startsAt: string;
+  /** `timestamptz`, ISO. */
+  readonly endsAt: string;
+  readonly breakMinutes: number;
+  /** One of `SHIFT_STATES`. */
+  readonly shiftState: string;
+}
+
+/**
+ * One **available** shift for the signed-in employee (`DEC-151`): an
+ * `open`/`published` shift at the employee's primary location whose position the
+ * employee holds (or with no position), which they have not already asked for.
+ * This is what the employee may self-assign.
+ */
+export interface AvailableShiftRow {
+  readonly shiftId: string;
+  readonly locationId: string;
+  /** The staffed position; `null` means any position. */
+  readonly positionId: string | null;
+  readonly positionName: string | null;
   /** `timestamptz`, ISO. */
   readonly startsAt: string;
   /** `timestamptz`, ISO. */
@@ -364,11 +394,21 @@ export interface PendingSelfAssignmentRow {
   readonly shiftId: string;
   readonly locationId: string;
   readonly roleCode: string | null;
+  /** `DEC-151`: the shift's position; `null` means any position. */
+  readonly positionId: string | null;
+  readonly positionName: string | null;
   /** `timestamptz`, ISO. */
   readonly startsAt: string;
   /** `timestamptz`, ISO. */
   readonly endsAt: string;
   readonly breakMinutes: number;
+}
+
+/** The minimal `position` projection the shift commands need (`DEC-151`). */
+export interface SchedulingPositionRecord {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly name: string;
 }
 
 /**
@@ -529,4 +569,27 @@ export interface SchedulingStore {
     readonly limit?: number;
     readonly offset?: number;
   }): Promise<readonly PendingSelfAssignmentRow[]>;
+  /** One position by id, organization-scoped (`DEC-061`), or `undefined`. */
+  findPosition(query: {
+    readonly organizationId: string;
+    readonly positionId: string;
+  }): Promise<SchedulingPositionRecord | undefined>;
+  /** The ids of the positions one employee holds (`DEC-151`). */
+  listEmployeePositionIds(query: {
+    readonly organizationId: string;
+    readonly employeeId: string;
+  }): Promise<readonly string[]>;
+  /**
+   * The `open`/`published` shifts the employee may self-assign (`DEC-151`): at
+   * the employee's primary location, whose position they hold (or no position),
+   * excluding shifts they already have an assignment for. Ordered by start.
+   */
+  listAvailableShifts(query: {
+    readonly organizationId: string;
+    readonly employeeId: string;
+    readonly locationId: string;
+    readonly positionIds: readonly string[];
+    readonly limit?: number;
+    readonly offset?: number;
+  }): Promise<readonly AvailableShiftRow[]>;
 }

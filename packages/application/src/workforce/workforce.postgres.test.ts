@@ -1,4 +1,5 @@
 import { DomainError, NotFoundError } from "@aquarela/domain";
+import { sql } from "drizzle-orm";
 import {
   createDb,
   createEmployeeDocument as createEmployeeDocumentRow,
@@ -80,12 +81,22 @@ describe.skipIf(!databaseUrl)("workforce against PostgreSQL", () => {
       [`Workforce IT ${suffix}`],
     );
     orgId = org.rows[0]!.id;
+    // `DEC-151`: `employee.role_code` references a `role` row; the fixed
+    // vocabulary the fixtures name is seeded once and unwound in `afterAll`.
+    await client.pool.query(
+      `insert into role (organization_id, code, name)
+       values ($1, 'front_of_house', 'Front of house'), ($1, 'kitchen', 'Kitchen')
+       on conflict (organization_id, code) do nothing`,
+      [orgId],
+    );
   });
 
   afterAll(async () => {
     if (client) {
       // Every employee, document and location is created inside a rolled-back
-      // transaction, so only the organization is committed.
+      // transaction, so the committed fixtures are the organization and the
+      // seeded roles (`DEC-151`).
+      await client.pool.query("delete from role where organization_id = $1", [orgId]);
       await client.pool.query("delete from organization where id = $1", [orgId]);
       await client.close();
     }
@@ -101,7 +112,7 @@ describe.skipIf(!databaseUrl)("workforce against PostgreSQL", () => {
         organizationId: orgId,
         actorId,
         name: "Nora Nordmann",
-        roleCode: "barista",
+        roleCode: "front_of_house",
         employmentType: "part_time",
         baseHourlyRate: "215.5000",
         primaryLocationId: locationId,
@@ -111,7 +122,7 @@ describe.skipIf(!databaseUrl)("workforce against PostgreSQL", () => {
       expect(employee).toMatchObject({
         organizationId: orgId,
         name: "Nora Nordmann",
-        roleCode: "barista",
+        roleCode: "front_of_house",
         employmentType: "part_time",
         baseHourlyRate: "215.5000",
         primaryLocationId: locationId,
@@ -270,7 +281,7 @@ describe.skipIf(!databaseUrl)("workforce against PostgreSQL", () => {
         organizationId: orgId,
         actorId,
         name: "Invalid",
-        roleCode: "barista",
+        roleCode: "front_of_house",
         employmentType: "part_time",
         activeFrom: "2026-01-01",
       } as const;
@@ -387,7 +398,7 @@ describe.skipIf(!databaseUrl)("workforce against PostgreSQL", () => {
           organizationId: orgId,
           actorId,
           name,
-          roleCode: "barista",
+          roleCode: "front_of_house",
           employmentType: "part_time",
           baseHourlyRate: "200.0000",
           activeFrom: "2026-01-01",
@@ -432,7 +443,7 @@ describe.skipIf(!databaseUrl)("workforce against PostgreSQL", () => {
         organizationId: orgId,
         actorId,
         name: "Doc Lister",
-        roleCode: "barista",
+        roleCode: "front_of_house",
         employmentType: "part_time",
         baseHourlyRate: "200.0000",
         activeFrom: "2026-01-01",
@@ -483,7 +494,7 @@ describe.skipIf(!databaseUrl)("workforce against PostgreSQL", () => {
           organizationId: orgId,
           actorId,
           name: "Wrong organization location",
-          roleCode: "barista",
+          roleCode: "front_of_house",
           employmentType: "part_time",
           baseHourlyRate: "200.0000",
           primaryLocationId: otherLocationId,
@@ -544,5 +555,12 @@ async function seedForeignOrg(
     .returning();
   const otherOrgId = rows[0]!.id;
   const otherLocationId = await seedLocation(tx, otherOrgId, `wf_other_${codeSuffix}`);
+  // `DEC-151`: the foreign organization's fixed vocabulary, so its employee
+  // fixture can name a role.
+  await tx.execute(
+    sql`insert into "role" ("organization_id", "code", "name")
+        values (${otherOrgId}, ${"kitchen"}, ${"Kitchen"})
+        on conflict ("organization_id", "code") do nothing`,
+  );
   return { otherOrgId, otherLocationId };
 }

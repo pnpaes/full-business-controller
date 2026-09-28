@@ -47,6 +47,7 @@ function employeeRecord(overrides: Partial<EmployeeRecord> = {}): EmployeeRecord
     primaryLocationId: LOCATION,
     activeFrom: "2026-01-01",
     activeTo: null,
+    positionIds: [],
     retiredAt: null,
     createdAt: "2026-01-01T08:00:00.000Z",
     createdBy: USER,
@@ -115,6 +116,7 @@ describe("GET /api/v1/workforce/employees", () => {
           primaryLocationId: LOCATION,
           activeFrom: "2026-01-01",
           activeTo: null,
+          positionIds: [],
           retiredAt: null,
           createdAt: "2026-01-01T08:00:00.000Z",
           createdBy: USER,
@@ -244,6 +246,7 @@ describe("POST /api/v1/workforce/employees", () => {
         primaryLocationId: LOCATION,
         activeFrom: "2026-01-01",
         activeTo: null,
+        positionIds: [],
       }),
     );
     await expect(response.json()).resolves.toEqual({
