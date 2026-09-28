@@ -174,8 +174,7 @@ export function CompleteBatchForm({ batchId, inputs, output, areas }: CompleteBa
       <SectionCard title="Complete batch" meta="post consumption and output">
         <Alert tone="warning">
           Completing needs a storage area at this location to draw the inputs from. Register a
-          storage area first; there is no WIP area, so the draw area must be supplied (open point
-          (e)).
+          storage area first, then complete the batch.
         </Alert>
       </SectionCard>
     );
@@ -208,7 +207,7 @@ export function CompleteBatchForm({ batchId, inputs, output, areas }: CompleteBa
       const reason = (reasons[line.itemId] ?? "").trim();
       if (scaled !== planned && reason.length === 0) {
         setError(
-          `A reason is required when the actual for ${line.label} differs from the planned quantity (PROD-004).`,
+          `A reason is required when the actual for ${line.label} differs from the planned quantity.`,
         );
         return;
       }
@@ -303,7 +302,7 @@ export function CompleteBatchForm({ batchId, inputs, output, areas }: CompleteBa
             value: area.id,
             label: `${area.code} · ${area.name}`,
           }))}
-          help="The storage area the input quantities are consumed from. There is no WIP/source-draw area on the batch, so this must be chosen (open point (e))."
+          help="The storage area the input quantities are consumed from."
         />
 
         {inputs.length === 0 ? (
@@ -353,7 +352,7 @@ export function CompleteBatchForm({ batchId, inputs, output, areas }: CompleteBa
                       setReasons((current) => ({ ...current, [line.itemId]: event.target.value }))
                     }
                     placeholder="e.g. over-pour, spillage"
-                    help="Required when the actual differs from the planned quantity (PROD-004)."
+                    help="Required when the actual differs from the planned quantity."
                   />
                 ) : null}
               </div>
@@ -370,7 +369,7 @@ export function CompleteBatchForm({ batchId, inputs, output, areas }: CompleteBa
           value={outputQty}
           onChange={(event) => setOutputQty(event.target.value)}
           {...(output.unitCode === null ? {} : { unit: output.unitCode })}
-          help={`Planned output ${output.plannedQty}. Consumption is valued at the locked moving weighted average (DEC-008); the output unit cost is derived from it (CALCULATION_CONTRACT §6 B3).`}
+          help={`Planned output ${output.plannedQty}. Consumption is valued at the locked moving average cost, and the output's unit cost is derived from it.`}
         />
 
         <NumberField
@@ -381,7 +380,7 @@ export function CompleteBatchForm({ batchId, inputs, output, areas }: CompleteBa
           value={actualLabourHours}
           onChange={(event) => setActualLabourHours(event.target.value)}
           unit="hours"
-          help="Optional (DEC-124). The hours actually worked on this batch; the batch cost multiplies them by the effective loaded rate. Leave blank to record none."
+          help="Optional. The hours actually worked on this batch; the batch cost uses them with the hourly rate. Leave blank to record none."
         />
 
         <TextField
@@ -409,8 +408,7 @@ export function CompleteBatchForm({ batchId, inputs, output, areas }: CompleteBa
         </div>
         <p style={{ margin: 0, opacity: 0.8 }}>
           Completion posts one atomic movement batch — consumption negative, output positive — and
-          cannot be edited. A mistake is corrected by a reversal (DEC-028), never by editing the
-          batch.
+          cannot be edited. A mistake is corrected by a reversal, never by editing the batch.
         </p>
       </form>
     </SectionCard>

@@ -152,7 +152,7 @@ export default async function ProductionPlansPage({
       <PageHeader
         title="Production plans"
         scope="Production"
-        description="Dated plans a batch can link to. Each plan may list one or more recipe versions with an intended output quantity (DEC-125); the batches beneath it do the work. The plan status stays free text (open point (f))."
+        description="Dated plans a batch can link to. Each plan may list one or more recipe versions with an intended output quantity; the batches beneath it do the work. The plan status is free text."
       />
 
       <Tabs
@@ -184,8 +184,8 @@ export default async function ProductionPlansPage({
         {tableRows.length === 0 ? (
           <EmptyState title="No production plans yet">
             A plan appears once its date and location are recorded below. A plan may list one or
-            more recipe versions with an intended output quantity (DEC-125); a batch links to the
-            plan, optionally through one of its lines.
+            more recipe versions with an intended output quantity; a batch can link to the plan,
+            optionally through one of its lines.
           </EmptyState>
         ) : (
           <div style={{ overflowX: "auto", minWidth: 0 }}>

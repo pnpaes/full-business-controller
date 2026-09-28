@@ -266,8 +266,8 @@ export default async function ProductionBatchDetailPage({
           value={batch.plannedQty === null ? "—" : trimDecimal(batch.plannedQty)}
           meta={
             batch.plannedQty === null
-              ? "Single recipe batch (DEC-125)"
-              : `${batchRow?.outputUnitCode ?? "unit not resolved"} intended · DEC-125`
+              ? "Single recipe batch"
+              : `${batchRow?.outputUnitCode ?? "unit not resolved"} intended`
           }
         />
         <KpiCard
@@ -283,15 +283,14 @@ export default async function ProductionBatchDetailPage({
         <KpiCard
           label="Yield variance"
           value={yieldVarianceLabel(batch.yieldVariancePct)}
-          meta="Stored fact · no tolerance configured (PROD-003)"
+          meta="Stored fact"
         />
       </div>
 
       {isCompletedWithVariance ? (
         <Alert tone="warning" title="Yield variance">
           This batch finished with a yield variance of {yieldVarianceLabel(batch.yieldVariancePct)}.
-          `PROD-003` has no tolerance or exception store, so the variance is recorded as a fact and
-          no threshold is applied here.
+          The variance is recorded as a stored fact; no alert threshold is applied.
         </Alert>
       ) : null}
 
@@ -323,7 +322,7 @@ export default async function ProductionBatchDetailPage({
               term: "Destination area",
               description:
                 batch.destinationStorageAreaId === null
-                  ? "Not set — completion cannot post the output until it is (open point (e))"
+                  ? "Not set — completion posts the output here, so it is required"
                   : (destinationArea?.name ?? batch.destinationStorageAreaId),
             },
             {
@@ -346,7 +345,7 @@ export default async function ProductionBatchDetailPage({
       {snapshotError !== null ? (
         <Alert tone="danger" title="Planned snapshot unavailable">
           {snapshotError}. The batch cannot be completed until the recipe version resolves to a
-          stocked output item (PROD-001).
+          stocked output item.
         </Alert>
       ) : null}
 
@@ -470,7 +469,7 @@ export default async function ProductionBatchDetailPage({
         <Alert tone="success" title="Completed">
           Consumption and output were posted to the append-only ledger
           {batch.actualFinish === null ? "" : ` at ${formatInstant(batch.actualFinish)}`}. A mistake
-          is corrected by reversing the movements (DEC-028), never by editing this batch.
+          is corrected by reversing the movements, never by editing this batch.
         </Alert>
       ) : null}
 
@@ -483,7 +482,7 @@ export default async function ProductionBatchDetailPage({
       {batchCost !== null ? (
         <SectionCard
           title="Batch cost"
-          meta={`${moneyLabel(batchCost.totalBatchCost, batchCost.currency)} total · computed on read (DEC-124)`}
+          meta={`${moneyLabel(batchCost.totalBatchCost, batchCost.currency)} total · computed on read`}
         >
           <DescriptionList
             items={[
@@ -507,7 +506,7 @@ export default async function ProductionBatchDetailPage({
                 description: moneyLabel(batchCost.totalBatchCost, batchCost.currency),
               },
               {
-                term: "Unit cost (B3)",
+                term: "Unit cost",
                 description: `${moneyLabel(batchCost.unitCost, batchCost.currency)} per ${trimDecimal(batchCost.actualOutputQty)} output unit`,
               },
               { term: "Actual hours", description: hoursLabel(batchCost.actualHours) },
@@ -559,8 +558,7 @@ export default async function ProductionBatchDetailPage({
       {batch.status === "in_progress" && batch.destinationStorageAreaId === null ? (
         <Alert tone="warning" title="No destination storage area">
           This batch has no destination storage area, so completion cannot post the output. There is
-          no endpoint to set it after planning (open point (e)) — cancel and re-plan the batch with
-          a destination.
+          no way to set it after planning, so cancel and re-plan the batch with a destination.
         </Alert>
       ) : null}
 

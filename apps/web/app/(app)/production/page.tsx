@@ -150,7 +150,7 @@ export default async function ProductionPage({
       <PageHeader
         title="Production board"
         scope="Production"
-        description="Plan and complete batches against an approved recipe version. Yield variance is stored per batch; there is no tolerance threshold configured yet (PROD-003 open point)."
+        description="Plan and complete batches against an approved recipe version. Yield variance is stored per batch and shown as a fact; no alert threshold is applied."
       />
 
       <div
@@ -188,8 +188,8 @@ export default async function ProductionPage({
         <Alert tone="warning" title="Yield variance">
           {completedWithVariance}{" "}
           {completedWithVariance === 1 ? "completed batch differs" : "completed batches differ"}{" "}
-          from its planned output. The variance is shown as a stored fact — `PROD-003` has no
-          tolerance/exception store, so no alert threshold is applied and none is invented here.
+          from its planned output. Yield variance is stored as a fact; no alert threshold is
+          applied, so this is shown for review only.
         </Alert>
       ) : null}
 

@@ -180,7 +180,7 @@ export function CreateBatchForm({
             }
           }}
           options={planLines.map((option) => ({ value: option.id, label: option.label }))}
-          help="Optional (DEC-125). A line fixes the recipe version and its intended quantity; the server re-validates that the line belongs to this organization and matches the recipe version."
+          help="Optional. Choosing a plan line fixes the recipe version and its intended quantity."
         />
 
         <SelectField
@@ -193,7 +193,7 @@ export function CreateBatchForm({
             value: option.id,
             label: `${option.recipeCode} · ${option.recipeName} v${option.versionNo}`,
           }))}
-          help="Only approved versions can be produced (PROD-001). The planned snapshot is derived from this version."
+          help="Only approved versions can be produced. The planned inputs and output are taken from this version."
         />
 
         <NumberField
@@ -204,7 +204,7 @@ export function CreateBatchForm({
           step="0.000001"
           value={plannedQty}
           onChange={(event) => setPlannedQty(event.target.value)}
-          help="Optional (DEC-125). When set, the recipe snapshot's planned inputs and output are scaled to this quantity (rounded once at B0, 6 dp). Leave blank for a single recipe batch."
+          help="Optional. When set, the planned inputs and output are scaled to this quantity (up to 6 decimal places). Leave blank for a single recipe batch."
         />
 
         <SelectField
@@ -236,7 +236,7 @@ export function CreateBatchForm({
             value: area.id,
             label: `${area.code} · ${area.name}`,
           }))}
-          help="Outputs are received here on completion. There is no WIP area: the batch must have a destination to be completed (open point (e))."
+          help="Outputs are received here on completion, so the batch needs a destination to be completed."
         />
 
         <TextField

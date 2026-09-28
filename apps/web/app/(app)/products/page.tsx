@@ -214,7 +214,7 @@ export default async function ProductsPage({
       <PageHeader
         title="Stock items"
         scope="Aquarela Business Control"
-        description="The things we stock and cost. Each item is either for sale (a sellable is fulfilled from it) or for use (an input consumed by production and operations) — with its supplier packs, base unit and current cost."
+        description="The things we stock and cost. A for-sale item may be sold and can also be used as a recipe input; a for-use item is consumed internally — each with its supplier packs, base unit and current cost."
         actions={
           <NewItemModal
             itemTypes={ITEM_TYPE}

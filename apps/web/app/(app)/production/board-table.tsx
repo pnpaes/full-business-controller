@@ -65,7 +65,7 @@ export function ProductionBoardTable({ rows }: { readonly rows: readonly Product
 
   return (
     <DataTable
-      caption="Production batches grouped by status, newest first. Yield variance is a stored fact; no tolerance is configured (PROD-003 open point)."
+      caption="Production batches grouped by status, newest first. Yield variance is stored as a fact."
       columns={COLUMNS}
       rows={tableRows}
       rowHref={(_row, index) => {

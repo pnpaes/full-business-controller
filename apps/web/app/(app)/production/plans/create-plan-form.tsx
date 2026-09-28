@@ -184,7 +184,7 @@ export function CreatePlanForm({
           value={status}
           onChange={(event) => setStatus(event.target.value)}
           placeholder="planned"
-          help="Free text: production_plan has no status vocabulary authority yet (open point (f)), so the server stores it exactly as given."
+          help="Free text: the status is stored exactly as you enter it."
         />
 
         <div style={{ display: "flex", flexDirection: "column", gap: spacing[3] }}>
