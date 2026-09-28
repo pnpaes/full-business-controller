@@ -22,10 +22,10 @@ import { resolveOrganization } from "../../../lib/organization";
 import { getServerSession } from "../../../lib/server-session";
 
 import { ItemsTable, type ItemTableRow } from "./items-table";
-import { RegisterItemForm } from "./register-item-form";
+import { NewItemModal } from "./new-item-modal";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Products — Aquarela Business Control" };
+export const metadata = { title: "Items — Aquarela Business Control" };
 
 /* ----------------------------- query / formatting -------------------------- */
 
@@ -89,9 +89,14 @@ const paginationLink = {
 } as const;
 
 /**
- * Products: the item list (08_UI_UX.md §8.3) — code, name, type, base unit,
+ * Items: the item register (08_UI_UX.md §8.3) — code, name, type, base unit,
  * inventory policy, current cost, lot tracking and active range — with a
  * search/type filter carried in the query string and drill-down to item detail.
+ * These are the things this organization buys, makes or stocks; what it sells
+ * lives on the sellables register.
+ *
+ * Creating an item is the header's single primary action, opening the form in a
+ * modal (`docs/ux/README.md` "Creation and hierarchy").
  *
  * The items are read directly through the same application service the read API
  * uses (`listItems` over `createPostgresMasterDataStore`) rather than an HTTP
@@ -174,38 +179,18 @@ export default async function ProductsPage({
       }}
     >
       <PageHeader
-        title="Products"
+        title="Items"
         scope="Aquarela Business Control"
-        description="Items and their supplier packs, base units and current cost. Select an item for its conversions and stock."
+        description="The things we stock and cost — ingredients, packaging and finished goods — with their supplier packs, base units and current cost. Select an item for its conversions and stock."
+        actions={<NewItemModal itemTypes={ITEM_TYPE} inventoryPolicies={INVENTORY_POLICY} />}
       />
 
-      <p style={{ margin: 0 }}>
-        Looking for what we sell? <a href="/products/sellables">Products and variants →</a>
+      <p style={{ margin: 0, fontSize: typography.fontSize.sm, color: color.text.muted }}>
+        Selling something? <a href="/products/sellables">Products and variants →</a>
       </p>
 
-      <SectionCard title="Register an item" meta="W2 · create">
-        <details>
-          <summary
-            style={{
-              cursor: "pointer",
-              minHeight: geometry.touchTarget,
-              display: "flex",
-              alignItems: "center",
-              fontSize: typography.fontSize.md,
-              fontWeight: typography.fontWeight.semibold,
-              color: color.brand.navy,
-            }}
-          >
-            New item
-          </summary>
-          <div style={{ marginTop: spacing[4] }}>
-            <RegisterItemForm itemTypes={ITEM_TYPE} inventoryPolicies={INVENTORY_POLICY} />
-          </div>
-        </details>
-      </SectionCard>
-
       <SectionCard
-        title="Items"
+        title="All items"
         meta={`${page.total} ${page.total === 1 ? "item" : "items"} · showing ${firstOnPage}–${lastOnPage}`}
       >
         <form method="get" action="/products" style={{ marginBottom: spacing[4] }}>

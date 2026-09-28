@@ -6,6 +6,7 @@ import {
   listItems,
   listProducts,
 } from "@aquarela/application";
+import { DomainError } from "@aquarela/domain";
 import {
   Badge,
   DescriptionList,
@@ -19,12 +20,12 @@ import {
   spacing,
   typography,
 } from "@aquarela/ui";
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 
-import { getDb } from "../../../../../lib/db";
-import { resolveOrganization } from "../../../../../lib/organization";
-import { uuidOrNotFound } from "../../../../../lib/route-params";
-import { getServerSession } from "../../../../../lib/server-session";
+import { getDb } from "../../../../../../../lib/db";
+import { resolveOrganization } from "../../../../../../../lib/organization";
+import { uuidOrNotFound } from "../../../../../../../lib/route-params";
+import { getServerSession } from "../../../../../../../lib/server-session";
 
 import { AddonApplicabilityForm } from "./addon-applicability-form";
 import { AssignRecipeForm } from "./assign-recipe-form";
@@ -39,28 +40,45 @@ function isoDay(value: Date): string {
 }
 
 /**
- * One variant (`DEC-128`): its identity, the mutable-field editor, the
+ * One variant (`DEC-128`), nested under its product: the edit surface reached
+ * from the product view. Its identity, the mutable-field editor, the
  * effective-dated recipe assignments and the add-on applicability rows naming
  * its product. `code`, `sku` and the product are shown read-only because they
- * anchor identity and are never rewritten.
+ * anchor identity and are never rewritten. A variant id that is unknown, in
+ * another organization, or reached under a different product renders the 404
+ * state rather than a raw domain error.
  */
 export default async function VariantPage({
   params,
 }: {
-  readonly params: Promise<{ readonly variantId: string }>;
+  readonly params: Promise<{ readonly productId: string; readonly variantId: string }>;
 }) {
   const session = await getServerSession();
   if (session === undefined) {
     redirect("/login");
   }
 
-  const variantId = uuidOrNotFound((await params).variantId);
+  const routeParams = await params;
+  const productId = uuidOrNotFound(routeParams.productId);
+  const variantId = uuidOrNotFound(routeParams.variantId);
   const organizationId = resolveOrganization();
   const db = getDb().db;
   const store = createPostgresProductStore(db);
 
-  const [detail, options, products] = await Promise.all([
-    findProductVariant(store, { organizationId, productVariantId: variantId }),
+  const detail = await findProductVariant(store, {
+    organizationId,
+    productVariantId: variantId,
+  }).catch((error: unknown) => {
+    if (error instanceof DomainError) {
+      notFound();
+    }
+    throw error;
+  });
+  if (detail.product.id !== productId) {
+    notFound();
+  }
+
+  const [options, products] = await Promise.all([
     listAssignmentOptions(store, { organizationId }),
     listProducts(store, { organizationId }),
   ]);
@@ -97,8 +115,8 @@ export default async function VariantPage({
       />
 
       <p style={{ margin: 0 }}>
-        <a href="/products/sellables" style={{ color: color.brand.navy }}>
-          ← Back to sellable products
+        <a href={`/products/sellables/${detail.product.id}`} style={{ color: color.brand.navy }}>
+          ← Back to {detail.product.code}
         </a>
       </p>
 

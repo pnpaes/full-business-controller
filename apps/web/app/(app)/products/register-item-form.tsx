@@ -10,6 +10,8 @@ const FALLBACK_ERROR = "Could not register the item. Please try again.";
 export interface RegisterItemFormProps {
   readonly itemTypes: readonly string[];
   readonly inventoryPolicies: readonly string[];
+  /** Called after a successful registration, e.g. to close the modal. */
+  readonly onSuccess?: () => void;
 }
 
 interface ErrorBody {
@@ -33,7 +35,11 @@ function humanize(value: string): string {
  * resolves it and returns a clear error when the code is unknown. Registration
  * is idempotent on code, so a repeat submit is safe.
  */
-export function RegisterItemForm({ itemTypes, inventoryPolicies }: RegisterItemFormProps) {
+export function RegisterItemForm({
+  itemTypes,
+  inventoryPolicies,
+  onSuccess,
+}: RegisterItemFormProps) {
   const router = useRouter();
   const [code, setCode] = useState("");
   const [sku, setSku] = useState("");
@@ -77,6 +83,7 @@ export function RegisterItemForm({ itemTypes, inventoryPolicies }: RegisterItemF
       setBaseUnitCode("");
       setLotTracked(false);
       router.refresh();
+      onSuccess?.();
     } catch {
       setError(FALLBACK_ERROR);
     } finally {

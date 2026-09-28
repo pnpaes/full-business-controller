@@ -98,7 +98,7 @@ const shellCss = `
   color: ${color.text.primary};
   overflow: hidden;
 }
-.aq-sidebar-nav { flex: 1 1 auto; overflow-y: auto; }
+.aq-sidebar-nav { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
 /* Nav rows carry the light sidebar contract inline (DEC-129: lavender active
  * surface, iris text and indicator); only hover/focus need CSS. Hover keeps
  * !important to beat the package's generic dark-surface hover rule. */
@@ -143,6 +143,7 @@ const shellCss = `
   color: ${color.text.muted};
 }
 .aq-sidebar-footer {
+  flex: 0 0 auto;
   display: flex;
   flex-direction: column;
   gap: ${spacing[1]}px;

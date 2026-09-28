@@ -7,12 +7,6 @@ import type { FormEvent } from "react";
 
 const FALLBACK_ERROR = "Could not register the variant. Please try again.";
 
-export interface ProductOption {
-  readonly id: string;
-  readonly code: string;
-  readonly name: string;
-}
-
 export interface ItemOption {
   readonly id: string;
   readonly code: string;
@@ -20,8 +14,11 @@ export interface ItemOption {
 }
 
 export interface RegisterVariantFormProps {
-  readonly products: readonly ProductOption[];
+  /** The parent product; a variant is always created inside exactly one product. */
+  readonly productId: string;
   readonly items: readonly ItemOption[];
+  /** Called after a successful registration, e.g. to close the containing modal. */
+  readonly onSuccess?: () => void;
 }
 
 interface ErrorBody {
@@ -34,14 +31,16 @@ async function errorMessage(response: Response): Promise<string> {
 }
 
 /**
- * Registers a variant of a chosen product (`registerProductVariant`, `DEC-128`)
- * — the sellable identity (`DEC-030`). The finished-good item is optional on
- * purpose: a made-to-order variant has no stocked item, so leaving it blank is
- * legal. Idempotent on `(product, code)`.
+ * Registers a variant of the product this form is opened from
+ * (`registerProductVariant`, `DEC-128`) — the sellable identity (`DEC-030`).
+ * The parent product is fixed: a variant is never created at the products
+ * level, only from its own product. `sku` and `code` anchor identity; the
+ * finished-good item is optional on purpose: a made-to-order variant has no
+ * stocked item, so leaving it blank is legal. The recipe assignment is attached
+ * to the variant afterwards, on the variant view. Idempotent on `(product, code)`.
  */
-export function RegisterVariantForm({ products, items }: RegisterVariantFormProps) {
+export function RegisterVariantForm({ productId, items, onSuccess }: RegisterVariantFormProps) {
   const router = useRouter();
-  const [productId, setProductId] = useState(products[0]?.id ?? "");
   const [code, setCode] = useState("");
   const [sku, setSku] = useState("");
   const [name, setName] = useState("");
@@ -55,11 +54,6 @@ export function RegisterVariantForm({ products, items }: RegisterVariantFormProp
     event.preventDefault();
     setError(null);
     setSuccess(null);
-    if (productId === "") {
-      setError("Choose a product first.");
-      document.getElementById("field-productId")?.focus();
-      return;
-    }
     setBusy(true);
     try {
       const response = await fetch(`/api/v1/products/sellables/${productId}/variants`, {
@@ -85,6 +79,7 @@ export function RegisterVariantForm({ products, items }: RegisterVariantFormProp
       setSize("");
       setFinishedGoodItemId("");
       router.refresh();
+      onSuccess?.();
     } catch {
       setError(FALLBACK_ERROR);
     } finally {
@@ -100,18 +95,6 @@ export function RegisterVariantForm({ products, items }: RegisterVariantFormProp
       {error !== null ? <Alert tone="danger">{error}</Alert> : null}
       {success !== null ? <Alert tone="success">{success}</Alert> : null}
 
-      <SelectField
-        name="productId"
-        label="Product"
-        required
-        value={productId}
-        onChange={(event) => setProductId(event.target.value)}
-        placeholder="Select a product"
-        options={products.map((product) => ({
-          value: product.id,
-          label: `${product.code} — ${product.name}`,
-        }))}
-      />
       <TextField
         name="code"
         label="Variant code"
@@ -119,7 +102,7 @@ export function RegisterVariantForm({ products, items }: RegisterVariantFormProp
         value={code}
         onChange={(event) => setCode(event.target.value)}
         placeholder="e.g. SMALL"
-        help="Unique within the product; a repeat reopens the existing variant."
+        help="Unique within this product; a repeat reopens the existing variant."
       />
       <TextField
         name="sku"
@@ -128,7 +111,7 @@ export function RegisterVariantForm({ products, items }: RegisterVariantFormProp
         value={sku}
         onChange={(event) => setSku(event.target.value)}
         placeholder="e.g. CAKE-CHOC-S"
-        help="Unique within the organization."
+        help="The sellable identity code; unique within the organization."
         inputMode="text"
         autoCapitalize="none"
       />
@@ -157,7 +140,7 @@ export function RegisterVariantForm({ products, items }: RegisterVariantFormProp
           value: item.id,
           label: `${item.code} · ${item.name}`,
         }))}
-        help="Optional. A stocked variant links the item its output is stocked as; leave blank for a made-to-order variant."
+        help="Only for a genuinely stocked variant: the item its output is stocked as. Leave blank for a made-to-order variant."
       />
       <div>
         <Button type="submit" loading={busy} disabled={busy}>

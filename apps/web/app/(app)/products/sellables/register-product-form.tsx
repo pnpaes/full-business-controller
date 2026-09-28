@@ -9,6 +9,8 @@ const FALLBACK_ERROR = "Could not register the product. Please try again.";
 
 export interface RegisterProductFormProps {
   readonly productKinds: readonly string[];
+  /** Called after a successful registration, e.g. to close the containing modal. */
+  readonly onSuccess?: () => void;
 }
 
 interface ErrorBody {
@@ -31,7 +33,7 @@ function humanize(value: string): string {
  * repeat submit reopens the existing product rather than failing; `productKind`
  * is chosen from the schema vocabulary.
  */
-export function RegisterProductForm({ productKinds }: RegisterProductFormProps) {
+export function RegisterProductForm({ productKinds, onSuccess }: RegisterProductFormProps) {
   const router = useRouter();
   const [code, setCode] = useState("");
   const [name, setName] = useState("");
@@ -62,6 +64,7 @@ export function RegisterProductForm({ productKinds }: RegisterProductFormProps) 
       setName("");
       setCategory("");
       router.refresh();
+      onSuccess?.();
     } catch {
       setError(FALLBACK_ERROR);
     } finally {
