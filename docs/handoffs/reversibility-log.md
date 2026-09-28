@@ -1,5 +1,13 @@
 # Reversibility log
 
+- **2026-09-28 UX wave (`d943326`, `dcb284a`, `f6a73c1`; pushed)**: Wave 0 is
+  additive in `packages/ui` (+ the styleguide); `0080_role_position.sql` adds the
+  role FK, `position`, `employee_position` and `shift.position_id` and its down
+  drops them (the role-code normalisation is **not** reverted — take a backup);
+  the defect commit is additive route boundaries plus copy-only changes. Scratch
+  DS rehearsed for `0080`; no posted money or stock fact is touched. Commits
+  revert independently. Details:
+  [handoff 102](102-2026-09-28-session-compaction-ux-programme.md).
 - **2026-09-28 Stock-item purpose (`DEC-150`, `7427b43`; pushed)**: migration
   `0079_item_purpose.sql` (nullable add → backfill from `ITEM_TYPE` → NOT NULL +
   check + index, plus the forward-only `product_variant` guard) and its down

@@ -92,7 +92,14 @@ implementation waves, one area at a time, browser-verified before/after.
 Items **7, 9, 11** are defects to fix **before** the redesign; 11 is trivial and 9
 is small but high-value. (10 was withdrawn — see above.)
 
-## Wave 0 — what the audits converge on
+## Wave 0 — DELIVERED 2026-09-28 (`d943326`)
+
+All primitives/patterns/tokens below are built and rendered in `/styleguide`; the
+area waves compose them. The three defects listed above are fixed (`f6a73c1`):
+route `error.tsx`/`not-found.tsx`/`loading.tsx` at the root and in the shell,
+de-internalised production copy, and the non-exclusive for-sale wording.
+
+### What the audits converged on
 
 Batch these once, in the design system, then implement:
 

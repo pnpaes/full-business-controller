@@ -41,9 +41,9 @@ DigitalOcean.** Rollback: **`git revert` each commit**, then
 `DROP SCHEMA pgboss CASCADE` **only when unwinding the whole jobs
 stack** — facts stay in `public.outbox_event`; migrations `0072`'s and
 `0073`/`0074`/`0075`'s down files invert the index, the heartbeat table, the
-receipt-area columns, the AI tables, the competitor-source additions, the employee-invite table and the capture content hash. **5424/5424 tests (398 files)**;
+receipt-area columns, the AI tables, the competitor-source additions, the employee-invite table and the capture content hash. **5489/5489 tests (404 files)**;
 migrations through
-**`0079`** (103 public tables) plus
+**`0080`** (105 public tables) plus
 the migrator-provisioned **`pgboss`** schema (pg-boss schemaVersion 42);
 `db:migrate` a no-op re-run. **Next free decision id `DEC-152`**
 (`DEC-141`–`DEC-151` are recorded; `DEC-150` is the stock-item purpose decision and `DEC-151` the employee role/position model). Know the
@@ -137,6 +137,20 @@ be a for-sale item), nav **Stock**, **For sale / For use** tabs, a purpose badge
 the variant picker limited to for-sale items ("Stocked from") and "Backs" on an
 item. Backfill `for_sale=1`/`for_use=8`; `0079` down rehearsed on a scratch DB.
 
+**Session 2026-09-28 delivered (all pushed):** the 71-screen UX audit +
+contract + inventory (`docs/ux/**`); **Wave 0** (design-system primitives,
+formatters, token refresh, `/styleguide`) — `d943326`; **`DEC-151`** employee role
+as a fixed entity + position catalogue matched to shifts (migration `0080`) —
+`dcb284a`; the three audit defects (route error/not-found/loading boundaries,
+de-internalised production copy, non-exclusive for-sale wording) — `f6a73c1`;
+plus the earlier products redesign (`2d707c1`) and `DEC-150` item purpose
+(`7427b43`). The owner **delegated triage**, so **the next task is the area
+waves**: apply the items/products treatment (one primary action, creation in
+modals, split contexts, progressive disclosure, hero metric, InfoTips) to each
+section per `docs/ux/reviews/*.md`, in the triage index's order — home/jobs/
+administration, workforce, inventory/purchasing/production, sales/products,
+costs, insights/AI, hms/recipes, misc — composing the Wave 0 primitives.
+
 **Next task: M2 — the deployment rehearsal on a single VM (owner-gated on the
 SendGrid and LLM keys only).**
 M1 is delivered: CI now runs a migration-chain rehearsal (up → all 76 downs →
@@ -178,7 +192,7 @@ INTG-002 stays deferred (`DEC-141`); the deployment rehearsal stays parked
 "$NVM_DIR/nvm.sh"; nvm use 22`; `npm run typecheck`; `npm run lint`;
   `npm run format:check`; `npm run build`;
   `DATABASE_URL=postgres://aquarela:aquarela@localhost:5432/aquarela npm
-run test` (≥ **5424/5424**, 398 files); `npm run db:migrate` a no-op
+run test` (≥ **5489/5489**, 404 files); `npm run db:migrate` a no-op
   re-run. Normalise the generated `apps/web/next-env.d.ts`/
   `apps/web/tsconfig.json` with `git checkout --` before staging (see the
   durable fact below). Expect the
@@ -188,7 +202,7 @@ run test` (≥ **5424/5424**, 398 files); `npm run db:migrate` a no-op
 - **Acceptance criteria:** the picked slice/row is delivered per its
   decision rows and this section's rules; the read paths stay org-scoped
   and fail-closed on authorization; the full verification set is green
-  (≥ 5424/5424, 398 files) with `build` included. For the follow-up
+  (≥ 5489/5489, 404 files) with `build` included. For the follow-up
   option: the prune covers all organizations (the `(organization_id,
 created_at)` index landed in migration `0072`, rehearsed down
   path), the heartbeat divergence check is DB-backed or the log alert
@@ -412,7 +426,7 @@ Per-slice detail, commits and reconciliation are in `docs/handoffs/`.
   two-transaction test); and AI advisory cost pricing
   (`LLM_PRICE_INPUT_PER_1M`/`LLM_PRICE_OUTPUT_PER_1M`, exact decimal HALF_UP,
   per-side independent, `null` when unset) which makes the caps live.
-  **5424/5424 tests (398 files)**; no migration.
+  **5489/5489 tests (404 files)**; no migration.
 - **2026-09-27 — WF-003 employee login + self-assignment and the competitor
   follow-ups (committed `d5193d3`, pushed):** migration `0077` (employee invite:
   `user_invite` + `app_user.invited_*`; manager provisions, invite email via
@@ -423,14 +437,14 @@ Per-slice detail, commits and reconciliation are in `docs/handoffs/`.
   (automated capture idempotent via a partial unique content hash; manual never
   deduped) and source editing (`PATCH`, automated mode requires approved terms).
   A security review found no blockers; its 2 mediums + 3 lows are fixed.
-  **5424/5424 tests (398 files)**; both downs rehearsed on scratch DBs.
+  **5489/5489 tests (404 files)**; both downs rehearsed on scratch DBs.
 - **2026-09-27 — competitor sources UI delivered, row 18 slice 18c (`ADR-0010`,
   `DEC-149`, committed `edf2ba9`, pushed):** the Sources section on the
   competitors screen (terms filter chips, table, per-row Approve/Reject terms
   for owner/admin and Deactivate for the write roles behind a confirmation
   modal, plus the Register-a-source form — manual opens pending, automated only
   for the terms roles and it registers already approved). Browser-verified as
-  owner. **5424/5424 tests (398 files)**; no migration. **Row 18 is complete.**
+  owner. **5489/5489 tests (404 files)**; no migration. **Row 18 is complete.**
 - **2026-09-27 — competitor collector delivered, row 18 slice 18b (`ADR-0010`,
   `DEC-149`, committed `c46c6df`, pushed):** the `competitor-collector.ts` client
   (robots.txt per origin fail-closed, >=1 req/s/host, bounded page budget,
@@ -439,7 +453,7 @@ Per-slice detail, commits and reconciliation are in `docs/handoffs/`.
   behind an off-by-default kill switch; only active + automated + approved
   sources linked to a competitor are collected, each fact a `pending`
   observation with provenance and a system actor; nothing published or applied.
-  **5424/5424 tests (398 files)**; no migration. Follow-up: no content-hash
+  **5489/5489 tests (404 files)**; no migration. Follow-up: no content-hash
   dedupe on re-runs.
 - **2026-09-27 — competitor sources delivered, row 18 slice 18a (`ADR-0010`,
   `DEC-143`, reconciliation `DEC-149`, migration `0076`, committed `00e9168`,
@@ -450,7 +464,7 @@ Per-slice detail, commits and reconciliation are in `docs/handoffs/`.
   `provenance`); the DEC-126 shape is untouched and `review_status` is §4C
   `review_state`. Application commands + `GET/POST /sources` and
   approve/reject-terms/deactivate (terms = owner/admin only). 101→102 tables.
-  **5424/5424 tests (398 files)**; `0076` down rehearsed on a scratch DB. No
+  **5489/5489 tests (404 files)**; `0076` down rehearsed on a scratch DB. No
   collector and no UI yet (**18b** next).
 - **2026-09-27 — AI advisory delivered, row 17 (`ADR-0009`, `DEC-142`,
   migration `0075`, committed `398e698`, pushed):** the append-only
