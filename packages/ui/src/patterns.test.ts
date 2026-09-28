@@ -2,7 +2,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { DataTable, NumberField, ProgressBar } from "./patterns";
+import { Collapsible, DataTable, FileField, NumberField, ProgressBar } from "./patterns";
 
 const render = (element: React.ReactElement): string => renderToStaticMarkup(element);
 
@@ -89,5 +89,60 @@ describe("NumberField", () => {
     );
     expect(html).toContain('aria-invalid="true"');
     expect(html).toContain('aria-describedby="field-qty-error field-qty-unit"');
+  });
+});
+
+describe("Collapsible", () => {
+  it("is a native details/summary disclosure, collapsed by default", () => {
+    const html = render(
+      createElement(
+        Collapsible,
+        { summary: "History", badge: "3 events" } as never,
+        createElement("p", {}, "Older rows"),
+      ),
+    );
+    expect(html).toContain("<details");
+    expect(html).toContain("<summary");
+    expect(html).toContain("aquarela-disclosure");
+    expect(html).toContain("History");
+    expect(html).toContain("3 events");
+    expect(html).toContain("Older rows");
+    expect(html).not.toMatch(/<details[^>]*\bopen\b/);
+  });
+
+  it("opens initially with defaultOpen and accepts native open/onToggle", () => {
+    const defaultOpen = render(
+      createElement(Collapsible, { summary: "History", defaultOpen: true } as never, "rows"),
+    );
+    expect(defaultOpen).toMatch(/<details[^>]*\bopen\b/);
+  });
+});
+
+describe("FileField", () => {
+  it("keeps the native file input with the shared label/help wiring", () => {
+    const html = render(
+      createElement(FileField, {
+        name: "invoice",
+        label: "Invoice scan",
+        accept: "image/*,.pdf",
+        help: "PNG, JPG or PDF, up to 10 MB.",
+      }),
+    );
+    expect(html).toContain('type="file"');
+    expect(html).toContain('accept="image/*,.pdf"');
+    expect(html).toContain('id="field-invoice"');
+    expect(html).toContain('for="field-invoice"');
+    expect(html).toContain("aquarela-file");
+    expect(html).toContain('aria-describedby="field-invoice-help"');
+    expect(html).toContain('id="field-invoice-help"');
+  });
+
+  it("wires an error to aria-invalid and the error id", () => {
+    const html = render(
+      createElement(FileField, { name: "invoice", label: "Invoice scan", error: "Required" }),
+    );
+    expect(html).toContain('aria-invalid="true"');
+    expect(html).toContain('aria-describedby="field-invoice-error"');
+    expect(html).toContain('id="field-invoice-error"');
   });
 });

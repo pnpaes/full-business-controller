@@ -13,7 +13,7 @@
 import type { ReactNode } from "react";
 
 import { MIN_TOUCH_TARGET_PX } from "./components";
-import { color, elevation, motion, radius, spacing, typography } from "./tokens";
+import { color, elevation, motion, radius, spacing, typeScale, typography } from "./tokens";
 
 const fontSans = { fontFamily: typography.fontFamily.sans } as const;
 const fontDisplay = { fontFamily: typography.fontFamily.display } as const;
@@ -286,6 +286,198 @@ export function KpiCard({ label, value, delta, meta, trend, comparison, sparklin
   );
 }
 
+/* ------------------------------- MetricHero -------------------------------- */
+
+export interface MetricHeroProps {
+  /** Small caption naming the measure. */
+  label: string;
+  /** The one headline figure for the screen; preformatted by the caller with
+   * the money/number helper. */
+  value: ReactNode;
+  /** Unit or currency shown small beside the value. */
+  unit?: string;
+  /** Movement text. Tone follows the leading sign: "+" green, "-" danger, else gold. */
+  delta?: string;
+  /** Optional tiny trend direction; renders a small arrow beside the delta. */
+  trend?: "up" | "down" | "flat";
+  /** Optional subtle comparison line under the value (e.g. "vs forecast"). */
+  comparison?: ReactNode;
+  /** §8.4 line: period · scope · comparison · freshness. */
+  meta: ReactNode;
+  /** Explainability slot, typically an `InfoTip` beside the label. */
+  info?: ReactNode;
+}
+
+/**
+ * The **one** hero metric per screen (`docs/ux/README.md`, "Nike — confident
+ * hierarchy"; audit finding #4 replaces 4–5 equal `KpiCard`s with a single
+ * ranked figure). Larger than `KpiCard`, no card frame — it is the anchor of a
+ * `MetricBand`, not one of a wall.
+ */
+export function MetricHero({
+  label,
+  value,
+  unit,
+  delta,
+  trend,
+  comparison,
+  meta,
+  info,
+}: MetricHeroProps) {
+  const tone = delta ? deltaTone(delta) : null;
+  return (
+    <section style={{ ...fontSans, display: "flex", flexDirection: "column", gap: spacing[2] }}>
+      <span
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          fontSize: typography.fontSize.sm,
+          fontWeight: typography.fontWeight.medium,
+          color: color.ink.tertiary,
+        }}
+      >
+        {label}
+        {info}
+      </span>
+      <div style={{ display: "flex", alignItems: "baseline", gap: spacing[2], flexWrap: "wrap" }}>
+        <span
+          style={{
+            ...fontDisplay,
+            ...typeScale.hero,
+            letterSpacing: "-0.01em",
+            fontVariantNumeric: typography.fontVariantNumeric.tabular,
+            color: color.ink.primary,
+          }}
+        >
+          {value}
+        </span>
+        {unit ? (
+          <span style={{ fontSize: typography.fontSize.lg, color: color.ink.secondary }}>
+            {unit}
+          </span>
+        ) : null}
+        {delta && tone ? (
+          <span
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: spacing[1],
+              fontSize: typography.fontSize.xs,
+              fontWeight: typography.fontWeight.medium,
+              color: tone.fg,
+              backgroundColor: tone.bg,
+              border: `1px solid ${color.border.subtle}`,
+              borderRadius: radius.pill,
+              padding: `0 ${spacing[2]}px`,
+            }}
+          >
+            {trend ? <span aria-hidden="true">{trendGlyphs[trend]}</span> : null}
+            {delta}
+          </span>
+        ) : null}
+      </div>
+      {comparison ? (
+        <span style={{ fontSize: typography.fontSize.xs, color: color.ink.tertiary }}>
+          {comparison}
+        </span>
+      ) : null}
+      <span
+        style={{
+          fontSize: typography.fontSize.xs,
+          lineHeight: typography.lineHeight.normal,
+          color: color.ink.tertiary,
+        }}
+      >
+        {meta}
+      </span>
+    </section>
+  );
+}
+
+export interface MetricSecondaryProps {
+  label: string;
+  value: ReactNode;
+  meta?: ReactNode;
+}
+
+/** A quiet supporting metric for a `MetricBand`; deliberately smaller than the hero. */
+export function MetricSecondary({ label, value, meta }: MetricSecondaryProps) {
+  return (
+    <section style={{ ...fontSans, display: "flex", flexDirection: "column", gap: spacing[1] }}>
+      <span
+        style={{
+          fontSize: typography.fontSize.sm,
+          fontWeight: typography.fontWeight.medium,
+          color: color.ink.tertiary,
+        }}
+      >
+        {label}
+      </span>
+      <span
+        style={{
+          ...fontDisplay,
+          fontSize: typography.fontSize["2xl"],
+          fontWeight: typography.fontWeight.regular,
+          lineHeight: typography.lineHeight.tight,
+          fontVariantNumeric: typography.fontVariantNumeric.tabular,
+          color: color.ink.primary,
+        }}
+      >
+        {value}
+      </span>
+      {meta ? (
+        <span style={{ fontSize: typography.fontSize.xs, color: color.ink.tertiary }}>{meta}</span>
+      ) : null}
+    </section>
+  );
+}
+
+export interface MetricBandProps {
+  /** The single ranked hero metric. */
+  hero: ReactNode;
+  /** Secondary metrics ranked after the hero; the contract caps a band at 1–3. */
+  metrics?: readonly ReactNode[];
+  children?: ReactNode;
+}
+
+/**
+ * The editorial hero band (`docs/ux/README.md`, screen recipe step 2): one
+ * `MetricHero` and up to a couple of `MetricSecondary` metrics, separated from
+ * the table below by a hairline band rather than a card wall.
+ */
+export function MetricBand({ hero, metrics = [], children }: MetricBandProps) {
+  return (
+    <section
+      style={{
+        ...fontSans,
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+        alignItems: "start",
+        gap: spacing[6],
+        paddingBottom: spacing[6],
+        marginBottom: spacing[6],
+        borderBottom: `1px solid ${color.border.subtle}`,
+      }}
+    >
+      <div style={{ gridColumn: metrics.length > 0 ? "auto" : "1 / -1" }}>{hero}</div>
+      {metrics.length > 0 ? (
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: metrics.length > 1 ? "1fr 1fr" : "1fr",
+            gap: spacing[4],
+          }}
+        >
+          {metrics.map((metric, index) => (
+            <div key={index}>{metric}</div>
+          ))}
+        </div>
+      ) : null}
+      {children}
+    </section>
+  );
+}
+
 /* ------------------------------- SectionCard ------------------------------- */
 
 export interface SectionCardProps {
@@ -380,14 +572,23 @@ export interface EmptyStateProps {
   children: ReactNode;
   /** Optional call to action (e.g. a `Button`). */
   action?: ReactNode;
+  /**
+   * `bordered` (default) is a standalone empty state on the page canvas.
+   * `plain` drops the surface and border for use **inside** a panel — the
+   * audit's cross-cutting finding #3: an always-bordered state nests a
+   * container inside a container. Never use `plain` standalone.
+   */
+  variant?: "bordered" | "plain";
 }
 
 /**
  * Centred, calm block that explains a missing source or setup step (§8.4,
  * brief §16/§21): a quiet solid border and tonal surface instead of a heavy
- * dashed frame, with a small neutral mark above the title.
+ * dashed frame, with a small neutral mark above the title. Pass
+ * `variant="plain"` when it renders inside an existing panel.
  */
-export function EmptyState({ title, children, action }: EmptyStateProps) {
+export function EmptyState({ title, children, action, variant = "bordered" }: EmptyStateProps) {
+  const plain = variant === "plain";
   return (
     <div
       style={{
@@ -397,10 +598,10 @@ export function EmptyState({ title, children, action }: EmptyStateProps) {
         alignItems: "center",
         textAlign: "center",
         gap: spacing[2],
-        padding: `${spacing[12]}px ${spacing[6]}px`,
-        backgroundColor: color.background.surface,
-        border: `1px solid ${color.border.subtle}`,
-        borderRadius: radius["2xl"],
+        padding: plain ? `${spacing[8]}px ${spacing[4]}px` : `${spacing[12]}px ${spacing[6]}px`,
+        backgroundColor: plain ? "transparent" : color.background.surface,
+        border: plain ? "none" : `1px solid ${color.border.subtle}`,
+        borderRadius: plain ? 0 : radius["2xl"],
         color: color.text.muted,
       }}
     >

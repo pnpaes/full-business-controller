@@ -2,17 +2,22 @@ import { describe, expect, it } from "vitest";
 import { contrastRatio, relativeLuminance } from "./contrast";
 import {
   TOKENS,
+  accentPolicy,
   breakpoint,
   borderWidth,
   color,
   containerWidth,
   elevation,
+  elevationRole,
   focus,
   geometry,
   iconSize,
   motion,
   radius,
+  radiusRole,
+  space,
   spacing,
+  typeScale,
   typography,
 } from "./tokens";
 
@@ -498,6 +503,51 @@ describe("structural token scales", () => {
   it("motion durations match the design system's 120ms / 180ms pair", () => {
     expect(motion.duration.fast).toBe(120);
     expect(motion.duration.base).toBe(180);
+  });
+});
+
+describe("Wave 0 semantic scale (2026-09-28)", () => {
+  it("typeScale roles use existing font sizes and step down monotonically", () => {
+    const sizes = Object.values(typeScale).map((role) => role.fontSize);
+    const known = new Set(Object.values(typography.fontSize));
+    for (const size of sizes) {
+      expect(known.has(size)).toBe(true);
+    }
+    for (let i = 1; i < sizes.length; i++) {
+      expect(sizes[i]).toBeLessThanOrEqual(sizes[i - 1]!);
+    }
+    expect(typeScale.hero.fontSize).toBeGreaterThan(typeScale.body.fontSize);
+  });
+
+  it("space roles stay on the 4/8pt grid", () => {
+    const values = Object.values(space);
+    for (const value of values) {
+      expect(value % 4).toBe(0);
+      expect(value).toBeGreaterThanOrEqual(4);
+    }
+    expect(values).toContain(4);
+    expect(values).toContain(8);
+    for (let i = 1; i < values.length; i++) {
+      expect(values[i]).toBeGreaterThanOrEqual(values[i - 1]!);
+    }
+  });
+
+  it("radius and elevation roles alias the existing scales", () => {
+    expect(radiusRole.control).toBe(radius.md);
+    expect(radiusRole.surface).toBe(radius.lg);
+    expect(radiusRole.dialog).toBe(radius.xl);
+    expect(radiusRole.pill).toBe(radius.pill);
+    expect(elevationRole.resting).toBe(elevation.none);
+    expect(elevationRole.panel).toBe(elevation.panel);
+    expect(elevationRole.dialog).toBe(elevation.lg);
+  });
+
+  it("the accent policy carries one accent and its permitted companion", () => {
+    expect(accentPolicy.accent).toBe(color.accent.accent);
+    expect(accentPolicy.soft).toBe(color.accent.soft);
+    expect(accentPolicy.ink).toBe(color.accent.ink);
+    expect(accentPolicy.deep).toBe(color.accent.deep);
+    expect(accentPolicy.secondary).toBe(color.accent.secondaryDeep);
   });
 });
 

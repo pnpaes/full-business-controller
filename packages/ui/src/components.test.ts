@@ -3,6 +3,9 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import { Badge, Button, StatusPill, Table, TextField, Th, Td, uiGlobalCss } from "./components";
+import { InfoTip } from "./info-tip";
+import { FormModal, Modal } from "./modal";
+import { SuccessToast } from "./toast";
 
 const render = (element: React.ReactElement): string => renderToStaticMarkup(element);
 
@@ -167,5 +170,93 @@ describe("Button", () => {
     expect(typeof onClick).toBe("function");
     onClick?.({} as React.MouseEvent<HTMLButtonElement>);
     expect(clicked).toBe(true);
+  });
+});
+
+describe("InfoTip", () => {
+  it("is a focusable (i) button whose aria-describedby resolves to the tooltip bubble", () => {
+    const html = render(
+      createElement(InfoTip, {
+        content: "Landed cost = unit cost + freight",
+        label: "Landed cost",
+      }),
+    );
+    expect(html).toContain('<button type="button"');
+    expect(html).toContain('aria-label="Landed cost"');
+    expect(html).toContain('role="tooltip"');
+    expect(html).toContain("Landed cost = unit cost + freight");
+    const describedBy = /aria-describedby="([^"]+)"/.exec(html)?.[1];
+    expect(describedBy).toBeTruthy();
+    expect(html).toContain(`id="${describedBy}"`);
+  });
+});
+
+describe("SuccessToast", () => {
+  it("announces politely, shows the message and a dismiss control", () => {
+    const html = render(
+      createElement(SuccessToast, { message: "Supplier created.", onDismiss: () => {} }),
+    );
+    expect(html).toContain('role="status"');
+    expect(html).toContain('aria-live="polite"');
+    expect(html).toContain("Supplier created.");
+    expect(html).toContain('aria-label="Dismiss notification"');
+  });
+
+  it("renders nothing when closed", () => {
+    const html = render(createElement(SuccessToast, { message: "Nope", open: false }));
+    expect(html).toBe("");
+  });
+});
+
+describe("FormModal", () => {
+  it("wraps the Modal pattern with title, description, form and busy actions", () => {
+    const html = render(
+      createElement(
+        FormModal,
+        {
+          title: "New supplier",
+          description: "Register a supplier and its order email.",
+          open: true,
+          onClose: () => {},
+          onSubmit: () => {},
+          busy: true,
+          submitLabel: "Create supplier",
+          error: "Name is required",
+        } as never,
+        createElement(TextField, { name: "supplier", label: "Name" }),
+      ),
+    );
+    expect(html).toContain('role="dialog"');
+    expect(html).toContain('aria-modal="true"');
+    expect(html).toContain("New supplier");
+    expect(html).toContain("Register a supplier and its order email.");
+    expect(html).toContain("<form");
+    expect(html).toContain('id="field-supplier"');
+    expect(html).toContain('role="alert"');
+    expect(html).toContain("Name is required");
+    expect(html).toContain("Create supplier");
+    expect(html).toContain("Cancel");
+    // busy disables both actions and blocks the close button.
+    expect(html).toContain("disabled");
+  });
+
+  it("the existing Modal API is unchanged (title, children, footer, close)", () => {
+    const html = render(
+      createElement(
+        Modal,
+        {
+          title: "Confirm",
+          open: true,
+          onClose: () => {},
+          footer: createElement("span", {}, "actions"),
+        } as never,
+        createElement("p", {}, "Body"),
+      ),
+    );
+    expect(html).toContain('role="dialog"');
+    expect(html).toContain("Confirm");
+    expect(html).toContain("Body");
+    expect(html).toContain("actions");
+    expect(html).toContain('aria-label="Close dialog"');
   });
 });

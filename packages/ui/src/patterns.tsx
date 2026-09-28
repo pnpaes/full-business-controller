@@ -11,6 +11,7 @@
 import { Fragment } from "react";
 import type {
   CSSProperties,
+  DetailsHTMLAttributes,
   InputHTMLAttributes,
   ReactNode,
   SelectHTMLAttributes,
@@ -420,6 +421,141 @@ export function TextareaField({
     </div>
   );
 }
+
+/* --------------------------------- FileField ------------------------------- */
+
+export interface FileFieldProps extends Omit<InputHTMLAttributes<HTMLInputElement>, "id" | "type"> {
+  name: string;
+  label: string;
+  id?: string;
+  /** Native `accept` filter, e.g. `"image/*,.pdf"`. */
+  accept?: string;
+  required?: boolean;
+  /** Help text shown under the label. */
+  help?: string;
+  /** Validation error; sets aria-invalid and links the message via aria-describedby. */
+  error?: string;
+}
+
+/**
+ * Styled file input matching the other field components (`TextField`): same
+ * label/help/error wiring and the same control frame, with the native
+ * `::file-selector-button` dressed as a `sm` button. The native input is kept
+ * (never hidden behind a fake button) so keyboard and assistive behaviour are
+ * the platform's.
+ */
+export function FileField({
+  name,
+  label,
+  id,
+  accept,
+  required = false,
+  help,
+  error,
+  className,
+  style,
+  ...rest
+}: FileFieldProps) {
+  const { inputId, helpId, errorId, describedBy } = fieldWiring(name, id, help, error);
+  return (
+    <div
+      className={cx("aquarela-field", className)}
+      style={{ display: "flex", flexDirection: "column", gap: spacing[1], ...fontSans, ...style }}
+    >
+      <FieldLabel htmlFor={inputId} label={label} required={required} />
+      <div style={{ ...controlFrame(error), padding: `0 ${spacing[2]}px` }}>
+        <input
+          {...rest}
+          id={inputId}
+          name={name}
+          type="file"
+          accept={accept}
+          required={required}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={describedBy}
+          className="aquarela-file"
+        />
+      </div>
+      <FieldMessage helpId={helpId} errorId={errorId} help={help} error={error} />
+    </div>
+  );
+}
+
+/* ------------------------------- Collapsible ------------------------------- */
+
+export interface CollapsibleProps extends Omit<
+  DetailsHTMLAttributes<HTMLDetailsElement>,
+  "children"
+> {
+  /** Always-visible summary line (the disclosure trigger). */
+  summary: ReactNode;
+  /** Optional count/badge shown at the end of the summary row. */
+  badge?: ReactNode;
+  /** Open on first render. Uncontrolled; pass native `open`/`onToggle` via rest
+   * for a fully controlled section. */
+  defaultOpen?: boolean;
+  children: ReactNode;
+}
+
+/**
+ * Accessible progressive disclosure (`docs/ux/README.md`, "Progressive
+ * disclosure"): a native `<details>`/`<summary>` section with a styled marker,
+ * keyboard operable by the platform, no client state and no layout jump (the
+ * marker keeps a fixed footprint, so the summary text never reflows on
+ * toggle). Use it for secondary sections — history, provenance,
+ * configuration — collapsed by default. **Never** for a create/edit form on a
+ * register: those are a button + `Modal`.
+ */
+export function Collapsible({
+  summary,
+  badge,
+  defaultOpen = false,
+  children,
+  className,
+  style,
+  ...rest
+}: CollapsibleProps) {
+  return (
+    <details
+      {...rest}
+      open={rest.open ?? (defaultOpen || undefined)}
+      className={cx("aquarela-disclosure", className)}
+      style={{ ...fontSans, ...style }}
+    >
+      <summary
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: spacing[2],
+          minHeight: MIN_TOUCH_TARGET_PX,
+          padding: `${spacing[2]}px 0`,
+          cursor: "pointer",
+          fontSize: typography.fontSize.md,
+          fontWeight: typography.fontWeight.medium,
+          color: color.ink.primary,
+        }}
+      >
+        <span aria-hidden="true" className="aquarela-disclosure-marker" style={disclosureMarker}>
+          ›
+        </span>
+        <span style={{ flex: 1, minWidth: 0 }}>{summary}</span>
+        {badge ? <span style={{ flexShrink: 0 }}>{badge}</span> : null}
+      </summary>
+      <div style={{ paddingTop: spacing[3] }}>{children}</div>
+    </details>
+  );
+}
+
+const disclosureMarker: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  width: 16,
+  flexShrink: 0,
+  color: color.ink.tertiary,
+  fontSize: typography.fontSize.lg,
+  lineHeight: 1,
+};
 
 /* ------------------------------ CheckboxField ------------------------------ */
 

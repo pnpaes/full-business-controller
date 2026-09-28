@@ -18,8 +18,14 @@ import {
   Badge,
   Button,
   Card,
+  Collapsible,
   EmptyState,
+  FileField,
+  InfoTip,
   KpiCard,
+  MetricBand,
+  MetricHero,
+  MetricSecondary,
   NavItem,
   NavList,
   PageHeader,
@@ -33,12 +39,24 @@ import {
   TextField,
   Th,
   WatercolorBackdrop,
+  accentPolicy,
+  axisLabel,
   color,
   elevation,
+  elevationRole,
+  formatAxisValue,
+  formatMoney,
+  formatNumber,
+  groupDecimal,
   radius,
+  radiusRole,
+  space,
   spacing,
+  typeScale,
   typography,
 } from "@aquarela/ui";
+
+import { FormModalDemo, SuccessToastDemo } from "./wave0-demos";
 
 export const metadata = { title: "Design system — Aquarela Business Control" };
 
@@ -158,7 +176,7 @@ export default function StyleguidePage() {
       <PageHeader
         title="Design system"
         scope="Aquarela Business Control"
-        description="The living visual language: colour, typography, spacing, radius, elevation and every presentation primitive in its variants and states (DEC-120, re-based onto the Aquarela design system by DEC-129)."
+        description="The living visual language: colour, typography, spacing, radius, elevation and every presentation primitive in its variants and states. Wave 0 (2026-09-28, docs/ux/README.md) adds the semantic type scale, the 4/8pt rhythm, InfoTip, Collapsible, the plain EmptyState, MetricHero, the money/number formatters, FormModal, SuccessToast and FileField (DEC-120, re-based onto the Aquarela design system by DEC-129)."
       />
 
       <Stack gap={spacing[6]}>
@@ -369,6 +387,429 @@ export default function StyleguidePage() {
                   </code>
                 ))}
               </Row>
+            </div>
+          </Stack>
+        </SectionCard>
+
+        {/* ------------------------ Wave 0 semantic layer ---------------------- */}
+        <SectionCard
+          title="Wave 0 — type scale and spacing rhythm"
+          meta="typeScale · space · radiusRole · elevationRole · accentPolicy"
+          headingLevel={2}
+        >
+          <Stack gap={spacing[6]}>
+            <div>
+              <SubHeading hint="roles → an existing fontSize step, so the scale can never drift">
+                Type scale
+              </SubHeading>
+              <Stack gap={spacing[3]}>
+                {Object.entries(typeScale).map(([role, step]) => (
+                  <div
+                    key={role}
+                    style={{
+                      display: "flex",
+                      alignItems: "baseline",
+                      gap: spacing[4],
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <code style={{ ...monoLabel, minWidth: 260 }}>
+                      typeScale.{role} · {step.fontSize}px / {step.lineHeight} / w{step.fontWeight}
+                    </code>
+                    <span
+                      style={{
+                        ...fontDisplay,
+                        ...step,
+                        color: color.text.primary,
+                      }}
+                    >
+                      Aquarela Business Control
+                    </span>
+                  </div>
+                ))}
+              </Stack>
+            </div>
+
+            <div>
+              <SubHeading hint="4/8pt rhythm — every role aliases a spacing step">
+                Spacing rhythm
+              </SubHeading>
+              <Stack gap={spacing[2]}>
+                {Object.entries(space).map(([role, value]) => (
+                  <div
+                    key={role}
+                    style={{ display: "flex", alignItems: "center", gap: spacing[3] }}
+                  >
+                    <code style={{ ...monoLabel, minWidth: 220 }}>
+                      space.{role} · {value}px
+                    </code>
+                    <div
+                      style={{
+                        width: value,
+                        height: 16,
+                        backgroundColor: color.accent.accent,
+                        borderRadius: radius.sm,
+                        flexShrink: 0,
+                      }}
+                    />
+                  </div>
+                ))}
+              </Stack>
+            </div>
+
+            <div>
+              <SubHeading hint="control / surface / floating / dialog / pill">
+                Radius roles
+              </SubHeading>
+              <SwatchGrid>
+                {Object.entries(radiusRole).map(([role, value]) => (
+                  <div
+                    key={role}
+                    style={{ display: "flex", flexDirection: "column", gap: spacing[2] }}
+                  >
+                    <div
+                      style={{
+                        height: 56,
+                        backgroundColor: color.background.surfaceAlt,
+                        border: `1px solid ${color.border.strong}`,
+                        borderRadius: value,
+                      }}
+                    />
+                    <code style={monoLabel}>
+                      radiusRole.{role} · {value}px
+                    </code>
+                  </div>
+                ))}
+              </SwatchGrid>
+            </div>
+
+            <div>
+              <SubHeading hint="resting panels are flat; only floating layers shadow">
+                Elevation roles
+              </SubHeading>
+              <SwatchGrid>
+                {Object.entries(elevationRole).map(([role, value]) => (
+                  <div
+                    key={role}
+                    style={{ display: "flex", flexDirection: "column", gap: spacing[2] }}
+                  >
+                    <div
+                      style={{
+                        height: 56,
+                        backgroundColor: color.background.surface,
+                        borderRadius: radius.md,
+                        border: `1px solid ${color.border.subtle}`,
+                        boxShadow: value,
+                      }}
+                    />
+                    <code style={monoLabel}>elevationRole.{role}</code>
+                    <code style={{ ...hexValue, wordBreak: "break-all" }}>{value}</code>
+                  </div>
+                ))}
+              </SwatchGrid>
+            </div>
+
+            <div>
+              <SubHeading hint="one accent per screen — iris for focus/selection/active">
+                Single-accent policy
+              </SubHeading>
+              <SwatchGrid>
+                <Swatch name="accentPolicy.accent" value={accentPolicy.accent} />
+                <Swatch name="accentPolicy.soft" value={accentPolicy.soft} />
+                <Swatch name="accentPolicy.ink" value={accentPolicy.ink} />
+                <Swatch name="accentPolicy.deep" value={accentPolicy.deep} />
+                <Swatch name="accentPolicy.secondary" value={accentPolicy.secondary} />
+              </SwatchGrid>
+              <p
+                style={{
+                  ...fontSans,
+                  margin: `${spacing[3]}px 0 0`,
+                  fontSize: typography.fontSize.sm,
+                  color: color.text.secondary,
+                }}
+              >
+                {accentPolicy.rule}
+              </p>
+            </div>
+          </Stack>
+        </SectionCard>
+
+        {/* ------------------------- Wave 0 formatters ------------------------- */}
+        <SectionCard
+          title="Wave 0 — number and money formatting"
+          meta="format.ts · decimal strings only, never floats"
+          headingLevel={2}
+        >
+          <Stack gap={spacing[5]}>
+            <div>
+              <SubHeading hint="grouping only, no rounding, no parsing">groupDecimal</SubHeading>
+              <Row>
+                <code style={monoLabel}>groupDecimal(&quot;1234567.8900&quot;)</code>
+                <code style={{ ...monoLabel, color: color.text.primary }}>
+                  {groupDecimal("1234567.8900")}
+                </code>
+              </Row>
+            </div>
+
+            <div>
+              <SubHeading hint="grouped, fixed-decimal, HALF_UP on the string">
+                formatNumber
+              </SubHeading>
+              <Stack gap={spacing[2]}>
+                <Row>
+                  <code style={monoLabel}>formatNumber(&quot;118.205&quot;)</code>
+                  <code style={{ ...monoLabel, color: color.text.primary }}>
+                    {formatNumber("118.205")}
+                  </code>
+                </Row>
+                <Row>
+                  <code style={monoLabel}>
+                    formatNumber(&quot;118.204&quot;, {"{ decimals: 2 }"})
+                  </code>
+                  <code style={{ ...monoLabel, color: color.text.primary }}>
+                    {formatNumber("118.204", { decimals: 2 })}
+                  </code>
+                </Row>
+                <Row>
+                  <code style={monoLabel}>
+                    formatNumber(&quot;1234.5&quot;, {"{ decimals: 0 }"})
+                  </code>
+                  <code style={{ ...monoLabel, color: color.text.primary }}>
+                    {formatNumber("1234.5", { decimals: 0 })}
+                  </code>
+                </Row>
+              </Stack>
+            </div>
+
+            <div>
+              <SubHeading hint="the currency is appended after the grouped value">
+                formatMoney
+              </SubHeading>
+              <Row>
+                <code style={monoLabel}>
+                  formatMoney(&quot;12345.6&quot;, {'{ currency: "NOK" }'})
+                </code>
+                <code style={{ ...monoLabel, color: color.text.primary }}>
+                  {formatMoney("12345.6", { currency: "NOK" })}
+                </code>
+              </Row>
+            </div>
+
+            <div>
+              <SubHeading hint="every tick names its unit; every axis names subject and unit">
+                formatAxisValue / axisLabel
+              </SubHeading>
+              <Stack gap={spacing[2]}>
+                <Row>
+                  <code style={monoLabel}>formatAxisValue(&quot;1234.5&quot;, &quot;kg&quot;)</code>
+                  <code style={{ ...monoLabel, color: color.text.primary }}>
+                    {formatAxisValue("1234.5", "kg")}
+                  </code>
+                </Row>
+                <Row>
+                  <code style={monoLabel}>
+                    axisLabel(&quot;Amount&quot;, &quot;NOK&quot;) → &quot;Quantity&quot;,
+                    &quot;kg&quot;
+                  </code>
+                  <code style={{ ...monoLabel, color: color.text.primary }}>
+                    {axisLabel("Amount", "NOK")} · {axisLabel("Quantity", "kg")}
+                  </code>
+                </Row>
+              </Stack>
+            </div>
+          </Stack>
+        </SectionCard>
+
+        {/* --------------------- Wave 0 explainability / disclosure -------------- */}
+        <SectionCard
+          title="Wave 0 — explainability and disclosure"
+          meta="InfoTip · Collapsible · FileField"
+          headingLevel={2}
+        >
+          <Stack gap={spacing[6]}>
+            <div>
+              <SubHeading hint="hover/focus only — never for required instructions">
+                InfoTip
+              </SubHeading>
+              <p
+                style={{
+                  ...fontSans,
+                  margin: 0,
+                  fontSize: typography.fontSize.md,
+                  color: color.text.secondary,
+                }}
+              >
+                Food cost % is the cost of goods sold as a share of net sales for the scope.
+                <InfoTip
+                  content="(COGS ÷ net sales) × 100, HALF_UP, period 1–20 Sep 2026."
+                  label="How food cost % is calculated"
+                />{" "}
+                Focus the (i) or hover it with the pointer to reveal the definition.
+              </p>
+            </div>
+
+            <div>
+              <SubHeading hint="native details/summary — keyboard operable, no client state, no layout jump">
+                Collapsible
+              </SubHeading>
+              <div
+                style={{
+                  border: `1px solid ${color.border.subtle}`,
+                  borderRadius: radius.md,
+                  padding: `0 ${spacing[4]}px`,
+                  backgroundColor: color.background.surface,
+                }}
+              >
+                <Collapsible summary="Provenance and history" badge={<Badge>3 events</Badge>}>
+                  <Stack gap={spacing[2]}>
+                    <span
+                      style={{
+                        ...fontSans,
+                        fontSize: typography.fontSize.sm,
+                        color: color.text.secondary,
+                      }}
+                    >
+                      Imported from the Wolt settlement export on 20 Sep 2026 08:12.
+                    </span>
+                    <span
+                      style={{
+                        ...fontSans,
+                        fontSize: typography.fontSize.sm,
+                        color: color.text.secondary,
+                      }}
+                    >
+                      Reconciled against the bank statement on 20 Sep 2026 09:40.
+                    </span>
+                  </Stack>
+                </Collapsible>
+                <Collapsible summary="Open by default" defaultOpen badge={<Badge>config</Badge>}>
+                  <span
+                    style={{
+                      ...fontSans,
+                      fontSize: typography.fontSize.sm,
+                      color: color.text.secondary,
+                    }}
+                  >
+                    Secondary sections start collapsed; pass `defaultOpen` (or native `open`) for
+                    the ones that must be visible.
+                  </span>
+                </Collapsible>
+              </div>
+            </div>
+
+            <div>
+              <SubHeading hint="the native file input dressed to match the field family">
+                FileField
+              </SubHeading>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+                  gap: spacing[5],
+                }}
+              >
+                <FileField
+                  name="demo-attachment"
+                  label="Attachment"
+                  accept="image/*,.pdf"
+                  help="Upload the supplier invoice (PDF or image)."
+                />
+                <FileField
+                  name="demo-attachment-error"
+                  label="Import file"
+                  accept=".csv"
+                  error="The file must be a comma-separated values export."
+                />
+              </div>
+            </div>
+          </Stack>
+        </SectionCard>
+
+        {/* ------------------------ Wave 0 metric band ------------------------- */}
+        <SectionCard
+          title="Wave 0 — metric band and plain empty state"
+          meta="MetricHero · MetricSecondary · MetricBand · EmptyState variant=plain"
+          headingLevel={2}
+        >
+          <Stack gap={spacing[6]}>
+            <div>
+              <SubHeading hint="one ranked hero, then a quiet secondary row on a hairline band">
+                MetricBand
+              </SubHeading>
+              <MetricBand
+                hero={
+                  <MetricHero
+                    label="Food cost %"
+                    value={formatNumber("28.4", { decimals: 1 })}
+                    unit="%"
+                    delta="+0.6pp"
+                    trend="up"
+                    comparison="vs same period last month"
+                    meta="1–20 Sep 2026 · Lisbon · updated 08:12"
+                    info={
+                      <InfoTip
+                        content="(COGS ÷ net sales) × 100, HALF_UP, period 1–20 Sep 2026."
+                        label="How food cost % is calculated"
+                      />
+                    }
+                  />
+                }
+                metrics={[
+                  <MetricSecondary
+                    key="margin"
+                    label="Gross margin"
+                    value={formatMoney("18420", { currency: "€" })}
+                    meta="1–20 Sep 2026 · all locations"
+                  />,
+                  <MetricSecondary
+                    key="waste"
+                    label="Waste value"
+                    value={formatMoney("412", { currency: "€" })}
+                    meta="1–20 Sep 2026 · Cascais"
+                  />,
+                ]}
+              />
+            </div>
+
+            <div>
+              <SubHeading hint="plain drops the surface and border for use inside an existing panel">
+                EmptyState variant=&quot;plain&quot;
+              </SubHeading>
+              <Panel title="Recent variances" meta="scope: Aquarela Cascais" headingLevel={3}>
+                <EmptyState
+                  variant="plain"
+                  title="No variances recorded"
+                  action={
+                    <Button variant="secondary" size="sm">
+                      Start a count
+                    </Button>
+                  }
+                >
+                  No count has been submitted for this scope, so nothing is waiting for review.
+                </EmptyState>
+              </Panel>
+            </div>
+          </Stack>
+        </SectionCard>
+
+        {/* ------------------------ Wave 0 modal and toast --------------------- */}
+        <SectionCard
+          title="Wave 0 — creation modal and success toast"
+          meta="FormModal · SuccessToast"
+          headingLevel={2}
+        >
+          <Stack gap={spacing[5]}>
+            <div>
+              <SubHeading hint="the one create/edit shape: register header carries one primary button, never an inline form">
+                FormModal
+              </SubHeading>
+              <FormModalDemo />
+            </div>
+            <div>
+              <SubHeading hint="transient post-mutation confirmation; use Alert for persistent status">
+                SuccessToast
+              </SubHeading>
+              <SuccessToastDemo />
             </div>
           </Stack>
         </SectionCard>

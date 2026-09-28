@@ -294,15 +294,18 @@ export interface TooltipProps {
   children: ReactNode;
   className?: string;
   style?: CSSProperties;
+  /** Optional id applied to the bubble so a trigger can `aria-describedby` it
+   * (`InfoTip` does exactly this). */
+  id?: string;
 }
 
 /** CSS-only tooltip (brief §24). The trigger must be focusable for keyboard
  * users; pair with a focusable child (Button, IconButton, link). */
-export function Tooltip({ content, children, className, style }: TooltipProps) {
+export function Tooltip({ content, children, className, style, id }: TooltipProps) {
   return (
     <span className={cx("aquarela-tooltip", className)} style={style}>
       {children}
-      <span role="tooltip" className="aquarela-tooltip-bubble">
+      <span role="tooltip" id={id} className="aquarela-tooltip-bubble">
         {content}
       </span>
     </span>

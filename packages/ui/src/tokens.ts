@@ -403,6 +403,130 @@ export const motion = {
   easing: "cubic-bezier(0.2, 0, 0, 1)",
 } as const;
 
+/* ------------------------------------------------------------------------- *
+ * Wave 0 semantic layer (2026-09-28, `docs/ux/README.md`).
+ *
+ * Additive only: every legacy token and value above is unchanged, so the ~86
+ * consumer files and the contrast gates (`tokens.test.ts`) keep passing. The
+ * tokens below name the *roles* the UX contract asks for — a precise type
+ * scale, a 4/8pt spacing rhythm, radius/elevation roles and the single-accent
+ * policy — so screens stop inventing one-off sizes and shadows.
+ * ------------------------------------------------------------------------- */
+
+/**
+ * The type scale by role. Each role picks an existing `typography.fontSize`
+ * step, so the scale can never drift from the raw tokens. Use these instead of
+ * choosing a px size per screen:
+ *
+ * - `display` — a full-page statement (rare; never inside a table).
+ * - `hero` — the one hero metric per screen (`MetricHero`).
+ * - `title` — the page heading (`PageHeader`).
+ * - `section` — a section/panel heading.
+ * - `body` — body copy and table content.
+ * - `label` — control labels, column headers, chips.
+ * - `caption` — metadata, help text, axis labels.
+ * - `micro` — the smallest metadata tier (timestamps, badges).
+ */
+export const typeScale = {
+  display: {
+    fontSize: typography.fontSize["5xl"],
+    lineHeight: typography.lineHeight.display,
+    fontWeight: typography.fontWeight.regular,
+  },
+  hero: {
+    fontSize: typography.fontSize["4xl"],
+    lineHeight: typography.lineHeight.display,
+    fontWeight: typography.fontWeight.regular,
+  },
+  title: {
+    fontSize: typography.fontSize["3xl"],
+    lineHeight: typography.lineHeight.tight,
+    fontWeight: typography.fontWeight.medium,
+  },
+  section: {
+    fontSize: typography.fontSize.xl,
+    lineHeight: typography.lineHeight.tight,
+    fontWeight: typography.fontWeight.medium,
+  },
+  body: {
+    fontSize: typography.fontSize.md,
+    lineHeight: typography.lineHeight.normal,
+    fontWeight: typography.fontWeight.regular,
+  },
+  label: {
+    fontSize: typography.fontSize.sm,
+    lineHeight: typography.lineHeight.normal,
+    fontWeight: typography.fontWeight.medium,
+  },
+  caption: {
+    fontSize: typography.fontSize.xs,
+    lineHeight: typography.lineHeight.normal,
+    fontWeight: typography.fontWeight.regular,
+  },
+  micro: {
+    fontSize: typography.fontSize["2xs"],
+    lineHeight: typography.lineHeight.normal,
+    fontWeight: typography.fontWeight.regular,
+  },
+} as const;
+
+/**
+ * The spacing rhythm by role, in the 4/8pt grid (`spacing`). Every value is a
+ * multiple of 4; adjacent steps pair 4 with 8. Prefer these names over raw
+ * `spacing[n]` so the rhythm is reviewable:
+ *
+ * - `hairline` (4) — inside a control, between a label and its value.
+ * - `base` (8) — between related inline items.
+ * - `tight` (12) — between rows in a list.
+ * - `stack` (16) — between fields in a group.
+ * - `group` (24) — between groups inside a section.
+ * - `section` (32) — between sections.
+ * - `band` (40) — around an editorial section band.
+ */
+export const space = {
+  hairline: spacing[1],
+  base: spacing[2],
+  tight: spacing[3],
+  stack: spacing[4],
+  group: spacing[6],
+  section: spacing[8],
+  band: spacing[10],
+} as const;
+
+/** Radius by role, aliasing the `radius` scale (control = 10, surface = 16, dialog = 24). */
+export const radiusRole = {
+  control: radius.md,
+  surface: radius.lg,
+  floating: radius.xl,
+  dialog: radius.xl,
+  pill: radius.pill,
+} as const;
+
+/** Elevation by role: resting panels are flat; only floating layers shadow. */
+export const elevationRole = {
+  resting: elevation.none,
+  raised: elevation.sm,
+  panel: elevation.panel,
+  floating: elevation.md,
+  dialog: elevation.lg,
+} as const;
+
+/**
+ * Single-accent policy: the interface carries **one** accent (the iris), used
+ * for focus, selection, active surfaces and the primary chart series. There is
+ * no second brand hue — `secondary` is the lone permitted informational
+ * companion, and semantic status colours are reserved for status only.
+ */
+export const accentPolicy = {
+  accent: color.accent.accent,
+  soft: color.accent.soft,
+  ink: color.accent.ink,
+  deep: color.accent.deep,
+  /** The one permitted companion tint (informational, not a second brand). */
+  secondary: color.accent.secondaryDeep,
+  rule: "One accent per screen: iris for focus/selection/active; status colours for status only.",
+} as const;
+
 /** The full token set. */
 export const TOKENS = {
   color,

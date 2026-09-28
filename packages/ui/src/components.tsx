@@ -233,6 +233,58 @@ export const uiGlobalCss = `
 .aquarela-crumb a:hover {
   color: ${color.ink.primary} !important; /* inline styles win otherwise */
 }
+/* Progressive disclosure (patterns.tsx Collapsible): the native marker is
+ * replaced by a chevron that keeps a fixed 16px footprint and rotates on
+ * toggle, so the summary text never reflows ("no layout jump"). */
+.aquarela-disclosure > summary {
+  list-style: none;
+}
+.aquarela-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+.aquarela-disclosure-marker {
+  transition: transform ${motion.duration.fast}ms ${motion.easing};
+}
+.aquarela-disclosure[open] > summary > .aquarela-disclosure-marker {
+  transform: rotate(90deg);
+}
+/* Styled file input (patterns.tsx FileField): the native control is kept,
+ * only its selector button is dressed to match the small button recipe. */
+.aquarela-file {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  padding: ${spacing[2]}px ${spacing[1]}px;
+  font: inherit;
+  font-size: ${typography.fontSize.md}px;
+  color: ${color.ink.primary};
+}
+.aquarela-file::file-selector-button {
+  margin-right: ${spacing[3]}px;
+  min-height: ${geometry.controlHeight.sm}px;
+  padding: 0 ${spacing[3]}px;
+  border-radius: ${radius.md}px;
+  border: 1px solid ${color.border.default};
+  background-color: ${color.surface.base};
+  color: ${color.ink.primary};
+  font: inherit;
+  font-size: ${typography.fontSize.sm}px;
+  font-weight: ${typography.fontWeight.medium};
+  cursor: pointer;
+}
+.aquarela-file::file-selector-button:hover {
+  background-color: ${color.surface.muted};
+}
+/* Success toast (toast.tsx SuccessToast): slides up once on mount; the
+ * global reduced-motion rule disables the animation. */
+@keyframes aquarela-toast-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.aquarela-toast {
+  animation: aquarela-toast-in ${motion.duration.base}ms ${motion.easing};
+}
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
