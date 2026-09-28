@@ -76,7 +76,7 @@ link and `scope="row"`.
 - Current cost, Policy, Lot tracked and Item type each expose a focusable (i).
 - Each row exposes one link whose accessible name identifies the item.
 
-- [ ] accept · [ ] adjust · [ ] skip
+- [x] accept · [ ] adjust · [ ] skip
 
 ---
 
@@ -132,7 +132,7 @@ pattern); `Modal` (exists).
 - Edit item and Register supplier pack open in modals; no create/edit form renders
   open in the page body.
 
-- [ ] accept · [ ] adjust · [ ] skip
+- [x] accept · [ ] adjust · [ ] skip
 
 ---
 
@@ -178,7 +178,7 @@ identity", "product kind" and "finished-good item".
 - Screen and register names use the same nouns; "product vs variant" is explained once.
 - The empty state is preserved.
 
-- [ ] accept · [ ] adjust · [ ] skip
+- [x] accept · [ ] adjust · [ ] skip
 
 ---
 
@@ -240,7 +240,7 @@ missing variant is a recoverable state, not a raw `DomainError`.
 - The edit pattern is identical to `/products/[itemId]`.
 - Effective price is present with an (i); price effect and recipe version have (i)s.
 
-- [ ] accept · [ ] adjust · [ ] skip
+- [x] accept · [ ] adjust · [ ] skip
 
 ---
 

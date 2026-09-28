@@ -60,6 +60,25 @@ For a list/register screen (the common case), top to bottom:
 Detail screens: `PageHeader` + a `DescriptionList`/read view, with edits in a
 modal, and secondary material collapsible.
 
+## Creation and hierarchy (hard rules)
+
+Two rules from the owner's 2026-09-28 triage, applied everywhere:
+
+1. **Creation and editing are a button + `Modal` — never an inline or collapsed
+   (`<details>`) form on a register.** A collapsed form is not progressive
+   disclosure; it is a wasted band that pushes the list down. A register's header
+   carries exactly **one** primary button and **no** form. (Full-page creation is
+   justified only for a genuinely long form with repeating lines — e.g.
+   `/purchasing/new` — or a versioned publish flow.)
+2. **Children live inside their parent; a child is never created at the parent's
+   level.** Variants are added from their product, not from the products list.
+   The parent list shows a **child-count indicator** (e.g. "3 variants") and opens
+   the parent's own view, where its data, its children and the child "New …"
+   button live. Clicking a child opens it for editing.
+
+Corollary: if a screen needs the word "and" in its title to describe two things
+(e.g. "Products and variants"), it is two screens or a parent with children.
+
 ## Explainability policy ((i) InfoTips)
 
 Add an `InfoTip` when the reader must *know* something to use the screen safely:

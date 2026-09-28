@@ -9,6 +9,18 @@ cross-cutting findings, then triage the per-area files.
   `purchasing.md`, `production.md`, `sales.md`, `products.md`, `hms.md`,
   `recipes.md`, `misc.md` (documents, tasks, jobs, administration, home, styleguide).
 
+## Owner triage recorded so far
+
+- **`products` — accepted (2026-09-28), with direction.** `/products` is the
+  **Items** register (title it so) and must not spend a band on a collapsed form:
+  a compact **"New item" button + modal** above the filtered list. `/products/sellables`
+  becomes **Products → Variants** hierarchy: the products list shows a
+  **variants indicator**, opening a product shows its data + its variants + a
+  **"New variant" button (modal)**, and clicking a variant opens it for editing.
+  Variants are never registered at the products level. The two new hard rules are
+  in `docs/ux/README.md` ("Creation and hierarchy").
+- Everything else: awaiting triage.
+
 ## How to triage
 
 In each area file, every screen ends with:
