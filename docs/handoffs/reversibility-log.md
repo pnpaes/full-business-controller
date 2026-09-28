@@ -1,5 +1,15 @@
 # Reversibility log
 
+- **2026-09-28 Stock-item purpose (`DEC-150`, `7427b43`; pushed)**: migration
+  `0079_item_purpose.sql` (nullable add → backfill from `ITEM_TYPE` → NOT NULL +
+  check + index, plus the forward-only `product_variant` guard) and its down
+  companion. **Migration rollback** = the down file (drops the guard, the index
+  and the column; operator re-classifications are lost, so take a backup),
+  rehearsed on a **scratch DB** (column + index + trigger present → down →
+  absent, 103 public tables intact), never the dev DB. **Rollback** =
+  `git revert 7427b43`; existing variant links are unaffected and no posted money
+  or stock fact is touched. Details:
+  [handoff 101](101-2026-09-28-item-purpose-dec-150.md).
 - **2026-09-27 M1 regression gates (`d818583`; pushed)**: the migration-chain
   rehearsal, the day-one bootstrap smoke, the E2E smoke and the env-drift test —
   all additive test/CI files plus the 13 env-documentation additions (commented,

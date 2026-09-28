@@ -18,7 +18,10 @@ cross-cutting findings, then triage the per-area files.
   **variants indicator**, opening a product shows its data + its variants + a
   **"New variant" button (modal)**, and clicking a variant opens it for editing.
   Variants are never registered at the products level. The two new hard rules are
-  in `docs/ux/README.md` ("Creation and hierarchy").
+  in `docs/ux/README.md` ("Creation and hierarchy"). **Implemented** (`2d707c1`), and
+  extended the same day by `DEC-150`: stock items split by purpose (`for_sale` /
+  `for_use`, migration `0079`) with For sale / For use tabs, a purpose badge, the
+  variant picker limited to for-sale items ("Stocked from") and "Backs" on an item.
 - Everything else: awaiting triage.
 
 ## How to triage
