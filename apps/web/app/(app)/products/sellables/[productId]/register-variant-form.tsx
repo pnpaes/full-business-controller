@@ -132,7 +132,7 @@ export function RegisterVariantForm({ productId, items, onSuccess }: RegisterVar
       />
       <SelectField
         name="finishedGoodItemId"
-        label="Finished-good item"
+        label="Stocked from"
         value={finishedGoodItemId}
         onChange={(event) => setFinishedGoodItemId(event.target.value)}
         placeholder="None — made to order"
@@ -140,7 +140,7 @@ export function RegisterVariantForm({ productId, items, onSuccess }: RegisterVar
           value: item.id,
           label: `${item.code} · ${item.name}`,
         }))}
-        help="Only for a genuinely stocked variant: the item its output is stocked as. Leave blank for a made-to-order variant."
+        help="Only for a genuinely stocked variant: the for-sale item its output is stocked as. Leave blank for a made-to-order variant."
       />
       <div>
         <Button type="submit" loading={busy} disabled={busy}>

@@ -1,16 +1,19 @@
 import { DomainError } from "@aquarela/domain";
-import { INVENTORY_POLICY } from "@aquarela/persistence";
+import { INVENTORY_POLICY, ITEM_PURPOSE } from "@aquarela/persistence";
 
 import { CATALOG_AUDIT_ACTIONS } from "./actions";
 import type { MasterDataStore } from "./types";
 
 const INVENTORY_POLICIES: readonly string[] = INVENTORY_POLICY;
+const ITEM_PURPOSES: readonly string[] = ITEM_PURPOSE;
 
 export interface UpdateItemInput {
   readonly organizationId: string;
   readonly actorId: string;
   readonly itemId: string;
   readonly name?: string;
+  /** `DEC-150`: `for_sale`/`for_use`, editable after registration. */
+  readonly purpose?: string;
   readonly inventoryPolicy?: string;
   readonly lotTracked?: boolean;
 }
@@ -42,7 +45,12 @@ export async function updateItem(
   store: MasterDataStore,
   input: UpdateItemInput,
 ): Promise<UpdateItemResult> {
-  const changes: { name?: string; inventoryPolicy?: string; lotTracked?: boolean } = {};
+  const changes: {
+    name?: string;
+    purpose?: string;
+    inventoryPolicy?: string;
+    lotTracked?: boolean;
+  } = {};
 
   if (input.name !== undefined) {
     const name = input.name.trim();
@@ -50,6 +58,12 @@ export async function updateItem(
       throw new DomainError("item name must not be empty");
     }
     changes.name = name;
+  }
+  if (input.purpose !== undefined) {
+    if (!ITEM_PURPOSES.includes(input.purpose)) {
+      throw new DomainError(`purpose must be one of ${ITEM_PURPOSES.join(", ")}`);
+    }
+    changes.purpose = input.purpose;
   }
   if (input.inventoryPolicy !== undefined) {
     if (!INVENTORY_POLICIES.includes(input.inventoryPolicy)) {
@@ -79,11 +93,13 @@ export async function updateItem(
       entityId: input.itemId,
       before: {
         name: item.name,
+        purpose: item.purpose,
         inventory_policy: item.inventoryPolicy,
         lot_tracked: item.lotTracked,
       },
       after: {
         ...(changes.name === undefined ? {} : { name: changes.name }),
+        ...(changes.purpose === undefined ? {} : { purpose: changes.purpose }),
         ...(changes.inventoryPolicy === undefined
           ? {}
           : { inventory_policy: changes.inventoryPolicy }),

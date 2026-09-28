@@ -94,6 +94,7 @@ export async function POST(request: Request): Promise<Response> {
         sku: parsed.input.sku,
         name: parsed.input.name,
         itemType: parsed.input.itemType,
+        ...(parsed.input.purpose === undefined ? {} : { purpose: parsed.input.purpose }),
         baseUnitId: baseUnit.id,
         ...(parsed.input.inventoryPolicy === undefined
           ? {}

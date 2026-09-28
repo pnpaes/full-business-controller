@@ -8,7 +8,7 @@ import {
   type SupplierItemDetail,
 } from "@aquarela/application";
 import { DomainError, MONEY_SCALE, formatDecimal, parseDecimal, rescale } from "@aquarela/domain";
-import { INVENTORY_POLICY } from "@aquarela/persistence";
+import { INVENTORY_POLICY, ITEM_PURPOSE } from "@aquarela/persistence";
 import {
   EmptyState,
   PageHeader,
@@ -267,7 +267,8 @@ export default async function ItemDetailPage({
     throw error;
   });
 
-  const { item, supplierItems, conversions } = detail;
+  const { item, supplierItems, conversions, variantBackings } = detail;
+  const purposeLabel = item.purpose === "for_sale" ? "For sale" : "For use";
   const organization = await catalogStore.findOrganization(organizationId);
   const currency = organization?.currency ?? null;
   const suppliers = await createPostgresReceivingStore(getDb().db).listSuppliers(organizationId);
@@ -342,6 +343,13 @@ export default async function ItemDetailPage({
           <Definition term="Code">{item.code}</Definition>
           <Definition term="SKU">{item.sku}</Definition>
           <Definition term="Type">{humanize(item.itemType)}</Definition>
+          <Definition term="Purpose">
+            {item.purpose === "for_sale" ? (
+              <StatusPill tone="success">{purposeLabel}</StatusPill>
+            ) : (
+              <StatusPill tone="info">{purposeLabel}</StatusPill>
+            )}
+          </Definition>
           <Definition term="Base unit">{item.baseUnitCode}</Definition>
           <Definition term="Inventory policy">{humanize(item.inventoryPolicy)}</Definition>
           <Definition term="Lot tracked">
@@ -366,6 +374,32 @@ export default async function ItemDetailPage({
         </dl>
       </SectionCard>
 
+      {variantBackings.length > 0 ? (
+        <SectionCard
+          title="Backs"
+          meta={`${variantBackings.length} ${
+            variantBackings.length === 1 ? "variant" : "variants"
+          } · DEC-150`}
+        >
+          <p style={{ margin: `0 0 ${spacing[3]}px`, fontSize: typography.fontSize.sm }}>
+            Sellable variants fulfilled from this for-sale item:
+          </p>
+          <ul style={{ margin: 0, paddingLeft: spacing[5], display: "grid", gap: spacing[2] }}>
+            {variantBackings.map((variant) => (
+              <li key={variant.id}>
+                <a
+                  href={`/products/sellables/${variant.productId}/variants/${variant.id}`}
+                  style={{ color: color.brand.navy, fontFamily: typography.fontFamily.mono }}
+                >
+                  {variant.code}
+                </a>{" "}
+                {variant.name}
+              </li>
+            ))}
+          </ul>
+        </SectionCard>
+      ) : null}
+
       <SectionCard title="Edit item" meta="W2 · edit">
         <details>
           <summary
@@ -379,15 +413,17 @@ export default async function ItemDetailPage({
               color: color.brand.navy,
             }}
           >
-            Edit name, inventory policy and lot tracking
+            Edit name, purpose, inventory policy and lot tracking
           </summary>
           <div style={{ marginTop: spacing[4] }}>
             <EditItemForm
               itemId={item.id}
               name={item.name}
+              purpose={item.purpose}
               inventoryPolicy={item.inventoryPolicy}
               lotTracked={item.lotTracked}
               inventoryPolicies={INVENTORY_POLICY}
+              itemPurposes={ITEM_PURPOSE}
             />
           </div>
         </details>

@@ -102,6 +102,7 @@ function toCatalogItem(row: repo.ItemWithUnit): CatalogItemRecord {
     sku: row.sku,
     name: row.name,
     itemType: row.itemType,
+    purpose: row.purpose,
     baseUnitId: row.baseUnitId,
     baseUnitCode: row.baseUnitCode,
     inventoryPolicy: row.inventoryPolicy,
@@ -206,6 +207,8 @@ export function createPostgresMasterDataStore(db: Database): MasterDataStore {
       const row = await repo.findItemWithUnitById(db, itemId);
       return row === undefined ? undefined : toCatalogItem(row);
     },
+    listVariantsForFinishedGoodItem: async (organizationId, itemId) =>
+      repo.listVariantsByFinishedGoodItem(db, organizationId, itemId),
     listSupplierItemsForItem: async (organizationId, itemId) =>
       (await repo.listSupplierItemsForItem(db, organizationId, itemId)).map(toSupplierItemDetail),
     findOrganization: async (organizationId) => {
@@ -235,9 +238,17 @@ export function createPostgresMasterDataStore(db: Database): MasterDataStore {
       if (existing === undefined) {
         return;
       }
-      const changes: { name?: string; inventoryPolicy?: string; lotTracked?: boolean } = {};
+      const changes: {
+        name?: string;
+        purpose?: string;
+        inventoryPolicy?: string;
+        lotTracked?: boolean;
+      } = {};
       if (input.name !== undefined) {
         changes.name = input.name;
+      }
+      if (input.purpose !== undefined) {
+        changes.purpose = input.purpose;
       }
       if (input.inventoryPolicy !== undefined) {
         changes.inventoryPolicy = input.inventoryPolicy;
@@ -259,6 +270,7 @@ export function createPostgresMasterDataStore(db: Database): MasterDataStore {
           sku: existing.sku,
           name: existing.name,
           itemType: existing.itemType,
+          purpose: existing.purpose,
           baseUnitId: existing.baseUnitId,
           inventoryPolicy: existing.inventoryPolicy,
           lotTracked: existing.lotTracked,

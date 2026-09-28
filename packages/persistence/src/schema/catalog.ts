@@ -25,6 +25,18 @@ import {
 import { organization } from "./organization";
 import { COST_SOURCE, INVENTORY_POLICY, ITEM_TYPE, UNIT_DIMENSION } from "./vocabularies";
 
+/**
+ * `DEC-150` (accepted 2026-09-28): a stock item's purpose. `for_sale` is a
+ * stocked item a sellable is fulfilled from (today's `finished_good`); `for_use`
+ * is an input consumed by production/operations that no variant may reference.
+ * Stocking/tracking is not the axis — purpose is, and it is stored as data, not
+ * as a type mapping (`item_type` is only the backfill source). Defined here
+ * rather than in `vocabularies.ts` on purpose: the `vocabularies.test.ts` guard
+ * requires every exported vocabulary to have a matching
+ * `schemas/domain-enums.yaml` key, and that input is not edited by this change.
+ */
+export const ITEM_PURPOSE = ["for_sale", "for_use"] as const;
+
 export const unit = pgTable(
   "unit",
   {
@@ -49,6 +61,10 @@ export const item = pgTable(
     sku: text("sku").notNull(),
     name: text("name").notNull(),
     itemType: text("item_type").notNull(),
+    // `DEC-150`: `for_sale` vs `for_use`. Backfilled from `item_type` in the
+    // `0079_item_purpose` migration (`finished_good` ⇒ `for_sale`, else
+    // `for_use`), then freely editable; the column default is `for_use`.
+    purpose: text("purpose").notNull().default("for_use"),
     baseUnitId: uuid("base_unit_id")
       .notNull()
       .references(() => unit.id),
@@ -66,6 +82,7 @@ export const item = pgTable(
   },
   (t) => [
     check("item_item_type_check", enumCheck(t.itemType, ITEM_TYPE)),
+    check("item_purpose_check", enumCheck(t.purpose, ITEM_PURPOSE)),
     check("item_inventory_policy_check", enumCheck(t.inventoryPolicy, INVENTORY_POLICY)),
     check("item_shelf_life_days_check", sql`${t.shelfLifeDays} is null or ${t.shelfLifeDays} >= 0`),
     check(
@@ -76,6 +93,8 @@ export const item = pgTable(
     check("item_active_range_check", rangeCheck(t.activeFrom, t.activeTo)),
     unique("item_organization_id_code_key").on(t.organizationId, t.code),
     unique("item_organization_id_sku_key").on(t.organizationId, t.sku),
+    // The Stock screen's For sale / For use tabs filter on this pair.
+    index("item_organization_id_purpose_idx").on(t.organizationId, t.purpose),
   ],
 );
 

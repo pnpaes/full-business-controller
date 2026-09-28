@@ -61,8 +61,11 @@ export default async function SellableProductPage({
     throw error;
   });
 
+  // `DEC-150`: a variant may only be stocked from a for-sale item, so the
+  // selector (and this lookup) lists for-sale items only.
   const itemPage = await listItems(createPostgresMasterDataStore(db), {
     organizationId,
+    purpose: "for_sale",
     limit: 200,
   });
   const itemOptions = itemPage.items.map((item) => ({
@@ -125,7 +128,7 @@ export default async function SellableProductPage({
               { key: "variant", header: "Variant" },
               { key: "sku", header: "SKU" },
               { key: "size", header: "Size" },
-              { key: "finishedGood", header: "Finished good" },
+              { key: "finishedGood", header: "Stocked from" },
               { key: "status", header: "Status" },
             ]}
             rows={detail.variants.map((variant) => {

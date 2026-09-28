@@ -18,6 +18,7 @@ import type {
   SupplierItemRecord,
   UnitListQuery,
   UpdateItemRecord,
+  VariantBackingRecord,
 } from "./types";
 
 /**
@@ -41,6 +42,12 @@ export class FakeMasterDataStore implements MasterDataStore {
   readonly supplierItemDetails: SupplierItemDetail[] = [];
   readonly conversions: ConversionEdge[] = [];
   readonly audits: AuditInput[] = [];
+  /** `DEC-150`: variants seeded as referencing an item (the "Backs" read). */
+  readonly variantBackings: {
+    organizationId: string;
+    itemId: string;
+    backing: VariantBackingRecord;
+  }[] = [];
 
   /** Owning organization per unit id, so `listUnits` can scope by tenant. */
   private readonly unitOrganizations = new Map<string, string>();
@@ -60,6 +67,10 @@ export class FakeMasterDataStore implements MasterDataStore {
 
   addCatalogItem(record: CatalogItemRecord): void {
     this.catalogItems.set(record.id, record);
+  }
+
+  addVariantBacking(organizationId: string, itemId: string, backing: VariantBackingRecord): void {
+    this.variantBackings.push({ organizationId, itemId, backing });
   }
 
   async withTransaction<T>(fn: (store: MasterDataStore) => Promise<T>): Promise<T> {
@@ -142,6 +153,7 @@ export class FakeMasterDataStore implements MasterDataStore {
       sku: input.sku,
       name: input.name,
       itemType: input.itemType,
+      purpose: input.purpose,
       baseUnitId: input.baseUnitId,
       baseUnitCode: baseUnit?.code ?? "",
       inventoryPolicy: input.inventoryPolicy,
@@ -158,6 +170,7 @@ export class FakeMasterDataStore implements MasterDataStore {
     const matching = [...this.catalogItems.values()]
       .filter((row) => row.organizationId === query.organizationId)
       .filter((row) => query.itemType === undefined || row.itemType === query.itemType)
+      .filter((row) => query.purpose === undefined || row.purpose === query.purpose)
       .filter(
         (row) =>
           search === undefined ||
@@ -175,6 +188,17 @@ export class FakeMasterDataStore implements MasterDataStore {
 
   findCatalogItem(itemId: string): Promise<CatalogItemRecord | undefined> {
     return Promise.resolve(this.catalogItems.get(itemId));
+  }
+
+  listVariantsForFinishedGoodItem(
+    organizationId: string,
+    itemId: string,
+  ): Promise<readonly VariantBackingRecord[]> {
+    return Promise.resolve(
+      this.variantBackings
+        .filter((row) => row.organizationId === organizationId && row.itemId === itemId)
+        .map((row) => row.backing),
+    );
   }
 
   listSupplierItemsForItem(
@@ -231,6 +255,7 @@ export class FakeMasterDataStore implements MasterDataStore {
       this.catalogItems.set(input.itemId, {
         ...catalog,
         ...(input.name === undefined ? {} : { name: input.name }),
+        ...(input.purpose === undefined ? {} : { purpose: input.purpose }),
         ...(input.inventoryPolicy === undefined ? {} : { inventoryPolicy: input.inventoryPolicy }),
         ...(input.lotTracked === undefined ? {} : { lotTracked: input.lotTracked }),
       });

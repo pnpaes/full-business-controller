@@ -146,6 +146,8 @@ export interface ItemWithUnit {
   readonly sku: string;
   readonly name: string;
   readonly itemType: string;
+  /** `DEC-150`: `for_sale` or `for_use`. */
+  readonly purpose: string;
   readonly baseUnitId: string;
   readonly baseUnitCode: string;
   readonly inventoryPolicy: string;
@@ -165,6 +167,7 @@ const itemWithUnitColumns = {
   sku: item.sku,
   name: item.name,
   itemType: item.itemType,
+  purpose: item.purpose,
   baseUnitId: item.baseUnitId,
   baseUnitCode: unit.code,
   inventoryPolicy: item.inventoryPolicy,
@@ -179,6 +182,8 @@ export interface ListItemsQuery {
   /** Case-insensitive contains match over code, SKU and name. */
   readonly search?: string;
   readonly itemType?: string;
+  /** `DEC-150`: restrict to one purpose (`for_sale`/`for_use`) for the tabs. */
+  readonly purpose?: string;
   readonly limit: number;
   readonly offset: number;
 }
@@ -204,6 +209,9 @@ function itemFilters(query: ListItemsQuery): SQL[] {
   }
   if (query.itemType !== undefined && query.itemType.length > 0) {
     filters.push(eq(item.itemType, query.itemType));
+  }
+  if (query.purpose !== undefined && query.purpose.length > 0) {
+    filters.push(eq(item.purpose, query.purpose));
   }
   return filters;
 }
@@ -245,6 +253,45 @@ export async function findItemWithUnitById(
     .where(eq(item.id, itemId))
     .limit(1);
   return rows[0];
+}
+
+/**
+ * One `product_variant` that draws a for-sale item down (`DEC-150`), for the
+ * item detail's "Backs" read. `product_variant` has no repository accessor, so
+ * this is the smallest read that exposes the reverse of
+ * `finished_good_item_id`; it stays in `master-data` because the item detail
+ * already reads through this repository.
+ */
+export interface VariantBacking {
+  readonly id: string;
+  readonly productId: string;
+  readonly code: string;
+  readonly sku: string;
+  readonly name: string;
+}
+
+/** Every variant in the organization whose finished-good item is `itemId`, ordered by code. */
+export async function listVariantsByFinishedGoodItem(
+  db: Database,
+  organizationId: string,
+  itemId: string,
+): Promise<VariantBacking[]> {
+  return db
+    .select({
+      id: productVariant.id,
+      productId: productVariant.productId,
+      code: productVariant.code,
+      sku: productVariant.sku,
+      name: productVariant.name,
+    })
+    .from(productVariant)
+    .where(
+      and(
+        eq(productVariant.organizationId, organizationId),
+        eq(productVariant.finishedGoodItemId, itemId),
+      ),
+    )
+    .orderBy(asc(productVariant.code));
 }
 
 /** A `supplier_item` joined to its supplier and pack unit (the item-detail read projection). */

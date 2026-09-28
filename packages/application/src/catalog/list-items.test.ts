@@ -14,6 +14,7 @@ function item(overrides: Partial<CatalogItemRecord> & { readonly id: string }): 
     sku: `${overrides.id}-sku`,
     name: `Item ${overrides.id}`,
     itemType: "ingredient",
+    purpose: "for_use",
     baseUnitId: "unit-1",
     baseUnitCode: "g",
     inventoryPolicy: "stocked",
@@ -62,6 +63,20 @@ describe("listItems", () => {
     const none = await listItems(store, { organizationId: ORG, search: "zzz" });
     expect(none.items).toEqual([]);
     expect(none.total).toBe(0);
+  });
+
+  it("filters by purpose (DEC-150 tabs)", async () => {
+    const store = buildStore();
+    store.addCatalogItem(
+      item({ id: "s", code: "CAKE", name: "Cake", itemType: "finished_good", purpose: "for_sale" }),
+    );
+    const forSale = await listItems(store, { organizationId: ORG, purpose: "for_sale" });
+    expect(forSale.items.map((row) => row.id)).toEqual(["s"]);
+    expect(forSale.total).toBe(1);
+
+    const forUse = await listItems(store, { organizationId: ORG, purpose: "for_use" });
+    expect(forUse.items.map((row) => row.id)).toEqual(["a", "b"]);
+    expect(forUse.total).toBe(2);
   });
 
   it("applies limit and offset against the total", async () => {

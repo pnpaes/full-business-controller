@@ -66,6 +66,21 @@ describe("updateItem", () => {
     expect(store.audits).toHaveLength(0);
   });
 
+  it("updates purpose and rejects an unknown value (DEC-150)", async () => {
+    const store = new FakeMasterDataStore();
+    const itemId = await seedItem(store);
+    await updateItem(store, {
+      organizationId: ORG,
+      actorId: ACTOR,
+      itemId,
+      purpose: "for_sale",
+    });
+    expect(store.catalogItems.get(itemId)?.purpose).toBe("for_sale");
+    await expect(
+      updateItem(store, { organizationId: ORG, actorId: ACTOR, itemId, purpose: "not_a_purpose" }),
+    ).rejects.toThrow(/purpose must be one of/);
+  });
+
   it("rejects an empty change set and an unknown inventory policy", async () => {
     const store = new FakeMasterDataStore();
     const itemId = await seedItem(store);

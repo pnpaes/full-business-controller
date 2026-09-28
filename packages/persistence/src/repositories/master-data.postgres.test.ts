@@ -14,6 +14,7 @@ import {
   findVariantBySku,
   listItems,
   listSupplierItemsForItem,
+  listVariantsByFinishedGoodItem,
 } from "./master-data";
 import {
   createTestItem,
@@ -131,6 +132,30 @@ describe.skipIf(!databaseUrl)("catalog read repository", () => {
         offset: 0,
       });
       expect(unknownOrg.total).toBe(0);
+
+      // `DEC-150`: the purpose filter (the Stock tabs) reads the stored value.
+      const cake = await createTestItem(tx, orgId, base.id, {
+        code: uniqueName("D_cake"),
+        sku: uniqueName("SKU_cake"),
+        name: "Chocolate Cake",
+        itemType: "finished_good",
+        purpose: "for_sale",
+      });
+      expect(flour.purpose).toBe("for_use");
+      const forSale = await listItems(tx, {
+        organizationId: orgId,
+        purpose: "for_sale",
+        limit: 10,
+        offset: 0,
+      });
+      expect(forSale.rows.map((row) => row.id)).toEqual([cake.id]);
+      const forUse = await listItems(tx, {
+        organizationId: orgId,
+        purpose: "for_use",
+        limit: 10,
+        offset: 0,
+      });
+      expect(forUse.total).toBe(3);
     });
   });
 
@@ -169,6 +194,47 @@ describe.skipIf(!databaseUrl)("catalog read repository", () => {
       expect(
         await findVariantBySku(tx, { organizationId: orgId, sku: otherVariant.sku }),
       ).toBeUndefined();
+    });
+  });
+
+  it("rejects a variant backed by a for-use item (DEC-150 edge guard)", async () => {
+    await inRollback(client.db, async (tx) => {
+      const base = await createTestUnit(tx, orgId, { code: uniqueName("g"), dimension: "mass" });
+      const forUse = await createTestItem(tx, orgId, base.id, { purpose: "for_use" });
+      const product = await createTestProduct(tx, orgId);
+
+      // The trigger raises ERRCODE 23514; drizzle wraps the driver error, so the
+      // SQLSTATE and message live on `cause`.
+      await expect(
+        createTestProductVariant(tx, orgId, product.id, { finishedGoodItemId: forUse.id }),
+      ).rejects.toMatchObject({
+        cause: expect.objectContaining({
+          code: "23514",
+          message: expect.stringMatching(/for-use item/),
+        }),
+      });
+    });
+  });
+
+  it("accepts a variant backed by a for-sale item, and reads it back (DEC-150)", async () => {
+    await inRollback(client.db, async (tx) => {
+      const base = await createTestUnit(tx, orgId, { code: uniqueName("g"), dimension: "mass" });
+      const forUse = await createTestItem(tx, orgId, base.id, { purpose: "for_use" });
+      const forSale = await createTestItem(tx, orgId, base.id, {
+        itemType: "finished_good",
+        purpose: "for_sale",
+      });
+      const product = await createTestProduct(tx, orgId);
+
+      const accepted = await createTestProductVariant(tx, orgId, product.id, {
+        finishedGoodItemId: forSale.id,
+      });
+      expect(accepted.finishedGoodItemId).toBe(forSale.id);
+
+      // The reverse read that powers the item detail's "Backs".
+      const backing = await listVariantsByFinishedGoodItem(tx, orgId, forSale.id);
+      expect(backing.map((row) => row.id)).toEqual([accepted.id]);
+      expect(await listVariantsByFinishedGoodItem(tx, orgId, forUse.id)).toEqual([]);
     });
   });
 

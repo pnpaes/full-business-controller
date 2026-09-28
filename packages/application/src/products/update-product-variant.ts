@@ -74,6 +74,12 @@ export async function updateProductVariant(
       if (item === undefined || item.organizationId !== input.organizationId) {
         throw new DomainError("finished-good item not found in this organization");
       }
+      // `DEC-150`: only a for-sale item may back a variant.
+      if (item.purpose !== "for_sale") {
+        throw new DomainError(
+          "finished-good item must be for sale; a for-use item cannot back a variant",
+        );
+      }
     }
 
     await tx.updateVariant({ productVariantId: input.productVariantId, ...changes });

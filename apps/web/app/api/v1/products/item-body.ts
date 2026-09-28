@@ -1,4 +1,4 @@
-import { INVENTORY_POLICY, ITEM_TYPE } from "@aquarela/persistence";
+import { INVENTORY_POLICY, ITEM_PURPOSE, ITEM_TYPE } from "@aquarela/persistence";
 
 /**
  * Pure body parsing for the item registration route. `registerItem`
@@ -14,6 +14,8 @@ export interface RegisterItemInput {
   readonly sku: string;
   readonly name: string;
   readonly itemType: string;
+  /** `DEC-150`: omitted means derive from `itemType`. */
+  readonly purpose?: string;
   readonly baseUnitCode: string;
   readonly inventoryPolicy?: string;
   readonly lotTracked?: boolean;
@@ -54,6 +56,14 @@ export function parseRegisterItemBody(
   if (itemType === null || !(ITEM_TYPE as readonly string[]).includes(itemType)) {
     return { ok: false };
   }
+  let purpose: string | undefined;
+  const purposeRaw = readText(body, "purpose", 40);
+  if (purposeRaw !== null) {
+    if (!(ITEM_PURPOSE as readonly string[]).includes(purposeRaw)) {
+      return { ok: false };
+    }
+    purpose = purposeRaw;
+  }
   let inventoryPolicy: string | undefined;
   const policyRaw = readText(body, "inventoryPolicy", 40);
   if (policyRaw !== null) {
@@ -73,6 +83,7 @@ export function parseRegisterItemBody(
       sku,
       name,
       itemType,
+      ...(purpose === undefined ? {} : { purpose }),
       baseUnitCode,
       ...(inventoryPolicy === undefined ? {} : { inventoryPolicy }),
       ...(lotTrackedRaw === undefined ? {} : { lotTracked: lotTrackedRaw }),
@@ -82,6 +93,8 @@ export function parseRegisterItemBody(
 
 export interface UpdateItemInput {
   readonly name?: string;
+  /** `DEC-150`: `for_sale`/`for_use`. */
+  readonly purpose?: string;
   readonly inventoryPolicy?: string;
   readonly lotTracked?: boolean;
 }
@@ -98,13 +111,25 @@ export function parseUpdateItemBody(body: Record<string, unknown> | undefined): 
   if (body === undefined) {
     return { ok: false };
   }
-  const input: { name?: string; inventoryPolicy?: string; lotTracked?: boolean } = {};
+  const input: {
+    name?: string;
+    purpose?: string;
+    inventoryPolicy?: string;
+    lotTracked?: boolean;
+  } = {};
   if (body.name !== undefined) {
     const name = readText(body, "name", 120);
     if (name === null) {
       return { ok: false };
     }
     input.name = name;
+  }
+  if (body.purpose !== undefined) {
+    const purpose = readText(body, "purpose", 40);
+    if (purpose === null || !(ITEM_PURPOSE as readonly string[]).includes(purpose)) {
+      return { ok: false };
+    }
+    input.purpose = purpose;
   }
   if (body.inventoryPolicy !== undefined) {
     const policy = readText(body, "inventoryPolicy", 40);

@@ -12,6 +12,8 @@ export interface ListItemsInput {
   /** Case-insensitive contains match over code, SKU and name. */
   readonly search?: string;
   readonly itemType?: string;
+  /** `DEC-150`: restrict to one purpose (`for_sale`/`for_use`). */
+  readonly purpose?: string;
   readonly limit?: number;
   readonly offset?: number;
 }
@@ -52,6 +54,9 @@ export async function listItems(
     ...(input.itemType === undefined || input.itemType.length === 0
       ? {}
       : { itemType: input.itemType }),
+    ...(input.purpose === undefined || input.purpose.length === 0
+      ? {}
+      : { purpose: input.purpose }),
     limit,
     offset,
   });

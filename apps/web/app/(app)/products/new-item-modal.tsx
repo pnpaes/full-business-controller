@@ -8,6 +8,8 @@ import { RegisterItemForm } from "./register-item-form";
 export interface NewItemModalProps {
   readonly itemTypes: readonly string[];
   readonly inventoryPolicies: readonly string[];
+  /** `DEC-150`: `for_sale` / `for_use`. */
+  readonly itemPurposes: readonly string[];
 }
 
 /**
@@ -15,7 +17,7 @@ export interface NewItemModalProps {
  * hierarchy"): a compact "New item" button that opens the register form in a
  * modal. No inline or collapsed create form renders on the page.
  */
-export function NewItemModal({ itemTypes, inventoryPolicies }: NewItemModalProps) {
+export function NewItemModal({ itemTypes, inventoryPolicies, itemPurposes }: NewItemModalProps) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -25,6 +27,7 @@ export function NewItemModal({ itemTypes, inventoryPolicies }: NewItemModalProps
         <RegisterItemForm
           itemTypes={itemTypes}
           inventoryPolicies={inventoryPolicies}
+          itemPurposes={itemPurposes}
           onSuccess={() => setOpen(false)}
         />
       </Modal>

@@ -119,11 +119,11 @@ export function EditVariantForm({
       />
       <TextField
         name="finishedGoodItemId"
-        label="Finished-good item id"
+        label="Stocked from (item id)"
         value={finishedGoodItemId}
         {...(finishedError === null ? {} : { error: finishedError })}
         onChange={(event) => setFinishedGoodItemId(event.target.value)}
-        help="The stocked item this variant is fulfilled from. Blank is valid for a made-to-order variant."
+        help="The for-sale item this variant is fulfilled from. Blank is valid for a made-to-order variant."
         inputMode="text"
         autoCapitalize="none"
       />

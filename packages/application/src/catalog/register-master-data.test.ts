@@ -97,6 +97,63 @@ describe("registerItem", () => {
     ).rejects.toThrow("item SKU already registered in organization");
   });
 
+  it("derives purpose from the item type and allows an explicit override", async () => {
+    const store = new FakeMasterDataStore();
+    const baseUnitId = await seedBaseUnit(store);
+    await registerItem(store, {
+      organizationId: ORG,
+      code: "CAKE",
+      sku: "CAKE-1",
+      name: "Cake",
+      itemType: "finished_good",
+      baseUnitId,
+    });
+    expect([...store.catalogItems.values()].find((row) => row.code === "CAKE")?.purpose).toBe(
+      "for_sale",
+    );
+
+    await registerItem(store, {
+      organizationId: ORG,
+      code: "FLOUR",
+      sku: "FLOUR-1",
+      name: "Flour",
+      itemType: "ingredient",
+      baseUnitId,
+    });
+    expect([...store.catalogItems.values()].find((row) => row.code === "FLOUR")?.purpose).toBe(
+      "for_use",
+    );
+
+    await registerItem(store, {
+      organizationId: ORG,
+      code: "SOLD-BEANS",
+      sku: "SOLD-BEANS-1",
+      name: "Sold beans",
+      itemType: "ingredient",
+      purpose: "for_sale",
+      baseUnitId,
+    });
+    expect([...store.catalogItems.values()].find((row) => row.code === "SOLD-BEANS")?.purpose).toBe(
+      "for_sale",
+    );
+  });
+
+  it("rejects an unknown purpose", async () => {
+    const store = new FakeMasterDataStore();
+    const baseUnitId = await seedBaseUnit(store);
+    await expect(
+      registerItem(store, {
+        organizationId: ORG,
+        code: "X",
+        sku: "X-1",
+        name: "X",
+        itemType: "ingredient",
+        purpose: "for_fun" as never,
+        baseUnitId,
+      }),
+    ).rejects.toThrow(/purpose must be one of/);
+  });
+
   it("rejects a missing base unit and blank identity fields", async () => {
     const store = new FakeMasterDataStore();
     const base = {

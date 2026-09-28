@@ -10,9 +10,12 @@ const FALLBACK_ERROR = "Could not update the item. Please try again.";
 export interface EditItemFormProps {
   readonly itemId: string;
   readonly name: string;
+  /** `DEC-150`: `for_sale` / `for_use`. */
+  readonly purpose: string;
   readonly inventoryPolicy: string;
   readonly lotTracked: boolean;
   readonly inventoryPolicies: readonly string[];
+  readonly itemPurposes: readonly string[];
 }
 
 interface ErrorBody {
@@ -40,12 +43,15 @@ function humanize(value: string): string {
 export function EditItemForm({
   itemId,
   name: initialName,
+  purpose: initialPurpose,
   inventoryPolicy: initialPolicy,
   lotTracked: initialLotTracked,
   inventoryPolicies,
+  itemPurposes,
 }: EditItemFormProps) {
   const router = useRouter();
   const [name, setName] = useState(initialName);
+  const [purpose, setPurpose] = useState(initialPurpose);
   const [inventoryPolicy, setInventoryPolicy] = useState(initialPolicy);
   const [lotTracked, setLotTracked] = useState(initialLotTracked);
   const [fieldError, setFieldError] = useState<string | null>(null);
@@ -71,7 +77,7 @@ export function EditItemForm({
         method: "PATCH",
         credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, inventoryPolicy, lotTracked }),
+        body: JSON.stringify({ name, purpose, inventoryPolicy, lotTracked }),
       });
       if (!response.ok) {
         setError(await errorMessage(response));
@@ -102,6 +108,15 @@ export function EditItemForm({
         {...(fieldError === null ? {} : { error: fieldError })}
         onChange={(event) => setName(event.target.value)}
         help="The display name; changing it does not affect history."
+      />
+      <SelectField
+        name="purpose"
+        label="Purpose"
+        required
+        value={purpose}
+        onChange={(event) => setPurpose(event.target.value)}
+        options={itemPurposes.map((value) => ({ value, label: humanize(value) }))}
+        help="For sale = a sellable is fulfilled from it; for use = consumed by production or operations. A for-use item cannot back a variant."
       />
       <SelectField
         name="inventoryPolicy"

@@ -2,6 +2,7 @@ import type { AuditInput } from "../auth";
 import type {
   AddonApplicabilityRecord,
   ApprovedRecipeVersionOption,
+  ItemScopeRecord,
   LocationOption,
   NewAddonApplicabilityRecord,
   NewProductRecord,
@@ -28,7 +29,7 @@ export class FakeProductStore implements ProductStore {
   readonly assignments: RecipeAssignmentRecord[] = [];
   readonly addons: AddonApplicabilityRecord[] = [];
   readonly locations = new Map<string, LocationOption>();
-  readonly items = new Map<string, OrgScopedRecord>();
+  readonly items = new Map<string, ItemScopeRecord>();
   readonly recipeVersions = new Map<string, RecipeVersionScopeRecord>();
   readonly approvedVersions: ApprovedRecipeVersionOption[] = [];
   readonly audits: AuditInput[] = [];
@@ -85,8 +86,17 @@ export class FakeProductStore implements ProductStore {
     this.locations.set(record.id, record);
   }
 
-  addItem(record: OrgScopedRecord): void {
-    this.items.set(record.id, record);
+  /**
+   * Seeds a stocked item for the finished-good link. `DEC-150`: `purpose`
+   * defaults to `for_sale` (the value the existing fixtures rely on); pass
+   * `for_use` to exercise the guard.
+   */
+  addItem(record: OrgScopedRecord & { readonly purpose?: string }): void {
+    this.items.set(record.id, {
+      id: record.id,
+      organizationId: record.organizationId,
+      purpose: record.purpose ?? "for_sale",
+    });
   }
 
   addRecipeVersion(record: RecipeVersionScopeRecord): void {
@@ -193,7 +203,7 @@ export class FakeProductStore implements ProductStore {
     return Promise.resolve();
   }
 
-  findItemScope(itemId: string): Promise<OrgScopedRecord | undefined> {
+  findItemScope(itemId: string): Promise<ItemScopeRecord | undefined> {
     return Promise.resolve(this.items.get(itemId));
   }
 

@@ -125,6 +125,15 @@ export interface OrgScopedRecord {
   readonly organizationId: string;
 }
 
+/**
+ * `DEC-150`: the scope of a stocked item plus its purpose, so the variant
+ * commands can refuse a for-use item as a finished good (the friendly layer over
+ * the `product_variant_finished_good_purpose_guard` trigger).
+ */
+export interface ItemScopeRecord extends OrgScopedRecord {
+  readonly purpose: string;
+}
+
 /** A `location` option for the recipe-assignment picker. */
 export interface LocationOption extends OrgScopedRecord {
   readonly code: string;
@@ -175,8 +184,8 @@ export interface ProductStore {
   createVariant(input: NewProductVariantRecord): Promise<ProductVariantRecord>;
   /** Applies the mutable variant fields to one existing variant. */
   updateVariant(input: UpdateProductVariantRecord): Promise<void>;
-  /** The scope of a stocked `item`, for the nullable finished-good link. */
-  findItemScope(itemId: string): Promise<OrgScopedRecord | undefined>;
+  /** The scope + purpose of a stocked `item`, for the nullable finished-good link. */
+  findItemScope(itemId: string): Promise<ItemScopeRecord | undefined>;
   findLocationScope(locationId: string): Promise<LocationOption | undefined>;
   listLocations(organizationId: string): Promise<readonly LocationOption[]>;
   /** The scope of a `recipe_version` (its organization comes from the recipe). */

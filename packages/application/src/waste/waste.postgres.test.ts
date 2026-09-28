@@ -76,6 +76,9 @@ async function seedFixture(tx: DatabaseTransaction, orgId: string): Promise<Fixt
       sku: `SKU_${suffix}`,
       name: "Flour",
       itemType: "ingredient",
+      // `DEC-150`: the fixture uses this item as the variant's finished good, so
+      // it must be for sale for the edge guard to accept the variant.
+      purpose: "for_sale",
       baseUnitId: base[0]!.id,
     })
     .returning();

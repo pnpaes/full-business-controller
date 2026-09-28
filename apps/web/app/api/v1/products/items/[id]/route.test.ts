@@ -26,7 +26,7 @@ import * as application from "@aquarela/application";
 import { requireSession } from "../../../../../../lib/auth";
 import { AuthHttpError } from "../../../../../../lib/errors";
 
-import { parseUpdateItemBody } from "../../item-body";
+import { parseRegisterItemBody, parseUpdateItemBody } from "../../item-body";
 import { PATCH } from "./route";
 
 const ORG = "org-1";
@@ -80,6 +80,15 @@ describe("PATCH /api/v1/products/items/[id]", () => {
     await expect(response.json()).resolves.toEqual({ ok: true, itemId: ITEM_ID });
   });
 
+  it("accepts a purpose change (DEC-150)", async () => {
+    const response = await PATCH(patchRequest({ purpose: "for_sale" }), context(ITEM_ID));
+    expect(response.status).toBe(200);
+    expect(application.updateItem).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ itemId: ITEM_ID, purpose: "for_sale" }),
+    );
+  });
+
   it("returns 401 when signed out", async () => {
     vi.mocked(requireSession).mockRejectedValue(new AuthHttpError(401));
 
@@ -127,13 +136,40 @@ describe("parseUpdateItemBody", () => {
       ok: true,
       input: { lotTracked: false },
     });
+    expect(parseUpdateItemBody({ purpose: "for_sale" })).toEqual({
+      ok: true,
+      input: { purpose: "for_sale" },
+    });
   });
 
-  it("rejects an empty body, a blank name, a bad policy and a non-boolean flag", () => {
+  it("rejects an empty body, a blank name, a bad policy, a bad purpose and a non-boolean flag", () => {
     expect(parseUpdateItemBody({})).toEqual({ ok: false });
     expect(parseUpdateItemBody({ name: "  " })).toEqual({ ok: false });
     expect(parseUpdateItemBody({ inventoryPolicy: "not_a_policy" })).toEqual({ ok: false });
+    expect(parseUpdateItemBody({ purpose: "for_fun" })).toEqual({ ok: false });
     expect(parseUpdateItemBody({ lotTracked: "yes" })).toEqual({ ok: false });
     expect(parseUpdateItemBody(undefined)).toEqual({ ok: false });
+  });
+});
+
+describe("parseRegisterItemBody purpose (DEC-150)", () => {
+  const base = {
+    code: "FLOUR",
+    sku: "FL-1",
+    name: "Flour",
+    itemType: "ingredient",
+    baseUnitCode: "kg",
+  };
+
+  it("accepts an omitted purpose (derived later) and a valid explicit one", () => {
+    expect(parseRegisterItemBody(base)).toEqual({ ok: true, input: base });
+    expect(parseRegisterItemBody({ ...base, purpose: "for_sale" })).toEqual({
+      ok: true,
+      input: { ...base, purpose: "for_sale" },
+    });
+  });
+
+  it("rejects an unknown purpose", () => {
+    expect(parseRegisterItemBody({ ...base, purpose: "for_fun" })).toEqual({ ok: false });
   });
 });

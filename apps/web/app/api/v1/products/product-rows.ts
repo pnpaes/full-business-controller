@@ -6,6 +6,7 @@ import {
   type ItemDetail,
   type SupplierItemDetail,
 } from "@aquarela/application";
+import { ITEM_PURPOSE } from "@aquarela/persistence";
 
 /**
  * Pure query parsing and response mapping for the Products read API. Kept free
@@ -24,6 +25,8 @@ export function isUuid(value: string): boolean {
 export interface ItemsQuery {
   readonly search?: string;
   readonly itemType?: string;
+  /** `DEC-150`: `for_sale`/`for_use` (validated against the vocabulary). */
+  readonly purpose?: string;
   readonly limit: number;
   readonly offset: number;
 }
@@ -74,11 +77,16 @@ export function parseItemsQuery(searchParams: URLSearchParams): ParsedItemsQuery
   }
   const search = readOptionalText(searchParams, "search");
   const itemType = readOptionalText(searchParams, "itemType");
+  const purpose = readOptionalText(searchParams, "purpose");
+  if (purpose !== undefined && !(ITEM_PURPOSE as readonly string[]).includes(purpose)) {
+    return { ok: false };
+  }
   return {
     ok: true,
     query: {
       ...(search === undefined ? {} : { search }),
       ...(itemType === undefined ? {} : { itemType }),
+      ...(purpose === undefined ? {} : { purpose }),
       limit: resolvedLimit,
       offset: resolvedOffset,
     },
@@ -91,6 +99,8 @@ export interface ItemRow {
   readonly sku: string;
   readonly name: string;
   readonly itemType: string;
+  /** `DEC-150`: `for_sale`/`for_use`. */
+  readonly purpose: string;
   readonly baseUnitId: string;
   readonly baseUnitCode: string;
   readonly inventoryPolicy: string;
@@ -107,6 +117,7 @@ export function toItemRow(record: CatalogItemRecord): ItemRow {
     sku: record.sku,
     name: record.name,
     itemType: record.itemType,
+    purpose: record.purpose,
     baseUnitId: record.baseUnitId,
     baseUnitCode: record.baseUnitCode,
     inventoryPolicy: record.inventoryPolicy,

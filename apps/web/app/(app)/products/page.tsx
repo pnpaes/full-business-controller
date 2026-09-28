@@ -4,11 +4,12 @@ import {
   type ListItemsResult,
 } from "@aquarela/application";
 import { MONEY_SCALE, formatDecimal, parseDecimal, rescale } from "@aquarela/domain";
-import { ITEM_TYPE, INVENTORY_POLICY } from "@aquarela/persistence";
+import { ITEM_PURPOSE, ITEM_TYPE, INVENTORY_POLICY } from "@aquarela/persistence";
 import {
   PageHeader,
   SectionCard,
   Button,
+  Tabs,
   color,
   geometry,
   radius,
@@ -25,7 +26,7 @@ import { ItemsTable, type ItemTableRow } from "./items-table";
 import { NewItemModal } from "./new-item-modal";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Items — Aquarela Business Control" };
+export const metadata = { title: "Stock items — Aquarela Business Control" };
 
 /* ----------------------------- query / formatting -------------------------- */
 
@@ -119,6 +120,11 @@ export default async function ProductsPage({
     itemTypeRaw !== undefined && (ITEM_TYPE as readonly string[]).includes(itemTypeRaw)
       ? itemTypeRaw
       : undefined;
+  const purposeRaw = readParam(params, "purpose");
+  const purpose =
+    purposeRaw !== undefined && (ITEM_PURPOSE as readonly string[]).includes(purposeRaw)
+      ? purposeRaw
+      : undefined;
   const limitRaw = readParam(params, "limit");
   const offsetRaw = readParam(params, "offset");
   const limit = limitRaw === undefined ? undefined : Number(limitRaw);
@@ -129,23 +135,36 @@ export default async function ProductsPage({
   const organization = await store.findOrganization(organizationId);
   const currency = organization?.currency ?? null;
 
+  const baseFilters = {
+    organizationId,
+    ...(search === undefined ? {} : { search }),
+    ...(itemType === undefined ? {} : { itemType }),
+    ...(purpose === undefined ? {} : { purpose }),
+  };
+
   let page: ListItemsResult;
   try {
     page = await listItems(store, {
-      organizationId,
-      ...(search === undefined ? {} : { search }),
-      ...(itemType === undefined ? {} : { itemType }),
+      ...baseFilters,
       ...(limit === undefined ? {} : { limit }),
       ...(offset === undefined ? {} : { offset }),
     });
   } catch {
     // A malformed page in the URL falls back to the default first page.
-    page = await listItems(store, {
-      organizationId,
-      ...(search === undefined ? {} : { search }),
-      ...(itemType === undefined ? {} : { itemType }),
-    });
+    page = await listItems(store, baseFilters);
   }
+
+  // `DEC-150` tab counts: the same base filters, one headcount per purpose.
+  const purposeTotals = await Promise.all(
+    (ITEM_PURPOSE as readonly string[]).map(async (value) => {
+      const countPage = await listItems(store, { ...baseFilters, purpose: value, limit: 1 });
+      return countPage.total;
+    }),
+  );
+  const forSaleCount = purposeTotals[0] ?? 0;
+  const forUseCount = purposeTotals[1] ?? 0;
+
+  const purposeLabel = (value: string): string => (value === "for_sale" ? "For sale" : "For use");
 
   const rows: ItemTableRow[] = page.items.map((item) => ({
     id: item.id,
@@ -153,12 +172,26 @@ export default async function ProductsPage({
     sku: item.sku,
     name: item.name,
     typeLabel: humanize(item.itemType),
+    purposeLabel: purposeLabel(item.purpose),
     baseUnitCode: item.baseUnitCode,
     policyLabel: humanize(item.inventoryPolicy),
     lotTracked: item.lotTracked,
     currentCost: item.currentCost === null ? null : formatMoneyAmount(item.currentCost),
     activeTo: item.activeTo,
   }));
+
+  /** A tab href keeps the current filters, resets paging and sets/clears purpose. */
+  const tabHref = (value: string | undefined): string => {
+    const next = new URLSearchParams(params);
+    next.delete("offset");
+    if (value === undefined) {
+      next.delete("purpose");
+    } else {
+      next.set("purpose", value);
+    }
+    const query = next.toString();
+    return query.length === 0 ? "/products" : `/products?${query}`;
+  };
 
   const firstOnPage = page.total === 0 ? 0 : page.offset + 1;
   const lastOnPage = page.offset + page.items.length;
@@ -179,10 +212,37 @@ export default async function ProductsPage({
       }}
     >
       <PageHeader
-        title="Items"
+        title="Stock items"
         scope="Aquarela Business Control"
-        description="The things we stock and cost — ingredients, packaging and finished goods — with their supplier packs, base units and current cost. Select an item for its conversions and stock."
-        actions={<NewItemModal itemTypes={ITEM_TYPE} inventoryPolicies={INVENTORY_POLICY} />}
+        description="The things we stock and cost. Each item is either for sale (a sellable is fulfilled from it) or for use (an input consumed by production and operations) — with its supplier packs, base unit and current cost."
+        actions={
+          <NewItemModal
+            itemTypes={ITEM_TYPE}
+            inventoryPolicies={INVENTORY_POLICY}
+            itemPurposes={ITEM_PURPOSE}
+          />
+        }
+      />
+
+      <Tabs
+        ariaLabel="Filter items by purpose"
+        items={[
+          {
+            label: `All (${forSaleCount + forUseCount})`,
+            href: tabHref(undefined),
+            active: purpose === undefined,
+          },
+          {
+            label: `For sale (${forSaleCount})`,
+            href: tabHref("for_sale"),
+            active: purpose === "for_sale",
+          },
+          {
+            label: `For use (${forUseCount})`,
+            href: tabHref("for_use"),
+            active: purpose === "for_use",
+          },
+        ]}
       />
 
       <p style={{ margin: 0, fontSize: typography.fontSize.sm, color: color.text.muted }}>

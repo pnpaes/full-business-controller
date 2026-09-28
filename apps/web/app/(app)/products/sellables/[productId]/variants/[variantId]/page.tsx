@@ -127,7 +127,7 @@ export default async function VariantPage({
             { term: "Variant code", description: detail.variant.code },
             { term: "SKU", description: detail.variant.sku },
             {
-              term: "Finished good",
+              term: "Stocked from",
               description:
                 detail.variant.finishedGoodItemId === null
                   ? "Made to order (no stocked item)"

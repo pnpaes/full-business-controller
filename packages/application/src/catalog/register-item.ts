@@ -1,6 +1,18 @@
 import { DomainError } from "@aquarela/domain";
+import { ITEM_PURPOSE } from "@aquarela/persistence";
 
 import type { MasterDataStore, MasterItem } from "./types";
+
+const ITEM_PURPOSES: readonly string[] = ITEM_PURPOSE;
+
+/**
+ * `DEC-150`: the purpose a new item gets when the caller supplies none —
+ * `finished_good` is a stocked item a sellable is fulfilled from, everything
+ * else is an operational input.
+ */
+export function deriveItemPurpose(itemType: string): string {
+  return itemType === "finished_good" ? "for_sale" : "for_use";
+}
 
 export interface RegisterItemInput {
   readonly organizationId: string;
@@ -8,6 +20,8 @@ export interface RegisterItemInput {
   readonly sku: string;
   readonly name: string;
   readonly itemType: string;
+  /** `DEC-150`: derived from `itemType` when omitted; an explicit value wins. */
+  readonly purpose?: string;
   readonly baseUnitId: string;
   /** Defaults to `stocked`. */
   readonly inventoryPolicy?: string;
@@ -48,6 +62,11 @@ export async function registerItem(
     throw new DomainError("item name must not be empty");
   }
 
+  const purpose = input.purpose ?? deriveItemPurpose(input.itemType);
+  if (!ITEM_PURPOSES.includes(purpose)) {
+    throw new DomainError(`purpose must be one of ${ITEM_PURPOSES.join(", ")}`);
+  }
+
   return store.withTransaction(async (tx) => {
     const baseUnit = await tx.findUnit(input.baseUnitId);
     if (baseUnit === undefined) {
@@ -69,6 +88,7 @@ export async function registerItem(
       sku,
       name,
       itemType: input.itemType,
+      purpose,
       baseUnitId: input.baseUnitId,
       inventoryPolicy: input.inventoryPolicy ?? "stocked",
       lotTracked: input.lotTracked ?? false,

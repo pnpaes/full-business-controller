@@ -23,6 +23,7 @@ const ITEM: CatalogItemRecord = {
   sku: "BEANS-1KG",
   name: "Espresso Beans",
   itemType: "ingredient",
+  purpose: "for_use",
   baseUnitId: "unit-1",
   baseUnitCode: "g",
   inventoryPolicy: "stocked",
@@ -66,14 +67,24 @@ describe("parseItemsQuery", () => {
     });
   });
 
-  it("reads search, itemType, limit and offset", () => {
+  it("reads search, itemType, purpose, limit and offset", () => {
     const parsed = parseItemsQuery(
-      new URLSearchParams({ search: " beans ", itemType: "ingredient", limit: "10", offset: "20" }),
+      new URLSearchParams({
+        search: " beans ",
+        itemType: "ingredient",
+        purpose: "for_use",
+        limit: "10",
+        offset: "20",
+      }),
     );
     expect(parsed).toEqual({
       ok: true,
-      query: { search: "beans", itemType: "ingredient", limit: 10, offset: 20 },
+      query: { search: "beans", itemType: "ingredient", purpose: "for_use", limit: 10, offset: 20 },
     });
+  });
+
+  it("rejects an unknown purpose", () => {
+    expect(parseItemsQuery(new URLSearchParams({ purpose: "for_fun" }))).toEqual({ ok: false });
   });
 
   it("treats blank filters as absent", () => {
@@ -99,6 +110,7 @@ describe("response mapping", () => {
       sku: "BEANS-1KG",
       name: "Espresso Beans",
       itemType: "ingredient",
+      purpose: "for_use",
       baseUnitId: "unit-1",
       baseUnitCode: "g",
       inventoryPolicy: "stocked",
@@ -129,7 +141,12 @@ describe("response mapping", () => {
   });
 
   it("composes the detail response", () => {
-    const detail: ItemDetail = { item: ITEM, supplierItems: [PACK], conversions: [CONVERSION] };
+    const detail: ItemDetail = {
+      item: ITEM,
+      supplierItems: [PACK],
+      conversions: [CONVERSION],
+      variantBackings: [],
+    };
     const response = toItemDetailResponse(detail);
     expect(response.item.code).toBe("BEANS");
     expect(response.supplierItems).toHaveLength(1);

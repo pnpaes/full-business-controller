@@ -16,6 +16,7 @@ const ITEM: CatalogItemRecord = {
   sku: "BEANS-1KG",
   name: "Espresso Beans",
   itemType: "ingredient",
+  purpose: "for_use",
   baseUnitId: "g",
   baseUnitCode: "g",
   inventoryPolicy: "stocked",
@@ -65,6 +66,27 @@ describe("getItem", () => {
     expect(detail.item).toEqual(ITEM);
     expect(detail.supplierItems).toEqual([PACK]);
     expect(detail.conversions).toEqual([CONVERSION]);
+    expect(detail.variantBackings).toEqual([]);
+  });
+
+  it("returns the variants that back a for-sale item ('Backs')", async () => {
+    const store = buildStore();
+    store.addVariantBacking(ORG, "item-1", {
+      id: "variant-1",
+      productId: "product-1",
+      code: "SMALL",
+      sku: "BEANS-S",
+      name: "Small",
+    });
+    store.addVariantBacking("org-2", "item-1", {
+      id: "variant-foreign",
+      productId: "product-2",
+      code: "FOREIGN",
+      sku: "FOREIGN-S",
+      name: "Foreign",
+    });
+    const detail = await getItem(store, { organizationId: ORG, itemId: "item-1", asOf: AT });
+    expect(detail.variantBackings.map((row) => row.id)).toEqual(["variant-1"]);
   });
 
   it("returns an empty pack/conversion list when the item has none", async () => {

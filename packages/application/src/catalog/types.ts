@@ -37,6 +37,8 @@ export interface NewMasterItem {
   readonly sku: string;
   readonly name: string;
   readonly itemType: string;
+  /** `DEC-150`: derived from `itemType` by `registerItem` unless supplied. */
+  readonly purpose: string;
   readonly baseUnitId: string;
   readonly inventoryPolicy: string;
   readonly lotTracked: boolean;
@@ -56,6 +58,8 @@ export interface CatalogItemRecord {
   readonly sku: string;
   readonly name: string;
   readonly itemType: string;
+  /** `DEC-150`: `for_sale` or `for_use`. */
+  readonly purpose: string;
   readonly baseUnitId: string;
   readonly baseUnitCode: string;
   readonly inventoryPolicy: string;
@@ -72,6 +76,8 @@ export interface ListItemsQuery {
   readonly organizationId: string;
   readonly search?: string;
   readonly itemType?: string;
+  /** `DEC-150`: restrict to one purpose (`for_sale`/`for_use`). */
+  readonly purpose?: string;
   readonly limit: number;
   readonly offset: number;
 }
@@ -79,6 +85,19 @@ export interface ListItemsQuery {
 export interface CatalogItemPage {
   readonly items: readonly CatalogItemRecord[];
   readonly total: number;
+}
+
+/**
+ * `DEC-150`: one product variant that references an item as its finished good.
+ * The item detail's "Backs" read — the reverse of
+ * `product_variant.finished_good_item_id`.
+ */
+export interface VariantBackingRecord {
+  readonly id: string;
+  readonly productId: string;
+  readonly code: string;
+  readonly sku: string;
+  readonly name: string;
 }
 
 /** A supplier pack enriched with its supplier and pack-unit codes for display. */
@@ -124,6 +143,8 @@ export interface NewMasterSupplier {
 export interface UpdateItemRecord {
   readonly itemId: string;
   readonly name?: string;
+  /** `DEC-150`: editable afterwards; `for_sale`/`for_use`. */
+  readonly purpose?: string;
   readonly inventoryPolicy?: string;
   readonly lotTracked?: boolean;
 }
@@ -214,6 +235,11 @@ export interface MasterDataStore {
   listItems(query: ListItemsQuery): Promise<CatalogItemPage>;
   /** By id; organization-agnostic, so the caller must scope by `organizationId`. */
   findCatalogItem(itemId: string): Promise<CatalogItemRecord | undefined>;
+  /** `DEC-150`: variants that reference this item as their finished good (item detail's "Backs"). */
+  listVariantsForFinishedGoodItem(
+    organizationId: string,
+    itemId: string,
+  ): Promise<readonly VariantBackingRecord[]>;
   /** The supplier packs registered for one item, with supplier/pack-unit codes. */
   listSupplierItemsForItem(
     organizationId: string,

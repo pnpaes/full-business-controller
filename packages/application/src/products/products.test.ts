@@ -31,6 +31,7 @@ function seeded(): FakeProductStore {
   store.addLocation({ id: "loc-1", organizationId: ORG, code: "OSL", name: "Oslo" });
   store.addLocation({ id: "loc-foreign", organizationId: OTHER_ORG, code: "BER", name: "Bergen" });
   store.addItem({ id: "item-1", organizationId: ORG });
+  store.addItem({ id: "item-for-use", organizationId: ORG, purpose: "for_use" });
   store.addItem({ id: "item-foreign", organizationId: OTHER_ORG });
   store.addRecipeVersion({
     id: "rv-approved",
@@ -200,6 +201,23 @@ describe("registerProductVariant", () => {
       finishedGoodItemId: "item-1",
     });
     expect(store.variants.get(result.productVariantId)?.finishedGoodItemId).toBe("item-1");
+  });
+
+  it("rejects a for-use item as the finished good (DEC-150)", async () => {
+    const store = seeded();
+    await assertDomainError(
+      () =>
+        registerProductVariant(store, {
+          organizationId: ORG,
+          actorId: ACTOR,
+          productId: "p-base",
+          code: "USE",
+          sku: "USE-1",
+          name: "Use",
+          finishedGoodItemId: "item-for-use",
+        }),
+      /must be for sale/,
+    );
   });
 });
 
@@ -515,6 +533,17 @@ describe("reads", () => {
           finishedGoodItemId: "item-foreign",
         }),
       /finished-good item not found in this organization/,
+    );
+
+    await assertDomainError(
+      () =>
+        updateProductVariant(store, {
+          organizationId: ORG,
+          actorId: ACTOR,
+          productVariantId,
+          finishedGoodItemId: "item-for-use",
+        }),
+      /must be for sale/,
     );
   });
 });

@@ -10,8 +10,15 @@ const FALLBACK_ERROR = "Could not register the item. Please try again.";
 export interface RegisterItemFormProps {
   readonly itemTypes: readonly string[];
   readonly inventoryPolicies: readonly string[];
+  /** `DEC-150`: `for_sale` / `for_use`. */
+  readonly itemPurposes: readonly string[];
   /** Called after a successful registration, e.g. to close the modal. */
   readonly onSuccess?: () => void;
+}
+
+/** `DEC-150`: the derived purpose default — only `finished_good` is for sale. */
+function derivePurpose(itemType: string): string {
+  return itemType === "finished_good" ? "for_sale" : "for_use";
 }
 
 interface ErrorBody {
@@ -38,13 +45,16 @@ function humanize(value: string): string {
 export function RegisterItemForm({
   itemTypes,
   inventoryPolicies,
+  itemPurposes,
   onSuccess,
 }: RegisterItemFormProps) {
   const router = useRouter();
+  const initialItemType = itemTypes[0] ?? "ingredient";
   const [code, setCode] = useState("");
   const [sku, setSku] = useState("");
   const [name, setName] = useState("");
-  const [itemType, setItemType] = useState(itemTypes[0] ?? "ingredient");
+  const [itemType, setItemType] = useState(initialItemType);
+  const [purpose, setPurpose] = useState(derivePurpose(initialItemType));
   const [baseUnitCode, setBaseUnitCode] = useState("");
   const [inventoryPolicy, setInventoryPolicy] = useState(inventoryPolicies[0] ?? "stocked");
   const [lotTracked, setLotTracked] = useState(false);
@@ -67,6 +77,7 @@ export function RegisterItemForm({
           sku,
           name,
           itemType,
+          purpose,
           baseUnitCode,
           inventoryPolicy,
           lotTracked,
@@ -130,8 +141,21 @@ export function RegisterItemForm({
         label="Item type"
         required
         value={itemType}
-        onChange={(event) => setItemType(event.target.value)}
+        onChange={(event) => {
+          const next = event.target.value;
+          setItemType(next);
+          setPurpose(derivePurpose(next));
+        }}
         options={itemTypes.map((value) => ({ value, label: humanize(value) }))}
+      />
+      <SelectField
+        name="purpose"
+        label="Purpose"
+        required
+        value={purpose}
+        onChange={(event) => setPurpose(event.target.value)}
+        options={itemPurposes.map((value) => ({ value, label: humanize(value) }))}
+        help="For sale = a sellable is fulfilled from it; for use = consumed by production or operations. Defaults from the item type; change it if needed."
       />
       <TextField
         name="baseUnitCode"

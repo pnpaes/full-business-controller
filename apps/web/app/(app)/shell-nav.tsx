@@ -110,7 +110,7 @@ const AREAS: readonly Area[] = [
   },
   {
     href: "/products",
-    label: "Items",
+    label: "Stock",
     icon: (
       <Glyph>
         <path d="M3 7l9-4 9 4-9 4-9-4z" />

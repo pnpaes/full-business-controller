@@ -25,6 +25,8 @@ export interface ItemTableRow {
   readonly name: string;
   /** Humanised `item_type`. */
   readonly typeLabel: string;
+  /** `DEC-150`: humanised purpose — "For sale" or "For use". */
+  readonly purposeLabel: string;
   readonly baseUnitCode: string;
   /** Humanised `inventory_policy`. */
   readonly policyLabel: string;
@@ -59,14 +61,15 @@ export function ItemsTable({ rows, currency }: ItemsTableProps) {
 
   return (
     <Table
-      caption="Items with their base unit, inventory policy, current cost, lot tracking and active range. Select a code to open the item."
-      columnCount={8}
+      caption="Items with their purpose, base unit, inventory policy, current cost, lot tracking and active range. Select a code to open the item."
+      columnCount={9}
     >
       <thead>
         <tr>
           <Th>Code</Th>
           <Th>Name</Th>
           <Th>Type</Th>
+          <Th>Purpose</Th>
           <Th>Base unit</Th>
           <Th>Policy</Th>
           <Th style={numCell}>{moneyHeader(currency)}</Th>
@@ -95,6 +98,13 @@ export function ItemsTable({ rows, currency }: ItemsTableProps) {
             </Td>
             <Td>{row.name}</Td>
             <Td>{row.typeLabel}</Td>
+            <Td>
+              {row.purposeLabel === "For sale" ? (
+                <StatusPill tone="success">For sale</StatusPill>
+              ) : (
+                <StatusPill tone="info">For use</StatusPill>
+              )}
+            </Td>
             <Td>
               <Badge>{row.baseUnitCode}</Badge>
             </Td>

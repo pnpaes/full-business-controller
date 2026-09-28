@@ -5,6 +5,7 @@ import type {
   ConversionEdge,
   MasterDataStore,
   SupplierItemDetail,
+  VariantBackingRecord,
 } from "./types";
 
 export interface GetItemInput {
@@ -18,6 +19,8 @@ export interface ItemDetail {
   readonly item: CatalogItemRecord;
   readonly supplierItems: readonly SupplierItemDetail[];
   readonly conversions: readonly ConversionEdge[];
+  /** `DEC-150`: sellable variants fulfilled from this item (empty for a for-use item). */
+  readonly variantBackings: readonly VariantBackingRecord[];
 }
 
 /**
@@ -34,10 +37,11 @@ export async function getItem(store: MasterDataStore, input: GetItemInput): Prom
   }
 
   const asOf = input.asOf ?? new Date();
-  const [supplierItems, conversions] = await Promise.all([
+  const [supplierItems, conversions, variantBackings] = await Promise.all([
     store.listSupplierItemsForItem(input.organizationId, input.itemId),
     store.listEffectiveConversions(input.organizationId, asOf, input.itemId),
+    store.listVariantsForFinishedGoodItem(input.organizationId, input.itemId),
   ]);
 
-  return { item, supplierItems, conversions };
+  return { item, supplierItems, conversions, variantBackings };
 }

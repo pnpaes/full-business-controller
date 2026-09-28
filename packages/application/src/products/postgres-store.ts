@@ -242,7 +242,9 @@ export function createPostgresProductStore(db: Database): ProductStore {
     },
     findItemScope: async (itemId) => {
       const row = await repo.findItemById(db, itemId);
-      return row === undefined ? undefined : { id: row.id, organizationId: row.organizationId };
+      return row === undefined
+        ? undefined
+        : { id: row.id, organizationId: row.organizationId, purpose: row.purpose };
     },
     findLocationScope: async (locationId) => {
       const row = await repo.findLocationById(db, locationId);
