@@ -76,13 +76,18 @@ implementation waves, one area at a time, browser-verified before/after.
 9. **No route-level error boundaries.** There is no `error.tsx` / `not-found.tsx` /
    `loading.tsx` anywhere in the app, so a raw `DomainError` surfaces (seen on a
    variant route).
-10. **Shell bug:** the sidebar footer overlaps the bottom nav (`Jobs` sits under
-    the `aquarela.local` block) on every screen.
+10. ~~**Shell bug:** the sidebar footer overlaps the bottom nav.~~ **Corrected
+    2026-09-28 — not an app bug.** Reproduced at the screenshot's own viewport:
+    the collision is the **Next.js dev-tools badge** (`N` / `localhost:3000`)
+    painted over the footer, a dev-only overlay. The sidebar reserves its footer
+    correctly; the layout was still hardened (`min-height: 0` nav, non-shrinking
+    footer) for engine independence. The nav label `Products` → **`Items`** was
+    changed (the register is the inventory identity).
 11. **Internal references leak into user copy** on the production screens
     (`PROD-003`, "open point (e)/(f)").
 
-Items **7, 9, 10, 11** are defects to fix **before** the redesign; 10 and 11 are
-trivial and 9 is small but high-value.
+Items **7, 9, 11** are defects to fix **before** the redesign; 11 is trivial and 9
+is small but high-value. (10 was withdrawn — see above.)
 
 ## Wave 0 — what the audits converge on
 

@@ -76,10 +76,12 @@ Every `page.tsx` under `apps/web/app/(app)`. Reviews are written per area to
 | `/production` | `production/page.tsx` | Production overview |
 | `/production/batches/[batchId]` | `production/batches/[batchId]/page.tsx` | Batch detail (complete) |
 | `/production/plans` | `production/plans/page.tsx` | Production plans |
-| `/products` | `products/page.tsx` | Product/item register |
+| `/products` | `products/page.tsx` | **Items** register — the things we stock and cost (inventory identity) |
 | `/products/[itemId]` | `products/[itemId]/page.tsx` | Item detail (recipes, variants) |
-| `/products/sellables` | `products/sellables/page.tsx` | Sellables |
-| `/products/sellables/[variantId]` | `products/sellables/[variantId]/page.tsx` | Sellable variant detail |
+| `/products/sellables` | `products/sellables/page.tsx` | **Sellable products** list, each with its variants count |
+| `/products/sellables/[productId]` | `products/sellables/[productId]/page.tsx` | Product view — its data + its variants + "New variant" |
+| `/products/sellables/[productId]/variants/[variantId]` | `…/variants/[variantId]/page.tsx` | Variant edit surface (identity, recipe assignment, add-on applicability) |
+
 | `/purchasing` | `purchasing/page.tsx` | Purchase orders / receiving overview |
 | `/purchasing/new` | `purchasing/new/page.tsx` | New purchase order |
 | `/purchasing/receipts/[id]` | `purchasing/receipts/[id]/page.tsx` | Goods receipt detail |

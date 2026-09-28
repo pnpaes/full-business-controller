@@ -118,6 +118,23 @@ session):**
   publishing (`publish_run`, idempotent publish jobs, confirmation read-back),
   behind the per-source write terms under `DEC-015`.
 
+**UX programme status (2026-09-28).** The 71-screen audit is complete (see
+`docs/ux/reviews/README.md`). The owner has **triaged the `products` area and it
+is delivered** (`2d707c1`): the Items register is retitled and modalised, and
+sellables are a Products → Variants hierarchy (product view with its variants,
+variant edit surface as a nested route). Two hard rules are now in
+`docs/ux/README.md` ("Creation and hierarchy"): creation/editing is always a
+button + Modal (never an inline/`<details>` form on a register), and children are
+created inside their parent (a parent list shows a child count). **The remaining
+areas await the owner's triage** before Wave 0 (InfoTip, Collapsible, plain
+EmptyState, MetricHero, money formatter, Modal/toast/FileField patterns, token
+refresh) and the area implementation waves. Two defects from the audit remain
+unfixed: the production screens leak internal references into user copy, and the
+app has no `error.tsx`/`not-found.tsx`/`loading.tsx` anywhere. A domain-vocabulary
+question is open for decision: naming the split inside stock items between those
+that back a sellable and those that are inputs/consumables (proposed:
+`item_role`/`purpose` — see the session reply).
+
 **Next task: M2 — the deployment rehearsal on a single VM (owner-gated on the
 SendGrid and LLM keys only).**
 M1 is delivered: CI now runs a migration-chain rehearsal (up → all 76 downs →
