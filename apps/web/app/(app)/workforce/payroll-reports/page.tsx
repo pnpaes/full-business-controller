@@ -1,12 +1,13 @@
 import { createPostgresSchedulingStore, listPayrollReports } from "@aquarela/application";
 import {
-  Alert,
   DataTable,
   type DataTableColumn,
   EmptyState,
+  InfoTip,
   PageHeader,
   SectionCard,
   StatusPill,
+  formatNumber,
   spacing,
 } from "@aquarela/ui";
 import { redirect } from "next/navigation";
@@ -28,7 +29,7 @@ import {
   payrollStatusView,
   todayUtcDay,
 } from "../workforce-labels";
-import { GeneratePayrollReportForm } from "./generate-payroll-report-form";
+import { GeneratePayrollReportModal } from "./generate-payroll-report-form";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Payroll reports — Aquarela Business Control" };
@@ -49,9 +50,8 @@ const contentColumn = {
 const tableWrap = { overflowX: "auto", minWidth: 0 } as const;
 
 /**
- * The payroll-input report register (`WF-005`, `DEC-104`): the list, the
- * generate form and the DEC-104 projection caveat, linking to each report's
- * detail.
+ * The payroll-input report register (`WF-005`, `DEC-104`): the list and the
+ * header action that opens the generate modal, linking to each report's detail.
  *
  * Reads the same application service and row shape as
  * `GET /api/v1/workforce/payroll-reports`. Access is the `Payroll-input
@@ -76,9 +76,8 @@ export default async function PayrollReportsPage() {
         />
         <EmptyState title="Not available for your role">
           Payroll-input reports are limited to owner, general manager, finance and admin. The
-          location manager is deliberately excluded (matrix None, DEC-104) even though the
-          worked-hours report grants it, and analyst's aggregate grant is not implemented — access
-          fails closed.
+          location manager is deliberately excluded (matrix None) even though the worked-hours
+          report grants it, and analyst's aggregate grant is not implemented — access fails closed.
         </EmptyState>
       </div>
     );
@@ -119,61 +118,64 @@ export default async function PayrollReportsPage() {
       <PageHeader
         title="Payroll reports"
         scope="Workforce"
-        description="The frozen monthly payroll-input report for the accountant: per-employee hours, base rate and expected pay (WF-005, DEC-104)."
+        description="The frozen monthly payroll-input report for the accountant: per-employee hours, base rate and expected pay."
+        actions={
+          canWrite ? (
+            <GeneratePayrollReportModal
+              defaultPeriodStart={monthStartUtcDay(today)}
+              defaultPeriodEnd={monthEndUtcDay(today)}
+            />
+          ) : undefined
+        }
       />
-
-      <Alert tone="warning" title="A pre-month-end report under-counts (DEC-104)">
-        The &ldquo;remaining planned shifts run as scheduled&rdquo; assumption is{" "}
-        <strong>not implemented</strong>: only shifts in state assigned or completed count, so a
-        report generated before month-end under-counts the period. Generate after month-end, or
-        regenerate (a regeneration supersedes the prior live report) once the remaining shifts have
-        been completed.
-      </Alert>
 
       <SectionCard
         title="Reports"
-        meta={`${reports.length} ${reports.length === 1 ? "report" : "reports"} · newest period first`}
+        meta={
+          <>
+            {formatNumber(String(reports.length), { decimals: 0 })}{" "}
+            {reports.length === 1 ? "report" : "reports"} · newest period first
+            <InfoTip
+              content="Only shifts in state assigned or completed count, so a report generated before month-end under-counts the period. Generate after month-end, or regenerate once the remaining shifts are completed."
+              label="Why a pre-month-end report under-counts"
+            />
+          </>
+        }
       >
-        <div style={tableWrap}>
-          <DataTable
-            caption="Payroll-input reports by period with status, generation facts and export state"
-            columns={columns}
-            rowHref={(row) => `/workforce/payroll-reports/${String(row.id)}`}
-            rows={reports.map((report) => ({
-              id: report.id,
-              period: `${report.periodStart} → ${report.periodEnd}`,
-              status: (
-                <StatusPill tone={payrollStatusView(report.status).tone}>
-                  {payrollStatusView(report.status).label}
-                </StatusPill>
-              ),
-              generated: formatInstant(report.generatedAt),
-              generatedBy:
-                report.generatedBy === null
-                  ? "—"
-                  : (actorLabelById.get(report.generatedBy) ?? report.generatedBy),
-              exportFile:
-                report.exportFileId === null
-                  ? "Not available (metadata only)"
-                  : report.exportFileId,
-            }))}
-            emptyMessage="No payroll reports yet. Generate one for a period below."
-          />
-        </div>
-      </SectionCard>
-
-      {canWrite ? (
-        <GeneratePayrollReportForm
-          defaultPeriodStart={monthStartUtcDay(today)}
-          defaultPeriodEnd={monthEndUtcDay(today)}
-        />
-      ) : (
-        <SectionCard title="Generate a report" meta="write roles only">
-          <EmptyState title="Generating is not available for your role">
-            Generating and exporting need owner, general manager, finance or admin (DEC-104).
+        {reports.length === 0 ? (
+          <EmptyState variant="plain" title="No payroll reports yet">
+            {canWrite
+              ? "Generate one for a month from the button above. A report freezes each employee's hours × base hourly rate for the period."
+              : "No report has been generated for a period yet."}
           </EmptyState>
-        </SectionCard>
-      )}
+        ) : (
+          <div style={tableWrap}>
+            <DataTable
+              caption="Payroll-input reports by period with status, generation facts and export state"
+              columns={columns}
+              rowHref={(row) => `/workforce/payroll-reports/${String(row.id)}`}
+              rows={reports.map((report) => ({
+                id: report.id,
+                period: `${report.periodStart} → ${report.periodEnd}`,
+                status: (
+                  <StatusPill tone={payrollStatusView(report.status).tone}>
+                    {payrollStatusView(report.status).label}
+                  </StatusPill>
+                ),
+                generated: formatInstant(report.generatedAt),
+                generatedBy:
+                  report.generatedBy === null
+                    ? "—"
+                    : (actorLabelById.get(report.generatedBy) ?? report.generatedBy),
+                exportFile:
+                  report.exportFileId === null
+                    ? "Not available (metadata only)"
+                    : report.exportFileId,
+              }))}
+            />
+          </div>
+        )}
+      </SectionCard>
     </div>
   );
 }

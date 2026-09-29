@@ -4,11 +4,16 @@ import {
   DataTable,
   type DataTableColumn,
   EmptyState,
-  KpiCard,
+  InfoTip,
+  MetricBand,
+  MetricHero,
+  MetricSecondary,
   PageHeader,
   SectionCard,
   StatusPill,
   color,
+  formatMoney,
+  formatNumber,
   spacing,
   typography,
 } from "@aquarela/ui";
@@ -56,11 +61,13 @@ const linkStyle = {
  * (per-employee hours, base rate, expected pay), the generation facts and the
  * mark-exported action for a `generated` report.
  *
- * The DEC-104 projection caveat is stated on the page. The export consumer is
- * wired to the `DEC-132` file-storage port (`DEC-133`): marking the report
- * exported uploads the CSV/PDF artefact, and a link downloads it. Access is the
- * `Payroll-input reports` matrix row (owner, general_manager, finance, admin);
- * anything else fails closed.
+ * The headline is one ranked `MetricBand` (total expected pay hero, hours and
+ * lines secondary) rather than a wall of equal cards. The DEC-104 projection
+ * caveat, the supersede rule and the HALF_UP money basis are `InfoTip`s. The
+ * export consumer is wired to the `DEC-132` file-storage port (`DEC-133`):
+ * marking the report exported uploads the CSV/PDF artefact, and a link
+ * downloads it. Access is the `Payroll-input reports` matrix row (owner,
+ * general_manager, finance, admin); anything else fails closed.
  */
 export default async function PayrollReportDetailPage({
   params,
@@ -78,7 +85,7 @@ export default async function PayrollReportDetailPage({
       <div style={contentColumn}>
         <PageHeader title="Payroll report" scope="Workforce" description="One frozen report." />
         <EmptyState title="Not available for your role">
-          Payroll-input reports are limited to owner, general manager, finance and admin (DEC-104).
+          Payroll-input reports are limited to owner, general manager, finance and admin.
         </EmptyState>
       </div>
     );
@@ -98,13 +105,14 @@ export default async function PayrollReportDetailPage({
   const snapshot = parsePayrollSnapshot(report.snapshot);
   const status = payrollStatusView(report.status);
   const canWrite = isWorkforceAuthorized(access, PAYROLL_REPORT_WRITE_ROLES);
+  const currency = snapshot?.currency ?? "NOK";
 
   const columns: readonly DataTableColumn[] = [
     { key: "employee", header: "Employee" },
     { key: "role", header: "Role" },
-    { key: "hours", header: "Hours" },
-    { key: "rate", header: `Base rate (${snapshot?.currency ?? "NOK"}/h)` },
-    { key: "expectedPay", header: "Expected pay" },
+    { key: "hours", header: "Hours", align: "right" },
+    { key: "rate", header: `Base rate (${currency}/h)`, align: "right" },
+    { key: "expectedPay", header: "Expected pay", align: "right" },
   ];
 
   return (
@@ -112,7 +120,7 @@ export default async function PayrollReportDetailPage({
       <PageHeader
         title={`Payroll report ${report.periodStart} → ${report.periodEnd}`}
         scope="Workforce · Payroll reports"
-        description="The frozen monthly payroll-input report: per-employee hours × base hourly rate = expected pay (WF-005, DEC-104)."
+        description="The frozen monthly payroll-input report: per-employee hours × base hourly rate = expected pay."
       />
 
       <div style={{ display: "flex", gap: spacing[3], alignItems: "center", flexWrap: "wrap" }}>
@@ -120,48 +128,68 @@ export default async function PayrollReportDetailPage({
         <span style={{ fontSize: typography.fontSize.sm, color: color.ink.secondary }}>
           Generated {formatInstant(report.generatedAt)}
         </span>
-        <span style={{ fontSize: typography.fontSize.sm, color: color.ink.tertiary }}>
+        <span
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            fontSize: typography.fontSize.sm,
+            color: color.ink.tertiary,
+          }}
+        >
           Snapshot schema v{snapshot?.schemaVersion ?? "?"}
+          <InfoTip
+            content="The report is a frozen JSON snapshot at a versioned schema. The screen reads only the version it understands and shows an explicit error rather than inventing figures for anything newer."
+            label="About the snapshot schema"
+          />
         </span>
       </div>
 
-      <Alert tone="warning" title="A pre-month-end report under-counts (DEC-104)">
-        Only shifts in state assigned or completed count — the &ldquo;remaining planned shifts run
-        as scheduled&rdquo; assumption is not implemented — so a report generated before month-end
-        under-counts. Regenerate after the remaining shifts complete; the regeneration supersedes
-        this report (this row is retained as superseded, never deleted).
-      </Alert>
+      <div style={{ display: "flex", alignItems: "center", gap: spacing[1] }}>
+        <span style={{ fontSize: typography.fontSize.sm, color: color.ink.secondary }}>
+          A pre-month-end run under-counts: only assigned or completed shifts count.
+        </span>
+        <InfoTip
+          content="Regenerating for the same period supersedes this report — this row is retained as superseded, never deleted. Generate after the remaining shifts complete."
+          label="About superseding this report"
+        />
+      </div>
 
       {snapshot === null ? (
         <Alert tone="danger" title="Snapshot unreadable">
-          The frozen snapshot does not match the DEC-104 shape this screen expects, so no figures
-          are shown rather than inventing numbers. The raw snapshot is preserved in the record.
+          The frozen snapshot does not match the shape this screen expects, so no figures are shown
+          rather than inventing numbers. The raw snapshot is preserved in the record.
         </Alert>
       ) : (
         <>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-              gap: spacing[4],
-            }}
-          >
-            <KpiCard
-              label="Total hours"
-              value={snapshot.totalHours}
-              meta={`${snapshot.periodStart} → ${snapshot.periodEnd} · ${snapshot.currency}`}
-            />
-            <KpiCard
-              label="Total expected pay"
-              value={`${snapshot.totalExpectedPay} ${snapshot.currency}`}
-              meta="Hours × base hourly rate, decimal only (HALF_UP at money scale)"
-            />
-            <KpiCard
-              label="Lines"
-              value={String(snapshot.lines.length)}
-              meta="One frozen line per employee, ordered by name"
-            />
-          </div>
+          <MetricBand
+            hero={
+              <MetricHero
+                label="Total expected pay"
+                value={formatMoney(snapshot.totalExpectedPay, { currency })}
+                meta={`${snapshot.periodStart} → ${snapshot.periodEnd} · ${currency} · frozen at generation`}
+                info={
+                  <InfoTip
+                    content="Hours × base hourly rate, decimal only and never floating point. Money is rounded HALF_UP to 2 decimals."
+                    label="How expected pay is calculated"
+                  />
+                }
+              />
+            }
+            metrics={[
+              <MetricSecondary
+                key="hours"
+                label="Total hours"
+                value={formatNumber(snapshot.totalHours)}
+                meta="assigned or completed shifts only"
+              />,
+              <MetricSecondary
+                key="lines"
+                label="Lines"
+                value={formatNumber(String(snapshot.lines.length), { decimals: 0 })}
+                meta="one frozen line per employee, ordered by name"
+              />,
+            ]}
+          />
 
           <SectionCard title="Snapshot lines" meta="frozen at generation time">
             <div style={tableWrap}>
@@ -172,9 +200,9 @@ export default async function PayrollReportDetailPage({
                   id: line.employeeId,
                   employee: line.employeeName,
                   role: line.roleCode,
-                  hours: line.hours,
-                  rate: line.hourlyRate,
-                  expectedPay: line.expectedPay,
+                  hours: formatNumber(line.hours),
+                  rate: formatMoney(line.hourlyRate, { currency }),
+                  expectedPay: formatMoney(line.expectedPay, { currency }),
                 }))}
                 emptyMessage="The snapshot has no lines — no approved worked hours existed in the period."
               />
@@ -190,7 +218,7 @@ export default async function PayrollReportDetailPage({
       ) : null}
 
       {report.exportFileId !== null ? (
-        <SectionCard title="Export file" meta="stored privately (DEC-133)">
+        <SectionCard title="Export file" meta="stored privately">
           <a href={`/api/v1/workforce/payroll-reports/${report.id}/export/file`} style={linkStyle}>
             Download the exported file
           </a>

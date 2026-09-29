@@ -1,13 +1,13 @@
 import { EmptyState, StatusPill, Table, Td, Th, typography } from "@aquarela/ui";
 
-import { CloseRowActions } from "./close-actions";
 import { closeScopeLabel, closeStatusView } from "./close-labels";
 
 /**
- * Presentational close register for the `/close` screen (`DEC-119`). Server
- * component: no hooks, no state. The page owns the reads and maps each close into
- * a `CloseRegisterRow`; this file only renders and delegates the per-row actions
- * to the client `CloseRowActions`.
+ * Presentational, **read-only** close register for the `/close` screen
+ * (`DEC-119`). Server component: no hooks, no state. The page owns the reads and
+ * maps each close into a `CloseRegisterRow`; the irreversible lock/reopen
+ * actions live in the separate `CloseStateActions` section so they are not
+ * mixed into the register's routine reading surface.
  */
 
 export interface CloseRegisterRow {
@@ -29,15 +29,14 @@ const subLine = { opacity: 0.75, fontSize: typography.fontSize.xs } as const;
 export function CloseRegisterTable({ rows }: { readonly rows: readonly CloseRegisterRow[] }) {
   if (rows.length === 0) {
     return (
-      <EmptyState title="No closes yet">
+      <EmptyState variant="plain" title="No closes yet">
         A close appears once one is begun for a location day or the company month. Beginning
-        evaluates the DEC-107 prerequisites and freezes the snapshot; locking then freezes the
-        period (DEC-027).
+        evaluates the prerequisites and freezes the snapshot; locking then freezes the period.
       </EmptyState>
     );
   }
   return (
-    <Table caption="Period closes, newest period first." columnCount={6}>
+    <Table caption="Period closes, newest period first." columnCount={5}>
       <thead>
         <tr>
           <Th>Scope</Th>
@@ -45,7 +44,6 @@ export function CloseRegisterTable({ rows }: { readonly rows: readonly CloseRegi
           <Th>Status</Th>
           <Th>Locked</Th>
           <Th>Reopen reason</Th>
-          <Th>Actions</Th>
         </tr>
       </thead>
       <tbody>
@@ -74,9 +72,6 @@ export function CloseRegisterTable({ rows }: { readonly rows: readonly CloseRegi
                 )}
               </Td>
               <Td style={{ maxWidth: 260 }}>{row.reopenReason ?? "—"}</Td>
-              <Td>
-                <CloseRowActions closeId={row.id} canLock={row.canLock} canReopen={row.canReopen} />
-              </Td>
             </tr>
           );
         })}

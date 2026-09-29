@@ -3,6 +3,7 @@
 import {
   Alert,
   Button,
+  InfoTip,
   Panel,
   StatusPill,
   TextField,
@@ -286,12 +287,26 @@ export function MfaSecurityPanel({ mfaEnabled }: MfaSecurityPanelProps) {
       <Panel
         title="Two-factor authentication"
         headingLevel={2}
-        meta={<StatusPill tone="warning">Not enabled</StatusPill>}
+        meta={
+          <>
+            <StatusPill tone="warning">Not enabled</StatusPill>
+            <InfoTip
+              content="A time-based one-time code (TOTP) from an authenticator app, valid for about 30 seconds. The setup secret and recovery codes are shown once and never stored on this screen."
+              label="What TOTP is"
+            />
+          </>
+        }
       >
         {feedback}
         <Alert tone="info">
-          Two-factor authentication is required for owner, finance and admin roles (ADR-0003) and
-          recommended for everyone. You will need an authenticator app.
+          <span style={{ display: "inline-flex", alignItems: "center", flexWrap: "wrap", gap: 2 }}>
+            Two-factor authentication is required for owner, finance and admin roles, and
+            recommended for everyone. You will need an authenticator app.
+            <InfoTip
+              content="Two-factor authentication is a policy requirement for the owner, finance and admin roles, and recommended for every other role. It cannot be turned off while your role requires it."
+              label="Why two-factor authentication is required"
+            />
+          </span>
         </Alert>
         <div style={{ marginTop: spacing[4] }}>
           <Button type="button" loading={busy} disabled={busy} onClick={startEnrolment}>
@@ -307,7 +322,15 @@ export function MfaSecurityPanel({ mfaEnabled }: MfaSecurityPanelProps) {
       <Panel
         title="Two-factor authentication"
         headingLevel={2}
-        meta={<StatusPill tone="success">Enabled</StatusPill>}
+        meta={
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+            <StatusPill tone="success">Enabled</StatusPill>
+            <InfoTip
+              content="Recovery codes are the fallback if you lose your authenticator. Regenerating invalidates the previous set; each code works once."
+              label="About recovery codes and sessions"
+            />
+          </span>
+        }
       >
         {feedback}
         <form
@@ -337,7 +360,15 @@ export function MfaSecurityPanel({ mfaEnabled }: MfaSecurityPanelProps) {
       <Panel
         title="Disable two-factor authentication"
         headingLevel={2}
-        meta={<StatusPill tone="danger">Security downgrade</StatusPill>}
+        meta={
+          <>
+            <StatusPill tone="danger">Security downgrade</StatusPill>
+            <InfoTip
+              content="Disabling MFA revokes every session on every device, including this one, and deletes your recovery codes. If your role requires MFA you must enrol again."
+              label="What disabling MFA does"
+            />
+          </>
+        }
       >
         <Alert tone="warning">
           Disabling MFA signs you out of every device and removes your recovery codes. If your role

@@ -1,6 +1,15 @@
 "use client";
 
-import { Alert, Button, DateField, SectionCard, color, spacing } from "@aquarela/ui";
+import {
+  Button,
+  DateField,
+  FormModal,
+  InfoTip,
+  SuccessToast,
+  color,
+  spacing,
+  typography,
+} from "@aquarela/ui";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { FormEvent } from "react";
@@ -9,12 +18,13 @@ const FALLBACK_ERROR = "Could not generate the report. Please try again.";
 
 /**
  * Generates one monthly payroll-input report (`WF-005`, `DEC-104`) through
- * `POST /api/v1/workforce/payroll-reports`. Generation is on demand (the
- * scheduler is ADR-0004-gated) and a same-period regeneration supersedes the
- * prior live report server-side. The DEC-104 caveat is stated on the form:
- * only assigned/completed shifts count, so a pre-month-end run under-counts.
+ * `POST /api/v1/workforce/payroll-reports`. The register's header primary action
+ * opens this modal; generation is on demand (the scheduler is ADR-0004-gated)
+ * and a same-period regeneration supersedes the prior live report server-side.
+ * The DEC-104 projection caveat is stated as an InfoTip: only assigned/completed
+ * shifts count, so a pre-month-end run under-counts.
  */
-export function GeneratePayrollReportForm({
+export function GeneratePayrollReportModal({
   defaultPeriodStart,
   defaultPeriodEnd,
 }: {
@@ -22,16 +32,23 @@ export function GeneratePayrollReportForm({
   readonly defaultPeriodEnd: string;
 }) {
   const router = useRouter();
+  const [open, setOpen] = useState(false);
   const [periodStart, setPeriodStart] = useState(defaultPeriodStart);
   const [periodEnd, setPeriodEnd] = useState(defaultPeriodEnd);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  function close(): void {
+    if (!busy) {
+      setOpen(false);
+      setError(null);
+    }
+  }
+
   async function submit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     setError(null);
-    setSuccess(null);
     if (periodEnd.trim().length === 0 || periodEnd.trim() <= periodStart.trim()) {
       setError("The period end must be after the period start.");
       return;
@@ -52,6 +69,7 @@ export function GeneratePayrollReportForm({
         return;
       }
       setSuccess("Report generated. A regeneration for the same period supersedes this one.");
+      setOpen(false);
       router.refresh();
     } catch {
       setError(FALLBACK_ERROR);
@@ -61,14 +79,18 @@ export function GeneratePayrollReportForm({
   }
 
   return (
-    <SectionCard title="Generate a report" meta="on demand; regeneration supersedes">
-      <form
+    <>
+      <Button onClick={() => setOpen(true)}>Generate a report</Button>
+      <FormModal
+        title="Generate a payroll report"
+        description="Freezes each employee's hours × base hourly rate as expected pay (decimal only, NOK). Generate after month-end, or regenerate once the remaining shifts are completed."
+        open={open}
+        onClose={close}
         onSubmit={submit}
-        style={{ display: "flex", flexDirection: "column", gap: spacing[4], maxWidth: 640 }}
+        busy={busy}
+        submitLabel="Generate report"
+        error={error}
       >
-        {error !== null ? <Alert tone="danger">{error}</Alert> : null}
-        {success !== null ? <Alert tone="success">{success}</Alert> : null}
-
         <DateField
           name="periodStart"
           label="Period start"
@@ -85,17 +107,32 @@ export function GeneratePayrollReportForm({
           help="The whole end day is included (a UTC half-open instant window)."
         />
 
-        <div>
-          <Button type="submit" loading={busy} disabled={busy}>
-            Generate report
-          </Button>
-        </div>
-        <p style={{ margin: 0, color: color.ink.tertiary }}>
-          The report freezes per-employee hours × base hourly rate as expected pay (decimal only,
-          NOK). Generating again for the same period supersedes the prior live report — the prior
-          row is retained, never deleted.
+        <p
+          style={{
+            display: "flex",
+            alignItems: "flex-start",
+            gap: spacing[1],
+            margin: 0,
+            color: color.ink.tertiary,
+            fontSize: typography.fontSize.sm,
+          }}
+        >
+          <span>
+            Only shifts in state assigned or completed count, so a report generated before month-end
+            under-counts. A same-period regeneration supersedes the prior live report — the prior
+            row is retained, never deleted.
+          </span>
+          <InfoTip
+            content="Regenerating for the same period supersedes the prior live report; the prior report is kept as superseded, never deleted."
+            label="About regenerating a report"
+          />
         </p>
-      </form>
-    </SectionCard>
+      </FormModal>
+      <SuccessToast
+        open={success !== null}
+        onDismiss={() => setSuccess(null)}
+        message={success ?? ""}
+      />
+    </>
   );
 }

@@ -1,4 +1,4 @@
-import { PageHeader } from "@aquarela/ui";
+import { Breadcrumbs, PageHeader, spacing } from "@aquarela/ui";
 import { redirect } from "next/navigation";
 
 import { getAuthStore } from "../../../../lib/auth";
@@ -27,7 +27,16 @@ export default async function AccountSecurityPage() {
   return (
     // Rendered inside the `(app)` shell, which owns the `<main>` landmark and
     // page padding; this only constrains the reading column.
-    <div style={{ width: "100%", maxWidth: 720 }}>
+    <div
+      style={{
+        width: "100%",
+        maxWidth: 720,
+        display: "flex",
+        flexDirection: "column",
+        gap: spacing[2],
+      }}
+    >
+      <Breadcrumbs items={[{ label: "Account" }, { label: "Security" }]} />
       <PageHeader
         title="Account security"
         scope="Aquarela Business Control"

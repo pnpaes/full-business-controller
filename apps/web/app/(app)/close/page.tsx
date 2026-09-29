@@ -4,7 +4,7 @@ import {
   listLocations,
   listPeriodCloses,
 } from "@aquarela/application";
-import { Alert, EmptyState, KpiCard, PageHeader, SectionCard, spacing } from "@aquarela/ui";
+import { EmptyState, InfoTip, KpiCard, PageHeader, SectionCard, spacing } from "@aquarela/ui";
 import { redirect } from "next/navigation";
 
 import { getAuthStore } from "../../../lib/auth";
@@ -20,8 +20,9 @@ import {
   PERIOD_CLOSE_WRITE_ROLES,
 } from "../../api/v1/period-closes/access";
 
-import { BeginCloseForm } from "./begin-close-form";
+import { BeginCloseModal } from "./begin-close-form";
 import { CloseRegisterTable, type CloseRegisterRow } from "./close-register-table";
+import { CloseStateActions } from "./close-state-actions";
 import { formatCloseInstant, formatClosePeriod } from "./close-labels";
 
 export const dynamic = "force-dynamic";
@@ -42,8 +43,10 @@ const contentColumn = {
 /**
  * The close register (`DEC-119`, `REC-003`/`REC-006`, `DEC-027`): the operator
  * surface that begins, locks and reopens a close. It lists the served
- * organization's closes and offers the begin form; a location close locks one
- * location day and the company close locks the calendar month.
+ * organization's closes and offers the begin action from the header; a location
+ * close locks one location day and the company close locks the calendar month.
+ * The irreversible lock/reopen actions live in the separate period-state-changes
+ * section, not mixed into the read-only register.
  *
  * Reads the same application service and row shape as
  * `GET /api/v1/period-closes`, so the screen and the API cannot drift. Access is
@@ -55,7 +58,7 @@ const contentColumn = {
  * **`scopeLimited` (DEC-107 item 6, DEC-119 item 3):** a location close evaluates
  * the `reconciliation`/`import_run` prerequisites organization-wide, because
  * neither table carries a location dimension — so a location close can be blocked
- * by unrelated organization-wide data. This is stated on the page rather than
+ * by unrelated organization-wide data. This is stated as an `InfoTip` rather than
  * hidden.
  */
 export default async function ClosePage() {
@@ -100,6 +103,7 @@ export default async function ClosePage() {
   );
 
   const canCompanyWrite = isPeriodCloseAuthorized(access, PERIOD_CLOSE_COMPANY_WRITE_ROLES);
+  const canBegin = locations.length > 0 || canCompanyWrite;
 
   // Resolve the lock actors to a profile label; never invent a name, so an
   // unresolved id falls back to the id itself (the app-shell convention).
@@ -152,16 +156,22 @@ export default async function ClosePage() {
       <PageHeader
         title="Close register"
         scope="Close"
-        description="Begin, lock and reopen a close: a location day (the daily close) or the company calendar month (DEC-027). Closes stay operator-driven — there is no scheduler."
+        description="Begin, lock and reopen a close: a location day (the daily close) or the company calendar month. Closes stay operator-driven — there is no scheduler."
+        actions={
+          canBegin ? (
+            <BeginCloseModal
+              locations={locations.map((location) => ({
+                id: location.id,
+                code: location.code,
+                name: location.name,
+              }))}
+              defaultLocationId={locations[0]?.id ?? ""}
+              organizationId={organizationId}
+              canCompanyClose={canCompanyWrite}
+            />
+          ) : undefined
+        }
       />
-
-      <Alert tone="warning" title="A location close is checked organization-wide">
-        A location daily close evaluates the DEC-107 prerequisites — open reconciliations and
-        unfinished import runs — across the <strong>whole organization</strong>, because neither
-        carries a location dimension. A location close can therefore be blocked by unrelated
-        organization-wide data; the frozen snapshot records this as <code>scopeLimited</code>
-        (DEC-107 item 6, DEC-119 item 3). No location-precise filter is available.
-      </Alert>
 
       <div
         style={{
@@ -171,7 +181,7 @@ export default async function ClosePage() {
         }}
       >
         <KpiCard label="Closing" value={String(closingCount)} meta="Begun, not yet locked" />
-        <KpiCard label="Locked" value={String(lockedCount)} meta="Period frozen (DEC-027)" />
+        <KpiCard label="Locked" value={String(lockedCount)} meta="Period frozen" />
         <KpiCard
           label="Reopened"
           value={String(reopenedCount)}
@@ -181,23 +191,22 @@ export default async function ClosePage() {
 
       <SectionCard
         title="Closes"
-        meta={`${rows.length} ${rows.length === 1 ? "close" : "closes"} · newest period first`}
+        meta={
+          <>
+            {rows.length} {rows.length === 1 ? "close" : "closes"} · newest period first
+            <InfoTip
+              content="A location daily close is checked organization-wide: open reconciliations and unfinished import runs carry no location dimension, so unrelated organization-wide data can block it. No location-precise filter is available."
+              label="Why a location close can be blocked org-wide"
+            />
+          </>
+        }
       >
         <div style={{ overflowX: "auto", minWidth: 0 }}>
           <CloseRegisterTable rows={rows} />
         </div>
       </SectionCard>
 
-      <BeginCloseForm
-        locations={locations.map((location) => ({
-          id: location.id,
-          code: location.code,
-          name: location.name,
-        }))}
-        defaultLocationId={locations[0]?.id ?? ""}
-        organizationId={organizationId}
-        canCompanyClose={canCompanyWrite}
-      />
+      <CloseStateActions rows={rows} />
     </div>
   );
 }

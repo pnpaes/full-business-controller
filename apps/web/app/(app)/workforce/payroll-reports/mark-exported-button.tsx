@@ -1,6 +1,6 @@
 "use client";
 
-import { Alert, Button, color, spacing, typography } from "@aquarela/ui";
+import { Button, FileField, FormModal, SuccessToast } from "@aquarela/ui";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { ChangeEvent, FormEvent } from "react";
@@ -10,16 +10,25 @@ const FALLBACK_ERROR = "Could not mark the report exported. Please try again.";
 /**
  * Marks one payroll report as `exported` (`WF-005`, `DEC-104`) through
  * `POST /api/v1/workforce/payroll-reports/[id]/export`. The exported CSV/PDF
- * artefact is chosen here and uploaded as `multipart/form-data`, so the bytes
- * are stored through the `DEC-132` port and linked to the report (`DEC-133`);
- * the server records the `exported` status in the same request. Only a
- * generated report can be exported.
+ * artefact is chosen in a `FormModal` and uploaded as `multipart/form-data`, so
+ * the bytes are stored through the `DEC-132` port and linked to the report
+ * (`DEC-133`); the server records the `exported` status in the same request.
+ * Only a generated report can be exported.
  */
 export function MarkExportedButton({ reportId }: { readonly reportId: string }) {
   const router = useRouter();
+  const [open, setOpen] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+
+  function close(): void {
+    if (!busy) {
+      setOpen(false);
+      setError(null);
+    }
+  }
 
   function onFileChange(event: ChangeEvent<HTMLInputElement>): void {
     setFile(event.target.files?.[0] ?? null);
@@ -48,6 +57,9 @@ export function MarkExportedButton({ reportId }: { readonly reportId: string }) 
         );
         return;
       }
+      setSuccess("Report marked exported.");
+      setOpen(false);
+      setFile(null);
       router.refresh();
     } catch {
       setError(FALLBACK_ERROR);
@@ -57,30 +69,32 @@ export function MarkExportedButton({ reportId }: { readonly reportId: string }) 
   }
 
   return (
-    <form
-      onSubmit={markExported}
-      style={{ display: "flex", flexDirection: "column", gap: spacing[2] }}
-    >
-      <label style={{ display: "flex", flexDirection: "column", gap: spacing[1] }}>
-        <span>Exported file (CSV or PDF)</span>
-        <input
-          type="file"
+    <>
+      <Button onClick={() => setOpen(true)}>Mark exported</Button>
+      <FormModal
+        title="Mark report exported"
+        description="Upload the exported CSV/PDF artefact. It is stored privately and linked to the report, which is then marked exported. Only a generated report can be exported."
+        open={open}
+        onClose={close}
+        onSubmit={markExported}
+        busy={busy}
+        submitLabel="Upload & mark exported"
+        error={error}
+      >
+        <FileField
           name="file"
+          label="Exported file (CSV or PDF)"
           accept=".csv,.pdf,text/csv,application/pdf"
+          required
           onChange={onFileChange}
-          disabled={busy}
+          help="Stored privately and downloadable from this page once the report is exported."
         />
-      </label>
-      <p style={{ margin: 0, color: color.ink.tertiary, fontSize: typography.fontSize.sm }}>
-        The file is stored privately and linked to the report; it can be downloaded once the report
-        is exported. Only a generated report can be exported.
-      </p>
-      <div>
-        <Button type="submit" loading={busy} disabled={busy}>
-          Upload &amp; mark exported
-        </Button>
-      </div>
-      {error !== null ? <Alert tone="danger">{error}</Alert> : null}
-    </form>
+      </FormModal>
+      <SuccessToast
+        open={success !== null}
+        onDismiss={() => setSuccess(null)}
+        message={success ?? ""}
+      />
+    </>
   );
 }
