@@ -1,5 +1,6 @@
 # Reversibility log
 
+- **2026-09-28 UX reconciliation wave (`6011fe6`; pushed with its docs commit)**: one code commit — field help spacing, the shared `AreaTabs`, `formatRelativeAge`, real `countJobsByStatus`, the insights/home `MetricBand` consolidation and the `/close` + payroll-detail polish. **No migration, no schema change and no API change** — UI composition plus one additive persistence read (`countJobsByStatus`), so it reverts **independently** with `git revert 6011fe6` and needs **no data step**. The docs-only commit on top reverts on its own too. No posted money or stock fact is touched. Details: [handoff 105](105-2026-09-28-ux-reconciliation-wave.md).
 - **2026-09-28 UX Wave 2 (`9dfb501`, `59adf31`, `929768c`; pushed)**: the three
   code commits (workforce register + employee detail; shifts / worked hours /
   my-shifts; payroll / close / account security) are UI/composition refactors of

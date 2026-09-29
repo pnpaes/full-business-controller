@@ -12,47 +12,47 @@ orientation and the next step. See "Handover archive" and "Update protocol".
 ## Resume here (next session)
 
 **Say "resume the work" and start here.** A fresh session must be able to
-continue from this section alone. (Rewritten by the 2026-09-28 UX Wave 2 docs
-commit. Per-slice detail lives in the handoffs — Wave 1
+continue from this section alone. (Rewritten by the 2026-09-28 UX reconciliation
+docs commit. Per-slice detail lives in the handoffs — Wave 1
 `docs/handoffs/103-2026-09-28-ux-wave-1-home-jobs-administration.md`, Wave 2
-`docs/handoffs/104-2026-09-28-ux-wave-2-workforce.md`; this file does not restate
-it.)
+`docs/handoffs/104-2026-09-28-ux-wave-2-workforce.md`, reconciliation
+`docs/handoffs/105-2026-09-28-ux-reconciliation-wave.md`; this file does not
+restate it.)
 
-**State:** branch `main`; HEAD is **this docs commit** on top of the three Wave 2
-code commits (`9dfb501`, `59adf31`, `929768c`), **clean and pushed** to
-`origin/main`; nothing applied to DigitalOcean. **5492/5492 tests (404 files)**;
-migrations through **`0080`** (105 public tables) plus the migrator-provisioned
-`pgboss` schema; `db:migrate` a no-op. **Next free decision id `DEC-152`**
-(`DEC-151` is the employee role/position model). Know the
+**State:** branch `main`; working tree **clean** and **pushed to `origin/main`**;
+HEAD is **`6011fe6`** (the reconciliation code commit) plus **this docs commit**
+on top. **5496/5496 tests (405 files)**; migrations through **`0080`** (105
+public tables) plus the migrator-provisioned `pgboss` schema; `db:migrate` a
+no-op. **Next free decision id `DEC-152`** (`DEC-151` is the employee
+role/position model). Know the
 `packages/application/src/scheduling/scheduling.postgres.test.ts` same-instant
 ordering flake (passes on re-run).
 
-**UX Wave 1 delivered** in three code commits — `f694d4d` (home, 2 files),
-`5ab6e4e` (jobs, 4 files incl. a 9-test `jobs-labels.test.ts`), `86b26cb`
-(administration, 13 files, 9 new) — pushed with their docs commit. Home is one
-ranked `MetricHero` with comparison/exceptions behind `Collapsible`; Jobs leads
-with the dead-letter-queue hero and confirmed Retry/Discard; Administration is a
-hub (six area cards, 812 px) with per-area sub-routes and the audit log on
-`/administration/audit`. No migration, schema or API change; diffstat net −236.
+**UX Waves 1, 2 and the reconciliation are delivered.**
 
-**UX Wave 2 Workforce delivered** in three code commits — `9dfb501` (register +
-employee detail, 10 files), `59adf31` (shifts / worked hours / my-shifts, 5
-files), `929768c` (payroll / close / account security, 11 files incl. deleting
-the superseded `close-actions.tsx`) — pushed with their docs commit. The audit
-blocker is fixed (Retire left the read-only profile card for a confirmed "Danger
-zone"); registers create through header `FormModal`s; KPI walls became one hero
-each; destructive actions are separated and confirmed; raw codes moved into
-`InfoTip`s; `/close` locking/reopening moved into their own confirmed section and
-the `Account` breadcrumb was restored. **`DEC-151` unchanged.** No migration,
-schema or API change. The independent acceptance (19 criteria: 17 pass, 2
-unverifiable, 1 declined false positive), the open limits, the `SelectField`
-help-text overlap defect and the budget-stop incident are in handoff `104`.
+- **Wave 1** — `f694d4d` (home), `5ab6e4e` (jobs), `86b26cb` (administration):
+  Home is one ranked `MetricHero` with comparison/exceptions behind `Collapsible`;
+  Jobs leads with the dead-letter-queue hero and confirmed Retry/Discard;
+  Administration is a hub (six area cards, 812 px) with per-area sub-routes and
+  the audit log on `/administration/audit`.
+- **Wave 2** — `9dfb501` (register + employee detail), `59adf31` (shifts /
+  worked hours / my-shifts), `929768c` (payroll / close / account security): the
+  audit blocker (Retire in the read-only card) is fixed, registers create through
+  header `FormModal`s, KPI walls became one hero each, destructive actions are
+  separated and confirmed and raw codes moved into `InfoTip`s; **`DEC-151`
+  unchanged**.
+- **Reconciliation** — `6011fe6` (one commit): field help spacing, the shared
+  `AreaTabs`, `formatRelativeAge`, real `countJobsByStatus`, the insights/home
+  `MetricBand` consolidation, and the `/close` hero + payroll-detail polish. The
+  six-item queue is **fully delivered**; detail in handoff `105`.
 
-**Next task — UX Wave 3: Inventory / Purchasing / Production.** Per-screen work
-is pre-mapped in `docs/ux/reviews/inventory.md`, `purchasing.md`, `production.md`
-— **re-grep the `##` headings and re-map the line ranges before briefing**, since
-they shift; as of this commit: `inventory.md` `/inventory` 27–72,
-`/inventory/[itemId]` 73–111, `/inventory/counts` 112–148,
+No migration, schema or API change in any of them.
+
+**Next task — UX Wave 3: Inventory / Purchasing / Production.** The per-screen
+work is pre-mapped in `docs/ux/reviews/inventory.md`, `purchasing.md`,
+`production.md` — **re-grep the `##` headings and re-map the line ranges before
+briefing**, since they shift; as of this commit: `inventory.md` `/inventory`
+27–72, `/inventory/[itemId]` 73–111, `/inventory/counts` 112–148,
 `/inventory/counts/[countId]` 149–207, `/inventory/transfers` 208–244,
 `/inventory/transfers/[id]` 245–293, `/inventory/waste` 294–337;
 `purchasing.md` `/purchasing` 21–67, `/purchasing/new` 68–126,
@@ -62,30 +62,17 @@ inventory/purchasing screens carry the **stock-fact ledger-consequence copy**
 (cross-cutting finding #8) — state the ledger effect **before** the button. Wave
 4 onward: Sales/Products, Costs, Insights/AI, HMS/Recipes, misc.
 
-**Reconciliation queue (open, deliberately not done — fix once in a Wave 0b):**
-
-1. A `countJobs`-by-status read in `packages/persistence/src/repositories/jobs.ts`
-   (+ re-export), consumed by `apps/web/app/(app)/jobs/page.tsx`.
-2. A shared `AreaTabs` replacing the now-**third** copy of the tab strip
-   (`administration/tabs.tsx`, `costs/tabs.tsx`).
-3. Promote `formatJobAge` to a shared formatter if another screen needs it.
-4. Drop Home's legacy `MetricBand` export (`insights/page.tsx` imports it from
-   `home-modules.tsx`).
-5. Fix the `SelectField` help-text overlap (`packages/ui/src/patterns.tsx`) — it
-   affects every field app-wide.
-6. Promote `/close` to a hero status and finish the payroll-detail polish (the
-   export card under the hero, the snapshot metadata collapsed by default).
-
 **Working method (it holds and is how the next briefing must be written).** One
 `general` agent implements **with the plan fully inlined**; docs/styleguide/
 `packages/ui` reads are **explicitly forbidden** in the brief; the step order is
-**stop-safe** so every step leaves the tree compiling; a separate visual pass (a
-`general`) produces the browser evidence, and if it does not, the coordinator
-**reads the captures** itself. In this configuration the **`designer` and
-`writer` agent types have no write tools and no shell**, so implementation, docs
-and commits go to **`general`**. Every brief must inline the **Wave 0 primitive
-API map** — kept in handoff `103` ("Process lesson") — or the agent burns its
-budget re-discovering it.
+**stop-safe** so every step leaves the tree compiling; and a **partial wave must
+never be left without a written inventory and a revert path**. A separate visual
+pass (a `general`) produces the browser evidence, and if it does not, the
+coordinator **reads the captures** itself. In this configuration the **`designer`
+and `writer` agent types have no write tools and no shell**, so implementation,
+docs and commits go to **`general`**. Every brief must inline the **Wave 0
+primitive API map** — kept in handoff `103` ("Process lesson") — or the agent
+burns its budget re-discovering it.
 
 **Milestones beyond the waves (owner-gated):** M2 — the deployment rehearsal on a
 single VM (`deploy/`; SendGrid and LLM keys only); M3 — INTG-002 publishing,
@@ -97,15 +84,15 @@ regression gates are delivered (`d818583`).
   primitives per `docs/ux/README.md`; keep read paths org-scoped and fail-closed.
 - **Scope (do not):** no external publishing (INTG-002 gated on I15/I18 under
   `DEC-015`); do not weaken any test assertion; do not resolve recorded owner
-  inputs silently; do not touch or amend the three Wave 1 or three Wave 2 code
-  commits.
+  inputs silently; do not touch or amend any Wave 1, Wave 2 or reconciliation
+  commit.
 - **Authoritative docs to read first:** `docs/ux/README.md` (the contract),
   `docs/ux/reviews/README.md` (triage index), the Wave 3 area files, `AGENTS.md`
-  (this file's rules) and handoffs `103`/`104`.
+  (this file's rules) and handoffs `103`/`104`/`105`.
 - **Verification (exact):** `export NVM_DIR="$HOME/.nvm"; . "$NVM_DIR/nvm.sh";
 nvm use 22`; `npm run typecheck`; `npm run lint`; `npm run format:check`;
   `npm run build`; `DATABASE_URL=postgres://aquarela:aquarela@localhost:5432/aquarela
-npm run test` (≥ **5492/5492**, 404 files); `npm run db:migrate` a no-op re-run.
+npm run test` (**5496/5496**, 405 files); `npm run db:migrate` a no-op re-run.
   Normalise the generated `apps/web/next-env.d.ts` / `apps/web/tsconfig.json`
   with `git checkout --` before staging. Expect the scheduling same-instant
   ordering flake to occasionally fail (passes on re-run).
@@ -113,10 +100,10 @@ npm run test` (≥ **5492/5492**, 404 files); `npm run db:migrate` a no-op re-ru
   view, one hero metric, `InfoTip` explainability, plain empty states, creation in
   modals, destructive actions separated and confirmed, stock-fact consequences
   stated before the button) with browser evidence; the full verification set is
-  green (≥ 5492/5492) with `build` included.
-- **Rollback:** `git revert` each Wave 1 and each Wave 2 code commit
-  **independently** (no migration, no schema and no API change in either wave);
-  each docs commit reverts on its own.
+  green (5496/5496) with `build` included.
+- **Rollback:** `git revert` each Wave 1 and each Wave 2 code commit and the
+  reconciliation commit **independently** (no migration, no schema and no API
+  change in any); each docs commit reverts on its own.
 
 ## Next up (prioritised)
 
@@ -230,6 +217,29 @@ Per-slice detail, commits and reconciliation are in `docs/handoffs/`.
 
 ## Current status
 
+- **2026-09-29 — UX reconciliation wave (committed `6011fe6`; pushed).** Delivered the six recorded reconciliation items in priority order,
+  keeping the tree compiling at each step. **P1** field help-text overlap:
+  `FieldMessage` + the `CheckboxField` help in `packages/ui/src/patterns.tsx`
+  and the `TextField` message in `components.tsx` gain a `spacing[1]` top margin
+  (control→help 4 px → 8 px); verified in the `/close` "Begin a close" modal and
+  the `/styleguide` field specimens. **P2** `countJobsByStatus` in
+  `repositories/jobs.ts` (grouped count + oldest per status, org-scoped) consumed
+  by `/jobs` for the hero and every chip; new
+  `packages/persistence/src/repositories/jobs.postgres.test.ts`. **P3**
+  `insights/page.tsx` now uses the `@aquarela/ui` `MetricBand` (hero +
+  secondaries); the legacy export in `home-modules.tsx` is deleted. **P4**
+  `formatRelativeAge` promoted to `packages/ui/src/format.ts` (tests moved;
+  `apps/web/(app)/jobs/jobs-labels.ts` no longer owns it). **P5** the shared
+  `AreaTabs` (`patterns.tsx`) replaces the `administration`/`costs` copies. **P6**
+  `/close` is one hero `MetricBand` and the payroll detail lifts the export card
+  under the hero with the snapshot metadata in a default-collapsed `Collapsible`.
+  **Verification:** `npm run typecheck` clean; `npm run lint` clean; prettier
+  `--write`/`--check` clean on every touched file; full `npm run test`
+  **5496/5496 (405 files)**; `npm run build` exit 0; `db:migrate` a no-op; every
+  visible change read back from a screenshot. **No migration, no schema
+  change, no API change, no `DEC-*` change.** Committed as `6011fe6` and
+  pushed with its docs commit. Rollback: `git revert 6011fe6` — UI plus one
+  additive persistence read; no data step.
 - **2026-09-27 — deployment pivoted to a single VM (committed `c2dfa6b`, pushed):**
   `deploy/` is the primary path (docker compose + Caddy + Postgres on the box +
   local-volume file storage; ~$12/mo; nightly `pg_dump` + optional offsite copy;

@@ -40,6 +40,7 @@ cross-cutting findings, then triage the per-area files.
   raw codes moved into `InfoTip`s. Verification, the honest limits and the
   reconciliation queue are in
   [handoff 104](../../handoffs/104-2026-09-28-ux-wave-2-workforce.md).
+- **Cross-cutting reconciliation — implemented (2026-09-28, `6011fe6`).** The six-item queue recorded by Waves 1–2 is closed in one commit: field help spacing, the shared `AreaTabs`, `formatRelativeAge`, real job counts by status, the insights/home `MetricBand` consolidation, and the `/close` + payroll-detail polish. The per-area findings from the audit remain open for the areas still awaiting their waves — Inventory / Purchasing / Production are Wave 3. Record and rollback: [handoff 105](../../handoffs/105-2026-09-28-ux-reconciliation-wave.md).
 - Everything else: **awaiting its implementation wave** (Wave 3 is Inventory /
   Purchasing / Production; the rest follow — see the order below).
 
