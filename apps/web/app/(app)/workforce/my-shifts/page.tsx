@@ -7,11 +7,14 @@ import {
   listMyShifts,
 } from "@aquarela/application";
 import {
-  Alert,
+  color,
   DataTable,
   type DataTableColumn,
   EmptyState,
+  geometry,
+  InfoTip,
   PageHeader,
+  radius,
   SectionCard,
   StatusPill,
   spacing,
@@ -43,6 +46,22 @@ const contentColumn = {
 
 const tableWrap = { overflowX: "auto", minWidth: 0 } as const;
 
+/** The roster link styled as a secondary button; carries a 44px touch target. */
+const actionLink = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  minHeight: geometry.touchTarget,
+  padding: `${spacing[2]}px ${spacing[4]}px`,
+  borderRadius: radius.md,
+  border: `1px solid ${color.border.default}`,
+  backgroundColor: color.surface.base,
+  color: color.ink.primary,
+  fontSize: typography.fontSize.md,
+  fontWeight: typography.fontWeight.medium,
+  textDecoration: "none",
+} as const;
+
 /**
  * The employee self-service view (`WF-003`, `DEC-146`): a linked employee sees
  * their own shifts (including `pending_approval` requests) and may self-assign
@@ -68,7 +87,14 @@ export default async function MyShiftsPage() {
     return (
       <div style={contentColumn}>
         <PageHeader title="My shifts" scope="Workforce" description="Your own shifts." />
-        <EmptyState title="Not available for your account">
+        <EmptyState
+          title="Not available for your account"
+          action={
+            <Link href="/workforce/shifts" style={actionLink}>
+              Open the roster
+            </Link>
+          }
+        >
           This view is for employees whose login is linked to an employee record. Ask a manager to
           link your account, or open the roster if you have shift access.
         </EmptyState>
@@ -119,14 +145,24 @@ export default async function MyShiftsPage() {
         description="Your own shifts and the shifts you may self-assign (WF-003). Self-assignment is subject to manager approval and a weekly maximum."
       />
 
-      <Alert tone="info" title="Manager approval required">
-        A self-assignment opens as <strong>awaiting approval</strong>; a manager approves or rejects
-        it. The weekly maximum of self-assigned shifts is enforced server-side (default 2).
-      </Alert>
+      <p style={{ margin: 0, fontSize: typography.fontSize.sm, color: color.ink.tertiary }}>
+        Signed in as {employee.name} · role {employee.roleCode} ·{" "}
+        {employee.primaryLocationId === null
+          ? "no primary location"
+          : (locationLabelById.get(employee.primaryLocationId) ?? employee.primaryLocationId)}
+      </p>
 
       <SectionCard
         title="My shifts"
-        meta={`${own.length} ${own.length === 1 ? "assignment" : "assignments"}`}
+        meta={
+          <>
+            {own.length} {own.length === 1 ? "assignment" : "assignments"}
+            <InfoTip
+              label="About approval status"
+              content="A self-assignment you request opens as pending approval. A manager approves it — it then counts as yours — or rejects it with a recorded reason."
+            />
+          </>
+        }
       >
         <div style={tableWrap}>
           <DataTable
@@ -149,7 +185,15 @@ export default async function MyShiftsPage() {
 
       <SectionCard
         title="Available to self-assign"
-        meta={`${available.length} open ${available.length === 1 ? "shift" : "shifts"} at your location`}
+        meta={
+          <>
+            {available.length} open {available.length === 1 ? "shift" : "shifts"} at your location
+            <InfoTip
+              label="About the weekly maximum"
+              content="You may hold at most 2 self-assigned shifts per UTC week, Monday 00:00 to the next Monday 00:00. The server enforces the cap plus the location and position match, so an over-limit request is refused."
+            />
+          </>
+        }
       >
         <div style={tableWrap}>
           <DataTable
@@ -166,10 +210,6 @@ export default async function MyShiftsPage() {
           />
         </div>
       </SectionCard>
-
-      <p style={{ margin: 0, fontSize: typography.fontSize.sm }}>
-        <Link href="/workforce/shifts">Open the roster</Link> if your role may plan shifts.
-      </p>
     </div>
   );
 }

@@ -1,14 +1,6 @@
 "use client";
 
-import {
-  Alert,
-  Button,
-  NumberField,
-  SectionCard,
-  SelectField,
-  TextField,
-  spacing,
-} from "@aquarela/ui";
+import { Button, FormModal, NumberField, SelectField, TextField } from "@aquarela/ui";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { FormEvent } from "react";
@@ -55,38 +47,26 @@ function toIsoInstant(local: string): string | null {
 }
 
 /**
- * Plans one shift (`WF-002`, `DEC-037`) through `POST /api/v1/workforce/shifts`.
- * A new shift starts `open`; publishing and assignment are separate actions on
- * the roster. The window is entered as local date-times and sent as ISO
- * instants (the browser resolves the zone, the production batch form's
- * precedent).
+ * The roster's header primary action (`WF-002`, `DEC-037`): "Plan shift" opens
+ * the create form in a `FormModal` (the register recipe: a header carries one
+ * primary button and no inline form). A new shift starts `open`; publishing and
+ * assignment are separate roster actions. The window is entered as local
+ * date-times and sent as ISO instants (the browser resolves the zone).
  */
 export function CreateShiftForm({ locations, positions, defaultLocationId }: CreateShiftFormProps) {
   const router = useRouter();
+  const [open, setOpen] = useState(false);
   const [locationId, setLocationId] = useState(defaultLocationId);
   const [positionId, setPositionId] = useState("");
   const [startsAt, setStartsAt] = useState("");
   const [endsAt, setEndsAt] = useState("");
   const [breakMinutes, setBreakMinutes] = useState("0");
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-
-  if (locations.length === 0) {
-    return (
-      <SectionCard title="Plan a shift" meta="owner / general manager / location manager / admin">
-        <Alert tone="info">
-          Planning a shift needs a location in your scope. Ask an owner or administrator for a
-          location-scoped role, or register a location first.
-        </Alert>
-      </SectionCard>
-    );
-  }
 
   async function submit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     setError(null);
-    setSuccess(null);
     const start = toIsoInstant(startsAt);
     const end = toIsoInstant(endsAt);
     if (locationId.length === 0) {
@@ -124,7 +104,7 @@ export function CreateShiftForm({ locations, positions, defaultLocationId }: Cre
         setError(await errorMessage(response));
         return;
       }
-      setSuccess("Shift planned (open). Publish it to make it assignable.");
+      setOpen(false);
       setPositionId("");
       setStartsAt("");
       setEndsAt("");
@@ -137,14 +117,27 @@ export function CreateShiftForm({ locations, positions, defaultLocationId }: Cre
   }
 
   return (
-    <SectionCard title="Plan a shift" meta="starts open; publish to make it assignable">
-      <form
-        onSubmit={submit}
-        style={{ display: "flex", flexDirection: "column", gap: spacing[4], maxWidth: 640 }}
+    <>
+      <Button
+        type="button"
+        variant="primary"
+        onClick={() => {
+          setError(null);
+          setOpen(true);
+        }}
       >
-        {error !== null ? <Alert tone="danger">{error}</Alert> : null}
-        {success !== null ? <Alert tone="success">{success}</Alert> : null}
-
+        Plan shift
+      </Button>
+      <FormModal
+        title="Plan a shift"
+        description="A new shift starts open; publish it on the roster to make it assignable (WF-002)."
+        open={open}
+        onClose={() => setOpen(false)}
+        onSubmit={submit}
+        busy={busy}
+        submitLabel="Plan shift"
+        error={error}
+      >
         <SelectField
           name="locationId"
           label="Location"
@@ -193,13 +186,7 @@ export function CreateShiftForm({ locations, positions, defaultLocationId }: Cre
           value={breakMinutes}
           onChange={(event) => setBreakMinutes(event.target.value)}
         />
-
-        <div>
-          <Button type="submit" loading={busy} disabled={busy}>
-            Plan shift
-          </Button>
-        </div>
-      </form>
-    </SectionCard>
+      </FormModal>
+    </>
   );
 }

@@ -5,11 +5,16 @@ import {
   listLocations,
 } from "@aquarela/application";
 import {
-  Alert,
   DataTable,
   type DataTableColumn,
   EmptyState,
-  KpiCard,
+  formatMoney,
+  formatNumber,
+  groupDecimal,
+  InfoTip,
+  MetricBand,
+  MetricHero,
+  MetricSecondary,
   PageHeader,
   SectionCard,
   spacing,
@@ -139,7 +144,7 @@ export default async function WorkedHoursPage({
     { key: "employee", header: "Employee" },
     { key: "role", header: "Role" },
     { key: "hours", header: "Hours" },
-    { key: "rate", header: "Base rate (NOK/h)" },
+    { key: "rate", header: "Base rate" },
   ];
 
   return (
@@ -172,56 +177,69 @@ export default async function WorkedHoursPage({
         </EmptyState>
       ) : report === null ? null : (
         <>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-              gap: spacing[4],
-            }}
-          >
-            <KpiCard
-              label="Total hours"
-              value={report.totalHours}
-              meta={`${from} → ${to} (period end day included) · ${
-                locationId === undefined
-                  ? "whole organization"
-                  : (locationLabelById.get(locationId) ?? locationId)
-              }`}
-            />
-            <KpiCard
-              label="Employees with hours"
-              value={String(report.rows.length)}
-              meta="One row per employee; decimals at scale 2 (HALF_UP)"
-            />
-          </div>
+          <MetricBand
+            hero={
+              <MetricHero
+                label="Total hours"
+                value={formatNumber(report.totalHours)}
+                unit="h"
+                meta={`${from} → ${to} (UTC days, period end day included) · ${
+                  locationId === undefined
+                    ? "whole organization"
+                    : (locationLabelById.get(locationId) ?? locationId)
+                }`}
+                info={
+                  <InfoTip
+                    label="About the hours figure"
+                    content="Hours are decimal at scale 2, rounded HALF_UP; an assignment contributes its shift window minus the unpaid break, floored at zero, unless a recorded adjustment overrides it (DEC-103)."
+                  />
+                }
+              />
+            }
+            metrics={[
+              <MetricSecondary
+                key="employees"
+                label="Employees with hours"
+                value={groupDecimal(String(report.rows.length))}
+                meta="One row per employee"
+              />,
+            ]}
+          />
 
           <SectionCard
             title="By employee"
-            meta={`${report.rows.length} ${report.rows.length === 1 ? "row" : "rows"}`}
+            meta={
+              <>
+                {report.rows.length} {report.rows.length === 1 ? "row" : "rows"}
+                <InfoTip
+                  label="About how hours are derived"
+                  content="Derived from approved assignments on assigned or completed shifts whose start falls in the half-open period. The latest recorded adjustment overrides its own assignment; otherwise hours are the shift window minus the unpaid break, floored at zero. Derived on demand, not persisted (DEC-103)."
+                />
+              </>
+            }
           >
-            <div style={tableWrap}>
-              <DataTable
-                caption="Worked hours per employee with role and base hourly rate for the chosen period"
-                columns={columns}
-                rows={report.rows.map((row) => ({
-                  id: row.employeeId,
-                  employee: row.employeeName,
-                  role: row.roleCode,
-                  hours: row.hours,
-                  rate: row.hourlyRate,
-                }))}
-                emptyMessage="No worked hours in this window. Hours appear once a shift is assigned or completed and its assignment is approved."
-              />
-            </div>
+            {report.rows.length === 0 ? (
+              <EmptyState variant="plain" title="No worked hours in this period">
+                Hours appear once a shift is assigned or completed and its assignment is approved.
+                Widen the window, choose another location, or assign shifts on the roster.
+              </EmptyState>
+            ) : (
+              <div style={tableWrap}>
+                <DataTable
+                  caption="Worked hours per employee with role and base hourly rate for the chosen period"
+                  columns={columns}
+                  rows={report.rows.map((row) => ({
+                    id: row.employeeId,
+                    employee: row.employeeName,
+                    role: row.roleCode,
+                    hours: formatNumber(row.hours),
+                    rate: formatMoney(row.hourlyRate, { currency: "NOK" }),
+                  }))}
+                  emptyMessage="No worked hours in this window."
+                />
+              </div>
+            )}
           </SectionCard>
-
-          <Alert tone="info" title="How hours are derived">
-            An assignment contributes when it is <strong>approved</strong> on a shift in state
-            assigned or completed whose start falls in the half-open period. Per assignment the
-            latest recorded adjustment wins; otherwise the hours are the shift window minus the
-            unpaid break, floored at zero (DEC-103). The report is derived on demand and not
-            persisted.
-          </Alert>
         </>
       )}
     </div>

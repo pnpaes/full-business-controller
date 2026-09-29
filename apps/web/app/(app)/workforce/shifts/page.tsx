@@ -10,10 +10,10 @@ import {
   listShifts,
 } from "@aquarela/application";
 import {
-  Alert,
   DataTable,
   type DataTableColumn,
   EmptyState,
+  InfoTip,
   PageHeader,
   SectionCard,
   StatusPill,
@@ -242,48 +242,78 @@ export default async function RosterPage({
     { key: "actions", header: "Actions" },
   ];
 
+  const planAction =
+    canWrite && writableLocations.length > 0 ? (
+      <CreateShiftForm
+        locations={writableLocations.map((location) => ({
+          id: location.id,
+          code: location.code,
+          name: location.name,
+        }))}
+        positions={catalogue.map((position) => ({
+          id: position.id,
+          code: position.code,
+          name: position.name,
+        }))}
+        defaultLocationId={
+          rawLocationId !== undefined && writableLocations.some((l) => l.id === rawLocationId)
+            ? rawLocationId
+            : (writableLocations[0]?.id ?? "")
+        }
+      />
+    ) : null;
+
   return (
     <div style={contentColumn}>
       <PageHeader
         title="Roster"
         scope="Workforce"
         description="Shifts by date and location: plan, publish, assign, complete and cancel (WF-002, WF-003)."
+        actions={planAction}
       />
-
-      <Alert tone="info" title="Assigning and self-assignment">
-        Manager assignment (owner, general manager, location manager, admin) assigns an employee
-        directly. A linked employee self-assigns their own shifts from <strong>My shifts</strong>;
-        each request opens as <strong>pending approval</strong> and is approved or rejected here.
-      </Alert>
 
       {canWrite ? (
         <SectionCard
           title="Pending self-assignments"
-          meta={`${pendingQueue.length} awaiting a decision`}
+          meta={
+            <>
+              {pendingQueue.length} awaiting a decision
+              <InfoTip
+                label="About pending self-assignments"
+                content="An employee self-assigns from My shifts and the request opens here as pending approval. Owner, general manager, location manager and admin decide: approve confirms the assignment against the shift; reject records a required reason and withdraws it."
+              />
+            </>
+          }
         >
-          <div style={tableWrap}>
-            <DataTable
-              caption="Self-assigned shifts awaiting a manager decision, with approve and reject controls"
-              columns={[
-                { key: "employee", header: "Employee" },
-                { key: "shift", header: "Shift (UTC)" },
-                { key: "location", header: "Location" },
-                { key: "role", header: "Role" },
-                { key: "requested", header: "Requested" },
-                { key: "actions", header: "Decision" },
-              ]}
-              rows={pendingQueue.map((row) => ({
-                id: row.assignmentId,
-                employee: row.employeeName,
-                shift: formatShiftWindow(row.startsAt, row.endsAt),
-                location: locationLabelById.get(row.locationId) ?? row.locationId,
-                role: row.roleCode ?? "Any role",
-                requested: row.assignedAt,
-                actions: <PendingApprovalActions assignmentId={row.assignmentId} />,
-              }))}
-              emptyMessage="No self-assignments are awaiting a decision."
-            />
-          </div>
+          {pendingQueue.length === 0 ? (
+            <EmptyState variant="plain" title="No self-assignments awaiting a decision">
+              Employee self-assignment requests appear here for approval.
+            </EmptyState>
+          ) : (
+            <div style={tableWrap}>
+              <DataTable
+                caption="Self-assigned shifts awaiting a manager decision, with approve and reject controls"
+                columns={[
+                  { key: "employee", header: "Employee" },
+                  { key: "shift", header: "Shift (UTC)" },
+                  { key: "location", header: "Location" },
+                  { key: "role", header: "Role" },
+                  { key: "requested", header: "Requested" },
+                  { key: "actions", header: "Decision" },
+                ]}
+                rows={pendingQueue.map((row) => ({
+                  id: row.assignmentId,
+                  employee: row.employeeName,
+                  shift: formatShiftWindow(row.startsAt, row.endsAt),
+                  location: locationLabelById.get(row.locationId) ?? row.locationId,
+                  role: row.roleCode ?? "Any role",
+                  requested: row.assignedAt,
+                  actions: <PendingApprovalActions assignmentId={row.assignmentId} />,
+                }))}
+                emptyMessage="No self-assignments are awaiting a decision."
+              />
+            </div>
+          )}
         </SectionCard>
       ) : null}
 
@@ -308,9 +338,6 @@ export default async function RosterPage({
               {location.code}
             </Link>
           ))}
-        <span style={{ fontSize: typography.fontSize.sm, color: color.ink.tertiary }}>
-          Window {from} → {to} (UTC days).
-        </span>
       </div>
 
       <RosterFilter
@@ -326,7 +353,15 @@ export default async function RosterPage({
 
       <SectionCard
         title="Shifts"
-        meta={`${visible.length} ${visible.length === 1 ? "shift" : "shifts"} · ${from} → ${to}`}
+        meta={
+          <>
+            {visible.length} {visible.length === 1 ? "shift" : "shifts"} · {from} → {to}
+            <InfoTip
+              label="About the roster window"
+              content="The window is UTC calendar days, inclusive of the end day; a shift appears on the day its start instant falls on."
+            />
+          </>
+        }
       >
         <div style={tableWrap}>
           <DataTable
@@ -388,37 +423,22 @@ export default async function RosterPage({
                 ),
               };
             })}
-            emptyMessage="No shifts in this window. Plan one below, or widen the window."
+            emptyMessage="No shifts in this window. Plan one with Plan shift, or widen the window."
           />
         </div>
       </SectionCard>
 
-      {canWrite ? (
-        <CreateShiftForm
-          locations={writableLocations.map((location) => ({
-            id: location.id,
-            code: location.code,
-            name: location.name,
-          }))}
-          positions={catalogue.map((position) => ({
-            id: position.id,
-            code: position.code,
-            name: position.name,
-          }))}
-          defaultLocationId={
-            rawLocationId !== undefined && writableLocations.some((l) => l.id === rawLocationId)
-              ? rawLocationId
-              : (writableLocations[0]?.id ?? "")
-          }
-        />
-      ) : (
-        <SectionCard title="Plan a shift" meta="write roles only">
-          <EmptyState title="Planning is not available for your role">
-            You can read the roster, but planning, publishing and assignment need owner, general
-            manager, location manager or admin.
-          </EmptyState>
-        </SectionCard>
-      )}
+      {!canWrite ? (
+        <EmptyState title="Planning is not available for your role">
+          You can read the roster, but planning, publishing and assignment need owner, general
+          manager, location manager or admin.
+        </EmptyState>
+      ) : writableLocations.length === 0 ? (
+        <EmptyState title="Add a location to plan shifts">
+          Planning a shift needs a location in your scope. Ask an owner or administrator for a
+          location-scoped role, or register a location first.
+        </EmptyState>
+      ) : null}
     </div>
   );
 }

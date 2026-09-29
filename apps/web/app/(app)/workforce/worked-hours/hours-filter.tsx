@@ -1,6 +1,14 @@
 "use client";
 
-import { Button, DateField, SectionCard, SelectField, spacing } from "@aquarela/ui";
+import {
+  Button,
+  color,
+  DateField,
+  FilterBar,
+  SelectField,
+  spacing,
+  typography,
+} from "@aquarela/ui";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { FormEvent } from "react";
@@ -21,9 +29,11 @@ export interface HoursFilterProps {
 }
 
 /**
- * The worked-hours period/location filter: navigates the same page with
- * `?from=&to=&location=`. The window is UTC days; the report itself is the
- * half-open instant window `[from T00:00Z, to+1 T00:00Z)` (DEC-103).
+ * The worked-hours period/location filter: a quiet `FilterBar` strip that
+ * navigates the same page with `?from=&to=&location=`. The window is UTC days;
+ * the report itself is the half-open instant window `[from T00:00Z, to+1
+ * T00:00Z)` (DEC-103). The resolved ISO window is repeated as text so it is
+ * readable without opening the native date pickers.
  */
 export function HoursFilter({
   locations,
@@ -49,15 +59,15 @@ export function HoursFilter({
   }
 
   return (
-    <SectionCard title="Period and location" meta="UTC days; the period end day is included">
+    <FilterBar>
       <form
         onSubmit={submit}
         style={{
           display: "flex",
-          gap: spacing[3],
-          alignItems: "flex-end",
           flexWrap: "wrap",
-          maxWidth: 920,
+          alignItems: "flex-end",
+          gap: spacing[3],
+          width: "100%",
         }}
       >
         <div style={{ flex: "1 1 160px" }}>
@@ -100,7 +110,10 @@ export function HoursFilter({
           />
         </div>
         <Button type="submit">Apply</Button>
+        <span style={{ fontSize: typography.fontSize.sm, color: color.ink.tertiary }}>
+          Window {from} → {to} (UTC days, period end day included)
+        </span>
       </form>
-    </SectionCard>
+    </FilterBar>
   );
 }
