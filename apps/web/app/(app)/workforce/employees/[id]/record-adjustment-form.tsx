@@ -113,7 +113,7 @@ export function RecordAdjustmentForm({
         </div>
         <p style={{ margin: 0, color: color.ink.tertiary }}>
           Adjustments are facts: the latest one for an assignment wins and none can be edited or
-          deleted (DEC-103). The worked-hours report applies the latest adjustment automatically.
+          deleted. The worked-hours report applies the latest adjustment automatically.
         </p>
       </form>
     </SectionCard>

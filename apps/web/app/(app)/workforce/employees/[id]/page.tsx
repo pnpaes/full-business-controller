@@ -15,14 +15,23 @@ import {
 import { listRoles } from "@aquarela/persistence";
 import {
   Alert,
+  Badge,
+  Collapsible,
   DataTable,
   type DataTableColumn,
+  DescriptionList,
+  type DescriptionListItem,
   EmptyState,
-  KpiCard,
+  InfoTip,
+  MetricBand,
+  MetricHero,
+  MetricSecondary,
   PageHeader,
   SectionCard,
   StatusPill,
   color,
+  formatMoney,
+  formatNumber,
   spacing,
   typography,
 } from "@aquarela/ui";
@@ -83,44 +92,27 @@ const linkStyle = {
   textUnderlineOffset: 3,
 } as const;
 
-const profileStyle = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-  gap: spacing[3],
-  margin: 0,
+const inlineTip = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: spacing[1],
 } as const;
 
-function ProfileItem({ label, value }: { readonly label: string; readonly value: string }) {
-  return (
-    <div>
-      <div
-        style={{
-          fontSize: typography.fontSize.sm,
-          color: color.ink.tertiary,
-          fontWeight: typography.fontWeight.medium,
-        }}
-      >
-        {label}
-      </div>
-      <div style={{ fontWeight: typography.fontWeight.semibold }}>{value}</div>
-    </div>
-  );
-}
-
 /**
- * The employee detail (08_UI_UX.md §8.3 "Employee detail"): the profile with
- * amend/retire, the employee's shifts and assignments, their worked hours for
- * the current UTC month (role-aware) and the personnel documents
- * (owner/GM/admin only per `DEC-099`). The personnel-document consumer is wired
- * to the `DEC-132` file-storage port (`DEC-133`): a file chosen at creation is
- * stored and downloadable from the list, while a document created without one
- * stays metadata-only.
+ * The employee detail ("Employee detail"): the read-only profile with the
+ * amend and retire actions, the employee's shifts and assignments, their worked
+ * hours for the current UTC month (role-aware) and the personnel documents
+ * (owner/GM/admin only). The personnel-document consumer is wired to the
+ * file-storage port: a file chosen at creation is stored and downloadable from
+ * the list, while a document created without one stays metadata-only.
  *
- * Reads the same application services and row shapes as the workforce API
- * routes. Access: the `employee` matrix row to open the page at all; the
- * documents section is additionally gated on the document role set (finance
- * and location_manager are deliberately excluded there, `DEC-099` item 6) and
- * the hours section on the worked-hours read set — each stated, never hidden.
+ * Amending and retiring are mutations: they live behind the header "Edit"
+ * button and the danger-zone retire confirmation, never inline in the read-only
+ * profile. Reads use the same application services and row shapes as the
+ * workforce API routes. Access: the `employee` matrix row to open the page at
+ * all; the documents section is additionally gated on the document role set
+ * (finance and location_manager are deliberately excluded there) and the hours
+ * section on the worked-hours read set — each stated, never hidden.
  */
 export default async function EmployeeDetailPage({
   params,
@@ -143,7 +135,7 @@ export default async function EmployeeDetailPage({
         />
         <EmptyState title="Not available for your role">
           Employee records are limited to owner, general manager, location manager, finance and
-          admin (DEC-099).
+          admin.
         </EmptyState>
       </div>
     );
@@ -170,7 +162,7 @@ export default async function EmployeeDetailPage({
         />
         <EmptyState title="Outside your location scope">
           This employee's primary location is not in your scope (or has none), so the record is not
-          visible to you (fail-closed, DEC-099).
+          visible to you (fail-closed).
         </EmptyState>
       </div>
     );
@@ -230,6 +222,49 @@ export default async function EmployeeDetailPage({
   const catalogue = await listPositions(store, { organizationId });
   const positionNameById = new Map(catalogue.map((position) => [position.id, position.name]));
 
+  const profileItems: readonly DescriptionListItem[] = [
+    { term: "Role", description: employee.roleCode },
+    {
+      term: "Positions",
+      description:
+        employee.positionIds.length === 0
+          ? "—"
+          : employee.positionIds
+              .map((positionId) => positionNameById.get(positionId) ?? positionId)
+              .join(", "),
+    },
+    { term: "Employment", description: employmentTypeLabel(employee.employmentType) },
+    {
+      term: "Base hourly rate",
+      description: formatMoney(employee.baseHourlyRate, { currency: "NOK" }),
+    },
+    {
+      term: "Primary location",
+      description:
+        employee.primaryLocationId === null
+          ? "—"
+          : (locationLabelById.get(employee.primaryLocationId) ?? employee.primaryLocationId),
+    },
+    { term: "Active from", description: employee.activeFrom },
+    { term: "Active to", description: employee.activeTo ?? "—" },
+    {
+      term: "Login",
+      description: (
+        <span style={inlineTip}>
+          {employee.userId === null ? "None" : "Linked"}
+          <InfoTip
+            content="A linked login lets the employee sign in and use My shifts to self-serve. The link is set when the account is created and is not changed from here."
+            label="What the login link means"
+          />
+        </span>
+      ),
+    },
+    {
+      term: "Retired",
+      description: employee.retiredAt === null ? "—" : formatInstant(employee.retiredAt),
+    },
+  ];
+
   const assignmentColumns: readonly DataTableColumn[] = [
     { key: "shift", header: "Shift (UTC)" },
     { key: "location", header: "Location" },
@@ -252,102 +287,86 @@ export default async function EmployeeDetailPage({
       <PageHeader
         title={employee.name}
         scope="Workforce · Employees"
-        description="Profile, shifts and worked hours, and personnel documents (WF-001, WF-007)."
+        description="Profile, shifts and worked hours, and personnel documents."
+        {...(canWrite && employee.retiredAt === null
+          ? {
+              actions: (
+                <EditEmployeeForm
+                  employeeId={employee.id}
+                  name={employee.name}
+                  roleCode={employee.roleCode}
+                  employmentType={employee.employmentType}
+                  baseHourlyRate={employee.baseHourlyRate}
+                  primaryLocationId={employee.primaryLocationId}
+                  activeTo={employee.activeTo}
+                  positionIds={employee.positionIds}
+                  employmentTypes={EMPLOYMENT_TYPES}
+                  locations={writableLocations.map((location) => ({
+                    id: location.id,
+                    code: location.code,
+                    name: location.name,
+                  }))}
+                  roles={roles.map((role) => ({ code: role.code, name: role.name }))}
+                  positions={catalogue.map((position) => ({
+                    id: position.id,
+                    code: position.code,
+                    name: position.name,
+                  }))}
+                  canClearLocation={access.locationIds.length === 0}
+                />
+              ),
+            }
+          : {})}
       />
 
       <SectionCard title="Profile" meta={employee.retiredAt === null ? "Active" : "Retired"}>
-        <div style={profileStyle}>
-          <ProfileItem label="Role" value={employee.roleCode} />
-          <ProfileItem
-            label="Positions"
-            value={
-              employee.positionIds.length === 0
-                ? "—"
-                : employee.positionIds
-                    .map((positionId) => positionNameById.get(positionId) ?? positionId)
-                    .join(", ")
-            }
-          />
-          <ProfileItem label="Employment" value={employmentTypeLabel(employee.employmentType)} />
-          <ProfileItem label="Base hourly rate" value={`${employee.baseHourlyRate} NOK`} />
-          <ProfileItem
-            label="Primary location"
-            value={
-              employee.primaryLocationId === null
-                ? "—"
-                : (locationLabelById.get(employee.primaryLocationId) ?? employee.primaryLocationId)
-            }
-          />
-          <ProfileItem label="Active from" value={employee.activeFrom} />
-          <ProfileItem label="Active to" value={employee.activeTo ?? "—"} />
-          <ProfileItem label="Login" value={employee.userId === null ? "None" : "Linked"} />
-          <ProfileItem
-            label="Retired"
-            value={employee.retiredAt === null ? "—" : formatInstant(employee.retiredAt)}
-          />
-        </div>
-        {canWrite && employee.retiredAt === null ? (
-          <div style={{ marginTop: spacing[4] }}>
-            <RetireEmployeeButton employeeId={employee.id} />
-          </div>
-        ) : null}
+        <DescriptionList items={profileItems} />
       </SectionCard>
 
-      {canWrite && employee.retiredAt === null ? (
-        <EditEmployeeForm
-          employeeId={employee.id}
-          name={employee.name}
-          roleCode={employee.roleCode}
-          employmentType={employee.employmentType}
-          baseHourlyRate={employee.baseHourlyRate}
-          primaryLocationId={employee.primaryLocationId}
-          activeTo={employee.activeTo}
-          positionIds={employee.positionIds}
-          employmentTypes={EMPLOYMENT_TYPES}
-          locations={writableLocations.map((location) => ({
-            id: location.id,
-            code: location.code,
-            name: location.name,
-          }))}
-          roles={roles.map((role) => ({ code: role.code, name: role.name }))}
-          positions={catalogue.map((position) => ({
-            id: position.id,
-            code: position.code,
-            name: position.name,
-          }))}
-          canClearLocation={access.locationIds.length === 0}
-        />
-      ) : null}
-
-      {hours === null ? (
-        <Alert tone="info" title="Worked hours not shown">
-          Reading worked hours is limited to owner, general manager, location manager, finance and
-          admin (DEC-103); your role does not hold it.
-        </Alert>
-      ) : (
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-            gap: spacing[4],
-          }}
-        >
-          <KpiCard
-            label="Worked hours"
-            value={hours.totalHours}
-            meta={`Current UTC month (${monthStart} →) · DEC-103 derivation`}
+      <Collapsible
+        summary="Worked hours"
+        badge={hours === null ? undefined : <Badge>{`${hours.totalHours} h`}</Badge>}
+      >
+        {hours === null ? (
+          <Alert tone="info" title="Worked hours not shown">
+            Reading worked hours is limited to owner, general manager, location manager, finance and
+            admin; your role does not hold it.
+          </Alert>
+        ) : (
+          <MetricBand
+            hero={
+              <MetricHero
+                label="Worked hours"
+                value={formatNumber(hours.totalHours)}
+                unit="h"
+                meta={`Current UTC month from ${monthStart}`}
+                info={
+                  <InfoTip
+                    content="Worked hours are derived from this employee's completed shifts and any append-only hour adjustments, for the current UTC month only."
+                    label="How worked hours are derived"
+                  />
+                }
+              />
+            }
+            metrics={[
+              <MetricSecondary
+                key="rate"
+                label="Base hourly rate"
+                value={formatMoney(employee.baseHourlyRate, { currency: "NOK" })}
+                meta="The payroll report prices hours at this rate"
+              />,
+            ]}
           />
-          <KpiCard
-            label="Base hourly rate"
-            value={`${employee.baseHourlyRate} NOK`}
-            meta="The payroll report prices hours at this rate"
-          />
-        </div>
-      )}
+        )}
+      </Collapsible>
 
-      <SectionCard
-        title="Shifts and assignments"
-        meta={`${assignments.length} ${assignments.length === 1 ? "assignment" : "assignments"}`}
+      <Collapsible
+        summary="Shifts and assignments"
+        badge={
+          <Badge>
+            {`${assignments.length} ${assignments.length === 1 ? "assignment" : "assignments"}`}
+          </Badge>
+        }
       >
         <div style={tableWrap}>
           <DataTable
@@ -377,7 +396,7 @@ export default async function EmployeeDetailPage({
             emptyMessage="No shift assignments yet. A manager assigns this employee from the roster."
           />
         </div>
-      </SectionCard>
+      </Collapsible>
 
       {canWriteHours && assignments.length > 0 ? (
         <RecordAdjustmentForm
@@ -394,12 +413,21 @@ export default async function EmployeeDetailPage({
         />
       ) : null}
 
-      <SectionCard title="Personnel documents" meta="owner / general manager / admin only">
+      <Collapsible
+        summary="Personnel documents"
+        badge={
+          <Badge>
+            {canReadDocuments
+              ? `${documents.length} ${documents.length === 1 ? "document" : "documents"}`
+              : "restricted"}
+          </Badge>
+        }
+      >
         {canReadDocuments ? (
           <>
             <Alert tone="info" title="Files are stored privately">
-              A file attached when a document was created is stored (DEC-133) and downloadable with
-              the personnel-document role set; a document recorded without a file is metadata-only.
+              A file attached when a document was created is stored and downloadable with the
+              personnel-document role set; a document recorded without a file is metadata-only.
               Retention is not enforced and file contents are not scanned for malware.
             </Alert>
             <div style={tableWrap}>
@@ -428,6 +456,22 @@ export default async function EmployeeDetailPage({
                 emptyMessage="No personnel documents recorded for this employee yet."
               />
             </div>
+            <p
+              style={{
+                margin: `${spacing[3]}px 0 0`,
+                display: "flex",
+                alignItems: "center",
+                gap: spacing[1],
+                fontSize: typography.fontSize.sm,
+                color: color.ink.tertiary,
+              }}
+            >
+              Document metadata can be amended; an attached file is fixed once recorded.
+              <InfoTip
+                content="Personnel-document metadata (kind, title, validity dates) can be amended in place and each change is audit-logged. A file is attached only when the document is created, cannot be replaced, and stays downloadable. Retention is not enforced."
+                label="What can change on a personnel document"
+              />
+            </p>
             <EmployeeDocumentForm employeeId={employee.id} kinds={EMPLOYEE_DOCUMENT_KINDS} />
             {canWriteDocuments && documents.length > 0 ? (
               <EditEmployeeDocumentForm
@@ -443,12 +487,41 @@ export default async function EmployeeDetailPage({
           </>
         ) : (
           <Alert tone="info" title="Documents are restricted">
-            Personnel documents are visible to owner, general manager and admin only (DEC-087) —
-            finance and location managers can read the employee record but are deliberately excluded
-            from the documents (DEC-099 item 6).
+            Personnel documents are visible to owner, general manager and admin only — finance and
+            location managers can read the employee record but are deliberately excluded from the
+            documents.
           </Alert>
         )}
-      </SectionCard>
+      </Collapsible>
+
+      {canWrite && employee.retiredAt === null ? (
+        <SectionCard title="Danger zone" meta="retiring is permanent for the register">
+          <p style={{ margin: 0, color: color.ink.secondary }}>
+            Retiring takes the employee off the active register and out of shift assignment. The
+            record and its history are kept — this is a tombstone, not a deletion — and it cannot be
+            undone from here.
+          </p>
+          <p
+            style={{
+              margin: `${spacing[2]}px 0 0`,
+              display: "flex",
+              alignItems: "center",
+              gap: spacing[1],
+              fontSize: typography.fontSize.sm,
+              color: color.ink.tertiary,
+            }}
+          >
+            What retiring does
+            <InfoTip
+              content="Retirement stamps a retirement date and drops the employee from the active register and from shift assignment, while keeping the record and its history. It is idempotent and is the only way to take an employee off the active register."
+              label="What retiring an employee does"
+            />
+          </p>
+          <div style={{ marginTop: spacing[4] }}>
+            <RetireEmployeeButton employeeId={employee.id} />
+          </div>
+        </SectionCard>
+      ) : null}
     </div>
   );
 }

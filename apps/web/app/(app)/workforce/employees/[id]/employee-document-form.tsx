@@ -163,7 +163,7 @@ export function EmployeeDocumentForm({ employeeId, kinds }: EmployeeDocumentForm
         </div>
         <p style={{ margin: 0, color: color.ink.tertiary }}>
           Retention is not enforced and file contents are not scanned for malware; the type is
-          checked against an allow-list only (DEC-133).
+          checked against an allow-list only.
         </p>
       </form>
     </SectionCard>

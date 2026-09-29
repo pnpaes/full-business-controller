@@ -142,7 +142,7 @@ export function EditEmployeeDocumentForm({
         </div>
         <p style={{ margin: 0, color: color.ink.tertiary }}>
           Metadata amendment only: the file attached when the document was created is unchanged and
-          stays downloadable from the list. Retention is not enforced (DEC-133).
+          stays downloadable from the list. Retention is not enforced.
         </p>
       </form>
     </SectionCard>

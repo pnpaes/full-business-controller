@@ -128,7 +128,7 @@ export function PositionPicker({
       </legend>
       <p style={{ margin: 0, fontSize: typography.fontSize.sm, color: color.ink.tertiary }}>
         The jobs this employee holds. Only shifts staffed for one of these positions are offered to
-        them (DEC-151).
+        them.
       </p>
       {positions.length === 0 ? (
         <Alert tone="info">

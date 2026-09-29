@@ -12,12 +12,11 @@ import {
   DataTable,
   type DataTableColumn,
   EmptyState,
+  InfoTip,
   PageHeader,
   SectionCard,
   StatusPill,
-  color,
-  geometry,
-  radius,
+  formatMoney,
   spacing,
   typography,
 } from "@aquarela/ui";
@@ -35,7 +34,7 @@ import {
 } from "../../api/v1/workforce/access";
 import { employmentTypeLabel } from "./workforce-labels";
 import { RegisterEmployeeForm } from "./register-employee-form";
-import { RetireEmployeeButton } from "./retire-employee-button";
+import { RegisterFilters } from "./register-filters";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Employees — Aquarela Business Control" };
@@ -55,47 +54,30 @@ const contentColumn = {
 /** Tables scroll inside a labelled region; the page never scrolls sideways. */
 const tableWrap = { overflowX: "auto", minWidth: 0 } as const;
 
-const SHOW_FILTERS = ["active", "retired", "all"] as const;
-type ShowFilter = (typeof SHOW_FILTERS)[number];
-
-/** Filter link styled as a chip: token surfaces, pill radius, 44px target. */
-const filterChipStyle = {
+/** A column header with an adjacent (i) explanation. */
+const headerWithTip = {
   display: "inline-flex",
   alignItems: "center",
-  minHeight: geometry.touchTarget,
-  padding: `${spacing[2]}px ${spacing[3]}px`,
-  borderRadius: radius.pill,
-  border: `1px solid ${color.border.default}`,
-  backgroundColor: color.surface.base,
-  color: color.ink.secondary,
-  fontSize: typography.fontSize.sm,
-  textDecoration: "none",
+  gap: spacing[1],
 } as const;
 
-const filterChipActiveStyle = {
-  ...filterChipStyle,
-  backgroundColor: color.accent.soft,
-  borderColor: color.accent.deep,
-  boxShadow: `inset 0 0 0 1px ${color.accent.deep}`,
-  color: color.ink.primary,
-  fontWeight: typography.fontWeight.semibold,
-} as const;
+const SHOW_FILTERS = ["active", "retired", "all"] as const;
+type ShowFilter = (typeof SHOW_FILTERS)[number];
 
 function readShow(raw: string | undefined): ShowFilter {
   return SHOW_FILTERS.find((candidate) => candidate === raw) ?? "active";
 }
 
 /**
- * The employee register (`WF-001`, `WF-007`, `DEC-087`/`DEC-099`): the
- * role/location-aware list with register and retire actions, linking to the
- * employee detail.
+ * The employee register (`WF-001`, `WF-007`): the role/location-aware list of
+ * employees linking to the employee detail, where amending and retirement live.
  *
  * Reads the same application service and row shape as
  * `GET /api/v1/workforce/employees`. Access is the `employee` matrix row
- * (owner / general_manager / location_manager / finance / admin — `DEC-099`
- * item 6); anyone else gets an explicit "not available" state, never an empty
- * register. A location-scoped caller sees only employees whose primary
- * location is non-null and in scope (fail-closed, `isEmployeeInLocationScope`).
+ * (owner / general_manager / location_manager / finance / admin); anyone else
+ * gets an explicit "not available" state, never an empty register. A
+ * location-scoped caller sees only employees whose primary location is non-null
+ * and in scope (fail-closed, `isEmployeeInLocationScope`).
  */
 export default async function WorkforcePage({
   searchParams,
@@ -118,7 +100,7 @@ export default async function WorkforcePage({
         />
         <EmptyState title="Not available for your role">
           The employee register is limited to owner, general manager, location manager, finance and
-          admin (DEC-099). Analyst, kitchen, front of house and purchasing have no access.
+          admin. Analyst, kitchen, front of house and purchasing have no access.
         </EmptyState>
       </div>
     );
@@ -173,12 +155,44 @@ export default async function WorkforcePage({
   const columns: readonly DataTableColumn[] = [
     { key: "name", header: "Name" },
     { key: "role", header: "Role" },
-    { key: "employment", header: "Employment" },
-    { key: "rate", header: "Base rate (NOK/h)" },
+    {
+      key: "employment",
+      header: (
+        <span style={headerWithTip}>
+          Employment
+          <InfoTip
+            content="Full time or part time — the employment type recorded on the employee's profile."
+            label="What employment type means"
+          />
+        </span>
+      ),
+    },
+    {
+      key: "rate",
+      header: (
+        <span style={headerWithTip}>
+          Base rate (NOK/h)
+          <InfoTip
+            content="The employee's base hourly rate in NOK per hour. The payroll report prices worked hours at this rate."
+            label="What the base rate is"
+          />
+        </span>
+      ),
+    },
     { key: "location", header: "Primary location" },
     { key: "activeFrom", header: "Active from" },
-    { key: "status", header: "Status" },
-    { key: "actions", header: "Actions" },
+    {
+      key: "status",
+      header: (
+        <span style={headerWithTip}>
+          Status
+          <InfoTip
+            content="Employees are retired, never deleted: retirement stamps a retirement date, drops the employee from the active register and from shift assignment, and keeps the record and its history. Open the employee to retire them."
+            label="What active or retired means"
+          />
+        </span>
+      ),
+    },
   ];
 
   return (
@@ -186,105 +200,102 @@ export default async function WorkforcePage({
       <PageHeader
         title="Employees"
         scope="Workforce"
-        description="The employee register: profiles, terms and personnel documents (WF-001, WF-007). Employees are retired, never deleted."
+        description="The employee register: profiles, terms and personnel documents. Employees are retired, never deleted."
+        {...(canWrite
+          ? {
+              actions: (
+                <RegisterEmployeeForm
+                  employmentTypes={EMPLOYMENT_TYPES}
+                  locations={writableLocations.map((location) => ({
+                    id: location.id,
+                    code: location.code,
+                    name: location.name,
+                  }))}
+                  roles={roles.map((role) => ({ code: role.code, name: role.name }))}
+                  positions={positions.map((position) => ({
+                    id: position.id,
+                    code: position.code,
+                    name: position.name,
+                  }))}
+                  canWrite={canWrite}
+                />
+              ),
+            }
+          : {})}
       />
 
-      <div style={{ display: "flex", flexWrap: "wrap", gap: spacing[2], alignItems: "center" }}>
-        {SHOW_FILTERS.map((candidate) => (
-          <Link
-            key={candidate}
-            href={`/workforce?show=${candidate}`}
-            aria-current={show === candidate ? "page" : undefined}
-            style={show === candidate ? filterChipActiveStyle : filterChipStyle}
-          >
-            {candidate === "active" ? "Active" : candidate === "retired" ? "Retired" : "All"}
-          </Link>
-        ))}
-        {writableLocations.length > 1 ? (
-          <Link
-            href={`/workforce?show=${show}`}
-            aria-current={rawLocationId === undefined ? "page" : undefined}
-            style={rawLocationId === undefined ? filterChipActiveStyle : filterChipStyle}
-          >
-            All locations
-          </Link>
-        ) : null}
-        {writableLocations
-          .filter((location) => location.id !== rawLocationId)
-          .map((location) => (
-            <Link
-              key={location.id}
-              href={`/workforce?show=${show}&location=${location.id}`}
-              style={filterChipStyle}
-            >
-              {location.code}
-            </Link>
-          ))}
-      </div>
+      {!canWrite ? (
+        <Alert tone="info" title="Read-only register">
+          Registering an employee needs an employee-write role (owner, general manager, location
+          manager, finance or admin). You can still browse the register.
+        </Alert>
+      ) : null}
 
-      <SectionCard
-        title="Register"
-        meta={`${visible.length} ${visible.length === 1 ? "employee" : "employees"}`}
-      >
-        <div style={tableWrap}>
-          <DataTable
-            caption="Employees with role, employment type, base hourly rate, primary location and retirement status"
-            columns={columns}
-            rowHref={(row) => `/workforce/employees/${String(row.id)}`}
-            rows={visible.map((employee) => ({
-              id: employee.id,
-              name: employee.name,
-              role: employee.roleCode,
-              employment: employmentTypeLabel(employee.employmentType),
-              rate: employee.baseHourlyRate,
-              location:
-                employee.primaryLocationId === null
-                  ? "—"
-                  : (locationLabelById.get(employee.primaryLocationId) ??
-                    employee.primaryLocationId),
-              activeFrom: employee.activeFrom,
-              status: (
-                <StatusPill tone={employee.retiredAt === null ? "success" : "warning"}>
-                  {employee.retiredAt === null ? "Active" : "Retired"}
-                </StatusPill>
-              ),
-              actions:
-                canWrite && employee.retiredAt === null ? (
-                  <RetireEmployeeButton employeeId={employee.id} />
-                ) : (
-                  "—"
-                ),
-            }))}
-            emptyMessage="No employees match. Register one below, or clear the filters."
-          />
-        </div>
-      </SectionCard>
-
-      <RegisterEmployeeForm
-        employmentTypes={EMPLOYMENT_TYPES}
+      <RegisterFilters
+        show={show}
+        locationId={rawLocationId ?? null}
         locations={writableLocations.map((location) => ({
           id: location.id,
           code: location.code,
           name: location.name,
         }))}
-        roles={roles.map((role) => ({ code: role.code, name: role.name }))}
-        positions={positions.map((position) => ({
-          id: position.id,
-          code: position.code,
-          name: position.name,
-        }))}
-        canWrite={canWrite}
       />
+
+      <SectionCard
+        title="Register"
+        meta={`${visible.length} ${visible.length === 1 ? "employee" : "employees"}`}
+      >
+        {visible.length === 0 ? (
+          <EmptyState variant="plain" title="No employees match">
+            No employee matches the current status and location filter.{" "}
+            {canWrite
+              ? "Register one with “New employee”, or clear the filters."
+              : "Clear the filters to see the register."}
+          </EmptyState>
+        ) : (
+          <div style={tableWrap}>
+            <DataTable
+              caption="Employees with role, employment type, base hourly rate, primary location and retirement status; open a row to amend or retire the employee"
+              columns={columns}
+              rowHref={(row) => `/workforce/employees/${String(row.id)}`}
+              rows={visible.map((employee) => ({
+                id: employee.id,
+                name: employee.name,
+                role: employee.roleCode,
+                employment: employmentTypeLabel(employee.employmentType),
+                rate: formatMoney(employee.baseHourlyRate),
+                location:
+                  employee.primaryLocationId === null
+                    ? "—"
+                    : (locationLabelById.get(employee.primaryLocationId) ??
+                      employee.primaryLocationId),
+                activeFrom: employee.activeFrom,
+                status: (
+                  <StatusPill tone={employee.retiredAt === null ? "success" : "warning"}>
+                    {employee.retiredAt === null ? "Active" : "Retired"}
+                  </StatusPill>
+                ),
+              }))}
+            />
+          </div>
+        )}
+      </SectionCard>
 
       <Alert tone="info" title="Personnel documents">
         Personnel documents (contracts, certificates, ID documents) are visible on each employee's
-        detail page to owner, general manager and admin only (DEC-087/DEC-099). A file chosen when
-        recording a document is stored and downloadable from that page (DEC-133); a document
-        recorded without a file is metadata-only. Retention is not enforced and file contents are
-        not scanned for malware.
+        detail page to owner, general manager and admin only. A file chosen when recording a
+        document is stored and downloadable from that page; a document recorded without a file is
+        metadata-only. Retention is not enforced and file contents are not scanned for malware.
       </Alert>
 
-      <p style={{ margin: 0, display: "flex", gap: spacing[4] }}>
+      <p
+        style={{
+          margin: 0,
+          display: "flex",
+          gap: spacing[4],
+          fontSize: typography.fontSize.sm,
+        }}
+      >
         <Link href="/workforce/shifts">Open the roster</Link>
         <Link href="/workforce/my-shifts">My shifts (employee self-service)</Link>
       </p>
