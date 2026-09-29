@@ -1,13 +1,13 @@
 "use client";
 
 import {
-  Alert,
   Button,
   CheckboxField,
   DateField,
+  FormModal,
   SelectField,
+  SuccessToast,
   TextField,
-  spacing,
 } from "@aquarela/ui";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -77,6 +77,7 @@ export interface TaxRuleFormProps {
  */
 export function TaxRuleForm({ channels, locations }: TaxRuleFormProps) {
   const router = useRouter();
+  const [open, setOpen] = useState(false);
   const [code, setCode] = useState("");
   const [name, setName] = useState("");
   const [ratePct, setRatePct] = useState("");
@@ -106,10 +107,20 @@ export function TaxRuleForm({ channels, locations }: TaxRuleFormProps) {
     label: `${location.code} · ${location.name}`,
   }));
 
+  function close(): void {
+    if (!busy) {
+      setOpen(false);
+      setError(null);
+      setCodeError(null);
+      setNameError(null);
+      setRateError(null);
+      setFromError(null);
+    }
+  }
+
   async function submit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     setError(null);
-    setSuccess(null);
     setCodeError(null);
     setNameError(null);
     setRateError(null);
@@ -182,6 +193,7 @@ export function TaxRuleForm({ channels, locations }: TaxRuleFormProps) {
       setRatePct("");
       setEffectiveFrom("");
       setEffectiveTo("");
+      setOpen(false);
       router.refresh();
     } catch {
       setError(FALLBACK_ERROR);
@@ -191,124 +203,130 @@ export function TaxRuleForm({ channels, locations }: TaxRuleFormProps) {
   }
 
   return (
-    <form
-      onSubmit={submit}
-      style={{ display: "flex", flexDirection: "column", gap: spacing[4], maxWidth: 720 }}
-    >
-      {error !== null ? <Alert tone="danger">{error}</Alert> : null}
-      {success !== null ? <Alert tone="success">{success}</Alert> : null}
-
-      <TextField
-        name="code"
-        label="Code"
-        required
-        value={code}
-        {...(codeError === null ? {} : { error: codeError })}
-        onChange={(event) => setCode(event.target.value)}
-        placeholder="e.g. NO_VAT_FOOD"
-        help="Organization-unique. A code cannot be reused, so a rate change uses a new code."
-        autoCapitalize="none"
-      />
-      <TextField
-        name="name"
-        label="Name"
-        required
-        value={name}
-        {...(nameError === null ? {} : { error: nameError })}
-        onChange={(event) => setName(event.target.value)}
-        placeholder="e.g. Food 15%"
-      />
-      <TextField
-        name="ratePct"
-        label="Rate (fraction)"
-        required
-        value={ratePct}
-        {...(rateError === null ? {} : { error: rateError })}
-        onChange={(event) => setRatePct(event.target.value)}
-        placeholder="0.150000"
-        inputMode="decimal"
-        help="Stored as a 6 dp fraction: 0.150000 is 15 %, 0.250000 is 25 %. Not a percentage."
-      />
-      <SelectField
-        name="taxBasis"
-        label="Tax basis"
-        options={TAX_BASIS_OPTIONS}
-        value={taxBasis}
-        onChange={(event) => setTaxBasis(event.target.value)}
-        help="Whether the highlighted amount includes this tax."
-      />
-      <SelectField
-        name="taxTreatment"
-        label="Treatment"
-        options={TAX_TREATMENT_OPTIONS}
-        value={taxTreatment}
-        onChange={(event) => setTaxTreatment(event.target.value)}
-        help="Fixed wins over the item default; channel overridable allows a channel-scoped rate (DEC-045)."
-      />
-      <SelectField
-        name="appliesTo"
-        label="Applies to"
-        options={APPLIES_TO_OPTIONS}
-        value={appliesTo}
-        onChange={(event) => setAppliesTo(event.target.value)}
-      />
-      <SelectField
-        name="scopeType"
-        label="Scope"
-        options={SCOPE_TYPE_OPTIONS}
-        value={scopeType}
-        onChange={(event) => setScopeType(event.target.value)}
-      />
-      {scopeType === "channel" ? (
-        <SelectField
-          name="channelId"
-          label="Channel"
+    <>
+      <Button onClick={() => setOpen(true)}>New tax rule</Button>
+      <FormModal
+        title="New tax rule"
+        description="Create a new effective-dated rule. A rule's rate, basis and applicability cannot be edited later — a rate change is a new rule from a date."
+        open={open}
+        onClose={close}
+        onSubmit={submit}
+        busy={busy}
+        submitLabel="Create tax rule"
+        error={error}
+      >
+        <TextField
+          name="code"
+          label="Code"
           required
-          options={channelOptions}
-          value={channelId}
-          placeholder="Select a channel"
-          onChange={(event) => setChannelId(event.target.value)}
+          value={code}
+          {...(codeError === null ? {} : { error: codeError })}
+          onChange={(event) => setCode(event.target.value)}
+          placeholder="e.g. NO_VAT_FOOD"
+          help="Organization-unique. A code cannot be reused, so a rate change uses a new code."
+          autoCapitalize="none"
         />
-      ) : null}
-      {scopeType === "location" ? (
-        <SelectField
-          name="locationId"
-          label="Location"
+        <TextField
+          name="name"
+          label="Name"
           required
-          options={locationOptions}
-          value={locationId}
-          placeholder="Select a location"
-          onChange={(event) => setLocationId(event.target.value)}
+          value={name}
+          {...(nameError === null ? {} : { error: nameError })}
+          onChange={(event) => setName(event.target.value)}
+          placeholder="e.g. Food 15%"
         />
-      ) : null}
-      <CheckboxField
-        name="recoverable"
-        label="Recoverable (input VAT)"
-        defaultChecked={recoverable}
-        onChange={(event) => setRecoverable(event.target.checked)}
-        help="Input VAT is recoverable where the purchase carries VAT (DEC-003)."
+        <TextField
+          name="ratePct"
+          label="Rate (fraction)"
+          required
+          value={ratePct}
+          {...(rateError === null ? {} : { error: rateError })}
+          onChange={(event) => setRatePct(event.target.value)}
+          placeholder="0.150000"
+          inputMode="decimal"
+          help="Stored as a 6 dp fraction: 0.150000 is 15 %, 0.250000 is 25 %. Not a percentage."
+        />
+        <SelectField
+          name="taxBasis"
+          label="Tax basis"
+          options={TAX_BASIS_OPTIONS}
+          value={taxBasis}
+          onChange={(event) => setTaxBasis(event.target.value)}
+          help="Whether the highlighted amount includes this tax."
+        />
+        <SelectField
+          name="taxTreatment"
+          label="Treatment"
+          options={TAX_TREATMENT_OPTIONS}
+          value={taxTreatment}
+          onChange={(event) => setTaxTreatment(event.target.value)}
+          help="Fixed wins over the item default; channel overridable allows a channel-scoped rate."
+        />
+        <SelectField
+          name="appliesTo"
+          label="Applies to"
+          options={APPLIES_TO_OPTIONS}
+          value={appliesTo}
+          onChange={(event) => setAppliesTo(event.target.value)}
+        />
+        <SelectField
+          name="scopeType"
+          label="Scope"
+          options={SCOPE_TYPE_OPTIONS}
+          value={scopeType}
+          onChange={(event) => setScopeType(event.target.value)}
+        />
+        {scopeType === "channel" ? (
+          <SelectField
+            name="channelId"
+            label="Channel"
+            required
+            options={channelOptions}
+            value={channelId}
+            placeholder="Select a channel"
+            onChange={(event) => setChannelId(event.target.value)}
+          />
+        ) : null}
+        {scopeType === "location" ? (
+          <SelectField
+            name="locationId"
+            label="Location"
+            required
+            options={locationOptions}
+            value={locationId}
+            placeholder="Select a location"
+            onChange={(event) => setLocationId(event.target.value)}
+          />
+        ) : null}
+        <CheckboxField
+          name="recoverable"
+          label="Recoverable (input VAT)"
+          defaultChecked={recoverable}
+          onChange={(event) => setRecoverable(event.target.checked)}
+          help="Input VAT is recoverable where the purchase carries VAT."
+        />
+        <DateField
+          name="effectiveFrom"
+          label="Effective from"
+          required
+          value={effectiveFrom}
+          {...(fromError === null ? {} : { error: fromError })}
+          onChange={(event) => setEffectiveFrom(event.target.value)}
+          help="The rule is effective from this day (inclusive)."
+        />
+        <DateField
+          name="effectiveTo"
+          label="Effective to"
+          value={effectiveTo}
+          onChange={(event) => setEffectiveTo(event.target.value)}
+          help="Optional; leave blank for open-ended. Exclusive, and must be after the start date."
+        />
+      </FormModal>
+      <SuccessToast
+        open={success !== null}
+        onDismiss={() => setSuccess(null)}
+        message={success ?? ""}
       />
-      <DateField
-        name="effectiveFrom"
-        label="Effective from"
-        required
-        value={effectiveFrom}
-        {...(fromError === null ? {} : { error: fromError })}
-        onChange={(event) => setEffectiveFrom(event.target.value)}
-        help="The rule is effective from this day (inclusive)."
-      />
-      <DateField
-        name="effectiveTo"
-        label="Effective to"
-        value={effectiveTo}
-        onChange={(event) => setEffectiveTo(event.target.value)}
-        help="Optional; leave blank for open-ended. Exclusive, and must be after the start date."
-      />
-      <div>
-        <Button type="submit" loading={busy} disabled={busy}>
-          Create tax rule
-        </Button>
-      </div>
-    </form>
+    </>
   );
 }

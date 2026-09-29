@@ -10,9 +10,8 @@ import {
   Modal,
   SelectField,
   StatusPill,
+  SuccessToast,
   TextField,
-  color,
-  geometry,
   spacing,
   typography,
 } from "@aquarela/ui";
@@ -132,13 +131,13 @@ function IntegrationForm({ source, onSaved }: IntegrationFormProps) {
       return;
     }
     if (trimmedOwner.length === 0) {
-      setError("Name the credentials owner (DEC-015).");
+      setError(
+        "Name the credentials owner — the person accountable for this source's credentials.",
+      );
       return;
     }
     if (operations.some(isWriteOperation) && termsStatus !== "approved") {
-      setError(
-        'A write operation can only be enabled once this source\'s terms are "approved" (DEC-015).',
-      );
+      setError('A write operation can only be enabled once this source\'s terms are "approved".');
       return;
     }
 
@@ -236,7 +235,7 @@ function IntegrationForm({ source, onSaved }: IntegrationFormProps) {
         value={credentialsOwner}
         onChange={(event) => setCredentialsOwner(event.target.value)}
         placeholder="e.g. Ada Lovelace"
-        help="A named person accountable for the credentials (DEC-015); not a secret."
+        help="A named person accountable for the credentials; not a secret."
       />
       <TextField
         name="rateLimitNote"
@@ -252,7 +251,7 @@ function IntegrationForm({ source, onSaved }: IntegrationFormProps) {
         options={TERMS_STATUS_OPTIONS}
         value={termsStatus}
         onChange={(event) => setTermsStatus(event.target.value)}
-        help="Per-source approval (DEC-015). A write operation requires approved."
+        help="Per-source approval. A write operation requires approved."
       />
       <CheckboxField
         name="active"
@@ -279,13 +278,13 @@ function IntegrationForm({ source, onSaved }: IntegrationFormProps) {
  */
 export function IntegrationRegister({ rows, canWrite }: IntegrationRegisterProps) {
   const [editing, setEditing] = useState<IntegrationSourceRow | null>(null);
-  const [createKey, setCreateKey] = useState(0);
+  const [creating, setCreating] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
   function saved(name: string, mode: "created" | "updated"): void {
     setNotice(mode === "created" ? `Registered ${name}.` : `Updated ${name}.`);
     if (mode === "created") {
-      setCreateKey((key) => key + 1);
+      setCreating(false);
     }
     setEditing(null);
   }
@@ -295,7 +294,7 @@ export function IntegrationRegister({ rows, canWrite }: IntegrationRegisterProps
       {notice !== null ? <Alert tone="success">{notice}</Alert> : null}
 
       {rows.length === 0 ? (
-        <EmptyState title="No integration sources registered">
+        <EmptyState variant="plain" title="No integration sources registered">
           Register the external systems this organization may exchange data with. A source records
           the credentials owner, the allowed operations and whether its terms are approved; nothing
           is published yet.
@@ -347,24 +346,14 @@ export function IntegrationRegister({ rows, canWrite }: IntegrationRegisterProps
       )}
 
       {canWrite ? (
-        <details style={{ marginTop: spacing[4] }}>
-          <summary
-            style={{
-              cursor: "pointer",
-              minHeight: geometry.touchTarget,
-              display: "flex",
-              alignItems: "center",
-              fontWeight: typography.fontWeight.semibold,
-              color: color.brand.navy,
-            }}
-          >
-            Register source
-          </summary>
-          <div style={{ marginTop: spacing[4] }}>
-            <IntegrationForm key={createKey} source={null} onSaved={saved} />
-          </div>
-        </details>
+        <div style={{ marginTop: spacing[4] }}>
+          <Button onClick={() => setCreating(true)}>Register source</Button>
+        </div>
       ) : null}
+
+      <Modal title="Register source" open={creating} onClose={() => setCreating(false)}>
+        <IntegrationForm key="create" source={null} onSaved={saved} />
+      </Modal>
 
       <Modal
         title={editing === null ? "" : `Edit integration source ${editing.name}`}
@@ -375,6 +364,12 @@ export function IntegrationRegister({ rows, canWrite }: IntegrationRegisterProps
           <IntegrationForm key={editing.id} source={editing} onSaved={saved} />
         )}
       </Modal>
+
+      <SuccessToast
+        open={notice !== null}
+        onDismiss={() => setNotice(null)}
+        message={notice ?? ""}
+      />
     </>
   );
 }

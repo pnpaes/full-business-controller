@@ -1,6 +1,6 @@
 "use client";
 
-import { Alert, Button, NumberField, TextField, spacing } from "@aquarela/ui";
+import { Button, FormModal, NumberField, SuccessToast, TextField } from "@aquarela/ui";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { FormEvent } from "react";
@@ -31,6 +31,7 @@ async function errorMessage(response: Response): Promise<string> {
  */
 export function UnitConversionForm({ knownCodes }: UnitConversionFormProps) {
   const router = useRouter();
+  const [open, setOpen] = useState(false);
   const [fromUnitCode, setFromUnitCode] = useState("");
   const [toUnitCode, setToUnitCode] = useState("");
   const [factor, setFactor] = useState("");
@@ -43,10 +44,19 @@ export function UnitConversionForm({ knownCodes }: UnitConversionFormProps) {
 
   const example = knownCodes.length > 0 ? `e.g. ${knownCodes[0]}` : "e.g. kg";
 
+  function close(): void {
+    if (!busy) {
+      setOpen(false);
+      setError(null);
+      setFromError(null);
+      setToError(null);
+      setFactorError(null);
+    }
+  }
+
   async function submit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     setError(null);
-    setSuccess(null);
     setFromError(null);
     setToError(null);
     setFactorError(null);
@@ -91,6 +101,7 @@ export function UnitConversionForm({ knownCodes }: UnitConversionFormProps) {
       setFromUnitCode("");
       setToUnitCode("");
       setFactor("");
+      setOpen(false);
       router.refresh();
     } catch {
       setError(FALLBACK_ERROR);
@@ -100,52 +111,58 @@ export function UnitConversionForm({ knownCodes }: UnitConversionFormProps) {
   }
 
   return (
-    <form
-      onSubmit={submit}
-      style={{ display: "flex", flexDirection: "column", gap: spacing[4], maxWidth: 640 }}
-    >
-      {error !== null ? <Alert tone="danger">{error}</Alert> : null}
-      {success !== null ? <Alert tone="success">{success}</Alert> : null}
-
-      <TextField
-        name="fromUnitCode"
-        label="From unit code"
-        required
-        value={fromUnitCode}
-        {...(fromError === null ? {} : { error: fromError })}
-        onChange={(event) => setFromUnitCode(event.target.value)}
-        placeholder={example}
-        help="The code of an existing unit, e.g. kg."
-        autoCapitalize="none"
+    <>
+      <Button onClick={() => setOpen(true)}>New conversion</Button>
+      <FormModal
+        title="New conversion"
+        description="Register one org-wide conversion: 1 from-unit equals the factor times the to-unit, effective from now."
+        open={open}
+        onClose={close}
+        onSubmit={submit}
+        busy={busy}
+        submitLabel="Register conversion"
+        error={error}
+      >
+        <TextField
+          name="fromUnitCode"
+          label="From unit code"
+          required
+          value={fromUnitCode}
+          {...(fromError === null ? {} : { error: fromError })}
+          onChange={(event) => setFromUnitCode(event.target.value)}
+          placeholder={example}
+          help="The code of an existing unit, e.g. kg."
+          autoCapitalize="none"
+        />
+        <TextField
+          name="toUnitCode"
+          label="To unit code"
+          required
+          value={toUnitCode}
+          {...(toError === null ? {} : { error: toError })}
+          onChange={(event) => setToUnitCode(event.target.value)}
+          placeholder="e.g. g"
+          help="The code of an existing unit; must differ from the from unit."
+          autoCapitalize="none"
+        />
+        <NumberField
+          name="factor"
+          label="Factor"
+          unit={`${toUnitCode.trim() || "to"} per ${fromUnitCode.trim() || "from"}`}
+          required
+          value={factor}
+          {...(factorError === null ? {} : { error: factorError })}
+          onChange={(event) => setFactor(event.target.value)}
+          placeholder="e.g. 1000"
+          inputMode="decimal"
+          help={`1 ${fromUnitCode.trim() || "from unit"} = this many ${toUnitCode.trim() || "to units"}.`}
+        />
+      </FormModal>
+      <SuccessToast
+        open={success !== null}
+        onDismiss={() => setSuccess(null)}
+        message={success ?? ""}
       />
-      <TextField
-        name="toUnitCode"
-        label="To unit code"
-        required
-        value={toUnitCode}
-        {...(toError === null ? {} : { error: toError })}
-        onChange={(event) => setToUnitCode(event.target.value)}
-        placeholder="e.g. g"
-        help="The code of an existing unit; must differ from the from unit."
-        autoCapitalize="none"
-      />
-      <NumberField
-        name="factor"
-        label="Factor"
-        unit={`${toUnitCode.trim() || "to"} per ${fromUnitCode.trim() || "from"}`}
-        required
-        value={factor}
-        {...(factorError === null ? {} : { error: factorError })}
-        onChange={(event) => setFactor(event.target.value)}
-        placeholder="e.g. 1000"
-        inputMode="decimal"
-        help={`1 ${fromUnitCode.trim() || "from unit"} = this many ${toUnitCode.trim() || "to units"}.`}
-      />
-      <div>
-        <Button type="submit" loading={busy} disabled={busy}>
-          Register conversion
-        </Button>
-      </div>
-    </form>
+    </>
   );
 }
