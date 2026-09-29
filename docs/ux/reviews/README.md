@@ -22,7 +22,17 @@ cross-cutting findings, then triage the per-area files.
   extended the same day by `DEC-150`: stock items split by purpose (`for_sale` /
   `for_use`, migration `0079`) with For sale / For use tabs, a purpose badge, the
   variant picker limited to for-sale items ("Stocked from") and "Backs" on an item.
-- Everything else: awaiting triage.
+- **Home, Jobs, Administration — implemented (2026-09-28, UX Wave 1).** The owner
+  **delegated triage**, so these three areas were taken as accepted and built in
+  the first implementation wave (`f694d4d` home, `5ab6e4e` jobs, `86b26cb`
+  administration): home is one ranked hero metric with collapsed detail, jobs
+  leads with a dead-letter hero and explained/confirmed actions, and
+  `/administration` is a hub with per-area sub-routes. Verification, the honest
+  limits and the cross-cutting follow-ups are in
+  [handoff 103](../../handoffs/103-2026-09-28-ux-wave-1-home-jobs-administration.md).
+- Everything else: **awaiting its implementation wave** (Wave 2 Workforce is in
+  flight; Inventory/Purchasing/Production and the rest follow — see the order
+  below).
 
 ## How to triage
 

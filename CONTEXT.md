@@ -12,283 +12,96 @@ orientation and the next step. See "Handover archive" and "Update protocol".
 ## Resume here (next session)
 
 **Say "resume the work" and start here.** A fresh session must be able to
-continue from this section alone. (Rewritten by the 2026-09-27 docs
-session, after the jobs layer was completed — the real HTTP `202`
-producer, the 90-day retention prune and the `DEC-139` item-8 alert
-surfaces are delivered. Per-slice detail lives in the handoff files
-under `docs/handoffs/`; this file does not restate them.)
+continue from this section alone. (Rewritten by the 2026-09-28 UX Wave 1 docs
+commit — the area-wave programme. Per-slice detail lives in
+`docs/handoffs/103-2026-09-28-ux-wave-1-home-jobs-administration.md`; this file
+does not restate it.)
 
-**State:** branch `main`; HEAD **`d818583`** (the P2 platform core is
-`c66eb27`; the `ADR-0004`/`DEC-139` docs commit is `3348e78`). The
-**jobs layer is complete** — `DEC-139` fully delivered, and the recorded
-follow-ups are now closed except the system-wide prune — committed across
-twenty-seven layered commits, newest first: `d818583` (M1 regression gates: chain rehearsal, day-one smoke, E2E, env-drift), `17095cc` (self-assign race guard), `21f9687` (AI advisory cost pricing), `38797a1` (invite-accept page), `d5193d3` (WF-003 employee login + self-assignment; competitor capture idempotency + source editing, migrations `0077`/`0078`), `edf2ba9` (competitor sources UI, row 18c), `c46c6df` (competitor collector, row 18b), `00e9168` (competitor sources, row 18a, migration `0076`), `398e698` (AI advisory row 17, migration
-`0075`), `0424d73` (password reset via SendGrid,
-`DEC-147`), `50b231e` (receipt → stock ledger,
-`DEC-145`, migration `0074`), `5d8e285` (docs: the `DEC-141`–`DEC-148` owner
-decision round), `18c4cf3` (docs: the jobs screen), `2796411` (the jobs operator screen),
-`4c89702` (docs: `DEC-140`), `d070983` (the DB-backed worker
-heartbeat, migration `0073`), `918b80a` (DLQ review automation + the
-operator job list), `0aa54f3` (docs), `d3602d0` (honoured `scheduledAt`
-via pg-boss `startAfter`), `94bd965` (migration `0072`, the job retention
-index), `911ced6` (docs closing the jobs layer), `054355f` (the 90-day
-retention prune + the item-8 alert surfaces), `ba27b79` (the real HTTP
-`202` producer), `a84ce82`/`67e932d` (docs), `0da0593` (`apps/web` jobs
-route + `infra/**` env and plan-time check), `8572510` (persistence:
-pgboss provisioning + grants), `ecbe35b` (the runtime + payroll changes).
-**Working tree clean; pushed to `origin/main`; nothing applied to
-DigitalOcean.** Rollback: **`git revert` each commit**, then
-`DROP SCHEMA pgboss CASCADE` **only when unwinding the whole jobs
-stack** — facts stay in `public.outbox_event`; migrations `0072`'s and
-`0073`/`0074`/`0075`'s down files invert the index, the heartbeat table, the
-receipt-area columns, the AI tables, the competitor-source additions, the employee-invite table and the capture content hash. **5489/5489 tests (404 files)**;
-migrations through
-**`0080`** (105 public tables) plus
-the migrator-provisioned **`pgboss`** schema (pg-boss schemaVersion 42);
-`db:migrate` a no-op re-run. **Next free decision id `DEC-152`**
-(`DEC-141`–`DEC-151` are recorded; `DEC-150` is the stock-item purpose decision and `DEC-151` the employee role/position model). Know the
-`packages/application/src/scheduling/scheduling.postgres.test.ts`
-same-instant ordering flake (passes on re-run).
+**State:** branch `main`; HEAD **`86b26cb`** plus this docs commit, **clean and
+pushed** to `origin/main`; nothing applied to DigitalOcean. **5492/5492 tests
+(404 files)**; migrations through **`0080`** (105 public tables) plus the
+migrator-provisioned `pgboss` schema; `db:migrate` a no-op. **Next free decision
+id `DEC-152`** (`DEC-151` is the employee role/position model). Know the
+`packages/application/src/scheduling/scheduling.postgres.test.ts` same-instant
+ordering flake (passes on re-run).
 
-**Review-fix pass (`/review uncommitted`, 2026-09-26), committed in
-`ecbe35b`/`0da0593`/`8572510`:** five of six findings fixed, one declined with
-evidence
-(full detail in handoff `085`'s "Review-fix pass" section). The migrator
-(`packages/persistence/scripts/migrate.mjs`) now applies the pgboss runtime
-grants itself after provisioning, under advisory lock `8675309`, to the
-`PGBOSS_APP_ROLE` (default `app`; no-op when the role is absent; fail-closed
-on a grants error), so `infra/bootstrap/pgboss-grants.sql` is
-belt-and-braces/recovery only; the pgboss downgrade refusal names the
-recovery command (`DROP SCHEMA pgboss CASCADE;`) and a pg-boss schema bump
-blocks revert-by-redeploy until the drop; `infra/modules/app-platform/
-main.tf` carries a non-blocking Terraform `check "organization_id_set"`
-plan-time warning (both tfvars keep `organization_id = ""`; HCL unvalidated
-here); and the `packages/jobs-runtime` cron handlers no longer trust
-pg-boss-stored `job.data` (configured `organizationId`/`limit` win; a
-mismatch logs a warning). Declined: narrowing `GRANT EXECUTE ON ALL
-FUNCTIONS` — pinned pg-boss 12.33.2 defines only `create_queue`,
-`delete_queue`, `job_now`, `job_table_format`, `job_table_run`,
-`job_table_run_async` in `pgboss`, so the blanket grant covers exactly
-those. Post-fix verification: **4957/4957 tests (361 files)**;
-typecheck/lint/format:check clean; `next build` exit 0; `db:migrate` a
-no-op.
+**UX Wave 1 delivered** in three code commits — `f694d4d` (home, 2 files),
+`5ab6e4e` (jobs, 4 files incl. a 9-test `jobs-labels.test.ts`), `86b26cb`
+(administration, 13 files, 9 new) — followed by this docs commit. Home is one
+ranked `MetricHero` (net sales + day-over-day delta, the contribution definition
+in its `InfoTip`) with comparison and the exceptions queue behind `Collapsible`;
+Jobs leads with the dead-letter-queue hero and explained, confirmed
+Retry/Discard; Administration is a hub (six area cards with live counts, 812 px)
+with per-area sub-routes and the audit log on `/administration/audit`. The wave
+carried **no migration, no schema change and no API change**; diffstat 694
+insertions / 930 deletions (net −236). The four reported cross-cutting needs are
+the **reconciliation queue**: (1) a `countJobs`-by-status read in
+`packages/persistence/src/repositories/jobs.ts` (+ re-export), consumed by
+`apps/web/app/(app)/jobs/page.tsx`; (2) the duplicated `Tabs` config —
+`administration/tabs.tsx` is a **third** copy of the `costs/tabs.tsx` pattern, so
+a shared `AreaTabs` belongs in a Wave 0b; (3) promote `formatJobAge` to a shared
+formatter if another screen needs relative time; (4) Home's legacy `MetricBand`
+export exists only for `insights/page.tsx`.
 
-**UX/UI programme (started 2026-09-28).** Owner-directed screen redesign: the
-screens are cluttered, so the work is **information architecture + interaction
-design + a visual refresh** with restraint/hierarchy borrowed from Apple (one
-idea per view, space as grouping, progressive disclosure, creation in modals) and
-Nike (one hero metric, editorial section bands, a single accent) — explicitly
-**not** marketing scale or reduced table density. The contract is
-`docs/ux/README.md` (screen recipe, (i) InfoTip policy, state coverage, triggers);
-the route list is `docs/ux/screen-inventory.md`; per-area reviews land in
-`docs/ux/reviews/<area>.md` with a per-screen **triage line** for the owner. The
-lens is the **`ux-screen-review`** skill (installed at
-`~/.kilo/skills/ux-screen-review/`, outside the repo) driven by the
-**`ux-designer`** agent (defined in `~/.config/kilo/kilo.jsonc`). Sequence:
-audit all 71 screens (in progress, audit-only) → owner triage → Wave 0
-primitives/tokens (`Collapsible`, `InfoTip`, type scale + spacing/radius/accent
-refresh, shown in `/styleguide`) → implementation waves, one area each, browser
-verified with before/after screenshots.
+**Wave 2 Workforce — in flight, NOT yet verified or committed.** Per-screen work
+is pre-mapped to `docs/ux/reviews/workforce.md` line ranges: **2a** `/workforce`
+(45–91) + `/workforce/employees/[id]` (214–263; blocker — **Retire** renders as
+a full-width bar inside the read-only profile card); **2b** `/workforce/shifts`
+(92–133) + `/workforce/my-shifts` (134–172) + `/workforce/worked-hours`
+(173–213); **2c** `/workforce/payroll-reports` (264–305) +
+`/workforce/payroll-reports/[id]` (306–354) + `/close` (355–393) +
+`/account/security` (394–430). Area-wide asks: inline create forms → modals,
+`InfoTip` for raw codes (`HALF_UP`, `supersede`, `DEC-104`, `03.10`), plain empty
+states, KPI walls → one hero, destructive actions separated and confirmed before
+the button. **Wave 3 onward: Inventory / Purchasing / Production**, then
+Sales/Products, Costs, Insights/AI, HMS/Recipes, misc.
 
-**Roadmap from here (the project plan, 2026-09-27 — recorded so it survives the
-session):**
+**Briefing lesson (changes how the next session briefs workers).** Every
+`designer` agent in Waves 1–2 exhausted its step budget **during reconnaissance
+with zero edits** (it read the area's ~10 files plus `packages/ui` and the
+styleguide). What worked was resuming with the plan fully inlined,
+docs/styleguide/`packages/ui` reads **explicitly forbidden**, and a stop-safe
+order where every step leaves the tree compiling. Conclusion: **one `general`
+agent implements with the plan inlined, and a separate visual pass produces the
+browser evidence**; briefs must inline the **Wave 0 primitive API map**
+(`packages/ui/src/shell.tsx` `MetricHero` :291, `MetricSecondary` :397,
+`MetricBand` :435, `SectionCard` :499, `EmptyState` :590; `info-tip.tsx`;
+`modal.tsx` `FormModal`; `toast.tsx` `SuccessToast`; `patterns.tsx` `Collapsible`
+:486, `Tabs` :949, `DataTable` :667, `FilterBar` :729, `DescriptionList` :838,
+`FormSection`/`FormActions` :873/:907, `FileField` :447; `format.ts`
+`groupDecimal` :85, `formatNumber` :93, `formatMoney` :104, `formatAxisValue`
+:111, `axisLabel` :125). Tooling fact: the `designer` and `writer` agent types
+have **no write tools/shell** in this configuration, so docs and commits go to
+`general`.
 
-- **M1 — day-one + smoke regression gate (DELIVERED 2026-09-27, `d818583`; no owner input):**
-  (a) a migration **chain rehearsal** test (all ups → all downs in reverse → ups
-  again, on a scratch DB) so Rule 2 is machine-checked, not manual; (b) a
-  **bootstrap smoke** in CI (fresh DB → `db:migrate` → `npm run bootstrap` →
-  assert the org/owner/role rows and the table count) so the real day-one path is
-  proven on every push; (c) an **E2E smoke** job (boot web — and worker/scheduler
-  with their kill switches off — hit `/api/health`, log in as the bootstrapped
-  owner, one read plus one mutation, screenshot on failure) because CI today
-  stops at `npm run build` and nothing proves the app runs; (d) an **env-drift**
-  test asserting `env.ts` ⇄ `.env.example` ⇄ raw `process.env` reads ⇄
-  Terraform `var.*`/`.tfvars` agree, plus a no-real-secret guard.
-- **M2 — deployment rehearsal (owner-gated, inputs reduced 2026-09-27 by the
-  single-VM pivot):** the **single-VM path is now primary** (`deploy/`, docker
-  compose + Caddy + Postgres on the box + local-volume file storage; ~$12/mo vs
-  ~$45-65 for App Platform), so the rehearsal needs only a droplet (or a similar
-  VM), the **SendGrid keys** and the **LLM keys** — no managed DB, no Spaces, no
-  DO App Platform token. App Platform stays as the documented alternative. The
-  procedure is `deploy/README.md` + `deploy/bootstrap-vm.sh`; verification is
-  the M1 gates plus the live health/login/upload checks; the honest caveats are
-  no HA, no managed backups (nightly `pg_dump`, RPO <= 24 h) and the 2 GB
-  memory ceiling with swap.
-- **M3 — the last gated feature (owner-gated, `I15`/`I18`):** INTG-002
-  publishing (`publish_run`, idempotent publish jobs, confirmation read-back),
-  behind the per-source write terms under `DEC-015`.
+**Milestones beyond the waves (owner-gated):** M2 — the deployment rehearsal on a
+single VM (`deploy/`; SendGrid and LLM keys only); M3 — INTG-002 publishing,
+gated only on the per-source write terms I15/I18 under `DEC-015`. The M1
+regression gates are delivered (`d818583`).
 
-**UX programme status (2026-09-28).** The 71-screen audit is complete (see
-`docs/ux/reviews/README.md`). The owner has **triaged the `products` area and it
-is delivered** (`2d707c1`): the Items register is retitled and modalised, and
-sellables are a Products → Variants hierarchy (product view with its variants,
-variant edit surface as a nested route). Two hard rules are now in
-`docs/ux/README.md` ("Creation and hierarchy"): creation/editing is always a
-button + Modal (never an inline/`<details>` form on a register), and children are
-created inside their parent (a parent list shows a child count). **The remaining
-areas await the owner's triage** before Wave 0 (InfoTip, Collapsible, plain
-EmptyState, MetricHero, money formatter, Modal/toast/FileField patterns, token
-refresh) and the area implementation waves. Two defects from the audit remain
-unfixed: the production screens leak internal references into user copy, and the
-app has no `error.tsx`/`not-found.tsx`/`loading.tsx` anywhere. **Stock items now split by `purpose` (`for_sale` / `for_use`)** — `DEC-150`
-(2026-09-28) **implemented** (`7427b43`, migration `0079`): data, not a type
-mapping, with a variant edge guard (`product_variant.finished_good_item_id` must
-be a for-sale item), nav **Stock**, **For sale / For use** tabs, a purpose badge,
-the variant picker limited to for-sale items ("Stocked from") and "Backs" on an
-item. Backfill `for_sale=1`/`for_use=8`; `0079` down rehearsed on a scratch DB.
-
-**Session 2026-09-28 delivered (all pushed):** the 71-screen UX audit +
-contract + inventory (`docs/ux/**`); **Wave 0** (design-system primitives,
-formatters, token refresh, `/styleguide`) — `d943326`; **`DEC-151`** employee role
-as a fixed entity + position catalogue matched to shifts (migration `0080`) —
-`dcb284a`; the three audit defects (route error/not-found/loading boundaries,
-de-internalised production copy, non-exclusive for-sale wording) — `f6a73c1`;
-plus the earlier products redesign (`2d707c1`) and `DEC-150` item purpose
-(`7427b43`). The owner **delegated triage**, so **the next task is the area
-waves**: apply the items/products treatment (one primary action, creation in
-modals, split contexts, progressive disclosure, hero metric, InfoTips) to each
-section per `docs/ux/reviews/*.md`, in the triage index's order — home/jobs/
-administration, workforce, inventory/purchasing/production, sales/products,
-costs, insights/AI, hms/recipes, misc — composing the Wave 0 primitives.
-
-**Next task: M2 — the deployment rehearsal on a single VM (owner-gated on the
-SendGrid and LLM keys only).**
-M1 is delivered: CI now runs a migration-chain rehearsal (up → all 76 downs →
-up), a day-one bootstrap smoke, an E2E smoke (boot + browser flow) and an
-env-drift gate. Older context, still true — the owner-blocked fronts are now
-unblocked except INTG-002.
-Delivered since: WF-003 employee login + self-assignment (`DEC-146`, `0077`) and
-the competitor follow-ups (capture idempotency + source editing, `0078`).
-Remaining buildable/follow-ups: prompt-change control; the system-wide `job`
-prune (`DEC-140` keeps the org-scoped one); a real `terraform fmt`/`validate`
-run in CI; then **`WF-003` employee login once the owner decides** (account provisioning,
-approval model, self-assign limit) and the recorded follow-ups (competitor
-content-hash dedupe; AI cost caps inert until pricing; Terraform validation).
-18a (`competitor_source`, migration `0076`) and 18b (the collector, `c46c6df`)
-are delivered.
-The earlier context: row 18's approved sources are public competitor websites
-under the `DEC-020` rules plus the Wolt menu subject to its terms, Instagram
-manual. Delivered since the decision
-round: the receipt→ledger wiring (`DEC-145`, `0074`), reset delivery via
-SendGrid (`DEC-147`, `0424d73`) and **row 17 AI advisory** (`ADR-0009`,
-`DEC-142`, migration `0075`, `398e698` — review foundation + scheduled run,
-advisory only, kill switch default off). **WF-003 employee login is PAUSED
-pending the owner decision** (account provisioning, approval model,
-self-assign limit) — the question was raised and dismissed; do not guess it.
-INTG-002 stays deferred (`DEC-141`); the deployment rehearsal stays parked
-(`DEC-148`).
-
-- **Scope (do):** pick the next item above; each has its decision row and
-  the roadmap entry. The jobs layer and its follow-ups are **complete**
-  (`DEC-139`/`DEC-140`).
-- **Scope (do not):** no external publishing (INTG-002 stays gated on the
-  per-source write terms I15/I18 under `DEC-015`); do not weaken any test
-  assertion; do not resolve other recorded inputs silently.
-- **Authoritative docs to read first:** `docs/adr/0004-jobs-and-outbox.md`;
-  `DEC-139` in `12_OPEN_DECISIONS.md`;
-  `docs/handoffs/084-2026-09-26-jobs-runtime-pgboss-wiring.md` + handoff
-  `085` (the payroll slice); `docs/runbooks/deployment.md`.
-- **Verification (exact):** `export NVM_DIR="$HOME/.nvm"; .
-"$NVM_DIR/nvm.sh"; nvm use 22`; `npm run typecheck`; `npm run lint`;
-  `npm run format:check`; `npm run build`;
-  `DATABASE_URL=postgres://aquarela:aquarela@localhost:5432/aquarela npm
-run test` (≥ **5489/5489**, 404 files); `npm run db:migrate` a no-op
-  re-run. Normalise the generated `apps/web/next-env.d.ts`/
-  `apps/web/tsconfig.json` with `git checkout --` before staging (see the
-  durable fact below). Expect the
-  `packages/application/src/scheduling/scheduling.postgres.test.ts`
-  same-instant ordering flake to occasionally fail (passes on re-run).
-  Commit in layers with the rollback approach in each body (Rule 2).
-- **Acceptance criteria:** the picked slice/row is delivered per its
-  decision rows and this section's rules; the read paths stay org-scoped
-  and fail-closed on authorization; the full verification set is green
-  (≥ 5489/5489, 404 files) with `build` included. For the follow-up
-  option: the prune covers all organizations (the `(organization_id,
-created_at)` index landed in migration `0072`, rehearsed down
-  path), the heartbeat divergence check is DB-backed or the log alert
-  is recorded as sufficient, and the DLQ review loop is automated or
-  explicitly rejected with a reason.
-- **Rollback:** revert each commit (or `git checkout` the tree
-  pre-commit); a schema change is not expected — if one lands, follow
-  expand → migrate → contract with a rehearsed down path and a runbook
-  row before finishing.
-
-**Honest remainder / open items (recorded, do not silently defer):**
-
-1. The payroll report generated in the month's lead window is
-   **provisional** — it under-counts the remaining days of the
-   in-progress period (`DEC-104`); `DEC-104` items 5/9/10 stay open and
-   the handler's conservative refusal to supersede an `exported` report
-   is **deliberate** (it throws inside the same `FOR UPDATE`-locked
-   transaction that generates, so the posture holds under redelivery).
-2. Delayed delivery is implemented at the enqueue level
-   (`OutboxDispatchEvent.scheduledAt` → pg-boss `startAfter`, preserved on
-   replay, `d3602d0`) but nothing yet passes a `scheduledAt` — the payroll
-   cron fires on its daily lead-window guard, not at a scheduled instant.
-3. The jobs access set `JOBS_READ_ROLES`
-   (owner/general_manager/finance/admin) is **provisional** per
-   `DEC-101`.
-4. The **scheduler now requires `ORGANIZATION_ID`** (the maintenance
-   replay and the payroll cron are organization-scoped) and exits 1
-   without it; `web` and `scheduler` both carry it.
-5. Terraform is unvalidated here (the binary is absent in the session
-   environment); `infra/modules/app-platform/main.tf` now gives the
-   scheduler component `ORGANIZATION_ID` and carries a **non-blocking**
-   plan-time `check "organization_id_set"` warning when `organization_id`
-   is empty (deliberately not a `validation`/`precondition`: both env
-   tfvars keep `organization_id = ""` and the offline `plan` must keep
-   working).
-6. A post-success projection-write failure causes an extra supersede
-   cycle on the next delivery — audit churn only, settled state wins.
-7. The **90-day `job` retention prune is organization-scoped
-   (single-tenant)** and has no `created_at` index to lean on until the
-   `0072` index (it ran off `job_org_status_scheduled_idx`); the
-   system-wide prune (the `(organization_id, created_at)` index landed
-   in migration `0072`) is the recorded follow-up.
-8. The `DEC-139` item-8 alerts are **log surfaces only** —
-   `jobs.dead_letter`, `jobs.queue_depth`, `jobs.oldest_queued_age`,
-   `jobs.stuck_pending` must be wired to DO log monitoring (grouped/
-   deduped; `docs/runbooks/deployment.md`); the **dead-letter alert
-   re-alerts every 5 min until reviewed** (30-day retention; the weekly
-   DLQ review runbook is in the deployment runbook, review automation
-   is the follow-up); the **worker heartbeat is a platform log alert**
-   (pg-boss 12 keeps WIP in memory — a DB-backed heartbeat is the
-   follow-up if cross-process detection is needed).
-9. Queue-existence deploy ordering: the payroll producer creates its
-   outbox queue **lazily**, so it works regardless of worker/scheduler
-   boot order; a new producing process should do the same.
-10. `retryLimit 5` vs `maxAttempts 5`: the 6th delivery of a failed event
-    is a settled no-op — documented in `packages/jobs-runtime` code
-    (the `reviewer-glm` item).
-11. Partitioned queues would need migrator pre-creation, because `app`
-    lacks DDL.
-12. INTG-002/external publishing is now gated **only** on the per-source
-    write terms I15/I18 under `DEC-015` (`ADR-0004` is no longer a gate).
-
-**Process note — one worktree, one writer:** a second session was found
-running concurrently in this same worktree before (orphaned background
-tasks from a previous session), editing and committing the same files; git
-mutations collided and one edit briefly broke the build. Two sessions must
-not drive one worktree. **At session start, check for a concurrent writer**
-(recent file mtimes, `git reflog`, unexpected new commits) **before
-editing**.
-
-**Durable facts:**
-
-1. `npm run build` must be in every verification pass — typecheck/lint/
-   tests do not catch client-bundle breakage (the `@aquarela/domain` barrel
-   case, fixed by `3054512`).
-2. `apps/web/next-env.d.ts` and `apps/web/tsconfig.json` are **generated
-   artifacts** rewritten by every `next build`/`next dev` for the active
-   `NEXT_DIST_DIR`; normalise with `git checkout -- apps/web/next-env.d.ts
-apps/web/tsconfig.json` before staging.
-3. The scheduling same-instant ordering flake (above) passes on re-run.
-4. Dev server (session-scoped, still current):
-   `DATABASE_URL=postgres://aquarela:aquarela@localhost:5432/aquarela`,
-   `ORGANIZATION_ID=1448a476-32f2-426f-b153-11a851011e48`; sign in
-   `owner` / `LocalDevPass123`; MFA disabled for `owner`; demo data
-   seeded including the `zettle-legacy` `import_profile`. A fresh session
-   must restart the server.
+- **Scope (do):** continue **Wave 2 Workforce** (the review line ranges above),
+  then Wave 3 Inventory / Purchasing / Production; compose the Wave 0 primitives
+  per `docs/ux/README.md`; keep read paths org-scoped and fail-closed.
+- **Scope (do not):** no external publishing (INTG-002 gated on I15/I18 under
+  `DEC-015`); do not weaken any test assertion; do not resolve recorded owner
+  inputs silently; do not touch or amend the three Wave 1 code commits.
+- **Authoritative docs to read first:** `docs/ux/README.md` (the contract),
+  `docs/ux/reviews/README.md` (triage index), `docs/ux/reviews/workforce.md`,
+  `AGENTS.md` (this file's rules) and handoff `103`.
+- **Verification (exact):** `export NVM_DIR="$HOME/.nvm"; . "$NVM_DIR/nvm.sh";
+nvm use 22`; `npm run typecheck`; `npm run lint`; `npm run format:check`;
+  `npm run build`; `DATABASE_URL=postgres://aquarela:aquarela@localhost:5432/aquarela
+npm run test` (≥ **5492/5492**, 404 files); `npm run db:migrate` a no-op re-run.
+  Normalise the generated `apps/web/next-env.d.ts` / `apps/web/tsconfig.json`
+  with `git checkout --` before staging. Expect the scheduling same-instant
+  ordering flake to occasionally fail (passes on re-run).
+- **Acceptance criteria:** the wave's screens follow the contract (one idea per
+  view, one hero metric, `InfoTip` explainability, plain empty states, creation in
+  modals, destructive actions separated and confirmed) with browser evidence; the
+  full verification set is green (≥ 5492/5492) with `build` included.
+- **Rollback:** `git revert` each Wave 1 code commit **independently** (no
+  migration, no schema and no API change this wave); the Wave 1 docs commit
+  reverts on its own.
 
 ## Next up (prioritised)
 

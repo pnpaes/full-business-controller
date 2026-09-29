@@ -27,3 +27,6 @@ terraform.rc
 # Playwright CLI verification artifacts (global AGENTS.md: keep out of commits)
 storage/
 .playwright-cli/
+
+# Audit screenshots (referenced by handoff 101, kept out of commits)
+samples/ui-sccreenshots/

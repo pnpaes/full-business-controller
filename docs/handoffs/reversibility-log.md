@@ -1,5 +1,12 @@
 # Reversibility log
 
+- **2026-09-28 UX Wave 1 (`f694d4d`, `5ab6e4e`, `86b26cb`; pushed)**: the three
+  code commits (home, jobs, administration) are UI/composition refactors of
+  existing screens — **no migration, no schema change and no API change**, so
+  each reverts **independently** with `git revert <sha>` and needs **no data
+  step**. The docs-only commit on top (`docs: record UX Wave 1 …`) reverts on its
+  own too. No posted money or stock fact is touched. Details:
+  [handoff 103](103-2026-09-28-ux-wave-1-home-jobs-administration.md).
 - **2026-09-28 UX wave (`d943326`, `dcb284a`, `f6a73c1`; pushed)**: Wave 0 is
   additive in `packages/ui` (+ the styleguide); `0080_role_position.sql` adds the
   role FK, `position`, `employee_position` and `shift.position_id` and its down
