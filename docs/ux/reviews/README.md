@@ -30,9 +30,18 @@ cross-cutting findings, then triage the per-area files.
   `/administration` is a hub with per-area sub-routes. Verification, the honest
   limits and the cross-cutting follow-ups are in
   [handoff 103](../../handoffs/103-2026-09-28-ux-wave-1-home-jobs-administration.md).
-- Everything else: **awaiting its implementation wave** (Wave 2 Workforce is in
-  flight; Inventory/Purchasing/Production and the rest follow — see the order
-  below).
+- **Workforce — implemented (2026-09-28, UX Wave 2).** The owner **delegated
+  triage**, so the Workforce area was taken as accepted and built in the second
+  implementation wave (`9dfb501` register + employee detail, `59adf31` shifts /
+  worked hours / my-shifts, `929768c` payroll / close / account security). The
+  audit blocker is fixed — Retire moved out of the read-only profile card into a
+  confirmed "Danger zone" — registers create through header `FormModal`s, the KPI
+  walls became one hero each, destructive actions are separated and confirmed, and
+  raw codes moved into `InfoTip`s. Verification, the honest limits and the
+  reconciliation queue are in
+  [handoff 104](../../handoffs/104-2026-09-28-ux-wave-2-workforce.md).
+- Everything else: **awaiting its implementation wave** (Wave 3 is Inventory /
+  Purchasing / Production; the rest follow — see the order below).
 
 ## How to triage
 

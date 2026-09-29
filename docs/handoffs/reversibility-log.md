@@ -1,5 +1,15 @@
 # Reversibility log
 
+- **2026-09-28 UX Wave 2 (`9dfb501`, `59adf31`, `929768c`; pushed)**: the three
+  code commits (workforce register + employee detail; shifts / worked hours /
+  my-shifts; payroll / close / account security) are UI/composition refactors of
+  existing screens — **no migration, no schema change and no API change**, so
+  each reverts **independently** with `git revert <sha>` and needs **no data
+  step**. `929768c` also deletes the superseded `close-actions.tsx`, which the
+  revert restores; the other two commits are additive or in-place UI edits only.
+  The docs-only commit on top reverts on its own too. No posted money or stock
+  fact is touched. Details:
+  [handoff 104](104-2026-09-28-ux-wave-2-workforce.md).
 - **2026-09-28 UX Wave 1 (`f694d4d`, `5ab6e4e`, `86b26cb`; pushed)**: the three
   code commits (home, jobs, administration) are UI/composition refactors of
   existing screens — **no migration, no schema change and no API change**, so
