@@ -4,8 +4,10 @@ import {
   Alert,
   Button,
   EmptyState,
+  InfoTip,
   Modal,
   StatusPill,
+  SuccessToast,
   Table,
   Td,
   Th,
@@ -49,9 +51,10 @@ type Action = "retry" | "discard";
  * data and failure text stay server-side (`GET /api/v1/jobs` omits them too).
  *
  * Retry and discard are offered only on `dead_lettered` rows and only to a
- * caller holding `JOBS_ADMIN_ROLES`; every action still carries a confirmation
- * step, and the API remains the authority (a rejected action surfaces its
- * message rather than being silently accepted).
+ * caller holding `JOBS_ADMIN_ROLES`; every action carries an (i) InfoTip and a
+ * confirmation that states the consequence before the button, and the API
+ * remains the authority (a rejected action surfaces its message rather than
+ * being silently accepted).
  */
 export function JobsRegister({
   rows,
@@ -64,14 +67,13 @@ export function JobsRegister({
   const [pending, setPending] = useState<{ row: JobsRegisterRow; action: Action } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
 
   if (rows.length === 0) {
     return (
-      <EmptyState title="No jobs for this filter">
+      <EmptyState variant="plain" title="No jobs for this filter">
         Jobs appear here once the worker or the scheduler enqueues work — the monthly payroll run,
-        the outbox replay, or any producer. Dead-lettered jobs are the weekly review queue
-        (DEC-139).
+        the outbox replay, or any producer. Dead-lettered jobs are the weekly review queue.
       </EmptyState>
     );
   }
@@ -79,7 +81,6 @@ export function JobsRegister({
   async function run(row: JobsRegisterRow, action: Action): Promise<void> {
     setBusy(true);
     setError(null);
-    setNotice(null);
     const fallback = action === "retry" ? RETRY_FALLBACK : DISCARD_FALLBACK;
     try {
       const response = await fetch(`/api/v1/jobs/${row.id}/${action}`, {
@@ -92,7 +93,7 @@ export function JobsRegister({
         setError(await errorMessage(response, fallback));
         return;
       }
-      setNotice(
+      setToast(
         action === "retry"
           ? "Job re-queued — it will run again (deduped on the outbox event)."
           : "Job discarded — it stays failed and will not be replayed.",
@@ -108,8 +109,9 @@ export function JobsRegister({
 
   return (
     <>
-      {notice !== null ? <Alert tone="success">{notice}</Alert> : null}
       {error !== null ? <Alert tone="danger">{error}</Alert> : null}
+
+      <SuccessToast open={toast !== null} onDismiss={() => setToast(null)} message={toast ?? ""} />
 
       <Table caption="Jobs, newest first." columnCount={canAdmin ? 6 : 5}>
         <thead>
@@ -117,7 +119,13 @@ export function JobsRegister({
             <Th>Status</Th>
             <Th>Kind</Th>
             <Th>Queue</Th>
-            <Th>Attempts</Th>
+            <Th>
+              Attempts
+              <InfoTip
+                content="How many times the job has run against its retry ceiling; a dead-lettered job has used all of them."
+                label="What attempts means"
+              />
+            </Th>
             <Th>Created</Th>
             {canAdmin ? <Th>Actions</Th> : null}
           </tr>
@@ -142,14 +150,22 @@ export function JobsRegister({
                 {canAdmin ? (
                   <Td>
                     {actionable ? (
-                      <div style={{ display: "flex", gap: 8 }}>
+                      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                         <Button onClick={() => setPending({ row, action: "retry" })}>Retry</Button>
+                        <InfoTip
+                          content="Re-queues the job: it is reset to pending and the event is re-sent. Safe to repeat (consumers dedup on the event id)."
+                          label="What retry does"
+                        />
                         <Button
                           variant="secondary"
                           onClick={() => setPending({ row, action: "discard" })}
                         >
                           Discard
                         </Button>
+                        <InfoTip
+                          content="Marks the job terminally failed and stops the replay — the event will never be re-applied. Irreversible."
+                          label="What discard does"
+                        />
                       </div>
                     ) : (
                       <span aria-hidden="true">—</span>
