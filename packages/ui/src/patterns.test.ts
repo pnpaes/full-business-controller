@@ -2,7 +2,15 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { Collapsible, DataTable, FileField, NumberField, ProgressBar } from "./patterns";
+import {
+  AreaTabs,
+  Collapsible,
+  DataTable,
+  FileField,
+  NumberField,
+  ProgressBar,
+  areaTabActiveHref,
+} from "./patterns";
 
 const render = (element: React.ReactElement): string => renderToStaticMarkup(element);
 
@@ -144,5 +152,36 @@ describe("FileField", () => {
     expect(html).toContain('aria-invalid="true"');
     expect(html).toContain('aria-describedby="field-invoice-error"');
     expect(html).toContain('id="field-invoice-error"');
+  });
+});
+
+describe("AreaTabs", () => {
+  const items = [
+    { href: "/costs", label: "Overview" },
+    { href: "/costs/cost-cards", label: "Cost cards" },
+  ];
+
+  it("resolves the active href to the longest matching prefix", () => {
+    expect(areaTabActiveHref("/costs", items)).toBe("/costs");
+    expect(areaTabActiveHref("/costs/cost-cards", items)).toBe("/costs/cost-cards");
+    expect(areaTabActiveHref("/costs/cost-cards/42", items)).toBe("/costs/cost-cards");
+  });
+
+  it("only matches a parent path on a segment boundary and misses otherwise", () => {
+    expect(areaTabActiveHref("/costs-other", items)).toBeUndefined();
+    expect(areaTabActiveHref("/elsewhere", items)).toBeUndefined();
+  });
+
+  it("marks aria-current on the active link only", () => {
+    const html = render(
+      createElement(AreaTabs, {
+        pathname: "/costs/cost-cards",
+        items,
+        ariaLabel: "Costs sections",
+      }),
+    );
+    expect(html).toContain('aria-label="Costs sections"');
+    expect(html).toContain('href="/costs/cost-cards"');
+    expect((html.match(/aria-current="page"/g) ?? []).length).toBe(1);
   });
 });

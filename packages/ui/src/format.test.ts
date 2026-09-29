@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { axisLabel, formatAxisValue, formatMoney, formatNumber, groupDecimal } from "./format";
+import {
+  axisLabel,
+  formatAxisValue,
+  formatMoney,
+  formatNumber,
+  formatRelativeAge,
+  groupDecimal,
+} from "./format";
 
 describe("groupDecimal", () => {
   it("groups the integer part in threes without touching the fraction", () => {
@@ -58,5 +65,24 @@ describe("chart axis convention", () => {
     expect(axisLabel("Amount", "NOK")).toBe("Amount (NOK)");
     expect(axisLabel("Quantity", "kg")).toBe("Quantity (kg)");
     expect(axisLabel("Food cost %")).toBe("Food cost %");
+  });
+});
+
+describe("formatRelativeAge", () => {
+  const now = new Date("2026-09-29T08:00:00Z");
+
+  it("renders sub-minute ages as just now", () => {
+    expect(formatRelativeAge("2026-09-29T07:59:30.000Z", now)).toBe("just now");
+  });
+
+  it("renders minutes, hours and days", () => {
+    expect(formatRelativeAge("2026-09-29T07:55:00.000Z", now)).toBe("5m");
+    expect(formatRelativeAge("2026-09-29T05:00:00.000Z", now)).toBe("3h");
+    expect(formatRelativeAge("2026-09-27T08:00:00.000Z", now)).toBe("2d");
+  });
+
+  it("clamps a future instant to just now rather than a negative age", () => {
+    expect(formatRelativeAge("2026-09-29T09:00:00.000Z", now)).toBe("just now");
+    expect(formatRelativeAge(new Date("2026-09-29T09:00:00.000Z"), now)).toBe("just now");
   });
 });

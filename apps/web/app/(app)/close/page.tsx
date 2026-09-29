@@ -4,7 +4,16 @@ import {
   listLocations,
   listPeriodCloses,
 } from "@aquarela/application";
-import { EmptyState, InfoTip, KpiCard, PageHeader, SectionCard, spacing } from "@aquarela/ui";
+import {
+  EmptyState,
+  InfoTip,
+  MetricBand,
+  MetricHero,
+  MetricSecondary,
+  PageHeader,
+  SectionCard,
+  spacing,
+} from "@aquarela/ui";
 import { redirect } from "next/navigation";
 
 import { getAuthStore } from "../../../lib/auth";
@@ -173,21 +182,25 @@ export default async function ClosePage() {
         }
       />
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-          gap: spacing[4],
-        }}
-      >
-        <KpiCard label="Closing" value={String(closingCount)} meta="Begun, not yet locked" />
-        <KpiCard label="Locked" value={String(lockedCount)} meta="Period frozen" />
-        <KpiCard
-          label="Reopened"
-          value={String(reopenedCount)}
-          meta="Unlocked for correction; re-begin to close again"
-        />
-      </div>
+      <MetricBand
+        hero={
+          <MetricHero label="Closing" value={String(closingCount)} meta="Begun, not yet locked" />
+        }
+        metrics={[
+          <MetricSecondary
+            key="locked"
+            label="Locked"
+            value={String(lockedCount)}
+            meta="Period frozen"
+          />,
+          <MetricSecondary
+            key="reopened"
+            label="Reopened"
+            value={String(reopenedCount)}
+            meta="Unlocked for correction; re-begin to close again"
+          />,
+        ]}
+      />
 
       <SectionCard
         title="Closes"

@@ -125,3 +125,25 @@ export function formatAxisValue(
 export function axisLabel(subject: string, unit?: string): string {
   return unit ? `${subject} (${unit})` : subject;
 }
+
+/**
+ * A plain relative age for freshness lines: `just now`, then `5m`, `3h`, `2d`.
+ * Accepts a `Date` or an ISO string; a **future** instant is clamped to
+ * "just now" rather than reporting a negative age. Presentation-only, like the
+ * money helpers above.
+ */
+export function formatRelativeAge(value: Date | string, now: Date = new Date()): string {
+  const instant = typeof value === "string" ? new Date(value) : value;
+  const minutes = Math.max(0, Math.floor((now.getTime() - instant.getTime()) / 60000));
+  if (minutes < 1) {
+    return "just now";
+  }
+  if (minutes < 60) {
+    return `${minutes}m`;
+  }
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) {
+    return `${hours}h`;
+  }
+  return `${Math.floor(hours / 24)}d`;
+}

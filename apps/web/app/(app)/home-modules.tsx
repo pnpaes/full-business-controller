@@ -8,76 +8,7 @@
  * reach (media queries). The hero/secondary metric band is the Wave 0
  * `MetricBand`/`MetricHero`/`MetricSecondary` from `@aquarela/ui`.
  */
-import type { ReactNode } from "react";
-
-import { Table, Td, Th, color, spacing, typography } from "@aquarela/ui";
-
-const fontSans = { fontFamily: typography.fontFamily.sans } as const;
-
-/* -------------------------------- Metric band ------------------------------- */
-
-export interface MetricBandItem {
-  /** Small muted caption naming the measure. */
-  label: string;
-  /** The figure, preformatted by the caller (unit/currency pairing). */
-  value: ReactNode;
-  /** Optional per-measure note (e.g. the contribution exclusion). */
-  note?: ReactNode | undefined;
-}
-
-/**
- * The grouped period-measures band used by the Insights landing, which
- * imports it from here (`MetricBand` from `@aquarela/ui` is the Wave 0
- * hero-band primitive the Management home composes instead). The band-level
- * meta line (period · scope · freshness) is carried by the wrapping
- * `SectionCard`, so the cells stay quiet; a cell may still add its own note.
- */
-export function MetricBand({ items }: { readonly items: readonly MetricBandItem[] }) {
-  return (
-    <div className="mh-band">
-      {items.map((item) => (
-        <div key={item.label} className="mh-band-cell" style={{ minWidth: 0, ...fontSans }}>
-          <span
-            style={{
-              display: "block",
-              fontSize: typography.fontSize.sm,
-              fontWeight: typography.fontWeight.medium,
-              color: color.ink.secondary,
-            }}
-          >
-            {item.label}
-          </span>
-          <span
-            style={{
-              display: "block",
-              marginTop: spacing[1],
-              fontSize: typography.fontSize["2xl"],
-              fontWeight: typography.fontWeight.regular,
-              lineHeight: typography.lineHeight.tight,
-              fontVariantNumeric: typography.fontVariantNumeric.tabular,
-              color: color.ink.primary,
-            }}
-          >
-            {item.value}
-          </span>
-          {item.note ? (
-            <span
-              style={{
-                display: "block",
-                marginTop: spacing[1],
-                fontSize: typography.fontSize.xs,
-                lineHeight: typography.lineHeight.normal,
-                color: color.ink.tertiary,
-              }}
-            >
-              {item.note}
-            </span>
-          ) : null}
-        </div>
-      ))}
-    </div>
-  );
-}
+import { Table, Td, Th, color, typography } from "@aquarela/ui";
 
 /* -------------------------- Location comparison table ----------------------- */
 

@@ -15,6 +15,7 @@ import type { CSSProperties, ReactNode } from "react";
 
 import {
   Alert,
+  AreaTabs,
   Badge,
   Button,
   Card,
@@ -1209,6 +1210,32 @@ export default function StyleguidePage() {
                 </div>
               </div>
             </div>
+          </Stack>
+        </SectionCard>
+
+        {/* --------------------------- Area section tabs ----------------------- */}
+        <SectionCard
+          title="Area section tabs"
+          meta="AreaTabs — the shared strip for an area hub and its sub-screens"
+          headingLevel={2}
+        >
+          <Stack gap={spacing[3]}>
+            <AreaTabs
+              pathname="/costs/cost-cards"
+              ariaLabel="Costs sections (reference)"
+              items={[
+                { href: "/costs", label: "Overview" },
+                { href: "/costs/cost-cards", label: "Cost cards" },
+                { href: "/costs/price-scenarios", label: "Price scenarios" },
+                { href: "/costs/price-versions", label: "Price versions" },
+              ]}
+            />
+            <span
+              style={{ ...fontSans, fontSize: typography.fontSize.sm, color: color.text.muted }}
+            >
+              The active tab is the longest href matching the pathname (exact or as a parent), so a
+              nested screen keeps its own tab lit and the area root does not.
+            </span>
           </Stack>
         </SectionCard>
 

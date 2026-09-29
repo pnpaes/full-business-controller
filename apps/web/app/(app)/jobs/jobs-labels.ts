@@ -41,20 +41,3 @@ export function formatJobInstant(value: Date | string | null | undefined): strin
   const iso = typeof value === "string" ? value : value.toISOString();
   return `${iso.slice(0, 16).replace("T", " ")} UTC`;
 }
-
-/** A plain relative age ("just now", "5m", "3h", "2d") for freshness lines. */
-export function formatJobAge(value: Date | string, now: Date = new Date()): string {
-  const created = typeof value === "string" ? new Date(value) : value;
-  const minutes = Math.max(0, Math.floor((now.getTime() - created.getTime()) / 60000));
-  if (minutes < 1) {
-    return "just now";
-  }
-  if (minutes < 60) {
-    return `${minutes}m`;
-  }
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) {
-    return `${hours}h`;
-  }
-  return `${Math.floor(hours / 24)}d`;
-}

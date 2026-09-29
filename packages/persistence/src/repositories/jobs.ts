@@ -362,3 +362,42 @@ export async function countStuckJobs(db: Database, input: CountStuckJobsInput): 
     );
   return rows[0]?.count ?? 0;
 }
+
+export interface CountJobsByStatusQuery {
+  readonly organizationId: string;
+}
+
+export interface JobStatusCount {
+  /** The `job_status_check` status (e.g. `dead_lettered`, `running`). */
+  readonly status: string;
+  readonly count: number;
+  /** The oldest `created_at` in this bucket, or `null` when the bucket is empty. */
+  readonly oldestCreatedAt: Date | null;
+}
+
+/**
+ * The organization's job counts grouped by status, with each bucket's oldest
+ * `created_at`, in a single read. Backs the `/jobs` hero and status chips with
+ * true counts instead of deriving a capped figure from a bounded `listJobs`
+ * fetch. Organization-scoped (`DEC-061`); a status with no rows is simply
+ * absent from the result.
+ */
+export async function countJobsByStatus(
+  db: Database,
+  query: CountJobsByStatusQuery,
+): Promise<readonly JobStatusCount[]> {
+  const rows = await db
+    .select({
+      status: job.status,
+      count: sql<number>`count(*)::int`,
+      oldestCreatedAt: sql<Date | null>`min(${job.createdAt})`,
+    })
+    .from(job)
+    .where(eq(job.organizationId, query.organizationId))
+    .groupBy(job.status);
+  return rows.map((row) => ({
+    status: row.status,
+    count: row.count,
+    oldestCreatedAt: row.oldestCreatedAt === null ? null : new Date(row.oldestCreatedAt),
+  }));
+}

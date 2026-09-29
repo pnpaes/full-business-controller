@@ -101,22 +101,23 @@ interface FieldMessageProps {
 
 /** Error (priority) or help text, wired to the control via `aria-describedby` (§8.5). */
 function FieldMessage({ helpId, errorId, help, error }: FieldMessageProps) {
+  // The wrapper's flex `gap` already insets the message by `spacing[1]`; the
+  // extra top margin gives the text clear air below the control's bottom
+  // border (the control's box otherwise sits hard against it).
+  const messageStyle: CSSProperties = {
+    margin: `${spacing[1]}px 0 0`,
+    fontSize: typography.fontSize.sm,
+  };
   if (error) {
     return (
-      <p
-        id={errorId}
-        style={{ margin: 0, fontSize: typography.fontSize.sm, color: color.status.danger.fg }}
-      >
+      <p id={errorId} style={{ ...messageStyle, color: color.status.danger.fg }}>
         {error}
       </p>
     );
   }
   if (help) {
     return (
-      <p
-        id={helpId}
-        style={{ margin: 0, fontSize: typography.fontSize.sm, color: color.ink.secondary }}
-      >
+      <p id={helpId} style={{ ...messageStyle, color: color.ink.secondary }}>
         {help}
       </p>
     );
@@ -612,7 +613,11 @@ export function CheckboxField({
       {help ? (
         <p
           id={helpId}
-          style={{ margin: 0, fontSize: typography.fontSize.sm, color: color.ink.secondary }}
+          style={{
+            margin: `${spacing[1]}px 0 0`,
+            fontSize: typography.fontSize.sm,
+            color: color.ink.secondary,
+          }}
         >
           {help}
         </p>
@@ -986,6 +991,85 @@ export function Tabs({ items, ariaLabel }: TabsProps) {
           </li>
         ))}
       </ul>
+    </nav>
+  );
+}
+
+/* -------------------------------- AreaTabs --------------------------------- */
+
+export interface AreaTab {
+  readonly href: string;
+  readonly label: string;
+}
+
+export interface AreaTabsProps {
+  /** The current pathname, supplied by the area's client `usePathname` wrapper. */
+  readonly pathname: string;
+  readonly items: readonly AreaTab[];
+  readonly ariaLabel: string;
+}
+
+/**
+ * The active tab is the **longest** `href` that matches the pathname exactly or
+ * as a parent path, so `/administration` does not light up under
+ * `/administration/users` and a nested screen keeps its own tab active.
+ */
+export function areaTabActiveHref(pathname: string, items: readonly AreaTab[]): string | undefined {
+  return items.reduce<string | undefined>((best, item) => {
+    const matches = pathname === item.href || pathname.startsWith(`${item.href}/`);
+    if (!matches) {
+      return best;
+    }
+    return best === undefined || item.href.length > best.length ? item.href : best;
+  }, undefined);
+}
+
+/**
+ * The section strip shared by an area's hub and its sub-screens (`08_UI_UX.md`
+ * §8.1 navigation) — the `administration`/`costs` copies this replaces. Pure
+ * and hook-free like the rest of this module: the caller passes `pathname` from
+ * its own client `usePathname` wrapper, so the package never depends on the
+ * router, and every section stays an independently addressable plain link.
+ */
+export function AreaTabs({ pathname, items, ariaLabel }: AreaTabsProps) {
+  const activeHref = areaTabActiveHref(pathname, items);
+  return (
+    <nav
+      aria-label={ariaLabel}
+      style={{
+        display: "flex",
+        flexWrap: "wrap",
+        gap: spacing[2],
+        paddingBottom: spacing[2],
+        borderBottom: `1px solid ${color.border.subtle}`,
+      }}
+    >
+      {items.map((tab) => {
+        const active = tab.href === activeHref;
+        return (
+          <a
+            key={tab.href}
+            href={tab.href}
+            aria-current={active ? "page" : undefined}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              minHeight: 40,
+              padding: `${spacing[1]}px ${spacing[3]}px`,
+              borderRadius: radius.sm,
+              fontFamily: typography.fontFamily.sans,
+              fontSize: typography.fontSize.sm,
+              fontWeight: active ? typography.fontWeight.semibold : typography.fontWeight.regular,
+              color: active ? color.text.onNavy : color.text.secondary,
+              backgroundColor: active ? color.brand.navy : color.background.surface,
+              border: `1px solid ${active ? color.brand.navy : color.border.subtle}`,
+              textDecoration: "none",
+            }}
+          >
+            {tab.label}
+          </a>
+        );
+      })}
     </nav>
   );
 }

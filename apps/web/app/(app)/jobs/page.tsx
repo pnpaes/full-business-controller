@@ -1,4 +1,4 @@
-import { listJobs } from "@aquarela/persistence";
+import { countJobsByStatus, listJobs } from "@aquarela/persistence";
 import {
   EmptyState,
   InfoTip,
@@ -8,6 +8,7 @@ import {
   PageHeader,
   SectionCard,
   formatNumber,
+  formatRelativeAge,
   spacing,
   typography,
 } from "@aquarela/ui";
@@ -25,14 +26,12 @@ import {
 } from "../../api/v1/jobs/access";
 
 import { JobsRegister, type JobsRegisterRow } from "./jobs-register";
-import { formatJobAge, isJobStatus, JOB_STATUS_FILTERS, jobStatusView } from "./jobs-labels";
+import { isJobStatus, JOB_STATUS_FILTERS, jobStatusView } from "./jobs-labels";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Jobs — Aquarela Business Control" };
 
 const PAGE_SIZE = 50;
-/** One past the page size, so the hero can say "50+" instead of a false exact count. */
-const HERO_LIMIT = PAGE_SIZE + 1;
 
 const contentColumn = {
   display: "flex",
@@ -100,8 +99,9 @@ export default async function JobsPage({
   const offset = Number.isFinite(offsetRaw) && offsetRaw > 0 ? offsetRaw : 0;
 
   const now = new Date();
+  const organizationId = resolveOrganization();
   const jobs = await listJobs(getDb().db, {
-    organizationId: resolveOrganization(),
+    organizationId,
     status,
     limit: PAGE_SIZE,
     offset,
@@ -118,39 +118,22 @@ export default async function JobsPage({
     finishedAt: job.finishedAt,
   }));
 
-  // The hero counts the dead-letter queue. `listJobs` has no count read, so the
-  // figure is derived from one bounded fetch (one past the page size → "50+")
-  // and the meta says so honestly; a countJobs-by-status read is the recorded
-  // shared need.
-  const deadLetters = await listJobs(getDb().db, {
-    organizationId: resolveOrganization(),
-    status: "dead_lettered",
-    limit: HERO_LIMIT,
-  });
-  const deadLetterCount = deadLetters.length;
-  const deadLetterExact = deadLetterCount <= PAGE_SIZE;
-  const oldestDeadLetter = deadLetters.reduce<Date | null>((oldest, job) => {
-    const created = job.createdAt instanceof Date ? job.createdAt : new Date(job.createdAt);
-    return oldest === null || created < oldest ? created : oldest;
-  }, null);
-
-  const activity = await listJobs(getDb().db, {
-    organizationId: resolveOrganization(),
-    status: "running",
-    limit: HERO_LIMIT,
-  });
-  const runningCount = activity.length;
-  const runningExact = runningCount <= PAGE_SIZE;
+  // One grouped count-by-status read drives the hero and every chip with true
+  // counts (and the oldest dead letter), so nothing is derived from a capped
+  // page of rows.
+  const counts = await countJobsByStatus(getDb().db, { organizationId });
+  const countByStatus = new Map(counts.map((entry) => [entry.status, entry]));
+  const statusCount = (value: string): number => countByStatus.get(value)?.count ?? 0;
+  const deadLetterCount = statusCount("dead_lettered");
+  const oldestDeadLetter = countByStatus.get("dead_lettered")?.oldestCreatedAt ?? null;
+  const runningCount = statusCount("running");
 
   const canAdmin = isJobsAuthorized(access, JOBS_ADMIN_ROLES);
 
-  const heroValue = deadLetterExact
-    ? formatNumber(String(deadLetterCount), { decimals: 0 })
-    : "50+";
   const heroMeta =
     deadLetterCount === 0
       ? "Nothing is waiting for review."
-      : `oldest ${formatJobAge(oldestDeadLetter ?? now, now)} · ${deadLetterExact ? "exact count" : "first 50 shown"}`;
+      : `oldest ${formatRelativeAge(oldestDeadLetter ?? now, now)}`;
 
   return (
     <div style={contentColumn}>
@@ -164,7 +147,7 @@ export default async function JobsPage({
         hero={
           <MetricHero
             label="Dead letters"
-            value={heroValue}
+            value={formatNumber(String(deadLetterCount), { decimals: 0 })}
             meta={heroMeta}
             info={
               <InfoTip
@@ -178,7 +161,7 @@ export default async function JobsPage({
           <MetricSecondary
             key="running"
             label="Running"
-            value={runningExact ? formatNumber(String(runningCount), { decimals: 0 }) : "50+"}
+            value={formatNumber(String(runningCount), { decimals: 0 })}
             meta="in progress right now"
           />,
         ]}
@@ -197,6 +180,9 @@ export default async function JobsPage({
               href={href(value)}
               aria-current={active ? "true" : undefined}
               style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: spacing[1],
                 padding: `${spacing[1]}px ${spacing[3]}px`,
                 borderRadius: 999,
                 border: `1px solid ${active ? "transparent" : "rgba(0,0,0,0.15)"}`,
@@ -207,6 +193,15 @@ export default async function JobsPage({
               }}
             >
               {view.label}
+              <span
+                aria-hidden="true"
+                style={{
+                  opacity: 0.7,
+                  fontVariantNumeric: typography.fontVariantNumeric.tabular,
+                }}
+              >
+                {formatNumber(String(statusCount(value)), { decimals: 0 })}
+              </span>
             </Link>
           );
         })}

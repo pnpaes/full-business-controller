@@ -12,6 +12,9 @@ import {
   DonutChart,
   EmptyState,
   LineChart,
+  MetricBand,
+  MetricHero,
+  MetricSecondary,
   PageHeader,
   SectionCard,
   StatusPill,
@@ -31,7 +34,6 @@ import {
   isReportingAuthorized,
   loadReportingAccess,
 } from "../../api/v1/reports/access";
-import { MetricBand } from "../home-modules";
 import {
   formatAccuracy,
   grainLabel,
@@ -71,12 +73,9 @@ const actionLink = {
 
 /**
  * Page-scoped responsive composition rules (brief §18) — the only styling
- * inline styles cannot express. Token-derived, prefixed `in-`. The `mh-band`
- * rules are the class contract `MetricBand` (home-modules.tsx) renders
- * against; they are re-declared here because each page owns its style block.
- * Composition changes, not shrinkage: the focal module reflows
- * headline → chart → donut, the metric band runs 4-up → 2×2 → stacked, and
- * the preview/planned rows collapse to one column.
+ * inline styles cannot express. Token-derived, prefixed `in-`. Composition
+ * changes, not shrinkage: the focal module reflows headline → chart → donut
+ * and the preview/planned rows collapse to one column.
  */
 const pageCss = `
 .in-focal {
@@ -88,11 +87,6 @@ const pageCss = `
 }
 .in-focal-chart { min-width: 0; }
 .in-focal-chart svg { width: 100%; height: auto; }
-.mh-band { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
-.mh-band-cell + .mh-band-cell {
-  border-left: 1px solid ${color.border.subtle};
-  padding-left: ${spacing[5]}px;
-}
 .in-previews, .in-planned {
   display: grid;
   gap: ${spacing[6]}px;
@@ -106,21 +100,12 @@ const pageCss = `
     grid-template-areas: "headline donut" "chart chart";
     gap: ${spacing[6]}px;
   }
-  .mh-band { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: ${spacing[5]}px; }
-  .mh-band-cell:nth-child(3) { border-left: 0; padding-left: 0; }
   .in-previews { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: ${breakpoint.tablet - 1}px) {
   .in-focal {
     grid-template-columns: minmax(0, 1fr);
     grid-template-areas: "headline" "donut" "chart";
-  }
-  .mh-band { grid-template-columns: minmax(0, 1fr); }
-  .mh-band-cell + .mh-band-cell {
-    border-left: 0;
-    padding-left: 0;
-    border-top: 1px solid ${color.border.subtle};
-    padding-top: ${spacing[4]}px;
   }
   .in-planned { grid-template-columns: minmax(0, 1fr); }
 }
@@ -348,30 +333,44 @@ export default async function InsightsPage() {
         )}
       </SectionCard>
 
-      {/* The period measures as one grouped band, not four equal cards. */}
+      {/* The period measures as one ranked band (net sales hero, then the
+          support measures), not four equal cards. */}
       <SectionCard title="Period measures" meta={hasSales ? meta : `${meta} · no data yet`}>
         <MetricBand
-          items={[
-            {
-              label: "Net sales",
-              value: hasSales
-                ? `${formatMoney(report.totals.netSales)} ${SALES_REPORT_CURRENCY}`
-                : "—",
-            },
-            { label: "Units", value: hasSales ? formatQuantity(report.totals.units) : "—" },
-            {
-              label: "Ingredient cost",
-              value: hasSales
-                ? `${formatMoney(report.totals.ingredientCost)} ${SALES_REPORT_CURRENCY}`
-                : "—",
-            },
-            {
-              label: "Contribution before labour",
-              value: hasSales
-                ? `${formatMoney(report.totals.contributionBeforeLabour)} ${SALES_REPORT_CURRENCY}`
-                : "—",
-              note: hasSales ? `margin ${formatPct(marginPct)}` : undefined,
-            },
+          hero={
+            <MetricHero
+              label="Net sales"
+              value={
+                hasSales ? `${formatMoney(report.totals.netSales)} ${SALES_REPORT_CURRENCY}` : "—"
+              }
+              meta={hasSales ? meta : `${meta} · no data yet`}
+            />
+          }
+          metrics={[
+            <MetricSecondary
+              key="units"
+              label="Units"
+              value={hasSales ? formatQuantity(report.totals.units) : "—"}
+            />,
+            <MetricSecondary
+              key="ingredient-cost"
+              label="Ingredient cost"
+              value={
+                hasSales
+                  ? `${formatMoney(report.totals.ingredientCost)} ${SALES_REPORT_CURRENCY}`
+                  : "—"
+              }
+            />,
+            <MetricSecondary
+              key="contribution"
+              label="Contribution before labour"
+              value={
+                hasSales
+                  ? `${formatMoney(report.totals.contributionBeforeLabour)} ${SALES_REPORT_CURRENCY}`
+                  : "—"
+              }
+              meta={hasSales ? `margin ${formatPct(marginPct)}` : undefined}
+            />,
           ]}
         />
       </SectionCard>

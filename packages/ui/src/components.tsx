@@ -532,14 +532,22 @@ export function TextField({
       {error ? (
         <p
           id={errorId}
-          style={{ margin: 0, fontSize: typography.fontSize.sm, color: color.status.danger.fg }}
+          style={{
+            margin: `${spacing[1]}px 0 0`,
+            fontSize: typography.fontSize.sm,
+            color: color.status.danger.fg,
+          }}
         >
           {error}
         </p>
       ) : help ? (
         <p
           id={helpId}
-          style={{ margin: 0, fontSize: typography.fontSize.sm, color: color.text.muted }}
+          style={{
+            margin: `${spacing[1]}px 0 0`,
+            fontSize: typography.fontSize.sm,
+            color: color.text.muted,
+          }}
         >
           {help}
         </p>
